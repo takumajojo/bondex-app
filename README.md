@@ -106,3 +106,32 @@ npm run start
 ---
 
 ## ディレクトリ構成
+
+---
+
+## 既知の制約 (POC段階の限界)
+
+本リポジトリは POC (Proof of Concept) として外部バックエンドへの依存を排除し、
+すべての機能を Next.js 単体で完結させている。本番運用に向けて以下の制約がある:
+
+### 写真アップロード (in-memory Map 保管)
+- サーバープロセスが再起動すると保管中の画像はすべて消失する
+- 開発時 (`npm run dev`) はファイル編集による HMR でも Map がリセットされる
+- Vercel Serverless Functions で動かす場合、upload と GET が別 Lambda インスタンスに
+  振られる可能性があり 404 になり得る
+- 本番では Vercel Blob / Cloudinary / S3 などの外部ストレージに移行が必要
+
+### 注文管理 (localStorage 保管)
+- ブラウザの localStorage に保管されるため、シークレットモードでは消失
+- 異なるデバイス・ブラウザ間で同期されない
+- ブラウザのストレージクォータ超過で書き込み失敗の可能性
+- 本番では DB (PostgreSQL / Supabase / Neon 等) への移行が必要
+
+### Ship&co 連携 (スタブ化)
+- 配送ラベル生成・追跡・キャリア一覧 等は POC ではスタブ化されており、
+  UI 上で「Feature not available in POC」のエラーが表示される
+- 本格運用 (BondEx v3) では Ship&co API への直接連携を実装予定
+
+### Stripe 決済
+- Test mode (sk_test_...) で動作することを前提としている
+- Live mode (sk_live_...) への切り替えは本番デプロイ時に環境変数を変更

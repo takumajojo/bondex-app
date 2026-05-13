@@ -1,51 +1,60 @@
 /**
- * Frontend client for BondEx backend (Ship&co proxy).
- * Base URL: NEXT_PUBLIC_BACKEND_URL or http://localhost:8000
+ * Frontend client used by traveler / hotel-staff / admin flows.
+ *
+ * POC では外部バックエンドへの依存を排除している:
+ *  - createPaymentIntent: Next.js 内部 API (/api/payment/intent) を経由
+ *  - その他 Ship&co / Order / Audit 系: スタブ (T3 で本格実装予定)
+ *
+ * 純粋ロジック (buildShipmentPayload, shipCoAddressFromFacility, formatPhoneForShipco,
+ * DEFAULT_HOTEL_ORIGIN 等) は本番でも再利用するため残してある。
  */
 
 import type { FacilityRecord } from "@/lib/facilities-data"
 
-const getBaseUrl = () =>
-  (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BACKEND_URL) || "http://localhost:8000"
-
 export type ApiResult<T> = { ok: true; data: T; status: number } | { ok: false; status: number; error: string }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown
-): Promise<ApiResult<T>> {
-  const url = `${getBaseUrl()}${path}`
-  const res = await fetch(url, {
-    method,
-    headers: body != null ? { "Content-Type": "application/json" } : undefined,
-    body: body != null ? JSON.stringify(body) : undefined,
-  })
-  const text = await res.text()
-  let data: T | undefined
-  try {
-    if (text) data = JSON.parse(text) as T
-  } catch {
-    // non-JSON response (e.g. Ship&co DELETE returns plain text)
-  }
-  if (!res.ok) {
-    return { ok: false, status: res.status, error: text || res.statusText }
-  }
-  return { ok: true, data: data as T, status: res.status }
+const STUB_ERROR = "Feature not available in POC"
+
+/** Result helper for the Ship&co/Order/Audit stubs. */
+function stubResult<T>(): ApiResult<T> {
+  return { ok: false, status: 0, error: STUB_ERROR }
 }
 
-/** POST /api/payments/create-intent — create Stripe PaymentIntent */
+/** POST /api/payment/intent — Next.js 内部の Stripe PaymentIntent エンドポイント */
 export async function createPaymentIntent(body: {
   orderId: string
   amount: number
   currency?: string
 }): Promise<ApiResult<{ clientSecret: string; paymentIntentId: string }>> {
-  return request("POST", "/api/payments/create-intent", body)
+  try {
+    const res = await fetch("/api/payment/intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    const text = await res.text()
+    let data: { clientSecret?: string; paymentIntentId?: string; error?: string } | undefined
+    try {
+      if (text) data = JSON.parse(text)
+    } catch {
+      // non-JSON
+    }
+    if (!res.ok || !data?.clientSecret || !data?.paymentIntentId) {
+      return { ok: false, status: res.status, error: data?.error || text || res.statusText }
+    }
+    return {
+      ok: true,
+      status: res.status,
+      data: { clientSecret: data.clientSecret, paymentIntentId: data.paymentIntentId },
+    }
+  } catch (err) {
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : "Network error" }
+  }
 }
 
-/** POST /api/rates — get shipping rates */
-export async function getRates(body: Record<string, unknown>): Promise<ApiResult<unknown>> {
-  return request("POST", "/api/rates", body)
+/** T3: implement at production launch (BondEx v3) */
+export async function getRates(_body: Record<string, unknown>): Promise<ApiResult<unknown>> {
+  return stubResult()
 }
 
 /** Order snapshot for backend PostgreSQL (optional when creating shipment). */
@@ -64,35 +73,33 @@ export type BondexOrderSnapshot = {
   bookingDoc?: Record<string, unknown>
 }
 
-/** POST /api/shipments — create shipment. Optionally pass bondexOrder to persist order in backend PostgreSQL. */
+/** T3: implement at production launch (BondEx v3) */
 export async function createShipment(
-  body: Record<string, unknown>,
-  bondexOrder?: BondexOrderSnapshot | null
+  _body: Record<string, unknown>,
+  _bondexOrder?: BondexOrderSnapshot | null,
 ): Promise<ApiResult<{
   id?: string
   delivery?: { carrier?: string; tracking_numbers?: string[]; label?: string }
 }>> {
-  const payload = bondexOrder ? { ...body, bondex_order: bondexOrder } : body
-  return request("POST", "/api/shipments", payload)
+  return stubResult()
 }
 
-/** GET /api/tracking/:carrier/:trackingNumber */
+/** T3: implement at production launch (BondEx v3) */
 export async function getTracking(
-  carrier: string,
-  trackingNumber: string
+  _carrier: string,
+  _trackingNumber: string,
 ): Promise<ApiResult<unknown>> {
-  const encoded = encodeURIComponent(trackingNumber)
-  return request("GET", `/api/tracking/${encodeURIComponent(carrier)}/${encoded}`)
+  return stubResult()
 }
 
-/** GET /api/carriers */
+/** T3: implement at production launch (BondEx v3) */
 export async function getCarriers(): Promise<ApiResult<unknown[]>> {
-  return request("GET", "/api/carriers")
+  return stubResult()
 }
 
-/** GET /api/shipments/:id */
-export async function getShipment(id: string): Promise<ApiResult<unknown>> {
-  return request("GET", `/api/shipments/${encodeURIComponent(id)}`)
+/** T3: implement at production launch (BondEx v3) */
+export async function getShipment(_id: string): Promise<ApiResult<unknown>> {
+  return stubResult()
 }
 
 export type BackendShipment = {
@@ -140,16 +147,16 @@ export type BackendOrder = {
   shipment?: BackendShipment | null
 }
 
-/** GET /api/orders/{order_id} — fetch order + latest shipment from PostgreSQL. */
-export async function getOrder(orderId: string): Promise<ApiResult<BackendOrder>> {
-  return request("GET", `/api/orders/${encodeURIComponent(orderId)}`)
+/** T3: implement at production launch (BondEx v3) */
+export async function getOrder(_orderId: string): Promise<ApiResult<BackendOrder>> {
+  return stubResult()
 }
 
-/** POST /api/orders — upsert full order snapshot (traveler / hotel / admin). */
+/** T3: implement at production launch (BondEx v3) */
 export async function upsertOrder(
-  body: BondexOrderSnapshot & { sourceRole?: "traveler" | "hotel_staff" | "admin" | "system" }
+  _body: BondexOrderSnapshot & { sourceRole?: "traveler" | "hotel_staff" | "admin" | "system" },
 ): Promise<ApiResult<{ ok: boolean; orderId: string }>> {
-  return request("POST", "/api/orders", body)
+  return stubResult()
 }
 
 export type AuditActionPayload = {
@@ -159,17 +166,17 @@ export type AuditActionPayload = {
   payload?: Record<string, unknown>
 }
 
-/** POST /api/orders/{orderId}/audit-actions */
+/** T3: implement at production launch (BondEx v3) */
 export async function createAuditAction(
-  orderId: string,
-  body: AuditActionPayload
+  _orderId: string,
+  _body: AuditActionPayload,
 ): Promise<ApiResult<{ ok: boolean }>> {
-  return request("POST", `/api/orders/${encodeURIComponent(orderId)}/audit-actions`, body)
+  return stubResult()
 }
 
-/** GET /api/orders/{orderId}/audit-actions */
-export async function getAuditActions(orderId: string): Promise<ApiResult<unknown[]>> {
-  return request("GET", `/api/orders/${encodeURIComponent(orderId)}/audit-actions`)
+/** T3: implement at production launch (BondEx v3) */
+export async function getAuditActions(_orderId: string): Promise<ApiResult<unknown[]>> {
+  return stubResult()
 }
 
 // --- Payload builder for hotel check-in (Ship&co create shipment) ---

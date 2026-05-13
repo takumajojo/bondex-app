@@ -1,33 +1,33 @@
-const getBaseUrl = () =>
-  (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BACKEND_URL) || "http://localhost:8000"
+/**
+ * 写真アップロード用クライアント。
+ * POC では Next.js 内部 API Route (/api/photos/upload) に直接送信し、
+ * サーバーメモリに保管された画像を /api/photos/{photoId} で取り出す。
+ */
 
 export async function uploadPhoto(file: File): Promise<{ photoId: string; photoUrl: string }> {
-  const baseUrl = getBaseUrl()
   const formData = new FormData()
   formData.append("file", file)
 
-  const res = await fetch(`${baseUrl}/api/photos/upload`, {
+  const res = await fetch("/api/photos/upload", {
     method: "POST",
     body: formData,
   })
 
   const text = await res.text()
-  let data: any = null
+  let data: { photoId?: string; url?: string; error?: string } | null = null
   try {
     data = text ? JSON.parse(text) : null
   } catch {
-    
+    // ignore non-JSON body
   }
 
   if (!res.ok) {
-    const message = data?.error || data?.detail || text || res.statusText
+    const message = data?.error || text || res.statusText
     throw new Error(message)
   }
 
   const photoId = String(data?.photoId || "")
-  const urlPath = String(data?.url || "")
-  if (!photoId || !urlPath) throw new Error("Invalid upload response")
+  if (!photoId) throw new Error("Invalid upload response")
 
-  return { photoId, photoUrl: `${baseUrl}${urlPath}` }
+  return { photoId, photoUrl: `/api/photos/${photoId}` }
 }
-

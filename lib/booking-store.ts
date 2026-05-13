@@ -1,8 +1,8 @@
-// DB-backed booking store facade.
-// Existing UI code keeps calling these exports, but reads/writes are persisted in PostgreSQL.
+// localStorage-backed booking store facade (POC).
+// Existing UI code keeps calling these exports synchronously; an in-memory Map
+// (cacheById) sits in front of localStorage so reads remain synchronous.
 
 import type { FacilityRecord } from "@/lib/facilities-data"
-import type { BackendOrder } from "@/lib/shipandco-api"
 
 export type IssueType = "payment_failure" | "uncollected" | "carrier_exception" | "size_mismatch" | "other"
 
@@ -142,32 +142,8 @@ export const ADMIN_GRID_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 }
 
-type ApiResult<T> = { ok: true; data: T; status: number } | { ok: false; status: number; error: string }
-
 const BOOKING_UPDATED_EVENT = "bondex-booking-updated"
-
-const getBaseUrl = () =>
-  (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BACKEND_URL) || "http://localhost:8000"
-
-async function request<T>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
-  const url = `${getBaseUrl()}${path}`
-  const res = await fetch(url, {
-    method,
-    headers: body != null ? { "Content-Type": "application/json" } : undefined,
-    body: body != null ? JSON.stringify(body) : undefined,
-  })
-
-  const text = await res.text()
-  let data: T | undefined
-  try {
-    if (text) data = JSON.parse(text) as T
-  } catch {
-    // non-JSON response
-  }
-
-  if (!res.ok) return { ok: false, status: res.status, error: text || res.statusText }
-  return { ok: true, data: data as T, status: res.status }
-}
+const STORAGE_KEY = "bondex_bookings"
 
 function dispatchBookingUpdated(): void {
   if (typeof window === "undefined") return
@@ -175,10 +151,9 @@ function dispatchBookingUpdated(): void {
 }
 
 // Cache (in-memory) as a facade to keep existing synchronous UI code.
+// localStorage は永続化レイヤとして cacheById の下に位置する。
 const cacheById = new Map<string, StoredBooking>()
 let cacheInitialized = false
-let refreshAllInFlight: Promise<void> | null = null
-const refreshOneInFlight = new Map<string, Promise<void>>()
 
 let dispatchScheduled = false
 function scheduleDispatch(): void {
@@ -192,169 +167,35 @@ function scheduleDispatch(): void {
   }, 0)
 }
 
-function normalizeStoredStatus(status: any): StoredBooking["status"] {
-  const s = String(status || "").trim()
-  const allowed: StoredBooking["status"][] = ["confirmed", "waiting", "checked_in", "picked_up", "in_transit", "delivered"]
-  return (allowed.includes(s as any) ? (s as StoredBooking["status"]) : "waiting") as StoredBooking["status"]
-}
-
-function toBookingFromBackendOrder(order: BackendOrder, messages: BookingMessage[] | null): StoredBooking {
-  const itemPhotos = (order.items || []).map((i: any) => ({
-    size: String(i.size || ""),
-    weight: Number(i.weight || 0),
-    photos: Array.isArray(i.photos) ? i.photos.map((p: any) => String(p)) : [],
-  }))
-
-  const status = normalizeStoredStatus(order.status)
-  const pickup = order.pickup
-    ? {
-        id: order.pickup.id,
-        name: order.pickup.name,
-        address: order.pickup.address,
-        facility: order.pickup.facility,
-      }
-    : undefined
-
-  // Prefer normalized messages when provided; otherwise fall back to legacy orders.messages JSONB.
-  const resolvedMessages =
-    messages ??
-    (Array.isArray(order.messages)
-      ? (order.messages as any[]).map((m) => ({
-          id: String(m.id || ""),
-          type:
-            m.type === "warning" || m.type === "action_required" || m.type === "info"
-              ? (m.type as BookingMessage["type"])
-              : ("info" as const),
-          issueType: m.issueType as IssueType | undefined,
-          title: String(m.title || ""),
-          body: String(m.body || ""),
-          createdAt: String(m.createdAt || ""),
-          readAt: m.readAt ? String(m.readAt) : undefined,
-        }))
-      : [])
-
-  return {
-    orderId: order.orderId,
-    status,
-    createdAt: order.createdAt,
-    pickup,
-    destination: {
-      name: order.destination.name,
-      address: order.destination.address,
-      type: order.destination.type || "",
-      checkInDate: order.destination.checkInDate,
-      bookingName: order.destination.bookingName,
-      recipientName: order.destination.recipientName,
-      facility: order.destination.facility,
-    },
-    deliveryDate: order.deliveryDate,
-    items: itemPhotos,
-    contact: {
-      email: (order.contact as any).email || "",
-      phone: (order.contact as any).phone || "",
-      verified: Boolean((order.contact as any).verified ?? true),
-    },
-    payment: (order.payment as any) || {},
-    messages: resolvedMessages,
-    shipment: order.shipment
-      ? {
-          labelUrl: order.shipment.labelUrl ?? undefined,
-          trackingNumbers: order.shipment.trackingNumbers ?? [],
-          carrier: order.shipment.carrier ?? undefined,
-          shipmentId: order.shipment.shipmentId,
-        }
-      : undefined,
-  }
-}
-
-async function fetchOrderMessages(orderId: string): Promise<BookingMessage[] | null> {
-  const res = await request<any>("GET", `/api/orders/${encodeURIComponent(orderId)}/messages`)
-  if (!res.ok) return null
-  const raw = Array.isArray(res.data) ? (res.data as any[]) : []
-  return raw.map((m) => ({
-    id: String(m.id || ""),
-    type: m.type === "warning" || m.type === "action_required" || m.type === "info" ? m.type : ("info" as const),
-    issueType: m.issueType as IssueType | undefined,
-    title: String(m.title || ""),
-    body: String(m.body || ""),
-    createdAt: String(m.createdAt || ""),
-    readAt: m.readAt ? String(m.readAt) : undefined,
-  }))
-}
-
-async function refreshBooking(orderId: string): Promise<void> {
-  if (refreshOneInFlight.has(orderId)) return refreshOneInFlight.get(orderId)!
-
-  const inflight = (async () => {
-    const orderRes = await request<BackendOrder>("GET", `/api/orders/${encodeURIComponent(orderId)}`)
-    if (!orderRes.ok || !orderRes.data) return
-
-    const messages = await fetchOrderMessages(orderId).catch(() => null)
-    const booking = toBookingFromBackendOrder(orderRes.data, messages)
-    cacheById.set(orderId, booking)
-    scheduleDispatch()
-  })()
-
-  refreshOneInFlight.set(orderId, inflight)
-  try {
-    await inflight
-  } finally {
-    refreshOneInFlight.delete(orderId)
-  }
-}
-
-async function refreshAllBookings(limit = 100): Promise<void> {
-  const inflight = (async () => {
-    const listRes = await request<any[]>("GET", `/api/orders?limit=${encodeURIComponent(String(limit))}&offset=0`)
-    if (!listRes.ok) return
-
-    const rawOrders = Array.isArray(listRes.data) ? listRes.data : []
-
-    // Populate a partial cache quickly.
-    for (const o of rawOrders) {
-      const orderId: string = String(o.orderId || "")
-      if (!orderId) continue
-      cacheById.set(orderId, {
-        orderId,
-        status: normalizeStoredStatus(o.status),
-        createdAt: String(o.createdAt || new Date().toISOString()),
-        destination: {
-          name: o.destination?.name || "",
-          address: o.destination?.address || "",
-          type: o.destination?.type || "",
-          checkInDate: o.destination?.checkInDate || "",
-          bookingName: o.destination?.bookingName || "",
-          recipientName: o.destination?.recipientName || "",
-          facility: o.destination?.facility,
-        },
-        deliveryDate: String(o.deliveryDate || ""),
-        items: Array.isArray(o.items) ? o.items : [],
-        contact: {
-          email: o.contact?.email || "",
-          phone: o.contact?.phone || "",
-          verified: Boolean(o.contact?.verified ?? true),
-        },
-        payment: o.payment || {},
-        messages: Array.isArray(o.messages) ? (o.messages as any[]) : [],
-      } as any)
-    }
-
-    // Then refresh full details (including shipment + messages).
-    await Promise.all(rawOrders.slice(0, 20).map((o) => refreshBooking(String(o.orderId))))
-  })()
-
-  refreshAllInFlight = inflight
-  try {
-    await inflight
-    cacheInitialized = true
-  } finally {
-    refreshAllInFlight = null
-  }
-}
-
 function ensureCacheInitialized(): void {
   if (cacheInitialized) return
-  if (!refreshAllInFlight) void refreshAllBookings(100)
+  // SSR では localStorage が無いので no-op。クライアントで初めて呼ばれた時に復元する。
+  if (typeof window === "undefined") return
+  cacheInitialized = true
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const list = JSON.parse(raw)
+    if (!Array.isArray(list)) return
+    for (const b of list as StoredBooking[]) {
+      if (b && typeof b.orderId === "string" && b.orderId) {
+        cacheById.set(b.orderId, b)
+      }
+    }
+  } catch {
+    // parse 失敗時は cacheInitialized=true のまま空キャッシュで進める。
+    // 以降の write でストレージが上書きされて回復する。
+  }
+}
+
+function persist(): void {
+  if (typeof window === "undefined") return
+  try {
+    const list = Array.from(cacheById.values())
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  } catch {
+    // クォータ超過などは握りつぶす (POC)
+  }
 }
 
 /** Generate a BDX-XXXX order ID */
@@ -365,31 +206,10 @@ export function generateOrderId(): string {
 
 /** Save a new booking from Traveler flow */
 export function saveBooking(booking: StoredBooking): void {
-  void (async () => {
-    try {
-      const body: any = {
-        orderId: booking.orderId,
-        status: booking.status,
-        destination: booking.destination,
-        deliveryDate: booking.deliveryDate,
-        items: booking.items,
-        contact: booking.contact,
-        payment: booking.payment,
-        messages: booking.messages || [],
-        pickup: booking.pickup || {},
-        sourceRole: "traveler",
-      }
-
-      const res = await request("POST", "/api/orders", body)
-      if (!res.ok) return
-
-      cacheById.set(booking.orderId, booking)
-      scheduleDispatch()
-      await refreshBooking(booking.orderId)
-    } catch {
-      // best-effort
-    }
-  })()
+  ensureCacheInitialized()
+  cacheById.set(booking.orderId, booking)
+  persist()
+  scheduleDispatch()
 }
 
 /** Get all bookings (newest first-ish). */
@@ -401,58 +221,21 @@ export function getAllBookings(): StoredBooking[] {
 /** Get a single booking by orderId */
 export function getBookingById(orderId: string): StoredBooking | null {
   ensureCacheInitialized()
-  const hit = cacheById.get(orderId) || null
-  if (!hit) void refreshBooking(orderId)
-  return hit
+  return cacheById.get(orderId) || null
 }
 
 /** Update booking status */
 export function updateBookingStatus(
   orderId: string,
   status: StoredBooking["status"],
-  actorRole: "traveler" | "hotel_staff" | "admin" | "system" = "system",
+  _actorRole: "traveler" | "hotel_staff" | "admin" | "system" = "system",
 ): void {
-  void (async () => {
-    try {
-      // Optimistic cache update.
-      const cur = cacheById.get(orderId)
-      if (cur) {
-        cacheById.set(orderId, { ...cur, status })
-        scheduleDispatch()
-      }
-
-      // Preferred: status endpoint.
-      const preferred = await request("POST", `/api/orders/${encodeURIComponent(orderId)}/status`, {
-        status,
-        actorRole,
-      })
-      if (preferred.ok) {
-        await refreshBooking(orderId)
-        return
-      }
-
-      // Fallback: upsert full snapshot from cached booking.
-      if (preferred.status !== 404) return
-      const fallback = cacheById.get(orderId)
-      if (!fallback) return
-      const body: any = {
-        orderId: fallback.orderId,
-        status,
-        destination: fallback.destination,
-        deliveryDate: fallback.deliveryDate,
-        items: fallback.items,
-        contact: fallback.contact,
-        payment: fallback.payment,
-        messages: fallback.messages || [],
-        pickup: fallback.pickup || {},
-        sourceRole: actorRole,
-      }
-      const res = await request("POST", "/api/orders", body)
-      if (res.ok) await refreshBooking(orderId)
-    } catch {
-      // best-effort
-    }
-  })()
+  ensureCacheInitialized()
+  const cur = cacheById.get(orderId)
+  if (!cur) return
+  cacheById.set(orderId, { ...cur, status })
+  persist()
+  scheduleDispatch()
 }
 
 /** Update booking shipment (label, tracking) after Ship&co create */
@@ -460,63 +243,53 @@ export function updateBookingShipment(
   orderId: string,
   shipment: NonNullable<StoredBooking["shipment"]>,
 ): void {
-  void (async () => {
-    try {
-      // Optimistic cache update.
-      const cur = cacheById.get(orderId)
-      if (cur) {
-        cacheById.set(orderId, {
-          ...cur,
-          shipment: { ...cur.shipment, ...shipment },
-        })
-        scheduleDispatch()
-      }
-
-      // Shipment is already persisted server-side by createShipment; just refresh.
-      await refreshBooking(orderId)
-    } catch {
-      // best-effort
-    }
-  })()
+  ensureCacheInitialized()
+  const cur = cacheById.get(orderId)
+  if (!cur) return
+  cacheById.set(orderId, {
+    ...cur,
+    shipment: { ...cur.shipment, ...shipment },
+  })
+  persist()
+  scheduleDispatch()
 }
 
 /** Add a message to a booking */
 export function addMessage(
   orderId: string,
   message: Omit<BookingMessage, "id" | "createdAt">,
-  actorRole: "traveler" | "hotel_staff" | "admin" | "system" = "admin",
+  _actorRole: "traveler" | "hotel_staff" | "admin" | "system" = "admin",
 ): void {
-  void (async () => {
-    try {
-      const res = await request("POST", `/api/orders/${encodeURIComponent(orderId)}/messages`, {
-        type: message.type,
-        issueType: message.issueType,
-        title: message.title,
-        body: message.body,
-        actorRole,
-      })
-      if (!res.ok) return
-      await refreshBooking(orderId)
-    } catch {
-      // best-effort
-    }
-  })()
+  ensureCacheInitialized()
+  const cur = cacheById.get(orderId)
+  if (!cur) return
+  const newMessage: BookingMessage = {
+    id: (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    type: message.type,
+    issueType: message.issueType,
+    title: message.title,
+    body: message.body,
+  }
+  cacheById.set(orderId, { ...cur, messages: [...(cur.messages || []), newMessage] })
+  persist()
+  scheduleDispatch()
 }
 
 /** Mark a message as read */
 export function markMessageRead(orderId: string, messageId: string): void {
-  void (async () => {
-    try {
-      const res = await request(
-        "PATCH",
-        `/api/orders/${encodeURIComponent(orderId)}/messages/${encodeURIComponent(messageId)}/read`,
-      )
-      if (!res.ok) return
-      await refreshBooking(orderId)
-    } catch {
-      // best-effort
-    }
-  })()
+  ensureCacheInitialized()
+  const cur = cacheById.get(orderId)
+  if (!cur) return
+  const now = new Date().toISOString()
+  const messages = (cur.messages || []).map((m) =>
+    m.id === messageId && !m.readAt ? { ...m, readAt: now } : m,
+  )
+  cacheById.set(orderId, { ...cur, messages })
+  persist()
+  scheduleDispatch()
 }
 
 /** Get unread message count for a booking */
