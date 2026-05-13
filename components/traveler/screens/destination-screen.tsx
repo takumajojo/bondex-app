@@ -17,6 +17,12 @@ import type { BookingData } from "../traveler-flow"
 type Prediction = { place_id: string; name: string; secondary: string }
 type AC = { long_name: string; short_name: string; types: string[] }
 
+// 仕様 §3.3: Google Maps Static API はサーバー側プロキシ経由で取得 (API キー保護)。
+function staticMapUrl(lat?: number, lng?: number): string | null {
+  if (typeof lat !== "number" || typeof lng !== "number") return null
+  return `/api/places/staticmap?lat=${lat}&lng=${lng}&zoom=16`
+}
+
 // Restrict autocomplete to hotels in Japan
 const HOTEL_PARAMS = new URLSearchParams({ types: "lodging", components: "country:JP" }).toString()
 
@@ -151,6 +157,9 @@ export function DestinationScreen({ data, onUpdate, onNext, onBack }: Destinatio
         address1,
         address2: "",
         extra: "",
+        lat: typeof d.lat === "number" ? d.lat : undefined,
+        lng: typeof d.lng === "number" ? d.lng : undefined,
+        vicinity: typeof d.vicinity === "string" ? d.vicinity : "",
       }
       console.log("[bondex] FacilityRecord:", JSON.stringify({
         name: facility.name,
@@ -325,19 +334,74 @@ export function DestinationScreen({ data, onUpdate, onNext, onBack }: Destinatio
                   <div className="absolute top-full w-full mt-1 border rounded-xl bg-white z-30 shadow-2xl overflow-hidden">
                     {placesLoading ? (
                       <div className="p-4 text-sm text-muted-foreground text-center">Searching...</div>
-                    ) : predictions.map((p) => (
-                      <button
-                        key={p.place_id}
-                        onClick={() => selectPlace(p.place_id, p.name)}
-                        className="w-full p-4 text-left hover:bg-muted border-b last:border-0"
-                      >
-                        <p className="font-bold text-sm">{p.name}</p>
-                        <p className="text-xs text-muted-foreground">{p.secondary}</p>
-                      </button>
-                    ))}
+                    ) : predictions.map((p) => {
+                      // 仕様 §3.2: 同一エリアに同名のホテルが2件以上 (=secondary が重複) ある場合に
+                      // "2nd location nearby" バッジを出して取り違えを警告する。
+                      const sameNameNearby = predictions.filter((q) => q.name === p.name).length > 1
+                      return (
+                        <button
+                          key={p.place_id}
+                          onClick={() => selectPlace(p.place_id, p.name)}
+                          className="w-full p-4 text-left hover:bg-muted border-b last:border-0"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-base font-bold text-foreground leading-snug">{p.name}</p>
+                              <p className="text-sm text-foreground/80 mt-0.5 leading-snug">{p.secondary}</p>
+                            </div>
+                            {sameNameNearby && (
+                              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-amber-100 text-amber-700 shrink-0">
+                                2nd location nearby
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>
+
+              {/* 仕様 §3.3: 選択後の確認カード — 地図 + 郵便番号 + 住所 を視覚的に提示 */}
+              {selectedFacility && (
+                <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
+                  {staticMapUrl(selectedFacility.lat, selectedFacility.lng) && (
+                    <img
+                      src={staticMapUrl(selectedFacility.lat, selectedFacility.lng)!}
+                      alt={`Map showing ${selectedFacility.name}`}
+                      width={600}
+                      height={300}
+                      className="w-full h-32 object-cover bg-muted"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="p-4 space-y-1">
+                    <p className="text-base font-bold text-foreground leading-snug">{selectedFacility.name}</p>
+                    {selectedFacility.zip && (
+                      <p className="text-sm text-foreground/80">〒{selectedFacility.zip}</p>
+                    )}
+                    <p className="text-sm text-foreground/80">
+                      {selectedFacility.province}
+                      {selectedFacility.city}
+                      {selectedFacility.address1}
+                    </p>
+                    {selectedFacility.vicinity && (
+                      <p className="text-xs text-muted-foreground">{selectedFacility.vicinity}</p>
+                    )}
+                    <div className="flex items-center gap-1.5 text-green-600 text-xs font-medium pt-1">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Location confirmed</span>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedFacility(null); setSearchQuery("") }}
+                        className="ml-auto text-[10px] text-muted-foreground underline"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -424,6 +488,7 @@ export function DestinationScreen({ data, onUpdate, onNext, onBack }: Destinatio
                   <Input
                     placeholder="e.g. JL001 / NH211"
                     className="h-12 rounded-xl uppercase font-mono border-primary/20"
+                    autoComplete="off"
                     value={flightNumber}
                     onChange={(e) => setFlightNumber(e.target.value.toUpperCase())}
                   />
@@ -435,6 +500,7 @@ export function DestinationScreen({ data, onUpdate, onNext, onBack }: Destinatio
                 <Input
                   placeholder="Name on booking"
                   className="h-12 rounded-xl"
+                  autoComplete="name"
                   value={bookingName}
                   onChange={(e) => setBookingName(e.target.value)}
                 />
@@ -499,6 +565,7 @@ export function DestinationScreen({ data, onUpdate, onNext, onBack }: Destinatio
                   <Input
                     placeholder="Recipient full name"
                     className="h-12 rounded-xl"
+                    autoComplete="name"
                     value={recipientName}
                     onChange={(e) => setRecipientName(e.target.value)}
                   />

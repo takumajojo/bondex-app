@@ -2,8 +2,8 @@
 
 import React from "react"
 
-import { useState, useRef } from "react"
-import { ArrowLeft, Info, X, Ruler, Banknote, Flame, Leaf, Package, Camera, Plus, Trash2, Loader2, Gem, Scale, ShieldX } from "lucide-react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { ArrowLeft, Info, X, Ruler, Banknote, Flame, Leaf, Package, Camera, Plus, Trash2, Loader2, Gem, ShieldX, BatteryWarning, Apple } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
@@ -444,6 +444,7 @@ export function LuggageInputScreen({ data, onUpdate, onNext, onBack }: LuggageIn
                   <Input
                     id={`weight-${item.id}`}
                     type="number"
+                    inputMode="decimal"
                     min="1"
                     max={SIZE_INFO[item.size].maxKg}
                     step="1"
@@ -544,109 +545,10 @@ export function LuggageInputScreen({ data, onUpdate, onNext, onBack }: LuggageIn
 
       {}
       {showConfirmModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="relative bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
-
-            {/* Header */}
-            <div className="bg-red-700 px-6 py-5 flex items-center gap-4 shrink-0">
-              <div>
-                <p className="text-red-300 text-xs font-bold uppercase tracking-widest">Luggage Guidelines</p>
-                <h2 className="text-2xl font-black text-white leading-tight">Before you continue</h2>
-              </div>
-            </div>
-
-            {/* Scrollable body */}
-            <div className="overflow-y-auto flex-1 p-5 space-y-4 bg-slate-50">
-
-              {/* Size & Weight */}
-              <div className="bg-slate-700 rounded-2xl p-4 text-white">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Maximum allowed</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white rounded-xl p-4 text-center">
-                    <svg viewBox="0 0 64 64" className="w-12 h-12 mx-auto mb-2" fill="none">
-                      <rect x="12" y="20" width="40" height="34" rx="5" stroke="#1e293b" strokeWidth="2.5"/>
-                      <rect x="22" y="12" width="20" height="12" rx="3" stroke="#1e293b" strokeWidth="2.5"/>
-                      <line x1="24" y1="24" x2="24" y2="20" stroke="#1e293b" strokeWidth="2"/>
-                      <line x1="40" y1="24" x2="40" y2="20" stroke="#1e293b" strokeWidth="2"/>
-                      <circle cx="19" cy="56" r="3" stroke="#1e293b" strokeWidth="2"/>
-                      <circle cx="45" cy="56" r="3" stroke="#1e293b" strokeWidth="2"/>
-                      <line x1="4" y1="20" x2="4" y2="54" stroke="#1e293b" strokeWidth="1.5" strokeDasharray="2 2"/>
-                      <polyline points="2,23 4,20 6,23" stroke="#1e293b" strokeWidth="1.5" fill="none"/>
-                      <polyline points="2,51 4,54 6,51" stroke="#1e293b" strokeWidth="1.5" fill="none"/>
-                    </svg>
-                    <p className="text-3xl font-black text-slate-800">200<span className="text-lg">cm</span></p>
-                    <p className="text-slate-500 text-xs mt-1">L + W + H</p>
-                  </div>
-                  <div className="bg-white rounded-xl p-4 text-center">
-                    <svg viewBox="0 0 64 64" className="w-12 h-12 mx-auto mb-2" fill="none">
-                      <line x1="32" y1="8" x2="32" y2="52" stroke="#1e293b" strokeWidth="2.5"/>
-                      <line x1="10" y1="22" x2="54" y2="22" stroke="#1e293b" strokeWidth="2.5"/>
-                      <ellipse cx="16" cy="32" rx="10" ry="6" stroke="#1e293b" strokeWidth="2"/>
-                      <ellipse cx="48" cy="32" rx="10" ry="6" stroke="#1e293b" strokeWidth="2"/>
-                      <line x1="10" y1="22" x2="16" y2="32" stroke="#1e293b" strokeWidth="1.5"/>
-                      <line x1="54" y1="22" x2="48" y2="32" stroke="#1e293b" strokeWidth="1.5"/>
-                      <rect x="28" y="52" width="8" height="4" rx="2" fill="#1e293b"/>
-                    </svg>
-                    <p className="text-3xl font-black text-slate-800">30<span className="text-lg">kg</span></p>
-                    <p className="text-slate-500 text-xs mt-1">per item</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Prohibited items */}
-              <div className="bg-white rounded-2xl p-4 border border-red-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 bg-red-700 rounded-full flex items-center justify-center shrink-0">
-                    <X className="w-4 h-4 text-white" />
-                  </div>
-                  <p className="text-base font-black text-red-700">Do Not Include</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { icon: Banknote,  label: "Cash &\nvaluables",         red: true  },
-                    { icon: Gem,       label: "Fragile\nhigh-value",        red: false },
-                    { icon: Flame,     label: "Dangerous /\nflammable",     red: true  },
-                    { icon: Leaf,      label: "Perishable\ngoods",          red: false },
-                    { icon: ShieldX,   label: "Illegal\nitems",             red: true  },
-                    { icon: Package,   label: "Poorly packed\nfragile",     red: false },
-                  ].map(({ icon: Icon, label, red }) => (
-                    <div key={label} className={`rounded-xl p-3 flex items-center gap-3 border ${red ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-200"}`}>
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${red ? "bg-red-100" : "bg-slate-200"}`}>
-                        <Icon className={`w-5 h-5 ${red ? "text-red-700" : "text-slate-600"}`} />
-                      </div>
-                      <p className={`text-xs font-bold whitespace-pre-line leading-tight ${red ? "text-red-800" : "text-slate-700"}`}>{label}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
-                  <p className="text-xs text-red-700 font-semibold text-center">
-                    If restricted items are discovered, delivery may be refused.
-                  </p>
-                </div>
-              </div>
-
-              {/* Terms */}
-              <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4">
-                <p className="text-sm font-semibold text-slate-700 text-center">
-                  By continuing, you confirm your luggage complies with these guidelines and you agree to our{" "}
-                  <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="underline text-slate-900">
-                    Terms of Service
-                  </a>.
-                </p>
-              </div>
-            </div>
-
-            {/* Footer buttons */}
-            <div className="p-4 bg-white border-t border-slate-100 flex gap-3 shrink-0">
-              <Button variant="outline" onClick={() => setShowConfirmModal(false)} className="flex-1 h-12 rounded-xl">
-                Back
-              </Button>
-              <Button onClick={handleConfirm} className="flex-1 h-12 rounded-xl bg-slate-900 hover:bg-black text-white font-bold">
-                I understand, continue
-              </Button>
-            </div>
-          </div>
-        </div>
+        <SafetyConfirmModal
+          onBack={() => setShowConfirmModal(false)}
+          onConfirm={handleConfirm}
+        />
       )}
 
       {}
@@ -715,5 +617,207 @@ export function LuggageInputScreen({ data, onUpdate, onNext, onBack }: LuggageIn
         </div>
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Safety Confirm Modal (危険物確認モーダル)
+//
+// 仕様書 §2: スクロール完了 + 個別チェック3項目 + 一括チェックの3条件を
+// すべて満たしたときのみ Continue を enable にする。
+// ---------------------------------------------------------------------------
+
+interface SafetyConfirmModalProps {
+  onBack: () => void
+  onConfirm: () => void
+}
+
+function SafetyConfirmModal({ onBack, onConfirm }: SafetyConfirmModalProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [scrolledToEnd, setScrolledToEnd] = useState(false)
+  const [checkLithium, setCheckLithium] = useState(false)
+  const [checkCash, setCheckCash] = useState(false)
+  const [checkFresh, setCheckFresh] = useState(false)
+  const [checkAll, setCheckAll] = useState(false)
+
+  const evaluateScrollEnd = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    // 8px の許容差。下端から 8px 以内まで到達したらスクロール完了とみなす。
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
+      setScrolledToEnd(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    // 初期表示時にコンテンツが viewport より短い場合はスクロール不要なので即完了扱い。
+    const id = window.requestAnimationFrame(evaluateScrollEnd)
+    return () => window.cancelAnimationFrame(id)
+  }, [evaluateScrollEnd])
+
+  const canContinue = scrolledToEnd && checkLithium && checkCash && checkFresh && checkAll
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="relative bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="bg-red-700 px-6 py-5 shrink-0">
+          <p className="text-red-300 text-xs font-bold uppercase tracking-widest">Luggage Guidelines</p>
+          <h2 className="text-2xl font-black text-white leading-tight">Before you continue</h2>
+        </div>
+
+        {/* Scrollable body */}
+        <div
+          ref={scrollRef}
+          onScroll={evaluateScrollEnd}
+          className="overflow-y-auto flex-1 p-5 space-y-4 bg-slate-50"
+        >
+          {/* 1. Size & Weight */}
+          <div className="bg-slate-700 rounded-2xl p-4 text-white">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Maximum allowed</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white rounded-xl p-4 text-center">
+                <p className="text-3xl font-black text-slate-800">200<span className="text-lg">cm</span></p>
+                <p className="text-slate-500 text-xs mt-1">L + W + H</p>
+              </div>
+              <div className="bg-white rounded-xl p-4 text-center">
+                <p className="text-3xl font-black text-slate-800">30<span className="text-lg">kg</span></p>
+                <p className="text-slate-500 text-xs mt-1">per item</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. 個別確認3項目 (必須チェック) */}
+          <div className="bg-white rounded-2xl p-4 border-2 border-red-200 space-y-3">
+            <p className="text-base font-black text-red-700 flex items-center gap-2">
+              <ShieldX className="w-5 h-5" />
+              Please confirm
+            </p>
+            <ConfirmCheckRow
+              icon={BatteryWarning}
+              checked={checkLithium}
+              onChange={setCheckLithium}
+              label="I have NOT included loose lithium batteries (power banks, e-cigarettes)"
+              hint="Built-in batteries in devices are OK"
+            />
+            <ConfirmCheckRow
+              icon={Banknote}
+              checked={checkCash}
+              onChange={setCheckCash}
+              label="I have NOT included cash, jewelry, or valuables over ¥30,000"
+              hint="Carrier compensation cap is ¥30,000"
+            />
+            <ConfirmCheckRow
+              icon={Apple}
+              checked={checkFresh}
+              onChange={setCheckFresh}
+              label="I have NOT included fresh food, plants, or liquids over 100ml"
+              hint="Sealed bottled drinks for personal use are OK"
+            />
+          </div>
+
+          {/* 3. その他禁止品 (6項目アイコン) */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-3">Other prohibited items</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { icon: Flame,    label: "Dangerous /\nflammable",  tone: "red"   as const },
+                { icon: ShieldX,  label: "Illegal\nitems",          tone: "red"   as const },
+                { icon: Gem,      label: "Fragile\nhigh-value",     tone: "amber" as const },
+                { icon: Package,  label: "Poorly packed\nfragile",  tone: "amber" as const },
+                { icon: Banknote, label: "Cash &\nvaluables",       tone: "red"   as const },
+                { icon: Leaf,     label: "Perishable\ngoods",       tone: "red"   as const },
+              ].map(({ icon: Icon, label, tone }) => {
+                const isRed = tone === "red"
+                return (
+                  <div
+                    key={label}
+                    className={`rounded-xl p-3 flex items-center gap-3 border ${
+                      isRed ? "bg-red-50 border-red-100" : "bg-amber-50 border-amber-100"
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                      isRed ? "bg-red-100" : "bg-amber-100"
+                    }`}>
+                      <Icon className={`w-5 h-5 ${isRed ? "text-red-600" : "text-amber-600"}`} />
+                    </div>
+                    <p className={`text-xs font-bold whitespace-pre-line leading-tight ${
+                      isRed ? "text-red-800" : "text-amber-800"
+                    }`}>
+                      {label}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 4. 一括チェック + 規約同意 */}
+          <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 space-y-3">
+            <ConfirmCheckRow
+              checked={checkAll}
+              onChange={setCheckAll}
+              label="I confirm none of the items listed above are in my luggage"
+            />
+            <p className="text-xs text-slate-600 text-center">
+              By continuing, you agree to our{" "}
+              <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="underline text-slate-900">
+                Terms of Service
+              </a>.
+            </p>
+          </div>
+
+          {!scrolledToEnd && (
+            <p className="text-center text-xs text-muted-foreground italic pt-2">
+              Scroll to the bottom to enable Continue
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 bg-white border-t border-slate-100 flex gap-3 shrink-0">
+          <Button variant="outline" onClick={onBack} className="flex-1 h-12 rounded-xl">
+            Back
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={!canContinue}
+            className="flex-1 h-12 rounded-xl bg-slate-900 hover:bg-black text-white font-bold disabled:opacity-40"
+          >
+            Continue
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface ConfirmCheckRowProps {
+  icon?: React.ComponentType<{ className?: string }>
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: string
+  hint?: string
+}
+
+function ConfirmCheckRow({ icon: Icon, checked, onChange, label, hint }: ConfirmCheckRowProps) {
+  return (
+    <label className="flex items-start gap-3 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-1 w-5 h-5 rounded border-2 border-slate-400 accent-slate-900 shrink-0"
+      />
+      {Icon && (
+        <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+          <Icon className="w-5 h-5 text-red-600" />
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-800 leading-snug">{label}</p>
+        {hint && <p className="text-xs text-slate-500 mt-0.5">{hint}</p>}
+      </div>
+    </label>
   )
 }

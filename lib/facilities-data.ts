@@ -19,6 +19,10 @@ export interface FacilityRecord {
   address1: string
   address2: string
   extra: string
+  // Google Places から取得した補助情報 (optional)。同名ホテル取り違え防止用。
+  lat?: number
+  lng?: number
+  vicinity?: string
 }
 
 /** Default pickup when user confirms without changing (QR / demo). */

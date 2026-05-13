@@ -7,6 +7,7 @@ import { LandingScreen } from "./screens/landing-screen"
 import { DestinationScreen } from "./screens/destination-screen"
 import { LuggageInputScreen } from "./screens/luggage-input-screen"
 import { ContactInfoScreen } from "./screens/contact-info-screen"
+import { FinalReviewScreen } from "./screens/final-review-screen"
 import { PaymentScreen } from "./screens/payment-screen"
 import { CompletionScreen } from "./screens/completion-screen"
 import { StatusDashboard } from "./screens/status-dashboard"
@@ -62,9 +63,10 @@ const STEP_MAP: Record<string, number> = {
   "delivery-date": 2,
   luggage: 3,
   contact: 4,
-  payment: 5,
-  completion: 6,
-  status: 7,
+  "final-review": 5,
+  payment: 6,
+  completion: 7,
+  status: 8,
 }
 
 export function TravelerFlow({ onBack, initialStep }: TravelerFlowProps) {
@@ -340,6 +342,16 @@ export function TravelerFlow({ onBack, initialStep }: TravelerFlowProps) {
 
       {}
       {step === 5 && (
+        <FinalReviewScreen
+          data={data}
+          onConfirm={() => setStep(6)}
+          // 仕様 §3.4: Final Review の戻るは Destination 編集 (step=1) に直接戻す。
+          onBack={() => setStep(1)}
+        />
+      )}
+
+      {}
+      {step === 6 && (
         <PaymentScreen
           data={data}
           onUpdate={(d) => setData(d)}
@@ -395,19 +407,20 @@ export function TravelerFlow({ onBack, initialStep }: TravelerFlowProps) {
             }
             saveBooking(stored)
             setData((prev) => ({ ...prev, ...booking, orderId }))
-            setStep(6)
+            setStep(7)
           }}
-          onBack={() => setStep(4)}
+          // Payment の戻るは Final Review (step=5) に戻す。
+          onBack={() => setStep(5)}
         />
       )}
 
       {}
-      {step === 6 && (
-        <CompletionScreen data={data} onViewStatus={() => setStep(7)} onBack={() => setStep(5)} />
+      {step === 7 && (
+        <CompletionScreen data={data} onViewStatus={() => setStep(8)} onBack={() => setStep(6)} />
       )}
 
       {}
-      {step === 7 && <StatusDashboard data={data} onBack={() => setStep(6)} />}
+      {step === 8 && <StatusDashboard data={data} onBack={() => setStep(7)} />}
 
       {}
       <footer className="max-w-md mx-auto w-full px-6 py-6 border-t border-border/50">

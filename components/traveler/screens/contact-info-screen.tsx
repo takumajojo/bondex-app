@@ -183,6 +183,8 @@ export function ContactInfoScreen({ data, onUpdate, onNext, onBack }: ContactInf
               </label>
               <Input
                 type="email"
+                autoComplete="email"
+                inputMode="email"
                 placeholder="your@email.com"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setErrors({ ...errors, email: undefined }) }}
@@ -196,6 +198,8 @@ export function ContactInfoScreen({ data, onUpdate, onNext, onBack }: ContactInf
               <label className="text-sm font-medium text-foreground">Confirm email</label>
               <Input
                 type="email"
+                autoComplete="email"
+                inputMode="email"
                 placeholder="Confirm your email"
                 value={confirmEmail}
                 onChange={(e) => { setConfirmEmail(e.target.value); setErrors({ ...errors, confirmEmail: undefined }) }}
@@ -298,6 +302,7 @@ export function ContactInfoScreen({ data, onUpdate, onNext, onBack }: ContactInf
                   ref={(el) => { inputRefs.current[i] = el }}
                   type="text"
                   inputMode="numeric"
+                  autoComplete={i === 0 ? "one-time-code" : "off"}
                   maxLength={1}
                   value={digit}
                   onChange={(e) => handleCodeChange(i, e.target.value)}

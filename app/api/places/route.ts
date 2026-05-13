@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (place_id) {
-    const fields = "name,place_id,formatted_address,address_components,types,international_phone_number"
+    const fields = "name,place_id,formatted_address,address_components,types,international_phone_number,geometry/location,vicinity"
     const url  = `${BASE}/details/json?place_id=${encodeURIComponent(place_id)}&fields=${fields}&language=ja&key=${API_KEY}`
     const res  = await fetch(url, { next: { revalidate: 0 } })
     const data = await res.json()
@@ -87,6 +87,11 @@ export async function GET(req: NextRequest) {
     const { province, city, address1, address2, zip } = parseJpAddress(components)
     const placeTypes: string[] = result.types ?? []
     const destType = placeTypes.includes("airport") ? "airport" : "hotel"
+
+    const loc = result.geometry?.location
+    const lat = typeof loc?.lat === "number" ? loc.lat : undefined
+    const lng = typeof loc?.lng === "number" ? loc.lng : undefined
+    const vicinity = typeof result.vicinity === "string" ? result.vicinity : ""
 
     return NextResponse.json({
       id: place_id,
@@ -100,6 +105,9 @@ export async function GET(req: NextRequest) {
       country: "JP",
       phone: (result.international_phone_number ?? "") as string,
       address_components: components,
+      lat,
+      lng,
+      vicinity,
     })
   }
 
