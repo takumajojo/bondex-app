@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
+import { rateLimit } from "@/lib/rate-limit"
+
+export const runtime = "nodejs"
 
 type EmailType = "booking_confirmed" | "delivery_complete" | "label_generated"
 
@@ -78,6 +81,9 @@ function buildEmail(payload: EmailPayload): { subject: string; html: string } {
 }
 
 export async function POST(req: NextRequest) {
+  const limit = rateLimit(req, "email")
+  if (!limit.ok) return limit.response
+
   try {
     const payload: EmailPayload = await req.json()
 

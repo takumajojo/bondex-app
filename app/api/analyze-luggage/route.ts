@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
+import { rateLimit } from "@/lib/rate-limit"
+
+export const runtime = "nodejs"
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -17,6 +20,9 @@ size must be one of: S, M, L, LL
 confidence must be a number between 0 and 1`
 
 export async function POST(req: NextRequest) {
+  const limit = rateLimit(req, "analyze-luggage")
+  if (!limit.ok) return limit.response
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "API key not configured" }, { status: 500 })
   }

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
+import { rateLimit } from "@/lib/rate-limit"
+
+export const runtime = "nodejs"
 
 const API_KEY = process.env.GOOGLE_MAPS_API_KEY ?? ""
 const BASE = "https://maps.googleapis.com/maps/api/place"
@@ -44,6 +47,9 @@ function parseJpAddress(components: AC[]): {
 }
 
 export async function GET(req: NextRequest) {
+  const limit = rateLimit(req, "places")
+  if (!limit.ok) return limit.response
+
   if (!API_KEY) return NextResponse.json({ error: "GOOGLE_MAPS_API_KEY not set" }, { status: 500 })
 
   const { searchParams } = req.nextUrl

@@ -10,6 +10,11 @@ import Link from "next/link"
 
 type Role = "traveler" | "hotel" | "admin" | null
 
+// TODO: replace with a proper server-side auth/role check (NextAuth, Supabase Auth, etc.).
+// Until then, the Admin Dashboard is gated to non-production builds only so that
+// `?role=admin` and the landing-page admin card cannot be used in production.
+const IS_ADMIN_ENABLED = process.env.NODE_ENV !== "production"
+
 function BondExWireframesContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -20,10 +25,15 @@ function BondExWireframesContent() {
     const role = searchParams.get("role") as Role
     const step = searchParams.get("step")
     if (role) {
+      if (role === "admin" && !IS_ADMIN_ENABLED) {
+        // Block production access via ?role=admin and reset the URL.
+        router.replace("/")
+        return
+      }
       setSelectedRole(role)
       setInitialStep(step)
     }
-  }, [searchParams])
+  }, [searchParams, router])
 
   const handleBack = () => {
     setSelectedRole(null)
@@ -39,7 +49,7 @@ function BondExWireframesContent() {
     return <HotelStaffFlow onBack={handleBack} initialStep={initialStep} />
   }
 
-  if (selectedRole === "admin") {
+  if (selectedRole === "admin" && IS_ADMIN_ENABLED) {
     return <AdminDashboard onBack={handleBack} initialScreen={initialStep} />
   }
 
@@ -91,21 +101,23 @@ function BondExWireframesContent() {
             </div>
           </button>
 
-          <button
-            onClick={() => setSelectedRole("admin")}
-            className="group p-6 rounded-lg border-2 border-border bg-card hover:border-foreground transition-all text-left"
-          >
-            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center mb-4 group-hover:bg-foreground group-hover:text-background transition-colors">
-              <Shield className="w-6 h-6" />
-            </div>
-            <h2 className="font-semibold text-lg text-foreground mb-2">Admin / CS</h2>
-            <p className="text-sm text-muted-foreground">
-              Desktop dashboard for operations and support
-            </p>
-            <div className="mt-4 text-xs text-muted-foreground">
-              4 screens
-            </div>
-          </button>
+          {IS_ADMIN_ENABLED && (
+            <button
+              onClick={() => setSelectedRole("admin")}
+              className="group p-6 rounded-lg border-2 border-border bg-card hover:border-foreground transition-all text-left"
+            >
+              <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center mb-4 group-hover:bg-foreground group-hover:text-background transition-colors">
+                <Shield className="w-6 h-6" />
+              </div>
+              <h2 className="font-semibold text-lg text-foreground mb-2">Admin / CS</h2>
+              <p className="text-sm text-muted-foreground">
+                Desktop dashboard for operations and support
+              </p>
+              <div className="mt-4 text-xs text-muted-foreground">
+                4 screens
+              </div>
+            </button>
+          )}
         </div>
 
         <div className="mt-12 p-4 rounded-lg bg-muted/50 border border-border">
