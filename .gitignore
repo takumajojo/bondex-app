@@ -30,3 +30,6 @@ next-env.d.ts
 
 # backup files
 *.bak
+
+# macOS
+.DS_Store
