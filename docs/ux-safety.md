@@ -13,6 +13,16 @@
 
 ---
 
+## 0. 関連仕様書
+
+本書は機能仕様 (危険物確認、同名ホテル取り違え防止、入力効率化) の判断基準である。
+視覚設計 (配色・タイポ・余白・アニメーション・写真・アイコン) と
+ブランド人格 (文言・声かけのトーン) は [`docs/design-tokens.md`](./design-tokens.md) を参照すること。
+
+両書が矛盾する場合は design-tokens.md が優先される。
+
+---
+
 ## 1. 設計原則
 
 本サービスにおけるUXの判断基準は以下の3点に集約される。判断に迷ったときは、この原則に立ち戻る。
@@ -202,35 +212,9 @@ Continue ボタンが enabled になる条件は以下の3つすべて:
 
 ## 5. 視覚設計の基準
 
-### 5.1 色の使い分け
-
-- 致命的警告: text-red-600, bg-red-50 (危険物リスト、ホテル間違い警告)
-- 注意喚起: text-amber-600, bg-amber-50 (梱包不良、サイズ超過)
-- 成功・確認済: text-green-600 ("Location confirmed", "Payment success")
-- 重要情報: text-foreground / slate-900 (配送先、受取人名、決済金額)
-- 通常情報: text-foreground/80 (説明文、補足情報)
-- 二次情報: text-muted-foreground (プレースホルダー、ヒント)
-- 無効状態: text-muted-foreground/50 (disabled な要素)
-
-### 5.2 フォントサイズ階層
-
-- 画面タイトル: text-xl 20px / font-bold
-- セクションヘッダー: text-base 16px / font-semibold
-- 重要情報 (ホテル名・金額): text-base 16px / font-bold
-- 本文: text-sm 14px / font-normal
-- 補足: text-xs 12px / font-normal
-- ラベル: text-[10px] uppercase / font-bold tracking-widest
-
-### 5.3 余白原則
-
-- 画面の左右余白: p-4 (16px) 基本
-- セクション間の縦余白: space-y-6 (24px)
-- カード内のパディング: p-4 (16px)
-- ボタンの高さ: h-12 (48px) 基本、最重要 CTA は h-14 (56px)
-
-### 5.4 多言語対応の前提
-
-すべての文言は将来的に翻訳キーで管理できるように設計する。ドイツ語は英語比 +30%、中国語は -40% 程度の文字数変動があるため、テキスト要素はコンテナ幅を超えても破綻しないようにする (truncate 禁止、wrap 推奨)。
+視覚設計 (配色・タイポグラフィ・余白・アニメーション・アイコン・写真) は
+本書ではなく [`docs/design-tokens.md`](./design-tokens.md) を最上位の判断基準とする。
+本書 §5 は当該文書に統合・廃止された。
 
 ---
 
@@ -249,6 +233,8 @@ Continue ボタンが enabled になる条件は以下の3つすべて:
 6. Booking Confirmation の Skip オプション
 
 ### Phase 3: 視覚設計の体系化 (中優先・継続的)
+
+※ Phase 3 の視覚設計は design-tokens.md に準拠する。本書 §5 を参照しない。
 
 7. 色の使い分けの全画面適用
 8. フォントサイズ階層の徹底
@@ -284,6 +270,9 @@ Continue ボタンが enabled になる条件は以下の3つすべて:
 - Booking Confirmation の Skip ボタンが表示・機能する
 
 ### 7.4 視覚設計
+
+※ 本セクションのチェックリストは design-tokens.md §2 に準拠することを意味する。
+具体的な基準値は design-tokens.md を参照。
 
 - 警告色 red が危険物関連にのみ使用されている
 - フォントサイズが本書の階層通りに統一されている
