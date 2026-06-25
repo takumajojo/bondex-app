@@ -27,7 +27,15 @@ Rules for extracting shipments:
 - Date format: ISO 8601 YYYY-MM-DD. If only month/day given (e.g. "June 10"), infer the year from context (default to next occurrence of that date from today)
 - shipmentDate is the date luggage is HANDED OVER at the from-hotel
 - expectedArrival is the date luggage SHOULD ARRIVE at the to-hotel (often 1-3 days after shipmentDate)
-- Use the recipient's FAMILY NAME for "Johnson Family" style aggregations, or the lead traveler name
+
+Rules for "recipient" (重要):
+- ALWAYS use ONE specific representative individual — never a family/group name
+- The representative is the FIRST adult listed in the Guest Information section
+  (typically the head of the family, e.g. "Mr. Michael Johnson" for the Johnson Family)
+- Format the recipient as "<Title> <First> <Last>" — include the title (Mr./Mrs./Ms./Dr.) if present
+- If no title is given, use just the full name (e.g. "Michael Johnson")
+- NEVER write "Johnson Family", "The Smith Group", "Tanaka Sama" etc. — always one person
+- The same representative is used for ALL shipment legs in the itinerary
 
 Always call the extract_itinerary tool exactly once with your final answer. Do not output any other text.`
 
@@ -107,7 +115,8 @@ const TOOL_SCHEMA = {
             },
             recipient: {
               type: "string",
-              description: 'Recipient name as it should appear on the waybill (e.g. "Johnson Family")',
+              description:
+                'Recipient name on the waybill — must be ONE representative individual (the first adult listed in Guest Information), formatted as "<Title> <First> <Last>" e.g. "Mr. Michael Johnson". NEVER use family/group names like "Johnson Family".',
             },
           },
           required: ["shipmentDate", "expectedArrival", "from", "to", "recipient"],
