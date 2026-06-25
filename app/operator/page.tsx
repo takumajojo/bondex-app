@@ -1,9 +1,8 @@
 "use client"
 
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Upload,
-  FileText,
   Loader2,
   ArrowRight,
   MapPin,
@@ -16,12 +15,151 @@ import {
   ArrowLeft,
   Check,
   Building2,
+  CheckCircle2,
+  ExternalLink,
+  Languages,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 const FLAT_RATE_YEN = 5000
+
+// ---------------------------------------------------------------------------
+// i18n
+// ---------------------------------------------------------------------------
+
+type Locale = "en" | "ja"
+const LOCALE_STORAGE_KEY = "bondex_op_locale"
+
+const messages = {
+  en: {
+    brand: "BondEx Operator",
+    pageTitle: "Itinerary Upload",
+    startOver: "Start over",
+    signOut: "Sign out",
+    uploadHeading: "Upload an itinerary",
+    uploadHint: "Drop the traveler's PDF or photo. We'll read it and prepare the shipment plan.",
+    dropzone: "Drop a file here or click to choose",
+    formats: "PDF, JPG, PNG · up to 10MB",
+    reading: "Reading itinerary",
+    errorTitle: "We couldn't read this itinerary",
+    tryAnother: "Try another file",
+    guest: "Guest",
+    travelers: (n: number) => `${n} ${n === 1 ? "traveler" : "travelers"}`,
+    tourCompany: "Tour Company",
+    tourCompanyPlaceholder: "e.g. My Japan Planner",
+    shipmentPlan: "Shipment plan",
+    legs: (n: number) => `${n} ${n === 1 ? "leg" : "legs"}`,
+    ratePerSuitcase: `¥${FLAT_RATE_YEN.toLocaleString()} per suitcase`,
+    noLegs: "No luggage forwarding legs were found in this itinerary.",
+    from: "From",
+    to: "To",
+    shipOn: (d: string) => `Ship ${d}`,
+    arriveOn: (d: string) => `Arrive ${d}`,
+    recipientLabel: "Recipient:",
+    suitcases: "Suitcases",
+    total: "Total",
+    totalSuitcases: (n: number) => `${n} ${n === 1 ? "suitcase" : "suitcases"}`,
+    reviewAndConfirm: "Review & Confirm",
+    enterTourCompany: "Enter a tour company name to continue.",
+    backToEdit: "Back to edit",
+    verifiedOf: (passed: number, total: number) => `${passed} of ${total} verified`,
+    representative: "Representative",
+    travelersLabel: "Travelers:",
+    repCheckLabel: "Representative and tour company are correct",
+    shipmentVerification: "Shipment Verification",
+    legOf: (i: number, total: number) => `Leg ${i} of ${total}`,
+    hotelNames: "Hotel names",
+    hotelNamesOk: "Hotel names look correct",
+    datesHeading: "Dates",
+    shipOutLabel: "Ship out:",
+    arriveLabel: "Arrive:",
+    datesOk: "Dates look correct",
+    addressesHeading: "Addresses",
+    addressesOk: "Addresses look correct",
+    generateVouchers: "Generate Vouchers",
+    verifyAll: "Verify every section to generate vouchers.",
+    aiVerifying: "Verifying with AI…",
+    aiVerified: "Verified",
+    aiCouldNotVerify: "AI couldn't confirm — please check manually",
+    aiSource: "See source",
+    fromShort: "From:",
+    toShort: "To:",
+  },
+  ja: {
+    brand: "BondEx オペレーター",
+    pageTitle: "旅程表アップロード",
+    startOver: "やり直す",
+    signOut: "サインアウト",
+    uploadHeading: "旅程表をアップロード",
+    uploadHint: "旅行者のPDFまたは写真をドロップしてください。読み取って配送プランを準備します。",
+    dropzone: "ファイルをここにドロップ、またはクリックして選択",
+    formats: "PDF, JPG, PNG · 最大10MB",
+    reading: "旅程表を読み取り中",
+    errorTitle: "旅程表を読み取れませんでした",
+    tryAnother: "別のファイルを試す",
+    guest: "ゲスト",
+    travelers: (n: number) => `${n}名`,
+    tourCompany: "旅行会社",
+    tourCompanyPlaceholder: "例: My Japan Planner",
+    shipmentPlan: "配送プラン",
+    legs: (n: number) => `${n}区間`,
+    ratePerSuitcase: `1個あたり ¥${FLAT_RATE_YEN.toLocaleString()}`,
+    noLegs: "この旅程表からは配送区間が見つかりませんでした。",
+    from: "出発元",
+    to: "配送先",
+    shipOn: (d: string) => `発送 ${d}`,
+    arriveOn: (d: string) => `到着 ${d}`,
+    recipientLabel: "受取人:",
+    suitcases: "スーツケース",
+    total: "合計",
+    totalSuitcases: (n: number) => `${n}個`,
+    reviewAndConfirm: "確認へ進む",
+    enterTourCompany: "続行するには旅行会社名を入力してください。",
+    backToEdit: "編集に戻る",
+    verifiedOf: (passed: number, total: number) => `${total}件中 ${passed}件 確認済み`,
+    representative: "代表者",
+    travelersLabel: "旅行者数:",
+    repCheckLabel: "代表者と旅行会社が正しい",
+    shipmentVerification: "配送内容の確認",
+    legOf: (i: number, total: number) => `区間 ${i} / ${total}`,
+    hotelNames: "宿名",
+    hotelNamesOk: "宿名が正しい",
+    datesHeading: "日付",
+    shipOutLabel: "発送日:",
+    arriveLabel: "到着日:",
+    datesOk: "日付が正しい",
+    addressesHeading: "住所",
+    addressesOk: "住所が正しい",
+    generateVouchers: "バウチャーを発行",
+    verifyAll: "全項目を確認するとバウチャーを発行できます。",
+    aiVerifying: "AIが確認中…",
+    aiVerified: "確認済み",
+    aiCouldNotVerify: "AIで確認できませんでした — 目視で確認してください",
+    aiSource: "情報源を見る",
+    fromShort: "From:",
+    toShort: "To:",
+  },
+} satisfies Record<Locale, Record<string, string | ((...args: never[]) => string)>>
+
+type Messages = typeof messages.en
+
+function useLocale() {
+  const [locale, setLocaleState] = useState<Locale>("en")
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY)
+    if (stored === "ja" || stored === "en") setLocaleState(stored)
+  }, [])
+  const setLocale = useCallback((l: Locale) => {
+    setLocaleState(l)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, l)
+    }
+  }, [])
+  return { locale, t: messages[locale] as Messages, setLocale }
+}
 
 interface ParsedTraveler {
   name: string
@@ -79,6 +217,19 @@ interface Verifications {
   legs: LegVerification[]
 }
 
+// AI 住所検証
+type AddressCheckStatus = "pending" | "verified" | "mismatch" | "low_confidence" | "failed"
+interface AddressCheck {
+  status: AddressCheckStatus
+  citationUrl?: string
+  sourceTitle?: string
+  reasoning?: string
+}
+
+function addressKey(hotel: string, address: string): string {
+  return `${hotel.trim()}||${address.trim()}`
+}
+
 function emptyVerifications(legCount: number): Verifications {
   return {
     representative: false,
@@ -92,6 +243,7 @@ function emptyVerifications(legCount: number): Verifications {
 
 export default function OperatorPage() {
   const router = useRouter()
+  const { locale, t, setLocale } = useLocale()
   const [phase, setPhase] = useState<Phase>("idle")
   const [fileName, setFileName] = useState<string>("")
   const [error, setError] = useState<string>("")
@@ -101,6 +253,7 @@ export default function OperatorPage() {
     representative: false,
     legs: [],
   })
+  const [addressChecks, setAddressChecks] = useState<Record<string, AddressCheck>>({})
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -123,19 +276,70 @@ export default function OperatorPage() {
     setError("")
     setTourCompany("")
     setVerifications({ representative: false, legs: [] })
+    setAddressChecks({})
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [])
 
+  // AI で1件の住所を検証 (バックグラウンド)。結果は addressChecks に書き込む。
+  const verifyAddress = useCallback(async (hotel: string, address: string) => {
+    const key = addressKey(hotel, address)
+    setAddressChecks((prev) => ({ ...prev, [key]: { status: "pending" } }))
+    try {
+      const res = await fetch("/api/address/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hotelName: hotel, address }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data) {
+        setAddressChecks((prev) => ({ ...prev, [key]: { status: "failed" } }))
+        return
+      }
+      const matched = Boolean(data.matched)
+      const confidence = String(data.confidence || "")
+      let status: AddressCheckStatus = "failed"
+      if (matched && confidence === "high") status = "verified"
+      else if (matched && confidence === "medium") status = "verified"
+      else if (matched && confidence === "low") status = "low_confidence"
+      else if (!matched) status = "mismatch"
+      setAddressChecks((prev) => ({
+        ...prev,
+        [key]: {
+          status,
+          citationUrl: typeof data.citationUrl === "string" ? data.citationUrl : undefined,
+          sourceTitle: typeof data.sourceTitle === "string" ? data.sourceTitle : undefined,
+          reasoning: typeof data.reasoning === "string" ? data.reasoning : undefined,
+        },
+      }))
+    } catch {
+      setAddressChecks((prev) => ({ ...prev, [key]: { status: "failed" } }))
+    }
+  }, [])
+
   // 検証画面へ遷移。前回の検証チェックは毎回リセット (内容が同じでも再確認を強制する)。
+  // 入場と同時に各 leg の from / to 住所を AI に投げる (並列、重複は除外)。
   const goToConfirm = useCallback(() => {
     if (!itinerary) return
     setVerifications(emptyVerifications(itinerary.shipments.length))
     setPhase("confirm")
-  }, [itinerary])
 
-  // 戻るボタン: 検証フェーズから編集フェーズへ。検証状態もリセット。
+    const seen = new Set<string>()
+    for (const s of itinerary.shipments) {
+      for (const loc of [s.from, s.to]) {
+        if (!loc.hotel || !loc.address) continue
+        const key = addressKey(loc.hotel, loc.address)
+        if (seen.has(key)) continue
+        seen.add(key)
+        void verifyAddress(loc.hotel, loc.address)
+      }
+    }
+  }, [itinerary, verifyAddress])
+
+  // 戻るボタン: 検証フェーズから編集フェーズへ。検証状態もリセット (AI 結果は残しても良いが、
+  // 編集で住所が変わる可能性があるのでクリアする)。
   const backToReview = useCallback(() => {
     setVerifications({ representative: false, legs: [] })
+    setAddressChecks({})
     setPhase("review")
   }, [])
 
@@ -232,18 +436,19 @@ export default function OperatorPage() {
         <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
           <div>
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              BondEx Operator
+              {t.brand}
             </p>
-            <h1 className="text-xl font-semibold text-foreground mt-0.5">Itinerary Upload</h1>
+            <h1 className="text-xl font-semibold text-foreground mt-0.5">{t.pageTitle}</h1>
           </div>
           <div className="flex items-center gap-4">
+            <LocaleToggle locale={locale} onChange={setLocale} />
             {phase !== "idle" && (
               <button
                 onClick={reset}
                 className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 <RotateCcw className="w-4 h-4" strokeWidth={1.5} />
-                Start over
+                {t.startOver}
               </button>
             )}
             <button
@@ -251,7 +456,7 @@ export default function OperatorPage() {
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <LogOut className="w-4 h-4" strokeWidth={1.5} />
-              Sign out
+              {t.signOut}
             </button>
           </div>
         </div>
@@ -261,10 +466,8 @@ export default function OperatorPage() {
         {phase === "idle" && (
           <section className="space-y-6">
             <div className="space-y-2">
-              <h2 className="text-base font-medium text-foreground">Upload an itinerary</h2>
-              <p className="text-sm text-muted-foreground">
-                Drop the traveler's PDF or photo. We'll read it and prepare the shipment plan.
-              </p>
+              <h2 className="text-base font-medium text-foreground">{t.uploadHeading}</h2>
+              <p className="text-sm text-muted-foreground">{t.uploadHint}</p>
             </div>
 
             <label
@@ -295,12 +498,8 @@ export default function OperatorPage() {
                   <Upload className="w-5 h-5 text-foreground" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Drop a file here or click to choose
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PDF, JPG, PNG · up to 10MB
-                  </p>
+                  <p className="text-sm font-medium text-foreground">{t.dropzone}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.formats}</p>
                 </div>
               </div>
             </label>
@@ -311,7 +510,7 @@ export default function OperatorPage() {
           <section className="rounded-2xl border border-border bg-white p-10 flex flex-col items-center gap-4">
             <Loader2 className="w-6 h-6 text-foreground animate-spin" strokeWidth={1.5} />
             <div className="text-center space-y-1">
-              <p className="text-sm font-medium text-foreground">Reading itinerary</p>
+              <p className="text-sm font-medium text-foreground">{t.reading}</p>
               <p className="text-xs text-muted-foreground">{fileName}</p>
             </div>
           </section>
@@ -321,13 +520,13 @@ export default function OperatorPage() {
           <section className="rounded-2xl border border-red-200 bg-red-50 p-6 flex items-start gap-4">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" strokeWidth={1.5} />
             <div className="space-y-2 flex-1">
-              <p className="text-sm font-medium text-red-900">We couldn't read this itinerary</p>
+              <p className="text-sm font-medium text-red-900">{t.errorTitle}</p>
               <p className="text-xs text-red-800 break-words">{error}</p>
               <button
                 onClick={reset}
                 className="text-sm text-red-900 underline underline-offset-2 hover:no-underline"
               >
-                Try another file
+                {t.tryAnother}
               </button>
             </div>
           </section>
@@ -335,6 +534,7 @@ export default function OperatorPage() {
 
         {phase === "review" && itinerary && (
           <ReviewView
+            t={t}
             itinerary={itinerary}
             totalSuitcases={totalSuitcases}
             totalAmount={totalAmount}
@@ -347,11 +547,13 @@ export default function OperatorPage() {
 
         {phase === "confirm" && itinerary && (
           <ConfirmView
+            t={t}
             itinerary={itinerary}
             totalSuitcases={totalSuitcases}
             totalAmount={totalAmount}
             tourCompany={tourCompany}
             verifications={verifications}
+            addressChecks={addressChecks}
             onSetRepresentative={setRepresentativeChecked}
             onSetLegVerification={setLegVerification}
             onBack={backToReview}
@@ -362,7 +564,35 @@ export default function OperatorPage() {
   )
 }
 
+function LocaleToggle({
+  locale,
+  onChange,
+}: {
+  locale: Locale
+  onChange: (l: Locale) => void
+}) {
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-border p-0.5 bg-white">
+      <Languages className="w-3.5 h-3.5 text-muted-foreground ml-1.5 mr-0.5" strokeWidth={1.5} />
+      {(["en", "ja"] as const).map((l) => (
+        <button
+          key={l}
+          onClick={() => onChange(l)}
+          className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+            locale === l
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {l === "en" ? "EN" : "JP"}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ReviewView({
+  t,
   itinerary,
   totalSuitcases,
   totalAmount,
@@ -371,6 +601,7 @@ function ReviewView({
   onUpdateSuitcaseCount,
   onContinue,
 }: {
+  t: Messages
   itinerary: EditableItinerary
   totalSuitcases: number
   totalAmount: number
@@ -389,29 +620,29 @@ function ReviewView({
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              Guest
+              {t.guest}
             </p>
             <h2 className="text-xl font-semibold text-foreground">{guest.familyName}</h2>
             <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
               <Users className="w-4 h-4" strokeWidth={1.5} />
-              {guest.travelerCount} {guest.travelerCount === 1 ? "traveler" : "travelers"}
+              {t.travelers(guest.travelerCount)}
             </p>
           </div>
         </div>
 
         {guest.travelers.length > 0 && (
           <ul className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {guest.travelers.map((t, i) => (
+            {guest.travelers.map((tr, i) => (
               <li
                 key={i}
                 className="text-sm text-foreground/80 px-3 py-2 rounded-lg bg-muted/40"
               >
                 <span className="font-medium text-foreground">
-                  {t.title ? `${t.title} ` : ""}
-                  {t.name}
+                  {tr.title ? `${tr.title} ` : ""}
+                  {tr.name}
                 </span>
-                {t.type === "child" && t.age !== undefined && (
-                  <span className="text-xs text-muted-foreground"> · age {t.age}</span>
+                {tr.type === "child" && tr.age !== undefined && (
+                  <span className="text-xs text-muted-foreground"> · age {tr.age}</span>
                 )}
               </li>
             ))}
@@ -422,11 +653,11 @@ function ReviewView({
         <div className="mt-6 pt-6 border-t border-border space-y-2">
           <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
             <Building2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-            Tour Company
+            {t.tourCompany}
           </label>
           <Input
             type="text"
-            placeholder="e.g. My Japan Planner"
+            placeholder={t.tourCompanyPlaceholder}
             value={tourCompany}
             onChange={(e) => onUpdateTourCompany(e.target.value)}
             className="h-11 max-w-md"
@@ -439,24 +670,25 @@ function ReviewView({
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              Shipment plan
+              {t.shipmentPlan}
             </p>
             <h2 className="text-xl font-semibold text-foreground mt-0.5">
-              {shipments.length} {shipments.length === 1 ? "leg" : "legs"}
+              {t.legs(shipments.length)}
             </h2>
           </div>
-          <p className="text-xs text-muted-foreground">¥{FLAT_RATE_YEN.toLocaleString()} per suitcase</p>
+          <p className="text-xs text-muted-foreground">{t.ratePerSuitcase}</p>
         </div>
 
         {shipments.length === 0 ? (
           <div className="rounded-2xl border border-border bg-white p-6 text-sm text-muted-foreground text-center">
-            No luggage forwarding legs were found in this itinerary.
+            {t.noLegs}
           </div>
         ) : (
           <ol className="space-y-3">
             {shipments.map((s, i) => (
               <ShipmentRow
                 key={i}
+                t={t}
                 index={i}
                 shipment={s}
                 onUpdateSuitcaseCount={onUpdateSuitcaseCount}
@@ -470,12 +702,11 @@ function ReviewView({
       <section className="rounded-2xl bg-foreground text-background p-6 flex items-center justify-between gap-6">
         <div>
           <p className="text-[11px] uppercase tracking-widest text-background/60 font-medium">
-            Total
+            {t.total}
           </p>
           <p className="text-2xl font-semibold mt-1">¥{totalAmount.toLocaleString()}</p>
           <p className="text-xs text-background/60 mt-1">
-            {totalSuitcases} {totalSuitcases === 1 ? "suitcase" : "suitcases"} ·{" "}
-            {shipments.length} {shipments.length === 1 ? "leg" : "legs"}
+            {t.totalSuitcases(totalSuitcases)} · {t.legs(shipments.length)}
           </p>
         </div>
         <Button
@@ -483,24 +714,24 @@ function ReviewView({
           onClick={onContinue}
           className="h-14 px-6 rounded-2xl bg-background text-foreground hover:bg-background/90 disabled:opacity-50"
         >
-          Review &amp; Confirm
+          {t.reviewAndConfirm}
           <ArrowRight className="w-4 h-4 ml-2" strokeWidth={1.5} />
         </Button>
       </section>
       {!canContinue && (
-        <p className="text-xs text-muted-foreground text-right">
-          Enter a tour company name to continue.
-        </p>
+        <p className="text-xs text-muted-foreground text-right">{t.enterTourCompany}</p>
       )}
     </div>
   )
 }
 
 function ShipmentRow({
+  t,
   index,
   shipment,
   onUpdateSuitcaseCount,
 }: {
+  t: Messages
   index: number
   shipment: EditableShipment
   onUpdateSuitcaseCount: (index: number, value: number) => void
@@ -516,7 +747,7 @@ function ShipmentRow({
           {/* From */}
           <div className="space-y-1 min-w-0">
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              From
+              {t.from}
             </p>
             <p className="text-base font-medium text-foreground truncate">{shipment.from.hotel}</p>
             <p className="text-xs text-muted-foreground flex items-start gap-1">
@@ -525,7 +756,7 @@ function ShipmentRow({
             </p>
             <p className="text-xs text-foreground/80 flex items-center gap-1 pt-1">
               <Calendar className="w-3 h-3" strokeWidth={1.5} />
-              Ship {shipment.shipmentDate}
+              {t.shipOn(shipment.shipmentDate)}
             </p>
           </div>
 
@@ -538,7 +769,7 @@ function ShipmentRow({
           {/* To */}
           <div className="space-y-1 min-w-0">
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              To
+              {t.to}
             </p>
             <p className="text-base font-medium text-foreground truncate">{shipment.to.hotel}</p>
             <p className="text-xs text-muted-foreground flex items-start gap-1">
@@ -547,7 +778,7 @@ function ShipmentRow({
             </p>
             <p className="text-xs text-foreground/80 flex items-center gap-1 pt-1">
               <Calendar className="w-3 h-3" strokeWidth={1.5} />
-              Arrive {shipment.expectedArrival}
+              {t.arriveOn(shipment.expectedArrival)}
             </p>
           </div>
         </div>
@@ -556,12 +787,13 @@ function ShipmentRow({
       <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Users className="w-3.5 h-3.5" strokeWidth={1.5} />
-          Recipient: <span className="text-foreground/80 font-medium">{shipment.recipient}</span>
+          {t.recipientLabel}{" "}
+          <span className="text-foreground/80 font-medium">{shipment.recipient}</span>
         </div>
         <div className="flex items-center gap-3">
           <label className="text-xs text-muted-foreground flex items-center gap-2">
             <Package className="w-3.5 h-3.5" strokeWidth={1.5} />
-            Suitcases
+            {t.suitcases}
           </label>
           <Input
             type="number"
@@ -589,20 +821,24 @@ function ShipmentRow({
 // ---------------------------------------------------------------------------
 
 function ConfirmView({
+  t,
   itinerary,
   totalSuitcases,
   totalAmount,
   tourCompany,
   verifications,
+  addressChecks,
   onSetRepresentative,
   onSetLegVerification,
   onBack,
 }: {
+  t: Messages
   itinerary: EditableItinerary
   totalSuitcases: number
   totalAmount: number
   tourCompany: string
   verifications: Verifications
+  addressChecks: Record<string, AddressCheck>
   onSetRepresentative: (checked: boolean) => void
   onSetLegVerification: (
     legIndex: number,
@@ -612,7 +848,7 @@ function ConfirmView({
   onBack: () => void
 }) {
   const { guest, shipments } = itinerary
-  const representative = guest.travelers.find((t) => t.type === "adult") || guest.travelers[0]
+  const representative = guest.travelers.find((tr) => tr.type === "adult") || guest.travelers[0]
   const representativeLabel = representative
     ? `${representative.title ? representative.title + " " : ""}${representative.name}`
     : guest.familyName
@@ -635,45 +871,48 @@ function ConfirmView({
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
-          Back to edit
+          {t.backToEdit}
         </button>
         <p className="text-xs text-muted-foreground">
           <span className={allVerified ? "text-foreground font-medium" : ""}>
-            {passedChecks} of {totalChecks}
-          </span>{" "}
-          verified
+            {t.verifiedOf(passedChecks, totalChecks)}
+          </span>
         </p>
       </div>
 
       {/* Representative */}
       <section className="rounded-2xl border border-border bg-white p-6 space-y-4">
         <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-          Representative
+          {t.representative}
         </p>
         <div className="space-y-1">
           <p className="text-xl font-semibold text-foreground">{representativeLabel}</p>
           <p className="text-sm text-muted-foreground">
-            Tour Company: <span className="text-foreground/80 font-medium">{tourCompany || "—"}</span>
+            {t.tourCompany}:{" "}
+            <span className="text-foreground/80 font-medium">{tourCompany || "—"}</span>
           </p>
           <p className="text-sm text-muted-foreground">
-            Travelers: <span className="text-foreground/80 font-medium">{guest.travelerCount}</span>
+            {t.travelersLabel}{" "}
+            <span className="text-foreground/80 font-medium">{guest.travelerCount}</span>
           </p>
         </div>
         <CheckRow
           checked={verifications.representative}
           onChange={onSetRepresentative}
-          label="Representative and tour company are correct"
+          label={t.repCheckLabel}
         />
       </section>
 
       {/* Per-leg verification */}
       <section className="space-y-4">
         <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-          Shipment Verification
+          {t.shipmentVerification}
         </p>
         <ol className="space-y-3">
           {shipments.map((s, i) => {
             const leg = verifications.legs[i] ?? { names: false, dates: false, addresses: false }
+            const fromCheck = addressChecks[addressKey(s.from.hotel, s.from.address)]
+            const toCheck = addressChecks[addressKey(s.to.hotel, s.to.address)]
             return (
               <li
                 key={i}
@@ -684,53 +923,75 @@ function ConfirmView({
                     {i + 1}
                   </div>
                   <p className="text-sm font-medium text-foreground">
-                    Leg {i + 1} of {shipments.length}
+                    {t.legOf(i + 1, shipments.length)}
                   </p>
                   <p className="text-xs text-muted-foreground ml-auto">
-                    Recipient: <span className="text-foreground/80 font-medium">{s.recipient}</span>{" "}
-                    · {s.suitcaseCount} {s.suitcaseCount === 1 ? "suitcase" : "suitcases"}
+                    {t.recipientLabel}{" "}
+                    <span className="text-foreground/80 font-medium">{s.recipient}</span> ·{" "}
+                    {t.totalSuitcases(s.suitcaseCount)}
                   </p>
                 </div>
 
                 {/* Names */}
                 <VerifyBlock
-                  title="Hotel names"
+                  title={t.hotelNames}
+                  okLabel={t.hotelNamesOk}
                   checked={leg.names}
                   onChange={(v) => onSetLegVerification(i, "names", v)}
                 >
                   <p className="text-sm text-foreground">
-                    <span className="text-muted-foreground">From:</span> {s.from.hotel}
+                    <span className="text-muted-foreground">{t.fromShort}</span> {s.from.hotel}
                   </p>
                   <p className="text-sm text-foreground">
-                    <span className="text-muted-foreground">To:</span> {s.to.hotel}
+                    <span className="text-muted-foreground">{t.toShort}</span> {s.to.hotel}
                   </p>
                 </VerifyBlock>
 
                 {/* Dates */}
                 <VerifyBlock
-                  title="Dates"
+                  title={t.datesHeading}
+                  okLabel={t.datesOk}
                   checked={leg.dates}
                   onChange={(v) => onSetLegVerification(i, "dates", v)}
                 >
                   <p className="text-sm text-foreground">
-                    <span className="text-muted-foreground">Ship out:</span> {s.shipmentDate}
+                    <span className="text-muted-foreground">{t.shipOutLabel}</span>{" "}
+                    {s.shipmentDate}
                   </p>
                   <p className="text-sm text-foreground">
-                    <span className="text-muted-foreground">Arrive:</span> {s.expectedArrival}
+                    <span className="text-muted-foreground">{t.arriveLabel}</span>{" "}
+                    {s.expectedArrival}
                   </p>
                 </VerifyBlock>
 
-                {/* Addresses */}
+                {/* Addresses + AI verification status */}
                 <VerifyBlock
-                  title="Addresses"
+                  title={t.addressesHeading}
+                  okLabel={t.addressesOk}
                   checked={leg.addresses}
                   onChange={(v) => onSetLegVerification(i, "addresses", v)}
+                  footer={
+                    <>
+                      <AddressCheckBadge
+                        t={t}
+                        label={s.from.hotel}
+                        check={fromCheck}
+                      />
+                      <AddressCheckBadge
+                        t={t}
+                        label={s.to.hotel}
+                        check={toCheck}
+                      />
+                    </>
+                  }
                 >
                   <p className="text-sm text-foreground leading-snug">
-                    <span className="text-muted-foreground">From:</span> {s.from.address || s.from.city}
+                    <span className="text-muted-foreground">{t.fromShort}</span>{" "}
+                    {s.from.address || s.from.city}
                   </p>
                   <p className="text-sm text-foreground leading-snug">
-                    <span className="text-muted-foreground">To:</span> {s.to.address || s.to.city}
+                    <span className="text-muted-foreground">{t.toShort}</span>{" "}
+                    {s.to.address || s.to.city}
                   </p>
                 </VerifyBlock>
               </li>
@@ -743,12 +1004,11 @@ function ConfirmView({
       <section className="rounded-2xl bg-foreground text-background p-6 flex items-center justify-between gap-6">
         <div>
           <p className="text-[11px] uppercase tracking-widest text-background/60 font-medium">
-            Total
+            {t.total}
           </p>
           <p className="text-2xl font-semibold mt-1">¥{totalAmount.toLocaleString()}</p>
           <p className="text-xs text-background/60 mt-1">
-            {totalSuitcases} {totalSuitcases === 1 ? "suitcase" : "suitcases"} ·{" "}
-            {shipments.length} {shipments.length === 1 ? "leg" : "legs"}
+            {t.totalSuitcases(totalSuitcases)} · {t.legs(shipments.length)}
           </p>
         </div>
         <Button
@@ -756,14 +1016,77 @@ function ConfirmView({
           onClick={() => alert("Voucher generation is not implemented yet (next phase).")}
           className="h-14 px-6 rounded-2xl bg-background text-foreground hover:bg-background/90 disabled:opacity-30"
         >
-          Generate Vouchers
+          {t.generateVouchers}
           <ArrowRight className="w-4 h-4 ml-2" strokeWidth={1.5} />
         </Button>
       </section>
       {!allVerified && (
-        <p className="text-xs text-muted-foreground text-right">
-          Verify every section to generate vouchers.
-        </p>
+        <p className="text-xs text-muted-foreground text-right">{t.verifyAll}</p>
+      )}
+    </div>
+  )
+}
+
+// AI 検証結果のバッジ + URL リンク
+function AddressCheckBadge({
+  t,
+  label,
+  check,
+}: {
+  t: Messages
+  label: string
+  check?: AddressCheck
+}) {
+  if (!check) return null
+  if (check.status === "pending") {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+        <span className="truncate">
+          {t.aiVerifying}{" "}
+          <span className="text-foreground/60">— {label}</span>
+        </span>
+      </div>
+    )
+  }
+  if (check.status === "verified") {
+    return (
+      <div className="flex items-center gap-2 text-xs py-0.5">
+        <CheckCircle2 className="w-3.5 h-3.5 text-foreground shrink-0" strokeWidth={1.5} />
+        <span className="text-foreground font-medium">{t.aiVerified}</span>
+        <span className="text-muted-foreground truncate">— {label}</span>
+        {check.citationUrl && (
+          <a
+            href={check.citationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto flex items-center gap-0.5 text-foreground/80 hover:text-foreground underline underline-offset-2 shrink-0"
+            title={check.sourceTitle}
+          >
+            {t.aiSource}
+            <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+          </a>
+        )}
+      </div>
+    )
+  }
+  // mismatch / low_confidence / failed
+  return (
+    <div className="flex items-center gap-2 text-xs py-0.5">
+      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" strokeWidth={1.5} />
+      <span className="text-amber-700 font-medium">{t.aiCouldNotVerify}</span>
+      <span className="text-muted-foreground truncate">— {label}</span>
+      {check.citationUrl && (
+        <a
+          href={check.citationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto flex items-center gap-0.5 text-foreground/80 hover:text-foreground underline underline-offset-2 shrink-0"
+          title={check.sourceTitle}
+        >
+          {t.aiSource}
+          <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+        </a>
       )}
     </div>
   )
@@ -771,14 +1094,18 @@ function ConfirmView({
 
 function VerifyBlock({
   title,
+  okLabel,
   checked,
   onChange,
   children,
+  footer,
 }: {
   title: string
+  okLabel: string
   checked: boolean
   onChange: (v: boolean) => void
   children: React.ReactNode
+  footer?: React.ReactNode
 }) {
   return (
     <div
@@ -790,8 +1117,9 @@ function VerifyBlock({
         {title}
       </p>
       <div className="space-y-1">{children}</div>
+      {footer && <div className="mt-3 space-y-1">{footer}</div>}
       <div className="mt-3 pt-3 border-t border-border">
-        <CheckRow checked={checked} onChange={onChange} label={`${title} look correct`} />
+        <CheckRow checked={checked} onChange={onChange} label={okLabel} />
       </div>
     </div>
   )
