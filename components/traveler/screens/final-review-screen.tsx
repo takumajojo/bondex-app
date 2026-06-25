@@ -15,11 +15,12 @@ interface FinalReviewScreenProps {
 // 配送先・受取人・日時を大きく表示し、verified チェック後のみ Confirm & Pay を有効化する。
 // 戻るボタンは Contact ではなく Destination 編集画面に直接戻すこと (traveler-flow.tsx 側で onBack を制御)。
 
+// Flat rate model: ¥5,000 per item (B2B ツアー会社向けモデル).
 const PRICE_YEN: Record<"S" | "M" | "L" | "LL", number> = {
-  S: 2500,
-  M: 3500,
-  L: 4500,
-  LL: 6000,
+  S: 5000,
+  M: 5000,
+  L: 5000,
+  LL: 5000,
 }
 
 function staticMapUrl(lat?: number, lng?: number): string | null {

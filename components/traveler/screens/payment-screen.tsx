@@ -23,11 +23,13 @@ interface PaymentScreenProps {
   onBack: () => void
 }
 
+// Flat rate model: ¥5,000 per item regardless of size (B2B ツアー会社向けモデル).
+// サイズ毎の Map 形式は個人客向け都度決済モード用に残置、値は全て同一。
 const PRICE_YEN: Record<NonNullable<BookingData["items"]>[number]["size"], number> = {
-  S: 2500,
-  M: 3500,
-  L: 4500,
-  LL: 6000,
+  S: 5000,
+  M: 5000,
+  L: 5000,
+  LL: 5000,
 }
 
 function CheckoutForm({

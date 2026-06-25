@@ -358,7 +358,7 @@ export function TravelerFlow({ onBack, initialStep }: TravelerFlowProps) {
           onNext={(finalBooking) => {
             const booking = finalBooking ?? data
             const orderId = booking.orderId || generateOrderId()
-            const prices: Record<string, number> = { S: 2500, M: 3500, L: 4500, LL: 6000 }
+            const prices: Record<string, number> = { S: 5000, M: 5000, L: 5000, LL: 5000 }
             const amount = booking.items.reduce((sum, item) => sum + (prices[item.size] || 0), 0)
             const maxAmount = amount + booking.items.length * 1500
             const stored: StoredBooking = {
