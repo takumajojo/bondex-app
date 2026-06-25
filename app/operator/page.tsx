@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   ExternalLink,
   Languages,
+  FileText,
+  Download,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -86,6 +88,16 @@ const messages = {
     aiSource: "See source",
     fromShort: "From:",
     toShort: "To:",
+    generatingVouchers: "Generating documents…",
+    docsReady: "Documents ready",
+    bookingId: "Booking",
+    voucherCardTitle: "Traveler Voucher",
+    voucherCardSub: "Place in the welcome packet for the traveler's first hotel.",
+    opsCardTitle: "Operations Sheet",
+    opsCardSub: "Keep for your records and fill in Yamato tracking numbers later.",
+    download: "Download",
+    newBooking: "Start a new booking",
+    generationFailed: "Document generation failed",
   },
   ja: {
     brand: "BondEx オペレーター",
@@ -140,6 +152,16 @@ const messages = {
     aiSource: "情報源を見る",
     fromShort: "From:",
     toShort: "To:",
+    generatingVouchers: "書類を生成中…",
+    docsReady: "書類が用意できました",
+    bookingId: "予約番号",
+    voucherCardTitle: "旅行者用バウチャー",
+    voucherCardSub: "旅行者の初日宿泊ホテルに送るウェルカムパケットに同封します。",
+    opsCardTitle: "オペレーションシート",
+    opsCardSub: "社内記録用。後でヤマトの追跡番号を記入します。",
+    download: "ダウンロード",
+    newBooking: "新しい予約を開始",
+    generationFailed: "書類の生成に失敗しました",
   },
 } satisfies Record<Locale, Record<string, string | ((...args: never[]) => string)>>
 
@@ -203,7 +225,13 @@ interface EditableItinerary {
   shipments: EditableShipment[]
 }
 
-type Phase = "idle" | "parsing" | "review" | "confirm" | "error"
+type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generated" | "error"
+
+interface GeneratedDocs {
+  bookingId: string
+  voucherUrl: string
+  opsUrl: string
+}
 
 // 検証チェック: 各 leg ごとに3軸 (Name / Date / Address)、最上段に Representative 1軸。
 // 全部 true でないと "Generate Vouchers" は disabled のまま。
@@ -254,6 +282,8 @@ export default function OperatorPage() {
     legs: [],
   })
   const [addressChecks, setAddressChecks] = useState<Record<string, AddressCheck>>({})
+  const [generatedDocs, setGeneratedDocs] = useState<GeneratedDocs | null>(null)
+  const [generationError, setGenerationError] = useState<string>("")
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -277,8 +307,15 @@ export default function OperatorPage() {
     setTourCompany("")
     setVerifications({ representative: false, legs: [] })
     setAddressChecks({})
+    setGenerationError("")
+    if (generatedDocs) {
+      // Revoke previous blob URLs to free memory.
+      URL.revokeObjectURL(generatedDocs.voucherUrl)
+      URL.revokeObjectURL(generatedDocs.opsUrl)
+    }
+    setGeneratedDocs(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
-  }, [])
+  }, [generatedDocs])
 
   // AI で1件の住所を検証 (バックグラウンド)。結果は addressChecks に書き込む。
   const verifyAddress = useCallback(async (hotel: string, address: string) => {
@@ -342,6 +379,62 @@ export default function OperatorPage() {
     setAddressChecks({})
     setPhase("review")
   }, [])
+
+  // バウチャー + オペシートを並列生成。Blob URL を作成して generated phase へ。
+  const generateDocuments = useCallback(async () => {
+    if (!itinerary) return
+    setGenerationError("")
+    setPhase("generating")
+
+    const representative =
+      itinerary.guest.travelers.find((tr) => tr.type === "adult") || itinerary.guest.travelers[0]
+    const representativeLabel = representative
+      ? `${representative.title ? representative.title + " " : ""}${representative.name}`
+      : itinerary.guest.familyName
+
+    const payload = {
+      representativeLabel,
+      tourCompany,
+      travelerCount: itinerary.guest.travelerCount,
+      shipments: itinerary.shipments.map((s) => ({
+        shipmentDate: s.shipmentDate,
+        expectedArrival: s.expectedArrival,
+        from: { hotel: s.from.hotel, address: s.from.address, city: s.from.city },
+        to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city },
+        recipient: s.recipient,
+        suitcaseCount: s.suitcaseCount,
+      })),
+    }
+
+    async function fetchPdf(type: "voucher" | "ops") {
+      const res = await fetch(`/api/voucher/generate?type=${type}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "")
+        throw new Error(errText || res.statusText)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const bookingId = res.headers.get("X-Booking-Id") || ""
+      return { url, bookingId }
+    }
+
+    try {
+      const [voucher, ops] = await Promise.all([fetchPdf("voucher"), fetchPdf("ops")])
+      setGeneratedDocs({
+        bookingId: voucher.bookingId || ops.bookingId,
+        voucherUrl: voucher.url,
+        opsUrl: ops.url,
+      })
+      setPhase("generated")
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : "Generation failed")
+      setPhase("confirm")
+    }
+  }, [itinerary, tourCompany])
 
   const setRepresentativeChecked = useCallback((checked: boolean) => {
     setVerifications((prev) => ({ ...prev, representative: checked }))
@@ -554,10 +647,23 @@ export default function OperatorPage() {
             tourCompany={tourCompany}
             verifications={verifications}
             addressChecks={addressChecks}
+            generationError={generationError}
             onSetRepresentative={setRepresentativeChecked}
             onSetLegVerification={setLegVerification}
             onBack={backToReview}
+            onGenerate={generateDocuments}
           />
+        )}
+
+        {phase === "generating" && (
+          <section className="rounded-2xl border border-border bg-white p-10 flex flex-col items-center gap-4">
+            <Loader2 className="w-6 h-6 text-foreground animate-spin" strokeWidth={1.5} />
+            <p className="text-sm font-medium text-foreground">{t.generatingVouchers}</p>
+          </section>
+        )}
+
+        {phase === "generated" && generatedDocs && (
+          <GeneratedView t={t} docs={generatedDocs} onReset={reset} />
         )}
       </div>
     </main>
@@ -828,9 +934,11 @@ function ConfirmView({
   tourCompany,
   verifications,
   addressChecks,
+  generationError,
   onSetRepresentative,
   onSetLegVerification,
   onBack,
+  onGenerate,
 }: {
   t: Messages
   itinerary: EditableItinerary
@@ -839,6 +947,7 @@ function ConfirmView({
   tourCompany: string
   verifications: Verifications
   addressChecks: Record<string, AddressCheck>
+  generationError: string
   onSetRepresentative: (checked: boolean) => void
   onSetLegVerification: (
     legIndex: number,
@@ -846,6 +955,7 @@ function ConfirmView({
     checked: boolean,
   ) => void
   onBack: () => void
+  onGenerate: () => void
 }) {
   const { guest, shipments } = itinerary
   const representative = guest.travelers.find((tr) => tr.type === "adult") || guest.travelers[0]
@@ -1013,7 +1123,7 @@ function ConfirmView({
         </div>
         <Button
           disabled={!allVerified}
-          onClick={() => alert("Voucher generation is not implemented yet (next phase).")}
+          onClick={onGenerate}
           className="h-14 px-6 rounded-2xl bg-background text-foreground hover:bg-background/90 disabled:opacity-30"
         >
           {t.generateVouchers}
@@ -1022,6 +1132,15 @@ function ConfirmView({
       </section>
       {!allVerified && (
         <p className="text-xs text-muted-foreground text-right">{t.verifyAll}</p>
+      )}
+      {generationError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" strokeWidth={1.5} />
+          <div className="flex-1 min-w-0 space-y-1">
+            <p className="text-xs font-medium text-amber-900">{t.generationFailed}</p>
+            <p className="text-[11px] text-amber-800 break-words">{generationError}</p>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1157,5 +1276,100 @@ function CheckRow({
         {label}
       </span>
     </label>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// GeneratedView — 生成された PDF のダウンロード画面
+// ---------------------------------------------------------------------------
+
+function GeneratedView({
+  t,
+  docs,
+  onReset,
+}: {
+  t: Messages
+  docs: GeneratedDocs
+  onReset: () => void
+}) {
+  return (
+    <div className="space-y-8">
+      <section className="rounded-2xl border border-border bg-white p-8 flex items-start gap-4">
+        <div className="w-10 h-10 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
+          <CheckCircle2 className="w-5 h-5 text-foreground" strokeWidth={1.5} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl font-semibold text-foreground">{t.docsReady}</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t.bookingId} <span className="text-foreground/80 font-medium">{docs.bookingId}</span>
+          </p>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <DocCard
+          title={t.voucherCardTitle}
+          subtitle={t.voucherCardSub}
+          href={docs.voucherUrl}
+          downloadName={`bondex-voucher-${docs.bookingId}.pdf`}
+          downloadLabel={t.download}
+        />
+        <DocCard
+          title={t.opsCardTitle}
+          subtitle={t.opsCardSub}
+          href={docs.opsUrl}
+          downloadName={`bondex-ops-${docs.bookingId}.pdf`}
+          downloadLabel={t.download}
+        />
+      </section>
+
+      <div className="flex items-center justify-end">
+        <button
+          onClick={onReset}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <RotateCcw className="w-4 h-4" strokeWidth={1.5} />
+          {t.newBooking}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DocCard({
+  title,
+  subtitle,
+  href,
+  downloadName,
+  downloadLabel,
+}: {
+  title: string
+  subtitle: string
+  href: string
+  downloadName: string
+  downloadLabel: string
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-white p-6 flex flex-col gap-4">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+          <FileText className="w-5 h-5 text-foreground" strokeWidth={1.5} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-medium text-foreground">{title}</h3>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{subtitle}</p>
+        </div>
+      </div>
+      <a
+        href={href}
+        download={downloadName}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
+      >
+        <Download className="w-4 h-4" strokeWidth={1.5} />
+        {downloadLabel}
+      </a>
+    </div>
   )
 }

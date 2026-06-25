@@ -47,5 +47,10 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   // /operator/login は除外して無限ループを防ぐ
-  matcher: ["/operator", "/api/itinerary/parse", "/api/address/verify"],
+  matcher: [
+    "/operator",
+    "/api/itinerary/parse",
+    "/api/address/verify",
+    "/api/voucher/generate",
+  ],
 }
