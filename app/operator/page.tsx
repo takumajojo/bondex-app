@@ -566,32 +566,31 @@ export default function OperatorPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            refNumber: `${sharedBookingId}-L${legIndex + 1}`, // voucher と同じ Booking ID で紐付け
+            refNumber: `${sharedBookingId}-L${legIndex + 1}`,
             shipmentDate: s.shipmentDate,
             suitcaseCount: s.suitcaseCount,
-            from: {
-              full_name: s.recipient || "Front Desk",
-              company: s.from.hotel,
-              country: "JP",
-              address1: s.from.address || s.from.city,
-            },
-            to: {
-              full_name: s.recipient || "Front Desk",
-              company: s.to.hotel,
-              country: "JP",
-              address1: s.to.address || s.to.city,
-            },
+            from: { hotel: s.from.hotel, recipient: s.recipient },
+            to: { hotel: s.to.hotel, recipient: s.recipient },
           }),
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || !data) {
+          const errObj = (data ?? {}) as { error?: string; detail?: unknown }
+          const detailStr =
+            typeof errObj.detail === "string"
+              ? errObj.detail
+              : errObj.detail
+                ? JSON.stringify(errObj.detail).slice(0, 200)
+                : ""
           return {
             legIndex,
             legLabel,
             labelUrl: "",
             trackingNumbers: [],
             status: "failed",
-            error: (data && (data as { error?: string }).error) || res.statusText,
+            error: detailStr
+              ? `${errObj.error || res.statusText}: ${detailStr}`
+              : errObj.error || res.statusText,
           }
         }
         const d = data as { label?: string; trackingNumbers?: string[] }
