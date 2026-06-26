@@ -17,12 +17,20 @@ export const maxDuration = 60
  * }
  *
  * 処理:
+ * 0. 出荷予定日をバリデーション (ヤマト30日制約: ES003001 の事前ガード)
+ *      - 不正日付 → 400 { code: "SHIPMENT_DATE_INVALID" }
+ *      - 過去日付 → 400 { code: "SHIPMENT_DATE_PAST" }
+ *      - 30日超   → 200 { status: "deferred", issuableFrom } (Ship&co を呼ばない)
  * 1. Google Places (language=ja) でホテル住所を構造化抽出 (zip / province / city / address1 / address2 / phone)
  * 2. Ship&co 形式の payload を組み立て
  * 3. POST https://api.shipandco.com/v1/shipments
  *
- * 出力:
- *   { id, label, trackingNumbers, carrier, method, estimatedDeliveryDate }
+ * 出力 (発行成功時):
+ *   { status: "issued", id, label, trackingNumbers, carrier, method, estimatedDeliveryDate }
+ * 出力 (発行延期時):
+ *   { status: "deferred", shipmentDate, issuableFrom, daysUntilIssuable }
+ *
+ * 詳細設計: docs/shipment-deferred-design.md
  */
 
 const SHIPANDCO_BASE = "https://api.shipandco.com/v1"
@@ -30,6 +38,41 @@ const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 
 const FALLBACK_PHONE = "0000000000"
 const FALLBACK_ZIP = "0000000"
+
+// ヤマト制約: 出荷予定日は送り状発行日 (= 今日) から30日以内 (ES003001)
+const MAX_LEAD_DAYS = 30
+const MS_PER_DAY = 86_400_000
+
+// JST 基準の今日 (YYYY-MM-DD)。Vercel は UTC 稼働なので日付ズレを防ぐ。
+function jstTodayYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+}
+
+// 2つの YYYY-MM-DD の日数差 (to - from)。カレンダー日として UTC 0時基準で計算。
+function dayDiff(fromYmd: string, toYmd: string): number {
+  const a = Date.parse(`${fromYmd}T00:00:00Z`)
+  const b = Date.parse(`${toYmd}T00:00:00Z`)
+  return Math.round((b - a) / MS_PER_DAY)
+}
+
+// shipmentDate − MAX_LEAD_DAYS の YYYY-MM-DD (deferred 区間の発行解禁日)
+function issuableFromYmd(shipmentDate: string): string {
+  const t = Date.parse(`${shipmentDate}T00:00:00Z`) - MAX_LEAD_DAYS * MS_PER_DAY
+  return new Date(t).toISOString().slice(0, 10)
+}
+
+function isValidYmd(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const t = Date.parse(`${s}T00:00:00Z`)
+  if (Number.isNaN(t)) return false
+  // 2026-02-31 のような不正日を弾く (パース後に正規化されて元と一致するか)
+  return new Date(t).toISOString().slice(0, 10) === s
+}
 
 interface YamatoAddress {
   full_name: string
@@ -222,6 +265,37 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // 出荷予定日のバリデーション (ヤマト30日制約への事前ガード)
+  // 無駄な Ship&co 呼び出しと ES003001 エラーを未然に防ぐ。
+  if (!isValidYmd(shipmentDate)) {
+    return NextResponse.json(
+      { error: "shipmentDate must be a valid YYYY-MM-DD date", code: "SHIPMENT_DATE_INVALID" },
+      { status: 400 },
+    )
+  }
+  const gap = dayDiff(jstTodayYmd(), shipmentDate)
+  if (gap < 0) {
+    // 過去日付 — 発行不可
+    return NextResponse.json(
+      {
+        error: "shipmentDate is in the past",
+        code: "SHIPMENT_DATE_PAST",
+        shipmentDate,
+      },
+      { status: 400 },
+    )
+  }
+  if (gap > MAX_LEAD_DAYS) {
+    // 30日超 — 今は発行できない。Ship&co を呼ばず deferred を返す。
+    // issuableFrom 以降に (将来の自動バッチが) 発行する。
+    return NextResponse.json({
+      status: "deferred",
+      shipmentDate,
+      issuableFrom: issuableFromYmd(shipmentDate),
+      daysUntilIssuable: gap - MAX_LEAD_DAYS,
+    })
+  }
+
   // Google Places で構造化住所を取得
   const [fromAddr, toAddr] = await Promise.all([
     resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey),
@@ -274,9 +348,14 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       // Ship&co の error detail を呼び出し元に返す
       const detail = data ?? text
+      // ES003001 (30日制約) を検出したら code に正規化。
+      // 事前ガードで通常は届かないが、JST/サーバー時刻のズレ等の保険。
+      const detailStr = typeof detail === "string" ? detail : JSON.stringify(detail)
+      const code = /ES003001|30日以内/.test(detailStr) ? "SHIPANDCO_DATE_WINDOW" : undefined
       return NextResponse.json(
         {
           error: `Ship&co error (${res.status})`,
+          code,
           detail,
           sentPayload: payload, // デバッグ用 (POC のみ — production では削除)
         },
@@ -294,6 +373,7 @@ export async function POST(req: NextRequest) {
       }
     }
     return NextResponse.json({
+      status: "issued",
       id: d.id ?? "",
       label: d.delivery?.label ?? "",
       trackingNumbers: d.delivery?.tracking_numbers ?? [],
