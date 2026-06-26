@@ -20,6 +20,8 @@ import {
   Languages,
   FileText,
   Download,
+  Settings,
+  X,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -103,14 +105,21 @@ const messages = {
     yamatoLegLabel: (n: number) => `Leg ${n}`,
     yamatoTracking: "Tracking",
     yamatoLabelFailed: "Label issuance failed",
-    extraInfo: "Additional details",
-    dropOffTime: "Drop-off time",
-    dropOffTimePlaceholder: "e.g. 8:00",
-    pickUpNote: "Pick-up timing",
-    pickUpNotePlaceholder: "e.g. when check-in",
-    destinationNights: "Nights at destination",
-    specialNote: "Special note (optional)",
-    specialNotePlaceholder: "Any handling instruction for the hotel…",
+    notesLabel: "Notes (optional)",
+    notesPlaceholder: "Anything to tell the hotel — e.g. drop-off by 8:00, fragile, senior guest…",
+    settings: "Settings",
+    settingsTitle: "Operator Settings",
+    settingsHint: "These details are used in every voucher. Update them here, not per-booking.",
+    settingsTourCompany: "Tour company",
+    settingsTourCompanyPlaceholder: "e.g. My Japan Planner",
+    settingsContactName: "Contact person",
+    settingsContactNamePlaceholder: "e.g. 谷口",
+    settingsContactPhone: "Contact phone",
+    settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
+    settingsSave: "Save",
+    settingsCancel: "Cancel",
+    settingsRequired: "Please set up your tour company first.",
+    aiFoundAddress: "AI found this address",
   },
   ja: {
     brand: "BondEx オペレーター",
@@ -180,14 +189,21 @@ const messages = {
     yamatoLegLabel: (n: number) => `区間 ${n}`,
     yamatoTracking: "追跡番号",
     yamatoLabelFailed: "送り状発行に失敗",
-    extraInfo: "追加情報",
-    dropOffTime: "発送時刻",
-    dropOffTimePlaceholder: "例: 8:00",
-    pickUpNote: "受取タイミング",
-    pickUpNotePlaceholder: "例: チェックイン時",
-    destinationNights: "宿泊数",
-    specialNote: "特記事項 (任意)",
-    specialNotePlaceholder: "ホテルへの特別な依頼があれば...",
+    notesLabel: "備考 (任意)",
+    notesPlaceholder: "ホテルに伝えたいことがあれば — 例: 8時までに発送、割れ物注意、高齢のお客様…",
+    settings: "設定",
+    settingsTitle: "オペレーター設定",
+    settingsHint: "この情報は毎回のバウチャーで使用されます。予約ごとではなくここで管理します。",
+    settingsTourCompany: "旅行会社",
+    settingsTourCompanyPlaceholder: "例: My Japan Planner",
+    settingsContactName: "担当者",
+    settingsContactNamePlaceholder: "例: 谷口",
+    settingsContactPhone: "連絡先",
+    settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
+    settingsSave: "保存",
+    settingsCancel: "キャンセル",
+    settingsRequired: "最初に旅行会社情報を登録してください。",
+    aiFoundAddress: "AIで取得した住所",
   },
 } satisfies Record<Locale, Record<string, string | ((...args: never[]) => string)>>
 
@@ -241,12 +257,9 @@ interface ParsedItinerary {
   shipments: ParsedShipment[]
 }
 
-// 編集可能な State: パース結果に suitcaseCount + 補足フィールドを加える
+// 編集可能な State: パース結果に suitcaseCount + 備考のみ加える
 interface EditableShipment extends ParsedShipment {
   suitcaseCount: number
-  dropOffTime: string
-  pickUpNote: string
-  destinationNights: number
   specialNote: string
 }
 
@@ -295,6 +308,36 @@ interface AddressCheck {
   canonicalAddress?: string
 }
 
+// オペレーター設定 (localStorage)
+const SETTINGS_KEY = "bondex_op_settings"
+interface OperatorSettings {
+  tourCompany: string
+  contactName: string
+  contactPhone: string
+}
+function loadSettings(): OperatorSettings | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.tourCompany === "string" && parsed.tourCompany.trim()) {
+      return {
+        tourCompany: parsed.tourCompany,
+        contactName: typeof parsed.contactName === "string" ? parsed.contactName : "",
+        contactPhone: typeof parsed.contactPhone === "string" ? parsed.contactPhone : "",
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+function saveSettings(s: OperatorSettings): void {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+}
+
 function addressKey(hotel: string, address: string): string {
   return `${hotel.trim()}||${address.trim()}`
 }
@@ -317,7 +360,6 @@ export default function OperatorPage() {
   const [fileName, setFileName] = useState<string>("")
   const [error, setError] = useState<string>("")
   const [itinerary, setItinerary] = useState<EditableItinerary | null>(null)
-  const [tourCompany, setTourCompany] = useState<string>("")
   const [verifications, setVerifications] = useState<Verifications>({
     representative: false,
     legs: [],
@@ -326,7 +368,22 @@ export default function OperatorPage() {
   const [generatedDocs, setGeneratedDocs] = useState<GeneratedDocs | null>(null)
   const [generationError, setGenerationError] = useState<string>("")
   const [isDragging, setIsDragging] = useState(false)
+  const [settings, setSettings] = useState<OperatorSettings | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // 初回マウントで localStorage から設定を復元。未設定なら設定モーダルを強制表示。
+  useEffect(() => {
+    const loaded = loadSettings()
+    setSettings(loaded)
+    if (!loaded) setSettingsOpen(true)
+  }, [])
+
+  const onSaveSettings = useCallback((next: OperatorSettings) => {
+    saveSettings(next)
+    setSettings(next)
+    setSettingsOpen(false)
+  }, [])
 
   const onLogout = useCallback(async () => {
     await fetch("/api/operator/logout", { method: "POST" })
@@ -345,7 +402,6 @@ export default function OperatorPage() {
     setItinerary(null)
     setFileName("")
     setError("")
-    setTourCompany("")
     setVerifications({ representative: false, legs: [] })
     setAddressChecks({})
     setGenerationError("")
@@ -458,10 +514,13 @@ export default function OperatorPage() {
       ? `${representative.title ? representative.title + " " : ""}${representative.name}`
       : itinerary.guest.familyName
 
+    const tourCompanyFromSettings = settings?.tourCompany || ""
     const payload = {
       representativeLabel,
-      tourCompany,
+      tourCompany: tourCompanyFromSettings,
       travelerCount: itinerary.guest.travelerCount,
+      contactPersonName: settings?.contactName || "",
+      contactPersonPhone: settings?.contactPhone || "",
       shipments: itinerary.shipments.map((s) => ({
         shipmentDate: s.shipmentDate,
         expectedArrival: s.expectedArrival,
@@ -469,9 +528,6 @@ export default function OperatorPage() {
         to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city },
         recipient: s.recipient,
         suitcaseCount: s.suitcaseCount,
-        dropOffTime: s.dropOffTime,
-        pickUpNote: s.pickUpNote,
-        destinationNights: s.destinationNights || undefined,
         specialNote: s.specialNote,
       })),
     }
@@ -566,7 +622,7 @@ export default function OperatorPage() {
       setGenerationError(err instanceof Error ? err.message : "Generation failed")
       setPhase("confirm")
     }
-  }, [itinerary, tourCompany])
+  }, [itinerary, settings])
 
   const setRepresentativeChecked = useCallback((checked: boolean) => {
     setVerifications((prev) => ({ ...prev, representative: checked }))
@@ -623,9 +679,6 @@ export default function OperatorPage() {
         shipments: parsed.shipments.map((s) => ({
           ...s,
           suitcaseCount: parsed.guest.travelerCount || 1,
-          dropOffTime: "",
-          pickUpNote: "",
-          destinationNights: 0,
           specialNote: "",
         })),
       }
@@ -659,27 +712,12 @@ export default function OperatorPage() {
     })
   }
 
-  const updateShipmentField = (
-    index: number,
-    field: "dropOffTime" | "pickUpNote" | "specialNote",
-    value: string,
-  ) => {
+  const updateShipmentNote = (index: number, value: string) => {
     if (!itinerary) return
     setItinerary({
       ...itinerary,
       shipments: itinerary.shipments.map((s, i) =>
-        i === index ? { ...s, [field]: value } : s,
-      ),
-    })
-  }
-
-  const updateDestinationNights = (index: number, value: number) => {
-    if (!itinerary) return
-    const next = Math.max(0, Math.floor(value))
-    setItinerary({
-      ...itinerary,
-      shipments: itinerary.shipments.map((s, i) =>
-        i === index ? { ...s, destinationNights: next } : s,
+        i === index ? { ...s, specialNote: value } : s,
       ),
     })
   }
@@ -706,6 +744,13 @@ export default function OperatorPage() {
               </button>
             )}
             <button
+              onClick={() => setSettingsOpen(true)}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Settings className="w-4 h-4" strokeWidth={1.5} />
+              {t.settings}
+            </button>
+            <button
               onClick={onLogout}
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
@@ -715,6 +760,19 @@ export default function OperatorPage() {
           </div>
         </div>
       </header>
+
+      {settingsOpen && (
+        <SettingsModal
+          t={t}
+          initial={settings}
+          onCancel={() => {
+            if (settings) setSettingsOpen(false)
+            // 未設定なら closing を許可しない (modal は強制)
+          }}
+          onSave={onSaveSettings}
+          canCancel={!!settings}
+        />
+      )}
 
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
         {phase === "idle" && (
@@ -792,11 +850,10 @@ export default function OperatorPage() {
             itinerary={itinerary}
             totalSuitcases={totalSuitcases}
             totalAmount={totalAmount}
-            tourCompany={tourCompany}
-            onUpdateTourCompany={setTourCompany}
+            settings={settings}
+            onOpenSettings={() => setSettingsOpen(true)}
             onUpdateSuitcaseCount={updateSuitcaseCount}
-            onUpdateShipmentField={updateShipmentField}
-            onUpdateDestinationNights={updateDestinationNights}
+            onUpdateShipmentNote={updateShipmentNote}
             onContinue={goToConfirm}
           />
         )}
@@ -807,7 +864,7 @@ export default function OperatorPage() {
             itinerary={itinerary}
             totalSuitcases={totalSuitcases}
             totalAmount={totalAmount}
-            tourCompany={tourCompany}
+            tourCompany={settings?.tourCompany || ""}
             verifications={verifications}
             addressChecks={addressChecks}
             generationError={generationError}
@@ -865,30 +922,24 @@ function ReviewView({
   itinerary,
   totalSuitcases,
   totalAmount,
-  tourCompany,
-  onUpdateTourCompany,
+  settings,
+  onOpenSettings,
   onUpdateSuitcaseCount,
-  onUpdateShipmentField,
-  onUpdateDestinationNights,
+  onUpdateShipmentNote,
   onContinue,
 }: {
   t: Messages
   itinerary: EditableItinerary
   totalSuitcases: number
   totalAmount: number
-  tourCompany: string
-  onUpdateTourCompany: (value: string) => void
+  settings: OperatorSettings | null
+  onOpenSettings: () => void
   onUpdateSuitcaseCount: (index: number, value: number) => void
-  onUpdateShipmentField: (
-    index: number,
-    field: "dropOffTime" | "pickUpNote" | "specialNote",
-    value: string,
-  ) => void
-  onUpdateDestinationNights: (index: number, value: number) => void
+  onUpdateShipmentNote: (index: number, value: string) => void
   onContinue: () => void
 }) {
   const { guest, shipments } = itinerary
-  const canContinue = tourCompany.trim().length > 0 && shipments.length > 0
+  const canContinue = !!settings?.tourCompany && shipments.length > 0
 
   return (
     <div className="space-y-8">
@@ -926,19 +977,26 @@ function ReviewView({
           </ul>
         )}
 
-        {/* Tour Company */}
-        <div className="mt-6 pt-6 border-t border-border space-y-2">
-          <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
-            <Building2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-            {t.tourCompany}
-          </label>
-          <Input
-            type="text"
-            placeholder={t.tourCompanyPlaceholder}
-            value={tourCompany}
-            onChange={(e) => onUpdateTourCompany(e.target.value)}
-            className="h-11 max-w-md"
-          />
+        {/* Tour Company (from settings) */}
+        <div className="mt-6 pt-6 border-t border-border flex items-center justify-between gap-3">
+          <div className="space-y-1 min-w-0">
+            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+              {t.tourCompany}
+            </p>
+            {settings?.tourCompany ? (
+              <p className="text-base font-medium text-foreground">{settings.tourCompany}</p>
+            ) : (
+              <p className="text-sm text-amber-700">{t.settingsRequired}</p>
+            )}
+          </div>
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            <Settings className="w-3.5 h-3.5" strokeWidth={1.5} />
+            {t.settings}
+          </button>
         </div>
       </section>
 
@@ -969,8 +1027,7 @@ function ReviewView({
                 index={i}
                 shipment={s}
                 onUpdateSuitcaseCount={onUpdateSuitcaseCount}
-                onUpdateShipmentField={onUpdateShipmentField}
-                onUpdateDestinationNights={onUpdateDestinationNights}
+                onUpdateShipmentNote={onUpdateShipmentNote}
               />
             ))}
           </ol>
@@ -998,7 +1055,7 @@ function ReviewView({
         </Button>
       </section>
       {!canContinue && (
-        <p className="text-xs text-muted-foreground text-right">{t.enterTourCompany}</p>
+        <p className="text-xs text-muted-foreground text-right">{t.settingsRequired}</p>
       )}
     </div>
   )
@@ -1009,19 +1066,13 @@ function ShipmentRow({
   index,
   shipment,
   onUpdateSuitcaseCount,
-  onUpdateShipmentField,
-  onUpdateDestinationNights,
+  onUpdateShipmentNote,
 }: {
   t: Messages
   index: number
   shipment: EditableShipment
   onUpdateSuitcaseCount: (index: number, value: number) => void
-  onUpdateShipmentField: (
-    index: number,
-    field: "dropOffTime" | "pickUpNote" | "specialNote",
-    value: string,
-  ) => void
-  onUpdateDestinationNights: (index: number, value: number) => void
+  onUpdateShipmentNote: (index: number, value: string) => void
 }) {
   return (
     <li className="rounded-2xl border border-border bg-white p-5">
@@ -1096,54 +1147,16 @@ function ShipmentRow({
         </div>
       </div>
 
-      {/* 補足入力欄 */}
-      <div className="mt-4 pt-4 border-t border-border space-y-3">
-        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-          {t.extraInfo}
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">{t.dropOffTime}</label>
-            <Input
-              type="text"
-              placeholder={t.dropOffTimePlaceholder}
-              value={shipment.dropOffTime}
-              onChange={(e) => onUpdateShipmentField(index, "dropOffTime", e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">{t.pickUpNote}</label>
-            <Input
-              type="text"
-              placeholder={t.pickUpNotePlaceholder}
-              value={shipment.pickUpNote}
-              onChange={(e) => onUpdateShipmentField(index, "pickUpNote", e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">{t.destinationNights}</label>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={shipment.destinationNights || ""}
-              onChange={(e) => onUpdateDestinationNights(index, Number(e.target.value))}
-              className="h-9 text-sm"
-            />
-          </div>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">{t.specialNote}</label>
-          <Input
-            type="text"
-            placeholder={t.specialNotePlaceholder}
-            value={shipment.specialNote}
-            onChange={(e) => onUpdateShipmentField(index, "specialNote", e.target.value)}
-            className="h-9 text-sm"
-          />
-        </div>
+      {/* 備考のみ */}
+      <div className="mt-4 pt-4 border-t border-border space-y-1">
+        <label className="text-xs text-muted-foreground">{t.notesLabel}</label>
+        <Input
+          type="text"
+          placeholder={t.notesPlaceholder}
+          value={shipment.specialNote}
+          onChange={(e) => onUpdateShipmentNote(index, e.target.value)}
+          className="h-9 text-sm"
+        />
       </div>
     </li>
   )
@@ -1377,7 +1390,10 @@ function ConfirmView({
   )
 }
 
-// AI 検証結果のバッジ + URL リンク
+// AI 検証結果のバッジ — canonical address があれば常に表示。
+// pending: spinner
+// canonical 有り: ✓ + 「AIで取得した住所」 + canonical を新行に表示 + see source
+// failed のみ: amber 警告
 function AddressCheckBadge({
   t,
   label,
@@ -1393,34 +1409,45 @@ function AddressCheckBadge({
       <div className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
         <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
         <span className="truncate">
-          {t.aiVerifying}{" "}
-          <span className="text-foreground/60">— {label}</span>
+          {t.aiVerifying} <span className="text-foreground/60">— {label}</span>
         </span>
       </div>
     )
   }
-  if (check.status === "verified") {
+  // canonical address があれば、verified / low_confidence 関わらず信頼してOK表示にする
+  if (check.canonicalAddress) {
+    const isPerfect = check.status === "verified"
     return (
-      <div className="flex items-center gap-2 text-xs py-0.5">
-        <CheckCircle2 className="w-3.5 h-3.5 text-foreground shrink-0" strokeWidth={1.5} />
-        <span className="text-foreground font-medium">{t.aiVerified}</span>
-        <span className="text-muted-foreground truncate">— {label}</span>
-        {check.citationUrl && (
-          <a
-            href={check.citationUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto flex items-center gap-0.5 text-foreground/80 hover:text-foreground underline underline-offset-2 shrink-0"
-            title={check.sourceTitle}
-          >
-            {t.aiSource}
-            <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
-          </a>
-        )}
+      <div className="text-xs py-0.5 space-y-0.5">
+        <div className="flex items-center gap-2">
+          <CheckCircle2
+            className={`w-3.5 h-3.5 shrink-0 ${isPerfect ? "text-foreground" : "text-foreground/70"}`}
+            strokeWidth={1.5}
+          />
+          <span className="text-foreground font-medium">
+            {isPerfect ? t.aiVerified : t.aiFoundAddress}
+          </span>
+          <span className="text-muted-foreground truncate">— {label}</span>
+          {check.citationUrl && (
+            <a
+              href={check.citationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto flex items-center gap-0.5 text-foreground/80 hover:text-foreground underline underline-offset-2 shrink-0"
+              title={check.sourceTitle}
+            >
+              {t.aiSource}
+              <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+            </a>
+          )}
+        </div>
+        <p className="text-foreground/80 pl-5.5 break-words" style={{ paddingLeft: 22 }}>
+          {check.canonicalAddress}
+        </p>
       </div>
     )
   }
-  // mismatch / low_confidence / failed
+  // failed / canonical 無し → amber 警告 (本当に何も見つからない時)
   return (
     <div className="flex items-center gap-2 text-xs py-0.5">
       <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" strokeWidth={1.5} />
@@ -1507,6 +1534,108 @@ function CheckRow({
         {label}
       </span>
     </label>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Settings Modal — オペレーター情報 (旅行会社 / 担当者 / 連絡先) を localStorage に保存
+// ---------------------------------------------------------------------------
+
+function SettingsModal({
+  t,
+  initial,
+  onSave,
+  onCancel,
+  canCancel,
+}: {
+  t: Messages
+  initial: OperatorSettings | null
+  onSave: (s: OperatorSettings) => void
+  onCancel: () => void
+  canCancel: boolean
+}) {
+  const [tourCompany, setTourCompany] = useState(initial?.tourCompany || "")
+  const [contactName, setContactName] = useState(initial?.contactName || "")
+  const [contactPhone, setContactPhone] = useState(initial?.contactPhone || "")
+
+  const canSave = tourCompany.trim().length > 0
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">{t.settingsTitle}</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">{t.settingsHint}</p>
+          </div>
+          {canCancel && (
+            <button
+              onClick={onCancel}
+              className="p-1 -m-1 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t.settingsTourCompany}</label>
+            <Input
+              type="text"
+              autoFocus
+              placeholder={t.settingsTourCompanyPlaceholder}
+              value={tourCompany}
+              onChange={(e) => setTourCompany(e.target.value)}
+              className="h-10"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t.settingsContactName}</label>
+            <Input
+              type="text"
+              placeholder={t.settingsContactNamePlaceholder}
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              className="h-10"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t.settingsContactPhone}</label>
+            <Input
+              type="tel"
+              placeholder={t.settingsContactPhonePlaceholder}
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              className="h-10"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          {canCancel && (
+            <Button variant="outline" onClick={onCancel} className="h-10 px-4">
+              {t.settingsCancel}
+            </Button>
+          )}
+          <Button
+            onClick={() => {
+              if (!canSave) return
+              onSave({
+                tourCompany: tourCompany.trim(),
+                contactName: contactName.trim(),
+                contactPhone: contactPhone.trim(),
+              })
+            }}
+            disabled={!canSave}
+            className="h-10 px-4"
+          >
+            {t.settingsSave}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
