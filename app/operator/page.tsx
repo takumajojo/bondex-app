@@ -273,7 +273,6 @@ type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generat
 interface GeneratedDocs {
   bookingId: string
   voucherUrl: string
-  opsUrl: string
   yamatoLabels: YamatoLabel[]
 }
 
@@ -408,9 +407,7 @@ export default function OperatorPage() {
     setAddressChecks({})
     setGenerationError("")
     if (generatedDocs) {
-      // Revoke previous blob URLs to free memory.
       URL.revokeObjectURL(generatedDocs.voucherUrl)
-      URL.revokeObjectURL(generatedDocs.opsUrl)
     }
     setGeneratedDocs(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
@@ -608,15 +605,13 @@ export default function OperatorPage() {
     }
 
     try {
-      const [voucher, ops, ...yamatoLabels] = await Promise.all([
+      const [voucher, ...yamatoLabels] = await Promise.all([
         fetchPdf("voucher"),
-        fetchPdf("ops"),
         ...itinerary.shipments.map((_, i) => fetchYamatoLabel(i)),
       ])
       setGeneratedDocs({
-        bookingId: voucher.bookingId || ops.bookingId,
+        bookingId: voucher.bookingId,
         voucherUrl: voucher.url,
-        opsUrl: ops.url,
         yamatoLabels,
       })
       setPhase("generated")
@@ -1668,20 +1663,12 @@ function GeneratedView({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section>
         <DocCard
           title={t.voucherCardTitle}
           subtitle={t.voucherCardSub}
           href={docs.voucherUrl}
           downloadName={`bondex-voucher-${docs.bookingId}.pdf`}
-          downloadLabel={t.download}
-          previewLabel={t.preview}
-        />
-        <DocCard
-          title={t.opsCardTitle}
-          subtitle={t.opsCardSub}
-          href={docs.opsUrl}
-          downloadName={`bondex-ops-${docs.bookingId}.pdf`}
           downloadLabel={t.download}
           previewLabel={t.preview}
         />
