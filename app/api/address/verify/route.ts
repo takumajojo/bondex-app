@@ -15,48 +15,62 @@ export const maxDuration = 30
  * matched=false の時、UI 側で警告表示する想定。
  */
 
-const SYSTEM_PROMPT = `You verify whether a hotel name matches a given postal address in Japan.
+const SYSTEM_PROMPT = `You verify and/or enrich the address of a Japanese hotel.
+
+Inputs:
+- hotelName: the hotel's name (English or Japanese)
+- address: the address claimed for this hotel — may be a full street address, just a city ("Tokyo"), or empty.
 
 Process:
-1. Use the web_search tool to look up the hotel name (in Japanese if applicable) and check if its official location matches the given address.
-2. Prefer authoritative sources: the hotel's official website, the hotel's Google Maps listing, or major booking sites (Booking.com, Expedia, Rakuten Travel).
-3. Note that Japanese addresses may be written in different formats (with/without postal code, kanji vs romaji). Treat them as matching if the postal code OR the full street address agrees.
-4. After research, call the report_verification tool with your conclusion.
+1. Use the web_search tool to look up the hotel and find its OFFICIAL postal address.
+2. Prefer authoritative sources: the hotel's official website, Google Maps listing, or major booking sites (Booking.com, Expedia, Rakuten Travel).
+3. Always populate canonicalAddress with the full street address you found, in English where possible, including postal code if available.
 
 Confidence levels:
-- "high": you found an authoritative source (official site / Google Maps) confirming the address
+- "high": you found an authoritative source (official site / Google Maps)
 - "medium": you found multiple secondary sources agreeing
-- "low": you could not find a clear authoritative match (do not block — just note for the operator)`
+- "low": you could not find a clear authoritative source
+
+matched logic:
+- If the input address is empty OR only a city/region: set matched = true if you found ANY authoritative address (we are enriching, not verifying).
+- If the input address is a full street address: set matched = true if it agrees with the canonicalAddress you found.
+- Otherwise matched = false.
+
+After research, call the report_verification tool with your conclusion.`
 
 const VERIFICATION_TOOL = {
   name: "report_verification",
-  description: "Report the hotel-address verification result.",
+  description: "Report the hotel-address verification + enrichment result.",
   input_schema: {
     type: "object" as const,
     properties: {
       matched: {
         type: "boolean",
-        description: "true if the hotel name and address match according to authoritative sources",
+        description: "true if the input address matches or if we successfully enriched an empty/city-only address with an authoritative one",
       },
       confidence: {
         type: "string",
         enum: ["high", "medium", "low"],
-        description: "Confidence level — 'high' for official sources, 'low' if no clear match found",
+        description: "Confidence level",
+      },
+      canonicalAddress: {
+        type: "string",
+        description: "The full official address you found for this hotel (English preferred, include postal code if available)",
       },
       citationUrl: {
         type: "string",
-        description: "URL of the single most authoritative source you used (prefer official hotel website or Google Maps)",
+        description: "URL of the most authoritative source used",
       },
       sourceTitle: {
         type: "string",
-        description: "Title or short label of the citation source (e.g. 'Hyatt Regency Hakone — Official Site')",
+        description: "Title or short label of the citation source",
       },
       reasoning: {
         type: "string",
-        description: "1-2 sentence explanation of why you concluded matched or not matched",
+        description: "1-2 sentence explanation",
       },
     },
-    required: ["matched", "confidence", "citationUrl", "sourceTitle", "reasoning"],
+    required: ["matched", "confidence", "canonicalAddress", "citationUrl", "sourceTitle", "reasoning"],
   },
 }
 

@@ -23,6 +23,10 @@ interface RequestShipment {
   to: { hotel?: unknown; address?: unknown; city?: unknown } | unknown
   recipient: unknown
   suitcaseCount: unknown
+  dropOffTime?: unknown
+  pickUpNote?: unknown
+  specialNote?: unknown
+  destinationNights?: unknown
 }
 
 interface RequestBody {
@@ -32,6 +36,10 @@ interface RequestBody {
   travelerCount?: unknown
   bookingId?: unknown
   shipments?: unknown
+  contactPersonName?: unknown
+  contactPersonPhone?: unknown
+  companyName?: unknown
+  companyAddress?: unknown
 }
 
 function asString(v: unknown): string {
@@ -43,6 +51,10 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   const to = (s.to as { hotel?: string; address?: string; city?: string }) ?? {}
   const suitcaseCount = Math.max(1, Math.floor(Number(s.suitcaseCount) || 1))
   if (!from.hotel || !to.hotel) return null
+  const destinationNights =
+    typeof s.destinationNights === "number" && s.destinationNights > 0
+      ? Math.floor(s.destinationNights)
+      : undefined
   return {
     shipmentDate: asString(s.shipmentDate),
     expectedArrival: asString(s.expectedArrival),
@@ -58,6 +70,10 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
     },
     recipient: asString(s.recipient),
     suitcaseCount,
+    dropOffTime: asString(s.dropOffTime).trim() || undefined,
+    pickUpNote: asString(s.pickUpNote).trim() || undefined,
+    specialNote: asString(s.specialNote).trim() || undefined,
+    destinationNights,
   }
 }
 
@@ -104,6 +120,12 @@ export async function POST(req: NextRequest) {
     0,
   )
 
+  const contactPersonName =
+    asString(body.contactPersonName).trim() || SUPPORT_DEFAULTS.contactPersonName
+  const contactPersonPhone = asString(body.contactPersonPhone).trim() || SUPPORT_DEFAULTS.phone
+  const companyName = asString(body.companyName).trim() || SUPPORT_DEFAULTS.companyName
+  const companyAddress = asString(body.companyAddress).trim() || SUPPORT_DEFAULTS.companyAddress
+
   const input: VoucherInput = {
     bookingId,
     issuedDate: formatIssuedDate(),
@@ -114,6 +136,10 @@ export async function POST(req: NextRequest) {
     totalAmount,
     supportPhone: SUPPORT_DEFAULTS.phone,
     supportEmail: SUPPORT_DEFAULTS.email,
+    contactPersonName,
+    contactPersonPhone,
+    companyName,
+    companyAddress,
   }
 
   try {

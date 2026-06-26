@@ -52,5 +52,6 @@ export const config = {
     "/api/itinerary/parse",
     "/api/address/verify",
     "/api/voucher/generate",
+    "/api/shipandco/create",
   ],
 }

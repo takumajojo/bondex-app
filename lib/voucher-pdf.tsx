@@ -1,15 +1,40 @@
 /* eslint-disable @next/next/no-img-element */
 import React from "react"
+import path from "path"
 import {
   Document,
   Page,
   Text,
   View,
   StyleSheet,
+  Image,
+  Font,
 } from "@react-pdf/renderer"
 
 // ---------------------------------------------------------------------------
-// Types — must match the parsed itinerary shape from /api/itinerary/parse
+// Fonts: register Noto Sans JP for Japanese rendering.
+// ファイル読み込みはモジュールロード時に1回だけ実行される (process.cwd() は Next.js プロジェクトルート)。
+// ---------------------------------------------------------------------------
+
+const FONT_DIR = path.join(process.cwd(), "public", "fonts")
+const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
+
+try {
+  Font.register({
+    family: "NotoSansJP",
+    fonts: [
+      { src: path.join(FONT_DIR, "NotoSansJP-Regular.ttf"), fontWeight: 400 },
+      { src: path.join(FONT_DIR, "NotoSansJP-Medium.ttf"), fontWeight: 500 },
+    ],
+  })
+  // CJK は1文字単位で改行できるようにする
+  Font.registerHyphenationCallback((word: string) => Array.from(word))
+} catch {
+  // フォント未配置時は英字のみで描画 (テンプレでは Helvetica にフォールバック)
+}
+
+// ---------------------------------------------------------------------------
+// Types
 // ---------------------------------------------------------------------------
 
 export interface VoucherShipmentLocation {
@@ -19,12 +44,20 @@ export interface VoucherShipmentLocation {
 }
 
 export interface VoucherShipment {
-  shipmentDate: string
-  expectedArrival: string
+  shipmentDate: string // YYYY-MM-DD
+  expectedArrival: string // YYYY-MM-DD
   from: VoucherShipmentLocation
   to: VoucherShipmentLocation
   recipient: string
   suitcaseCount: number
+  /** ホテルへの drop-off 指定時刻 (例 "8:00"). 空なら "by check-out" 等のデフォルト */
+  dropOffTime?: string
+  /** "when check-in" など pickup タイミング表現 (空ならデフォルト) */
+  pickUpNote?: string
+  /** Free-form note shown in the hotel section */
+  specialNote?: string
+  /** Check-in nights at the destination (e.g. 2 → 「2泊」). Optional. */
+  destinationNights?: number
 }
 
 export interface VoucherInput {
@@ -37,497 +70,442 @@ export interface VoucherInput {
   totalAmount: number
   supportPhone: string
   supportEmail: string
+  contactPersonName: string // e.g. "谷口"
+  contactPersonPhone: string // e.g. "+81-XX-XXXX-XXXX"
+  companyName: string // e.g. "株式会社JOJO"
+  companyAddress: string // e.g. "〒158-0092 東京都世田谷区野毛1-9-12"
 }
 
 // ---------------------------------------------------------------------------
-// Shared styles — black & white per docs/design-tokens.md.
-// 全て font-normal/medium 想定 (font-bold は使わない方針)。
+// Date helpers (formatting)
 // ---------------------------------------------------------------------------
 
-const COLOR_FG = "#0A0A0A"
-const COLOR_MUTED = "#737373"
-const COLOR_BORDER = "#D4D4D4"
-const COLOR_HAIRLINE = "#E5E5E5"
-const COLOR_BG_SOFT = "#FAFAFA"
+const MONTHS_EN = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+]
+
+function parseYmd(ymd: string): { y: number; m: number; d: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd)
+  if (!m) return null
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) }
+}
+
+function formatEnDate(ymd: string): string {
+  const p = parseYmd(ymd)
+  if (!p) return ymd
+  return `${p.d} ${MONTHS_EN[p.m - 1]}`
+}
+
+function formatJpDate(ymd: string): string {
+  const p = parseYmd(ymd)
+  if (!p) return ymd
+  return `${p.y}年${p.m}月${p.d}日`
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
+const C_FG = "#111111"
+const C_MUTED = "#666666"
+const C_HAIRLINE = "#CCCCCC"
+const C_BG_SOFT = "#F8F8F8"
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 56,
-    paddingBottom: 56,
-    paddingHorizontal: 56,
-    fontFamily: "Helvetica",
+    paddingTop: 40,
+    paddingBottom: 50,
+    paddingHorizontal: 48,
+    fontFamily: "NotoSansJP",
     fontSize: 10,
-    color: COLOR_FG,
+    color: C_FG,
     backgroundColor: "#FFFFFF",
   },
-  // header band
+  // header
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 16,
-  },
-  brand: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 11,
-    letterSpacing: 2,
-    color: COLOR_FG,
-  },
-  docTitle: {
-    fontFamily: "Helvetica",
-    fontSize: 10,
-    color: COLOR_MUTED,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  hr: {
-    borderTopWidth: 0.5,
-    borderTopColor: COLOR_BORDER,
-    marginBottom: 24,
-  },
-  metaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 28,
-  },
-  metaLabel: {
-    color: COLOR_MUTED,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    marginBottom: 3,
-  },
-  metaValue: {
-    fontSize: 11,
-    color: COLOR_FG,
-  },
-  // section block
-  section: {
-    marginBottom: 22,
-  },
-  sectionLabel: {
-    fontSize: 8,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: COLOR_MUTED,
-    marginBottom: 8,
-  },
-  // card with border
-  card: {
-    borderWidth: 0.5,
-    borderColor: COLOR_BORDER,
-    borderRadius: 6,
-    padding: 16,
-    marginBottom: 8,
-  },
-  cardSoft: {
-    backgroundColor: COLOR_BG_SOFT,
-    borderWidth: 0.5,
-    borderColor: COLOR_HAIRLINE,
-    borderRadius: 6,
-    padding: 16,
-  },
-  // representative card
-  repName: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 18,
-    color: COLOR_FG,
-    marginBottom: 8,
-  },
-  repMeta: {
-    fontSize: 10,
-    color: COLOR_FG,
-    marginBottom: 2,
-  },
-  repMetaMuted: {
-    color: COLOR_MUTED,
-  },
-  // shipment leg
-  legRow: {
-    flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    marginBottom: 18,
   },
-  legNum: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: COLOR_FG,
-    color: "#FFFFFF",
-    fontSize: 10,
-    textAlign: "center",
-    paddingTop: 5,
+  headerLeft: {
+    flexDirection: "column",
   },
-  legNumText: {
-    color: "#FFFFFF",
-    fontSize: 10,
-    textAlign: "center",
-  },
-  legBody: {
-    flex: 1,
-  },
-  legHotel: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 11,
-    color: COLOR_FG,
-    marginBottom: 2,
-  },
-  legArrow: {
-    fontSize: 10,
-    color: COLOR_MUTED,
-    marginVertical: 4,
-  },
-  legMetaRow: {
-    flexDirection: "row",
-    marginTop: 6,
-  },
-  legMetaCol: {
-    flex: 1,
-  },
-  legMetaLabel: {
-    fontSize: 7,
-    letterSpacing: 1.2,
+  headerVoucher: {
+    fontSize: 12,
+    color: C_MUTED,
+    letterSpacing: 2,
     textTransform: "uppercase",
-    color: COLOR_MUTED,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  legMetaValue: {
-    fontSize: 10,
-    color: COLOR_FG,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 500,
+    color: C_FG,
+    letterSpacing: 0.3,
   },
-  // footer support
-  supportCard: {
+  logo: {
+    width: 64,
+    height: 64,
+  },
+  noticeBanner: {
+    marginVertical: 14,
+    paddingVertical: 8,
     borderTopWidth: 0.5,
-    borderTopColor: COLOR_FG,
-    paddingTop: 14,
-    marginTop: 18,
-    marginBottom: 14,
+    borderTopColor: C_FG,
+    borderBottomWidth: 0.5,
+    borderBottomColor: C_FG,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: 500,
   },
-  supportLabel: {
-    fontSize: 8,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: COLOR_FG,
+  // KV block (label | value)
+  kvRow: {
+    flexDirection: "row",
     marginBottom: 6,
   },
-  supportRow: {
-    flexDirection: "row",
-    marginBottom: 2,
-  },
-  supportKey: {
-    fontSize: 9,
-    color: COLOR_MUTED,
-    width: 56,
-  },
-  supportVal: {
+  kvKey: {
+    width: 130,
     fontSize: 10,
-    color: COLOR_FG,
+    fontWeight: 500,
+    color: C_FG,
   },
-  // page footer
-  footer: {
-    position: "absolute",
-    bottom: 28,
-    left: 56,
-    right: 56,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    fontSize: 8,
-    color: COLOR_MUTED,
-    letterSpacing: 0.5,
+  kvValue: {
+    flex: 1,
+    fontSize: 10,
+    color: C_FG,
   },
-  // ops sheet specific
-  opsLegCard: {
-    borderWidth: 0.5,
-    borderColor: COLOR_BORDER,
-    borderRadius: 6,
-    padding: 16,
+  // spacing
+  gap: { height: 10 },
+  gapSmall: { height: 6 },
+  gapLarge: { height: 16 },
+  // Drop-off / Pick-up block
+  dropoffBlock: {
+    marginBottom: 6,
+  },
+  dropoffSub: {
+    marginLeft: 130,
+    fontSize: 10,
+    fontWeight: 500,
+    color: C_FG,
+    marginTop: 2,
+  },
+  // Divider between EN / JP sections
+  sectionDivider: {
+    marginTop: 16,
+    marginBottom: 12,
+    borderTopWidth: 0.5,
+    borderTopColor: C_HAIRLINE,
+    paddingTop: 8,
+    textAlign: "center",
+    fontSize: 9,
+    color: C_MUTED,
+    fontStyle: "italic",
+  },
+  // JP section
+  jpGreeting: {
+    fontSize: 10,
+    fontWeight: 500,
+    color: C_FG,
+    marginBottom: 6,
+  },
+  jpIntro: {
+    fontSize: 9.5,
+    color: C_FG,
+    lineHeight: 1.55,
     marginBottom: 12,
   },
-  opsLegHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: 8,
-    marginBottom: 8,
+  jpHotelHeader: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: C_FG,
+    paddingBottom: 4,
     borderBottomWidth: 0.5,
-    borderBottomColor: COLOR_HAIRLINE,
+    borderBottomColor: C_HAIRLINE,
+    marginBottom: 6,
+    marginTop: 10,
   },
-  opsKv: {
-    flexDirection: "row",
-    marginBottom: 3,
-  },
-  opsKvKey: {
-    width: 80,
-    color: COLOR_MUTED,
-    fontSize: 9,
-  },
-  opsKvVal: {
-    flex: 1,
-    fontSize: 10,
-    color: COLOR_FG,
-  },
-  opsBlock: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  opsAddrLine: {
+  jpGuestInfo: {
     fontSize: 9.5,
-    color: COLOR_FG,
-    marginBottom: 1,
+    color: C_FG,
+    marginBottom: 4,
     paddingLeft: 8,
   },
-  opsSubLabel: {
-    fontSize: 8,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: COLOR_MUTED,
+  jpInstruction: {
+    fontSize: 9.5,
+    color: C_FG,
+    lineHeight: 1.55,
+    paddingLeft: 8,
     marginBottom: 4,
-    marginTop: 6,
   },
-  opsSuitcaseRow: {
+  // footer
+  footer: {
+    position: "absolute",
+    bottom: 24,
+    left: 48,
+    right: 48,
+    borderTopWidth: 0.5,
+    borderTopColor: C_HAIRLINE,
+    paddingTop: 8,
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
+    justifyContent: "space-between",
+    fontSize: 8,
+    color: C_MUTED,
   },
-  opsSuitcaseLabel: {
-    width: 60,
-    fontSize: 9,
-    color: COLOR_FG,
-  },
-  opsTrackingLine: {
-    flex: 1,
-    borderBottomWidth: 0.5,
-    borderBottomColor: COLOR_MUTED,
-    paddingBottom: 1,
-    fontSize: 9,
-    color: COLOR_MUTED,
+  pageNum: {
+    color: C_MUTED,
   },
 })
 
 // ---------------------------------------------------------------------------
-// Voucher (traveler-facing) — A4 portrait, English
+// Per-leg voucher page
+// ---------------------------------------------------------------------------
+
+function LegPage({
+  data,
+  shipment,
+  legIndex,
+  totalLegs,
+}: {
+  data: VoucherInput
+  shipment: VoucherShipment
+  legIndex: number
+  totalLegs: number
+}) {
+  const totalSuitcases = data.shipments.reduce((sum, s) => sum + s.suitcaseCount, 0)
+  const dropOffTime = shipment.dropOffTime?.trim() || "check-out"
+  const pickUpNote = shipment.pickUpNote?.trim() || "when check-in"
+
+  // JP messages embedded as template strings
+  const jpFromHeader = `発送元：${shipment.from.hotel} 様`
+  const jpToHeader = `発送先：${shipment.to.hotel} 様`
+  const fromNights = ""
+  const toNights =
+    typeof shipment.destinationNights === "number" && shipment.destinationNights > 0
+      ? `〜${shipment.destinationNights}泊`
+      : ""
+  const jpFromGuest = `■ お客様情報　チェックイン日：${formatJpDate(shipment.shipmentDate)}${fromNights} / 代表者 ${data.representativeLabel} ${data.travelerCount}名様`
+  const jpToGuest = `■ お客様情報　チェックイン日：${formatJpDate(shipment.expectedArrival)}${toNights} / 代表者 ${data.representativeLabel} ${data.travelerCount}名様`
+  const jpFromInstruction = `朝${dropOffTime}までにお客様がスーツケースを預けに来られますので「一時預かり」をお願い致します。午前中に配送業者のドライバーが集荷に伺いますのでお荷物をお渡しください。`
+  const jpToInstruction = `お客様のスーツケースが${formatJpDate(shipment.expectedArrival)}に届いております。チェックイン時にお客様にお渡しください。`
+
+  return (
+    <Page size="A4" style={styles.page}>
+      {/* Header: title + logo */}
+      <View style={styles.headerRow}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerVoucher}>Voucher</Text>
+          <Text style={styles.headerTitle}>Service: Luggage shipping service</Text>
+        </View>
+        <Image style={styles.logo} src={LOGO_PATH} />
+      </View>
+
+      <View style={styles.noticeBanner}>
+        <Text>= Please present this voucher to the reception staff upon check-in =</Text>
+      </View>
+
+      {/* EN section */}
+      <View style={styles.kvRow}>
+        <Text style={styles.kvKey}>Transaction number</Text>
+        <Text style={styles.kvValue}>{data.bookingId}</Text>
+      </View>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvKey}>Number of luggage</Text>
+        <Text style={styles.kvValue}>{shipment.suitcaseCount} luggage</Text>
+      </View>
+      <View style={styles.kvRow}>
+        <Text style={styles.kvKey}>Supplier</Text>
+        <Text style={styles.kvValue}>
+          {data.companyName} (Tel: {data.contactPersonPhone} *Japanese speaking only)
+        </Text>
+      </View>
+
+      <View style={styles.gap} />
+
+      <View style={styles.dropoffBlock}>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Drop-off:</Text>
+          <Text style={styles.kvValue}>
+            at the hotel&#x2019;s reception in {shipment.from.hotel}
+          </Text>
+        </View>
+        <Text style={styles.dropoffSub}>
+          On {formatEnDate(shipment.shipmentDate)} by {dropOffTime}
+        </Text>
+      </View>
+
+      <View style={styles.gapSmall} />
+
+      <View style={styles.dropoffBlock}>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Pick-up:</Text>
+          <Text style={styles.kvValue}>
+            at the hotel&#x2019;s reception in {shipment.to.hotel}
+          </Text>
+        </View>
+        <Text style={styles.dropoffSub}>
+          On {formatEnDate(shipment.expectedArrival)} {pickUpNote}
+        </Text>
+      </View>
+
+      <Text style={styles.sectionDivider}>
+        The following is a Japanese message addressed to the hotel representative.
+      </Text>
+
+      {/* JP section */}
+      <Text style={styles.jpGreeting}>各ご担当者様へ</Text>
+      <Text style={styles.jpIntro}>
+        ランドオペレーター[{data.tourCompany || "BondEx"}]がこちらの手配を行っております。何か不明な点がありましたら手配担当の{data.contactPersonName}までご連絡ください → {data.contactPersonPhone}
+      </Text>
+
+      <Text style={styles.jpHotelHeader}>{jpFromHeader}</Text>
+      <Text style={styles.jpGuestInfo}>{jpFromGuest}</Text>
+      <Text style={styles.jpInstruction}>{jpFromInstruction}</Text>
+      {shipment.specialNote && (
+        <Text style={styles.jpInstruction}>※ {shipment.specialNote}</Text>
+      )}
+
+      <Text style={styles.jpHotelHeader}>{jpToHeader}</Text>
+      <Text style={styles.jpGuestInfo}>{jpToGuest}</Text>
+      <Text style={styles.jpInstruction}>{jpToInstruction}</Text>
+
+      {/* Footer */}
+      <View style={styles.footer} fixed>
+        <View>
+          <Text>{data.companyName}</Text>
+          <Text>{data.companyAddress}</Text>
+          <Text>TEL: {data.contactPersonPhone}</Text>
+        </View>
+        <Text
+          style={styles.pageNum}
+          render={() =>
+            totalLegs > 1
+              ? `Leg ${legIndex + 1} / ${totalLegs} · Total ${totalSuitcases} luggage`
+              : `Total ${totalSuitcases} luggage`
+          }
+        />
+      </View>
+    </Page>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Public components
 // ---------------------------------------------------------------------------
 
 export function VoucherDocument({ data }: { data: VoucherInput }) {
   return (
     <Document
       title={`BondEx Voucher ${data.bookingId}`}
-      author="JOJO Corporation"
+      author={data.companyName}
       subject="Luggage Forwarding Voucher"
     >
-      <Page size="A4" style={styles.page}>
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <Text style={styles.brand}>BONDEX</Text>
-          <Text style={styles.docTitle}>Luggage Forwarding Voucher</Text>
-        </View>
-        <View style={styles.hr} />
-
-        {/* Meta */}
-        <View style={styles.metaRow}>
-          <View>
-            <Text style={styles.metaLabel}>Booking</Text>
-            <Text style={styles.metaValue}>{data.bookingId}</Text>
-          </View>
-          <View>
-            <Text style={styles.metaLabel}>Issued</Text>
-            <Text style={styles.metaValue}>{data.issuedDate}</Text>
-          </View>
-        </View>
-
-        {/* Representative */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Representative</Text>
-          <View style={styles.cardSoft}>
-            <Text style={styles.repName}>{data.representativeLabel}</Text>
-            <Text style={styles.repMeta}>
-              <Text style={styles.repMetaMuted}>Tour company  </Text>
-              {data.tourCompany}
-            </Text>
-            <Text style={styles.repMeta}>
-              <Text style={styles.repMetaMuted}>Travelers  </Text>
-              {data.travelerCount}
-            </Text>
-          </View>
-        </View>
-
-        {/* Shipment Plan */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Shipment Plan</Text>
-          {data.shipments.map((s, i) => (
-            <View key={i} style={styles.card}>
-              <View style={styles.legRow}>
-                <View style={styles.legNum}>
-                  <Text style={styles.legNumText}>{i + 1}</Text>
-                </View>
-                <View style={styles.legBody}>
-                  <Text style={styles.legHotel}>{s.from.hotel}</Text>
-                  <Text style={styles.legArrow}>↓</Text>
-                  <Text style={styles.legHotel}>{s.to.hotel}</Text>
-                  <View style={styles.legMetaRow}>
-                    <View style={styles.legMetaCol}>
-                      <Text style={styles.legMetaLabel}>Ship out</Text>
-                      <Text style={styles.legMetaValue}>{s.shipmentDate}</Text>
-                    </View>
-                    <View style={styles.legMetaCol}>
-                      <Text style={styles.legMetaLabel}>Arrive</Text>
-                      <Text style={styles.legMetaValue}>{s.expectedArrival}</Text>
-                    </View>
-                    <View style={styles.legMetaCol}>
-                      <Text style={styles.legMetaLabel}>Suitcases</Text>
-                      <Text style={styles.legMetaValue}>{s.suitcaseCount}</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Support */}
-        <View style={styles.supportCard}>
-          <Text style={styles.supportLabel}>24 / 7 Support</Text>
-          <View style={styles.supportRow}>
-            <Text style={styles.supportKey}>Phone</Text>
-            <Text style={styles.supportVal}>{data.supportPhone}</Text>
-          </View>
-          <View style={styles.supportRow}>
-            <Text style={styles.supportKey}>Email</Text>
-            <Text style={styles.supportVal}>{data.supportEmail}</Text>
-          </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer} fixed>
-          <Text>JOJO Corporation</Text>
-          <Text>bondex.express</Text>
-        </View>
-      </Page>
+      {data.shipments.map((shipment, i) => (
+        <LegPage
+          key={i}
+          data={data}
+          shipment={shipment}
+          legIndex={i}
+          totalLegs={data.shipments.length}
+        />
+      ))}
     </Document>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Operations Sheet (JOJO / hotel staff facing) — A4, English labels
-// (Japanese fonts are not bundled; English labels keep rendering reliable.)
-// ---------------------------------------------------------------------------
-
+// Operations PDF: 内部記録用、簡素版。Ship&co の本物 Yamato 伝票が出るまでのつなぎ。
 export function OperationsDocument({ data }: { data: VoucherInput }) {
   return (
     <Document
-      title={`BondEx Ops Sheet ${data.bookingId}`}
-      author="JOJO Corporation"
+      title={`BondEx Ops ${data.bookingId}`}
+      author={data.companyName}
       subject="Operations Sheet"
     >
-      <Page size="A4" style={styles.page} wrap>
-        {/* Header */}
+      <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
-          <Text style={styles.brand}>BONDEX</Text>
-          <Text style={styles.docTitle}>Operations Sheet · Internal</Text>
-        </View>
-        <View style={styles.hr} />
-
-        {/* Meta */}
-        <View style={styles.metaRow}>
-          <View>
-            <Text style={styles.metaLabel}>Booking</Text>
-            <Text style={styles.metaValue}>{data.bookingId}</Text>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerVoucher}>Operations</Text>
+            <Text style={styles.headerTitle}>{data.bookingId}</Text>
           </View>
-          <View>
-            <Text style={styles.metaLabel}>Issued</Text>
-            <Text style={styles.metaValue}>{data.issuedDate}</Text>
-          </View>
-          <View>
-            <Text style={styles.metaLabel}>Total billing</Text>
-            <Text style={styles.metaValue}>¥{data.totalAmount.toLocaleString()}</Text>
-          </View>
+          <Image style={styles.logo} src={LOGO_PATH} />
         </View>
 
-        {/* Booking summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Booking Summary</Text>
-          <View style={styles.cardSoft}>
-            <View style={styles.opsKv}>
-              <Text style={styles.opsKvKey}>Representative</Text>
-              <Text style={styles.opsKvVal}>{data.representativeLabel}</Text>
-            </View>
-            <View style={styles.opsKv}>
-              <Text style={styles.opsKvKey}>Tour company</Text>
-              <Text style={styles.opsKvVal}>{data.tourCompany}</Text>
-            </View>
-            <View style={styles.opsKv}>
-              <Text style={styles.opsKvKey}>Travelers</Text>
-              <Text style={styles.opsKvVal}>{data.travelerCount}</Text>
-            </View>
-            <View style={styles.opsKv}>
-              <Text style={styles.opsKvKey}>Total legs</Text>
-              <Text style={styles.opsKvVal}>{data.shipments.length}</Text>
-            </View>
-          </View>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Issued</Text>
+          <Text style={styles.kvValue}>{data.issuedDate}</Text>
+        </View>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Representative</Text>
+          <Text style={styles.kvValue}>{data.representativeLabel}</Text>
+        </View>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Tour company</Text>
+          <Text style={styles.kvValue}>{data.tourCompany}</Text>
+        </View>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Travelers</Text>
+          <Text style={styles.kvValue}>{data.travelerCount}</Text>
+        </View>
+        <View style={styles.kvRow}>
+          <Text style={styles.kvKey}>Total billing</Text>
+          <Text style={styles.kvValue}>¥{data.totalAmount.toLocaleString()}</Text>
         </View>
 
-        {/* Legs */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Shipment Legs</Text>
-          {data.shipments.map((s, i) => (
-            <View key={i} style={styles.opsLegCard} wrap={false}>
-              <View style={styles.opsLegHeader}>
-                <Text style={styles.legHotel}>Leg {i + 1} of {data.shipments.length}</Text>
-                <Text style={styles.metaValue}>{s.suitcaseCount} × ¥{(5000).toLocaleString()} = ¥{(s.suitcaseCount * 5000).toLocaleString()}</Text>
-              </View>
-
-              <View style={styles.opsKv}>
-                <Text style={styles.opsKvKey}>Ship out</Text>
-                <Text style={styles.opsKvVal}>{s.shipmentDate}</Text>
-              </View>
-              <View style={styles.opsKv}>
-                <Text style={styles.opsKvKey}>Expected arrival</Text>
-                <Text style={styles.opsKvVal}>{s.expectedArrival}</Text>
-              </View>
-              <View style={styles.opsKv}>
-                <Text style={styles.opsKvKey}>Recipient</Text>
-                <Text style={styles.opsKvVal}>{s.recipient}</Text>
-              </View>
-
-              <Text style={styles.opsSubLabel}>From</Text>
-              <Text style={styles.opsAddrLine}>{s.from.hotel}</Text>
-              <Text style={styles.opsAddrLine}>{s.from.address}</Text>
-
-              <Text style={styles.opsSubLabel}>To</Text>
-              <Text style={styles.opsAddrLine}>{s.to.hotel}</Text>
-              <Text style={styles.opsAddrLine}>{s.to.address}</Text>
-
-              <Text style={styles.opsSubLabel}>Suitcases · Yamato tracking #</Text>
-              {Array.from({ length: Math.max(1, s.suitcaseCount) }).map((_, j) => (
-                <View key={j} style={styles.opsSuitcaseRow}>
-                  <Text style={styles.opsSuitcaseLabel}>
-                    #{j + 1} of {s.suitcaseCount}
-                  </Text>
-                  <Text style={styles.opsTrackingLine}> </Text>
-                </View>
-              ))}
+        {data.shipments.map((s, i) => (
+          <View key={i} style={{ marginTop: 14 }}>
+            <Text style={styles.jpHotelHeader}>
+              Leg {i + 1} of {data.shipments.length}
+            </Text>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Ship out</Text>
+              <Text style={styles.kvValue}>{s.shipmentDate}</Text>
             </View>
-          ))}
-        </View>
-
-        {/* Support */}
-        <View style={styles.supportCard}>
-          <Text style={styles.supportLabel}>24 / 7 Support</Text>
-          <View style={styles.supportRow}>
-            <Text style={styles.supportKey}>Phone</Text>
-            <Text style={styles.supportVal}>{data.supportPhone}</Text>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Expected arrival</Text>
+              <Text style={styles.kvValue}>{s.expectedArrival}</Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>From</Text>
+              <Text style={styles.kvValue}>
+                {s.from.hotel} — {s.from.address || s.from.city}
+              </Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>To</Text>
+              <Text style={styles.kvValue}>
+                {s.to.hotel} — {s.to.address || s.to.city}
+              </Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Recipient</Text>
+              <Text style={styles.kvValue}>{s.recipient}</Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Suitcases</Text>
+              <Text style={styles.kvValue}>
+                {s.suitcaseCount} × ¥5,000 = ¥{(s.suitcaseCount * 5000).toLocaleString()}
+              </Text>
+            </View>
           </View>
-          <View style={styles.supportRow}>
-            <Text style={styles.supportKey}>Email</Text>
-            <Text style={styles.supportVal}>{data.supportEmail}</Text>
-          </View>
-        </View>
+        ))}
 
-        {/* Footer with page number */}
         <View style={styles.footer} fixed>
-          <Text>JOJO Corporation · bondex.express</Text>
-          <Text
-            render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`}
-          />
+          <View>
+            <Text>{data.companyName}</Text>
+            <Text>{data.companyAddress}</Text>
+          </View>
+          <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`} />
         </View>
       </Page>
     </Document>
@@ -535,12 +513,15 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Defaults
 // ---------------------------------------------------------------------------
 
 export const SUPPORT_DEFAULTS = {
   phone: "+81-XX-XXXX-XXXX",
   email: "support@bondex.express",
+  contactPersonName: "谷口",
+  companyName: "株式会社JOJO",
+  companyAddress: "〒158-0092 東京都世田谷区野毛1-9-12",
 }
 
 export function generateBookingId(): string {
@@ -553,6 +534,5 @@ export function generateBookingId(): string {
 }
 
 export function formatIssuedDate(d: Date = new Date()): string {
-  // e.g. "June 25, 2026"
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
 }

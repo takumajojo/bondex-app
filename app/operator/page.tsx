@@ -91,13 +91,26 @@ const messages = {
     generatingVouchers: "Generating documents…",
     docsReady: "Documents ready",
     bookingId: "Booking",
-    voucherCardTitle: "Traveler Voucher",
-    voucherCardSub: "Place in the welcome packet for the traveler's first hotel.",
+    voucherCardTitle: "Hotel Voucher",
+    voucherCardSub: "Preview, then send a printed copy in the welcome packet to the traveler's first hotel.",
     opsCardTitle: "Operations Sheet",
-    opsCardSub: "Keep for your records and fill in Yamato tracking numbers later.",
+    opsCardSub: "Internal record; fill in Yamato tracking numbers after labels are issued.",
     download: "Download",
+    preview: "Preview",
     newBooking: "Start a new booking",
     generationFailed: "Document generation failed",
+    yamatoLabelsHeading: "Yamato shipping labels",
+    yamatoLegLabel: (n: number) => `Leg ${n}`,
+    yamatoTracking: "Tracking",
+    yamatoLabelFailed: "Label issuance failed",
+    extraInfo: "Additional details",
+    dropOffTime: "Drop-off time",
+    dropOffTimePlaceholder: "e.g. 8:00",
+    pickUpNote: "Pick-up timing",
+    pickUpNotePlaceholder: "e.g. when check-in",
+    destinationNights: "Nights at destination",
+    specialNote: "Special note (optional)",
+    specialNotePlaceholder: "Any handling instruction for the hotel…",
   },
   ja: {
     brand: "BondEx オペレーター",
@@ -155,13 +168,26 @@ const messages = {
     generatingVouchers: "書類を生成中…",
     docsReady: "書類が用意できました",
     bookingId: "予約番号",
-    voucherCardTitle: "旅行者用バウチャー",
-    voucherCardSub: "旅行者の初日宿泊ホテルに送るウェルカムパケットに同封します。",
+    voucherCardTitle: "ホテル向けバウチャー",
+    voucherCardSub: "プレビューで内容を確認し、印刷して旅行者の初日ホテルに送付します。",
     opsCardTitle: "オペレーションシート",
     opsCardSub: "社内記録用。後でヤマトの追跡番号を記入します。",
     download: "ダウンロード",
+    preview: "プレビュー",
     newBooking: "新しい予約を開始",
     generationFailed: "書類の生成に失敗しました",
+    yamatoLabelsHeading: "ヤマト送り状",
+    yamatoLegLabel: (n: number) => `区間 ${n}`,
+    yamatoTracking: "追跡番号",
+    yamatoLabelFailed: "送り状発行に失敗",
+    extraInfo: "追加情報",
+    dropOffTime: "発送時刻",
+    dropOffTimePlaceholder: "例: 8:00",
+    pickUpNote: "受取タイミング",
+    pickUpNotePlaceholder: "例: チェックイン時",
+    destinationNights: "宿泊数",
+    specialNote: "特記事項 (任意)",
+    specialNotePlaceholder: "ホテルへの特別な依頼があれば...",
   },
 } satisfies Record<Locale, Record<string, string | ((...args: never[]) => string)>>
 
@@ -215,9 +241,13 @@ interface ParsedItinerary {
   shipments: ParsedShipment[]
 }
 
-// 編集可能な State: パース結果に suitcaseCount を加える
+// 編集可能な State: パース結果に suitcaseCount + 補足フィールドを加える
 interface EditableShipment extends ParsedShipment {
   suitcaseCount: number
+  dropOffTime: string
+  pickUpNote: string
+  destinationNights: number
+  specialNote: string
 }
 
 interface EditableItinerary {
@@ -231,6 +261,16 @@ interface GeneratedDocs {
   bookingId: string
   voucherUrl: string
   opsUrl: string
+  yamatoLabels: YamatoLabel[]
+}
+
+interface YamatoLabel {
+  legIndex: number
+  legLabel: string // e.g. "Leg 1: Hyatt Hakone → Mitsui Kyoto"
+  labelUrl: string
+  trackingNumbers: string[]
+  status: "ok" | "failed"
+  error?: string
 }
 
 // 検証チェック: 各 leg ごとに3軸 (Name / Date / Address)、最上段に Representative 1軸。
@@ -245,13 +285,14 @@ interface Verifications {
   legs: LegVerification[]
 }
 
-// AI 住所検証
+// AI 住所検証 + 補完
 type AddressCheckStatus = "pending" | "verified" | "mismatch" | "low_confidence" | "failed"
 interface AddressCheck {
   status: AddressCheckStatus
   citationUrl?: string
   sourceTitle?: string
   reasoning?: string
+  canonicalAddress?: string
 }
 
 function addressKey(hotel: string, address: string): string {
@@ -317,41 +358,65 @@ export default function OperatorPage() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [generatedDocs])
 
-  // AI で1件の住所を検証 (バックグラウンド)。結果は addressChecks に書き込む。
-  const verifyAddress = useCallback(async (hotel: string, address: string) => {
-    const key = addressKey(hotel, address)
-    setAddressChecks((prev) => ({ ...prev, [key]: { status: "pending" } }))
-    try {
-      const res = await fetch("/api/address/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hotelName: hotel, address }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok || !data) {
+  // AI で1件の住所を検証/補完 (バックグラウンド)。結果は addressChecks に書き込み、
+  // 住所が空 or 不完全だった場合は canonicalAddress で itinerary を自動補完する。
+  const verifyAddress = useCallback(
+    async (hotel: string, address: string, side?: { legIndex: number; which: "from" | "to" }) => {
+      const key = addressKey(hotel, address)
+      setAddressChecks((prev) => ({ ...prev, [key]: { status: "pending" } }))
+      try {
+        const res = await fetch("/api/address/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hotelName: hotel, address }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data) {
+          setAddressChecks((prev) => ({ ...prev, [key]: { status: "failed" } }))
+          return
+        }
+        const matched = Boolean(data.matched)
+        const confidence = String(data.confidence || "")
+        const canonical =
+          typeof data.canonicalAddress === "string" ? data.canonicalAddress.trim() : ""
+        let status: AddressCheckStatus = "failed"
+        if (matched && confidence === "high") status = "verified"
+        else if (matched && confidence === "medium") status = "verified"
+        else if (matched && confidence === "low") status = "low_confidence"
+        else if (!matched) status = "mismatch"
+        setAddressChecks((prev) => ({
+          ...prev,
+          [key]: {
+            status,
+            citationUrl: typeof data.citationUrl === "string" ? data.citationUrl : undefined,
+            sourceTitle: typeof data.sourceTitle === "string" ? data.sourceTitle : undefined,
+            reasoning: typeof data.reasoning === "string" ? data.reasoning : undefined,
+            canonicalAddress: canonical || undefined,
+          },
+        }))
+
+        // 住所が空 or 都市名のみ (短い) で AI が canonical を返したら自動補完
+        if (side && canonical && address.trim().length < canonical.length / 2) {
+          setItinerary((prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              shipments: prev.shipments.map((s, i) => {
+                if (i !== side.legIndex) return s
+                if (side.which === "from") {
+                  return { ...s, from: { ...s.from, address: canonical } }
+                }
+                return { ...s, to: { ...s.to, address: canonical } }
+              }),
+            }
+          })
+        }
+      } catch {
         setAddressChecks((prev) => ({ ...prev, [key]: { status: "failed" } }))
-        return
       }
-      const matched = Boolean(data.matched)
-      const confidence = String(data.confidence || "")
-      let status: AddressCheckStatus = "failed"
-      if (matched && confidence === "high") status = "verified"
-      else if (matched && confidence === "medium") status = "verified"
-      else if (matched && confidence === "low") status = "low_confidence"
-      else if (!matched) status = "mismatch"
-      setAddressChecks((prev) => ({
-        ...prev,
-        [key]: {
-          status,
-          citationUrl: typeof data.citationUrl === "string" ? data.citationUrl : undefined,
-          sourceTitle: typeof data.sourceTitle === "string" ? data.sourceTitle : undefined,
-          reasoning: typeof data.reasoning === "string" ? data.reasoning : undefined,
-        },
-      }))
-    } catch {
-      setAddressChecks((prev) => ({ ...prev, [key]: { status: "failed" } }))
-    }
-  }, [])
+    },
+    [],
+  )
 
   // 検証画面へ遷移。前回の検証チェックは毎回リセット (内容が同じでも再確認を強制する)。
   // 入場と同時に各 leg の from / to 住所を AI に投げる (並列、重複は除外)。
@@ -361,15 +426,16 @@ export default function OperatorPage() {
     setPhase("confirm")
 
     const seen = new Set<string>()
-    for (const s of itinerary.shipments) {
-      for (const loc of [s.from, s.to]) {
-        if (!loc.hotel || !loc.address) continue
+    itinerary.shipments.forEach((s, legIndex) => {
+      ;(["from", "to"] as const).forEach((which) => {
+        const loc = s[which]
+        if (!loc.hotel) return
         const key = addressKey(loc.hotel, loc.address)
-        if (seen.has(key)) continue
+        if (seen.has(key)) return
         seen.add(key)
-        void verifyAddress(loc.hotel, loc.address)
-      }
-    }
+        void verifyAddress(loc.hotel, loc.address, { legIndex, which })
+      })
+    })
   }, [itinerary, verifyAddress])
 
   // 戻るボタン: 検証フェーズから編集フェーズへ。検証状態もリセット (AI 結果は残しても良いが、
@@ -403,6 +469,10 @@ export default function OperatorPage() {
         to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city },
         recipient: s.recipient,
         suitcaseCount: s.suitcaseCount,
+        dropOffTime: s.dropOffTime,
+        pickUpNote: s.pickUpNote,
+        destinationNights: s.destinationNights || undefined,
+        specialNote: s.specialNote,
       })),
     }
 
@@ -422,12 +492,74 @@ export default function OperatorPage() {
       return { url, bookingId }
     }
 
+    // Ship&co Yamato 送り状を1区間ずつ呼ぶ
+    async function fetchYamatoLabel(legIndex: number): Promise<YamatoLabel> {
+      const s = itinerary!.shipments[legIndex]
+      const legLabel = `${s.from.hotel} → ${s.to.hotel}`
+      try {
+        const res = await fetch("/api/shipandco/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            refNumber: `BDX-LEG${legIndex + 1}`, // ボーナス: 後で実際の bookingId に差し替え
+            shipmentDate: s.shipmentDate,
+            suitcaseCount: s.suitcaseCount,
+            from: {
+              full_name: s.recipient || "Front Desk",
+              company: s.from.hotel,
+              country: "JP",
+              address1: s.from.address || s.from.city,
+            },
+            to: {
+              full_name: s.recipient || "Front Desk",
+              company: s.to.hotel,
+              country: "JP",
+              address1: s.to.address || s.to.city,
+            },
+          }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data) {
+          return {
+            legIndex,
+            legLabel,
+            labelUrl: "",
+            trackingNumbers: [],
+            status: "failed",
+            error: (data && (data as { error?: string }).error) || res.statusText,
+          }
+        }
+        const d = data as { label?: string; trackingNumbers?: string[] }
+        return {
+          legIndex,
+          legLabel,
+          labelUrl: d.label ?? "",
+          trackingNumbers: d.trackingNumbers ?? [],
+          status: d.label ? "ok" : "failed",
+        }
+      } catch (err) {
+        return {
+          legIndex,
+          legLabel,
+          labelUrl: "",
+          trackingNumbers: [],
+          status: "failed",
+          error: err instanceof Error ? err.message : "Network error",
+        }
+      }
+    }
+
     try {
-      const [voucher, ops] = await Promise.all([fetchPdf("voucher"), fetchPdf("ops")])
+      const [voucher, ops, ...yamatoLabels] = await Promise.all([
+        fetchPdf("voucher"),
+        fetchPdf("ops"),
+        ...itinerary.shipments.map((_, i) => fetchYamatoLabel(i)),
+      ])
       setGeneratedDocs({
         bookingId: voucher.bookingId || ops.bookingId,
         voucherUrl: voucher.url,
         opsUrl: ops.url,
+        yamatoLabels,
       })
       setPhase("generated")
     } catch (err) {
@@ -491,6 +623,10 @@ export default function OperatorPage() {
         shipments: parsed.shipments.map((s) => ({
           ...s,
           suitcaseCount: parsed.guest.travelerCount || 1,
+          dropOffTime: "",
+          pickUpNote: "",
+          destinationNights: 0,
+          specialNote: "",
         })),
       }
       setItinerary(editable)
@@ -519,6 +655,31 @@ export default function OperatorPage() {
       ...itinerary,
       shipments: itinerary.shipments.map((s, i) =>
         i === index ? { ...s, suitcaseCount: next } : s,
+      ),
+    })
+  }
+
+  const updateShipmentField = (
+    index: number,
+    field: "dropOffTime" | "pickUpNote" | "specialNote",
+    value: string,
+  ) => {
+    if (!itinerary) return
+    setItinerary({
+      ...itinerary,
+      shipments: itinerary.shipments.map((s, i) =>
+        i === index ? { ...s, [field]: value } : s,
+      ),
+    })
+  }
+
+  const updateDestinationNights = (index: number, value: number) => {
+    if (!itinerary) return
+    const next = Math.max(0, Math.floor(value))
+    setItinerary({
+      ...itinerary,
+      shipments: itinerary.shipments.map((s, i) =>
+        i === index ? { ...s, destinationNights: next } : s,
       ),
     })
   }
@@ -634,6 +795,8 @@ export default function OperatorPage() {
             tourCompany={tourCompany}
             onUpdateTourCompany={setTourCompany}
             onUpdateSuitcaseCount={updateSuitcaseCount}
+            onUpdateShipmentField={updateShipmentField}
+            onUpdateDestinationNights={updateDestinationNights}
             onContinue={goToConfirm}
           />
         )}
@@ -705,6 +868,8 @@ function ReviewView({
   tourCompany,
   onUpdateTourCompany,
   onUpdateSuitcaseCount,
+  onUpdateShipmentField,
+  onUpdateDestinationNights,
   onContinue,
 }: {
   t: Messages
@@ -714,6 +879,12 @@ function ReviewView({
   tourCompany: string
   onUpdateTourCompany: (value: string) => void
   onUpdateSuitcaseCount: (index: number, value: number) => void
+  onUpdateShipmentField: (
+    index: number,
+    field: "dropOffTime" | "pickUpNote" | "specialNote",
+    value: string,
+  ) => void
+  onUpdateDestinationNights: (index: number, value: number) => void
   onContinue: () => void
 }) {
   const { guest, shipments } = itinerary
@@ -798,6 +969,8 @@ function ReviewView({
                 index={i}
                 shipment={s}
                 onUpdateSuitcaseCount={onUpdateSuitcaseCount}
+                onUpdateShipmentField={onUpdateShipmentField}
+                onUpdateDestinationNights={onUpdateDestinationNights}
               />
             ))}
           </ol>
@@ -836,11 +1009,19 @@ function ShipmentRow({
   index,
   shipment,
   onUpdateSuitcaseCount,
+  onUpdateShipmentField,
+  onUpdateDestinationNights,
 }: {
   t: Messages
   index: number
   shipment: EditableShipment
   onUpdateSuitcaseCount: (index: number, value: number) => void
+  onUpdateShipmentField: (
+    index: number,
+    field: "dropOffTime" | "pickUpNote" | "specialNote",
+    value: string,
+  ) => void
+  onUpdateDestinationNights: (index: number, value: number) => void
 }) {
   return (
     <li className="rounded-2xl border border-border bg-white p-5">
@@ -912,6 +1093,56 @@ function ShipmentRow({
           <span className="text-xs text-muted-foreground tabular-nums">
             ¥{(shipment.suitcaseCount * FLAT_RATE_YEN).toLocaleString()}
           </span>
+        </div>
+      </div>
+
+      {/* 補足入力欄 */}
+      <div className="mt-4 pt-4 border-t border-border space-y-3">
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
+          {t.extraInfo}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t.dropOffTime}</label>
+            <Input
+              type="text"
+              placeholder={t.dropOffTimePlaceholder}
+              value={shipment.dropOffTime}
+              onChange={(e) => onUpdateShipmentField(index, "dropOffTime", e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t.pickUpNote}</label>
+            <Input
+              type="text"
+              placeholder={t.pickUpNotePlaceholder}
+              value={shipment.pickUpNote}
+              onChange={(e) => onUpdateShipmentField(index, "pickUpNote", e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{t.destinationNights}</label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={shipment.destinationNights || ""}
+              onChange={(e) => onUpdateDestinationNights(index, Number(e.target.value))}
+              className="h-9 text-sm"
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">{t.specialNote}</label>
+          <Input
+            type="text"
+            placeholder={t.specialNotePlaceholder}
+            value={shipment.specialNote}
+            onChange={(e) => onUpdateShipmentField(index, "specialNote", e.target.value)}
+            className="h-9 text-sm"
+          />
         </div>
       </div>
     </li>
@@ -1313,6 +1544,7 @@ function GeneratedView({
           href={docs.voucherUrl}
           downloadName={`bondex-voucher-${docs.bookingId}.pdf`}
           downloadLabel={t.download}
+          previewLabel={t.preview}
         />
         <DocCard
           title={t.opsCardTitle}
@@ -1320,8 +1552,60 @@ function GeneratedView({
           href={docs.opsUrl}
           downloadName={`bondex-ops-${docs.bookingId}.pdf`}
           downloadLabel={t.download}
+          previewLabel={t.preview}
         />
       </section>
+
+      {/* Yamato 送り状 (Ship&co API) */}
+      {docs.yamatoLabels.length > 0 && (
+        <section className="space-y-3">
+          <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
+            {t.yamatoLabelsHeading}
+          </p>
+          {docs.yamatoLabels.map((y) => (
+            <div
+              key={y.legIndex}
+              className="rounded-2xl border border-border bg-white p-4 flex items-start gap-3"
+            >
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4 text-foreground" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {t.yamatoLegLabel(y.legIndex + 1)}: {y.legLabel}
+                </p>
+                {y.status === "ok" ? (
+                  <>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t.yamatoTracking}:{" "}
+                      <span className="text-foreground/80 font-medium">
+                        {y.trackingNumbers.join(", ") || "—"}
+                      </span>
+                    </p>
+                    {y.labelUrl && (
+                      <a
+                        href={y.labelUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-foreground/80 underline underline-offset-2 mt-2"
+                      >
+                        <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        {t.download}
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-amber-700 mt-1 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+                    {t.yamatoLabelFailed}
+                    {y.error && <span className="text-muted-foreground">— {y.error}</span>}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="flex items-center justify-end">
         <button
@@ -1342,16 +1626,18 @@ function DocCard({
   href,
   downloadName,
   downloadLabel,
+  previewLabel,
 }: {
   title: string
   subtitle: string
   href: string
   downloadName: string
   downloadLabel: string
+  previewLabel: string
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-white p-6 flex flex-col gap-4">
-      <div className="flex items-start gap-3">
+    <div className="rounded-2xl border border-border bg-white overflow-hidden flex flex-col">
+      <div className="p-6 flex items-start gap-3">
         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
           <FileText className="w-5 h-5 text-foreground" strokeWidth={1.5} />
         </div>
@@ -1360,16 +1646,28 @@ function DocCard({
           <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{subtitle}</p>
         </div>
       </div>
-      <a
-        href={href}
-        download={downloadName}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
-      >
-        <Download className="w-4 h-4" strokeWidth={1.5} />
-        {downloadLabel}
-      </a>
+
+      {/* インラインプレビュー (iframe) */}
+      <div className="mx-6 mb-4 rounded-xl border border-border bg-slate-100 overflow-hidden">
+        <iframe
+          src={href}
+          title={previewLabel}
+          className="w-full h-72 border-0"
+        />
+      </div>
+
+      <div className="px-6 pb-6">
+        <a
+          href={href}
+          download={downloadName}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 w-full h-11 px-4 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
+        >
+          <Download className="w-4 h-4" strokeWidth={1.5} />
+          {downloadLabel}
+        </a>
+      </div>
     </div>
   )
 }
