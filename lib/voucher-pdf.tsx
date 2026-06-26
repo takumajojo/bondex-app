@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     color: C_FG,
     marginTop: 2,
   },
-  // Divider between EN / JP sections
+  // Divider between EN / JP sections (italic は使わない — NotoSansJP の italic 字形未登録のため)
   sectionDivider: {
     marginTop: 16,
     marginBottom: 12,
@@ -211,7 +211,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 9,
     color: C_MUTED,
-    fontStyle: "italic",
   },
   // JP section
   jpGreeting: {

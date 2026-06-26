@@ -82,8 +82,8 @@ const messages = {
     datesOk: "Dates look correct",
     addressesHeading: "Addresses",
     addressesOk: "Addresses look correct",
-    generateVouchers: "Generate Vouchers",
-    verifyAll: "Verify every section to generate vouchers.",
+    generateVouchers: "Issue",
+    verifyAll: "Verify every section to issue documents.",
     aiVerifying: "Verifying with AI…",
     aiVerified: "Verified",
     aiCouldNotVerify: "AI couldn't confirm — please check manually",
@@ -166,8 +166,8 @@ const messages = {
     datesOk: "日付が正しい",
     addressesHeading: "住所",
     addressesOk: "住所が正しい",
-    generateVouchers: "バウチャーを発行",
-    verifyAll: "全項目を確認するとバウチャーを発行できます。",
+    generateVouchers: "発行する",
+    verifyAll: "全項目を確認すると発行できます。",
     aiVerifying: "AIが確認中…",
     aiVerified: "確認済み",
     aiCouldNotVerify: "AIで確認できませんでした — 目視で確認してください",
@@ -338,8 +338,10 @@ function saveSettings(s: OperatorSettings): void {
   window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
 }
 
-function addressKey(hotel: string, address: string): string {
-  return `${hotel.trim()}||${address.trim()}`
+// 住所が AI で自動補完されると入力住所自体が変わるため、住所はキーに含めず
+// ホテル名 (小文字正規化) のみで lookup する。同名別館は Google Places の top match に依存。
+function addressKey(hotel: string, _address?: string): string {
+  return hotel.trim().toLowerCase()
 }
 
 function emptyVerifications(legCount: number): Verifications {
@@ -424,7 +426,7 @@ export default function OperatorPage() {
         const res = await fetch("/api/address/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hotelName: hotel, address }),
+          body: JSON.stringify({ hotelName: hotel, address, lang: locale }),
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || !data) {
@@ -451,8 +453,8 @@ export default function OperatorPage() {
           },
         }))
 
-        // 住所が空 or 都市名のみ (短い) で AI が canonical を返したら自動補完
-        if (side && canonical && address.trim().length < canonical.length / 2) {
+        // canonical が見つかったら常に表示住所を差し替える (より正確な情報なので)
+        if (side && canonical) {
           setItinerary((prev) => {
             if (!prev) return prev
             return {
@@ -471,7 +473,7 @@ export default function OperatorPage() {
         setAddressChecks((prev) => ({ ...prev, [key]: { status: "failed" } }))
       }
     },
-    [],
+    [locale],
   )
 
   // 検証画面へ遷移。前回の検証チェックは毎回リセット (内容が同じでも再確認を強制する)。

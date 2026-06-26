@@ -37,6 +37,7 @@ const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 async function lookupViaGooglePlaces(
   hotelName: string,
   address: string,
+  lang: "en" | "ja",
 ): Promise<VerifyResult | null> {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) return null
@@ -49,7 +50,7 @@ async function lookupViaGooglePlaces(
     "fields",
     "place_id,name,formatted_address,types",
   )
-  searchUrl.searchParams.set("language", "en")
+  searchUrl.searchParams.set("language", lang)
   searchUrl.searchParams.set("region", "jp")
   searchUrl.searchParams.set("locationbias", "ipbias")
   searchUrl.searchParams.set("key", apiKey)
@@ -76,7 +77,7 @@ async function lookupViaGooglePlaces(
     "fields",
     "name,formatted_address,website,international_phone_number,url",
   )
-  detailsUrl.searchParams.set("language", "en")
+  detailsUrl.searchParams.set("language", lang)
   detailsUrl.searchParams.set("key", apiKey)
 
   const detailsRes = await fetch(detailsUrl.toString())
@@ -247,6 +248,8 @@ export async function POST(req: NextRequest) {
 
   const hotelName = typeof body.hotelName === "string" ? body.hotelName.trim() : ""
   const address = typeof body.address === "string" ? body.address.trim() : ""
+  const langRaw = (body as { lang?: unknown }).lang
+  const lang: "en" | "ja" = langRaw === "ja" ? "ja" : "en"
 
   if (!hotelName) {
     return NextResponse.json({ error: "hotelName is required" }, { status: 400 })
@@ -254,7 +257,7 @@ export async function POST(req: NextRequest) {
 
   // (1) Google Places を試す
   try {
-    const placesResult = await lookupViaGooglePlaces(hotelName, address)
+    const placesResult = await lookupViaGooglePlaces(hotelName, address, lang)
     if (placesResult) {
       return NextResponse.json(placesResult)
     }
