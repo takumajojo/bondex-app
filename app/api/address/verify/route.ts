@@ -6,14 +6,147 @@ export const runtime = "nodejs"
 export const maxDuration = 30
 
 /**
- * AI 住所検証 API.
- * 入力: { hotelName, address }
- * 処理: Claude Sonnet 4.6 + web_search でホテルと住所の整合性を検証
- * 出力: { matched, confidence, citationUrl, sourceTitle, reasoning }
+ * 住所検証 + 補完 API.
  *
- * confidence は "high" | "medium" | "low"
- * matched=false の時、UI 側で警告表示する想定。
+ * 戦略:
+ *   1) Google Places API で hotelName を検索 (findplacefromtext + details)
+ *      → formatted_address と公式 website URL を取得 (高速・高信頼)
+ *   2) 見つからなかった時のみ Anthropic Claude + web search にフォールバック
+ *
+ * 入力:  { hotelName: string, address?: string }
+ * 出力:  { matched, confidence, canonicalAddress, citationUrl, sourceTitle, reasoning }
+ *
+ * 住所の入力が空 / 都市名のみのときは「enrichment」モード — 見つかれば matched=true。
  */
+
+interface VerifyResult {
+  matched: boolean
+  confidence: "high" | "medium" | "low"
+  canonicalAddress: string
+  citationUrl: string
+  sourceTitle: string
+  reasoning: string
+}
+
+// ---------------------------------------------------------------------------
+// Google Places — 主軸
+// ---------------------------------------------------------------------------
+
+const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
+
+async function lookupViaGooglePlaces(
+  hotelName: string,
+  address: string,
+): Promise<VerifyResult | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) return null
+
+  // Step 1: findplacefromtext で候補を取得
+  const searchUrl = new URL(`${PLACES_BASE}/findplacefromtext/json`)
+  searchUrl.searchParams.set("input", hotelName)
+  searchUrl.searchParams.set("inputtype", "textquery")
+  searchUrl.searchParams.set(
+    "fields",
+    "place_id,name,formatted_address,types",
+  )
+  searchUrl.searchParams.set("language", "en")
+  searchUrl.searchParams.set("region", "jp")
+  searchUrl.searchParams.set("locationbias", "ipbias")
+  searchUrl.searchParams.set("key", apiKey)
+
+  const searchRes = await fetch(searchUrl.toString())
+  if (!searchRes.ok) return null
+  const searchData = (await searchRes.json()) as {
+    status?: string
+    candidates?: Array<{
+      place_id?: string
+      name?: string
+      formatted_address?: string
+      types?: string[]
+    }>
+  }
+  if (searchData.status !== "OK" || !Array.isArray(searchData.candidates)) return null
+  const candidate = searchData.candidates[0]
+  if (!candidate?.place_id) return null
+
+  // Step 2: details で website を取得 (citationUrl 用)
+  const detailsUrl = new URL(`${PLACES_BASE}/details/json`)
+  detailsUrl.searchParams.set("place_id", candidate.place_id)
+  detailsUrl.searchParams.set(
+    "fields",
+    "name,formatted_address,website,international_phone_number,url",
+  )
+  detailsUrl.searchParams.set("language", "en")
+  detailsUrl.searchParams.set("key", apiKey)
+
+  const detailsRes = await fetch(detailsUrl.toString())
+  if (!detailsRes.ok) {
+    // details 失敗時も candidate の情報で返す
+    return {
+      matched: true,
+      confidence: "high",
+      canonicalAddress: candidate.formatted_address ?? "",
+      citationUrl: `https://www.google.com/maps/place/?q=place_id:${candidate.place_id}`,
+      sourceTitle: `${candidate.name ?? hotelName} — Google Maps`,
+      reasoning: `Found via Google Places: ${candidate.name ?? hotelName}`,
+    }
+  }
+  const detailsData = (await detailsRes.json()) as {
+    status?: string
+    result?: {
+      name?: string
+      formatted_address?: string
+      website?: string
+      url?: string
+    }
+  }
+  const result = detailsData.result ?? {}
+
+  const canonicalAddress = result.formatted_address ?? candidate.formatted_address ?? ""
+  const citationUrl =
+    result.website ||
+    result.url ||
+    `https://www.google.com/maps/place/?q=place_id:${candidate.place_id}`
+  const sourceTitle = result.website
+    ? `${result.name ?? hotelName} — Official Site`
+    : `${result.name ?? hotelName} — Google Maps`
+
+  // matched: 入力住所が短い (city only / empty) なら enrichment 成功 → true
+  // 入力住所がフル住所なら canonical との一致度を簡易チェック
+  let matched = true
+  const inputTrimmed = address.trim()
+  if (inputTrimmed.length > 15) {
+    // フル住所っぽい場合、共通要素 (郵便番号 or 主要トークン) で照合
+    const inputLower = inputTrimmed.toLowerCase()
+    const canonLower = canonicalAddress.toLowerCase()
+    const zipMatch =
+      (inputTrimmed.match(/\d{3}-?\d{4}/) ?? [])[0]
+        ?.replace(/-/g, "")
+        ?.padStart(7, "0") ?? ""
+    const zipInCanon = (canonicalAddress.match(/\d{3}-?\d{4}/) ?? [])[0]?.replace(/-/g, "") ?? ""
+    if (zipMatch && zipInCanon && zipMatch === zipInCanon) {
+      matched = true
+    } else {
+      // 簡易: 部分文字列の重なり
+      const inputTokens = inputLower.split(/\s+|,/).filter((t) => t.length >= 3)
+      const overlapping = inputTokens.filter((t) => canonLower.includes(t)).length
+      matched = overlapping >= Math.min(2, Math.floor(inputTokens.length / 2))
+    }
+  }
+
+  return {
+    matched,
+    confidence: "high",
+    canonicalAddress,
+    citationUrl,
+    sourceTitle,
+    reasoning: `Resolved via Google Places: ${result.name ?? candidate.name ?? hotelName}`,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Anthropic web search — フォールバック
+// ---------------------------------------------------------------------------
 
 const SYSTEM_PROMPT = `You verify and/or enrich the address of a Japanese hotel.
 
@@ -44,60 +177,23 @@ const VERIFICATION_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
-      matched: {
-        type: "boolean",
-        description: "true if the input address matches or if we successfully enriched an empty/city-only address with an authoritative one",
-      },
-      confidence: {
-        type: "string",
-        enum: ["high", "medium", "low"],
-        description: "Confidence level",
-      },
-      canonicalAddress: {
-        type: "string",
-        description: "The full official address you found for this hotel (English preferred, include postal code if available)",
-      },
-      citationUrl: {
-        type: "string",
-        description: "URL of the most authoritative source used",
-      },
-      sourceTitle: {
-        type: "string",
-        description: "Title or short label of the citation source",
-      },
-      reasoning: {
-        type: "string",
-        description: "1-2 sentence explanation",
-      },
+      matched: { type: "boolean" },
+      confidence: { type: "string", enum: ["high", "medium", "low"] },
+      canonicalAddress: { type: "string" },
+      citationUrl: { type: "string" },
+      sourceTitle: { type: "string" },
+      reasoning: { type: "string" },
     },
     required: ["matched", "confidence", "canonicalAddress", "citationUrl", "sourceTitle", "reasoning"],
   },
 }
 
-export async function POST(req: NextRequest) {
-  const limit = rateLimit(req, "address-verify")
-  if (!limit.ok) return limit.response
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 })
-  }
-
-  let body: { hotelName?: unknown; address?: unknown }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
-  }
-
-  const hotelName = typeof body.hotelName === "string" ? body.hotelName.trim() : ""
-  const address = typeof body.address === "string" ? body.address.trim() : ""
-
-  if (!hotelName || !address) {
-    return NextResponse.json({ error: "hotelName and address are required" }, { status: 400 })
-  }
-
+async function lookupViaAnthropic(
+  hotelName: string,
+  address: string,
+): Promise<VerifyResult | null> {
+  if (!process.env.ANTHROPIC_API_KEY) return null
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
@@ -117,25 +213,71 @@ export async function POST(req: NextRequest) {
           content: [
             {
               type: "text",
-              text: `Hotel name: ${hotelName}\nGiven address: ${address}\n\nVerify whether this hotel exists at this address, then call report_verification.`,
+              text: `Hotel name: ${hotelName}\nGiven address: ${address || "(empty)"}\n\nFind this hotel's official address and call report_verification.`,
             },
           ],
         },
       ],
     })
-
     const toolUse = message.content.find(
       (c) => c.type === "tool_use" && c.name === "report_verification",
     )
-    if (!toolUse || toolUse.type !== "tool_use") {
-      return NextResponse.json(
-        { error: "Model did not return a verification result" },
-        { status: 502 },
-      )
-    }
-    return NextResponse.json(toolUse.input)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Anthropic error"
-    return NextResponse.json({ error: msg }, { status: 502 })
+    if (!toolUse || toolUse.type !== "tool_use") return null
+    const v = toolUse.input as VerifyResult
+    return v
+  } catch {
+    return null
   }
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
+
+export async function POST(req: NextRequest) {
+  const limit = rateLimit(req, "address-verify")
+  if (!limit.ok) return limit.response
+
+  let body: { hotelName?: unknown; address?: unknown }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+
+  const hotelName = typeof body.hotelName === "string" ? body.hotelName.trim() : ""
+  const address = typeof body.address === "string" ? body.address.trim() : ""
+
+  if (!hotelName) {
+    return NextResponse.json({ error: "hotelName is required" }, { status: 400 })
+  }
+
+  // (1) Google Places を試す
+  try {
+    const placesResult = await lookupViaGooglePlaces(hotelName, address)
+    if (placesResult) {
+      return NextResponse.json(placesResult)
+    }
+  } catch {
+    // ignore — fall through to Anthropic
+  }
+
+  // (2) Anthropic web search にフォールバック
+  const anthropicResult = await lookupViaAnthropic(hotelName, address)
+  if (anthropicResult) {
+    return NextResponse.json(anthropicResult)
+  }
+
+  // (3) 両方失敗
+  return NextResponse.json(
+    {
+      matched: false,
+      confidence: "low",
+      canonicalAddress: "",
+      citationUrl: "",
+      sourceTitle: "",
+      reasoning: "Neither Google Places nor web search could resolve this hotel",
+    },
+    { status: 200 },
+  )
 }
