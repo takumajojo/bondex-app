@@ -513,8 +513,18 @@ export default function OperatorPage() {
       ? `${representative.title ? representative.title + " " : ""}${representative.name}`
       : itinerary.guest.familyName
 
+    // クライアント側で Booking ID を1回だけ生成し、voucher / Yamato 両方に同じ ID を渡して
+    // トレーサビリティを担保する (旧コードでは voucher と Yamato refNumber が別 ID になっていた)
+    const now = new Date()
+    const yy = String(now.getFullYear() % 100).padStart(2, "0")
+    const mm = String(now.getMonth() + 1).padStart(2, "0")
+    const dd = String(now.getDate()).padStart(2, "0")
+    const rand = Math.floor(100 + Math.random() * 900)
+    const sharedBookingId = `BDX-${yy}${mm}${dd}-${rand}`
+
     const tourCompanyFromSettings = settings?.tourCompany || ""
     const payload = {
+      bookingId: sharedBookingId,
       representativeLabel,
       tourCompany: tourCompanyFromSettings,
       travelerCount: itinerary.guest.travelerCount,
@@ -556,7 +566,7 @@ export default function OperatorPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            refNumber: `BDX-LEG${legIndex + 1}`, // ボーナス: 後で実際の bookingId に差し替え
+            refNumber: `${sharedBookingId}-L${legIndex + 1}`, // voucher と同じ Booking ID で紐付け
             shipmentDate: s.shipmentDate,
             suitcaseCount: s.suitcaseCount,
             from: {
