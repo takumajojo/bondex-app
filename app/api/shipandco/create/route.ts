@@ -31,6 +31,7 @@ const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 const FALLBACK_PHONE = "0000000000"
 const FALLBACK_ZIP = "0000000"
 
+// 旧 backend と同じ field set. city はトップレベルで送らず address1/2 に埋め込む.
 interface YamatoAddress {
   full_name: string
   company: string
@@ -39,10 +40,9 @@ interface YamatoAddress {
   country: string
   zip: string
   province: string
-  city: string
   address1: string
   address2: string
-  extra?: string
+  extra: string
 }
 
 interface AddressComponent {
@@ -94,15 +94,15 @@ async function resolveYamatoAddress(
   apiKey: string,
 ): Promise<YamatoAddress> {
   const fallback: YamatoAddress = {
-    full_name: recipient || "Front Desk",
+    full_name: hotelName,
     company: hotelName,
     phone: FALLBACK_PHONE,
     country: "JP",
     zip: FALLBACK_ZIP,
     province: "",
-    city: "",
     address1: "1番地",
     address2: hotelName || "",
+    extra: "",
   }
 
   // Step 1: findplacefromtext (日本語)
@@ -188,10 +188,9 @@ async function resolveYamatoAddress(
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
-    city: cityForYamato,
     address1: cityForYamato || fullPath || "1番地",
     address2: fullPath || cityForYamato || "1番地",
-    extra: recipient || "", // 受取人名 (旅行者ローマ字名) は extra に逃がす
+    extra: "",
   }
 }
 
