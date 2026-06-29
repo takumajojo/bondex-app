@@ -74,13 +74,12 @@ function isValidYmd(s: string): boolean {
   return new Date(t).toISOString().slice(0, 10) === s
 }
 
-// Yamato (Ship&co) 構造:
+// Yamato (Ship&co) 構造 — 全フィールドを明示:
 //   province : 都道府県 (京都府)
-//   address1 : 番地以下のみ (下丸屋町412) — 番地・町名
-//   address2 : 市区郡町村のみ (京都市中京区) — Yamato parser はここを 市区郡町村 として識別
-//   full_name / company : ホテル名 (ヒルトン京都)
-// 注: address2 に番地以下を混ぜると Yamato は EF011022「市区郡町村が入力されていません」を返す。
-//     市区郡町村と番地以下は完全に分離させる必要がある.
+//   city     : 市区郡町村 (京都市中京区) ← Yamato 必須
+//   address1 : 番地以下 (下丸屋町412)
+//   address2 : 建物名 / または full address (柔軟に対応)
+//   company  : ホテル名
 interface YamatoAddress {
   full_name: string
   company: string
@@ -89,6 +88,7 @@ interface YamatoAddress {
   country: string
   zip: string
   province: string
+  city: string
   address1: string
   address2: string
   extra: string
@@ -149,6 +149,7 @@ async function resolveYamatoAddress(
     country: "JP",
     zip: FALLBACK_ZIP,
     province: "",
+    city: "市区郡町村不明",
     address1: "1番地",
     address2: "1番地",
     extra: "",
@@ -230,15 +231,19 @@ async function resolveYamatoAddress(
   // 旅行者ローマ字名だと弾かれることがあるのでホテル名にフォールバック.
   const fullName = result?.name ?? hotelName
 
+  // 完全な住所パス (city + address1 を結合した形)
+  const fullAddress = cityWard + streetOnly
+
   return {
     full_name: fullName,
     company: result?.name ?? hotelName,
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
-    province: prefecture,
-    address1: streetOnly || "1番地",       // 番地以下のみ
-    address2: cityWard || "市区郡町村",     // 市区郡町村のみ (Yamato 必須)
+    province: prefecture,                          // 都道府県
+    city: cityWard || "市区郡町村不明",              // 市区郡町村 (専用フィールドにも設定)
+    address1: fullAddress || "1番地",               // 完全な住所 (市区郡町村 + 番地以下)
+    address2: result?.name ?? hotelName,           // 建物名 (ホテル名)
     extra: "",
   }
 }
