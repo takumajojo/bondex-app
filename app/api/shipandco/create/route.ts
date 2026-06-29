@@ -76,10 +76,11 @@ function isValidYmd(s: string): boolean {
 
 // Yamato (Ship&co) 構造:
 //   province : 都道府県 (京都府)
-//   address1 : 市区郡町村 (京都市)
-//   address2 : 完全な住所パス (京都市中京区下丸屋町412) ← 市区郡町村 + 番地以下
-//   full_name / company : 建物・ホテル名 (ヒルトン京都)
-// 旧 backend (動作実績あり) と同じマッピング.
+//   address1 : 番地以下のみ (下丸屋町412) — 番地・町名
+//   address2 : 市区郡町村のみ (京都市中京区) — Yamato parser はここを 市区郡町村 として識別
+//   full_name / company : ホテル名 (ヒルトン京都)
+// 注: address2 に番地以下を混ぜると Yamato は EF011022「市区郡町村が入力されていません」を返す。
+//     市区郡町村と番地以下は完全に分離させる必要がある.
 interface YamatoAddress {
   full_name: string
   company: string
@@ -205,19 +206,20 @@ async function resolveYamatoAddress(
   const premise = pickComponent(components, "premise")
   const streetNumber = pickComponent(components, "street_number")
 
-  // 旧 backend と同じマッピング:
-  //   address1 = 市区郡町村 (例: "京都市") — 短い、城市のみ
-  //   address2 = 完全な住所パス (例: "京都市中京区下丸屋町412") — 市区郡町村 + 番地以下を含む
-  //   full_name / company = ホテル名
-  const cityForYamato = locality || sub1 || prefecture || ""
+  // Yamato/Ship&co の構造:
+  //   address1 = 番地以下のみ (例: "下丸屋町412") — 番地・町名
+  //   address2 = 市区郡町村のみ (例: "京都市中京区") — Yamato parser が "市区郡町村" として識別する
+  //   company  = ホテル名 (建物名)
+  //
+  // 注: address2 に番地混ぜると Yamato は "市区郡町村が無い" 扱いになる (EF011022).
+  //     完全に分離させる必要がある.
+  const cityPart = locality || ""
+  const wardPart = sub1 && sub1 !== cityPart ? sub1 : ""
+  const cityWard = (cityPart + wardPart) || prefecture || ""
 
-  // 完全な住所パス: locality + sub1〜4 + premise + street_number を順に結合 (重複は除外)
-  const pathParts = [locality, sub1, sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
-  const uniqueParts: string[] = []
-  for (const p of pathParts) {
-    if (uniqueParts[uniqueParts.length - 1] !== p) uniqueParts.push(p)
-  }
-  const fullPath = uniqueParts.join("")
+  // 番地以下のみ (locality と sub1 は除外)
+  const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
+  const streetOnly = streetParts.join("")
 
   // 国際電話形式 (+81-XX-XXXX-XXXX) を E.164 に正規化
   let phone = result?.international_phone_number ?? ""
@@ -235,8 +237,8 @@ async function resolveYamatoAddress(
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
-    address1: cityForYamato || fullPath || "1番地",
-    address2: fullPath || cityForYamato || "1番地",
+    address1: streetOnly || "1番地",       // 番地以下のみ
+    address2: cityWard || "市区郡町村",     // 市区郡町村のみ (Yamato 必須)
     extra: "",
   }
 }
