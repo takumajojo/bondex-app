@@ -74,6 +74,24 @@ function isValidYmd(s: string): boolean {
   return new Date(t).toISOString().slice(0, 10) === s
 }
 
+// "2026-07-11" → "7/11着" (記事欄用の短縮形)
+function formatYmdShortJp(ymd: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(ymd)
+  if (!m) return ""
+  return `${parseInt(m[1], 10)}/${parseInt(m[2], 10)}着`
+}
+
+// 苗字のみ抽出 ("Mr. Jack Costanzo" → "Costanzo")。
+// 品名欄の文字数節約用. 入力が日本語名 / 1単語の場合はそのまま返す.
+function lastNameOnly(fullName: string): string {
+  const trimmed = fullName.trim()
+  if (!trimmed) return ""
+  // Mr./Mrs./Ms./Dr. 等の敬称を除去してから最後の単語を取る
+  const noTitle = trimmed.replace(/^(Mr\.?|Mrs\.?|Ms\.?|Dr\.?|Prof\.?)\s+/i, "")
+  const parts = noTitle.split(/\s+/).filter(Boolean)
+  return parts[parts.length - 1] || trimmed
+}
+
 // Yamato (Ship&co) 構造 — 全フィールドを明示:
 //   province : 都道府県 (京都府)
 //   city     : 市区郡町村 (京都市中京区) ← Yamato 必須
@@ -345,16 +363,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 品名 (Yamato 送り状の品名欄):
-  //   "スーツケース / {代表者名} / チェックイン {YYYY-MM-DD}" の形式に組み立て
-  //   個数は quantity に持たせる (送り状には品名1行で集約表示).
+  // 品名 (Yamato 送り状の品名欄、文字数制限 ~28 字):
+  //   "スーツケース {苗字} 様" の形式 — 短くして切れないようにする.
+  //   日付は記事欄 (ref_number) で表示する.
   const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
   const productName = rawProductName || "スーツケース"
   const recipientName = (toInput.recipient ?? "").trim()
-  const productNameParts: string[] = [productName]
-  if (recipientName) productNameParts.push(`${recipientName} 様`)
-  if (deliveryDate) productNameParts.push(`チェックイン ${deliveryDate}`)
-  const productNameFull = productNameParts.join(" / ")
+  const recipientLastName = lastNameOnly(recipientName)
+  const productNameFull = recipientLastName
+    ? `${productName} ${recipientLastName} 様`
+    : productName
+
+  // 記事欄 (ref_number): "BDX-260629-903-L1 7/11着" の形式で BondEx 番号 + 配達日を集約.
+  const dateSuffix = deliveryDate ? formatYmdShortJp(deliveryDate) : ""
+  const refNumberWithDate = dateSuffix ? `${refNumber} ${dateSuffix}` : refNumber
 
   const payload = {
     from_address: fromAddr,
@@ -362,7 +384,7 @@ export async function POST(req: NextRequest) {
     setup: {
       carrier_id: carrierId,
       service: "yamato_regular",
-      ref_number: refNumber,
+      ref_number: refNumberWithDate,  // BDX-XXX-LN + " 7/11着"
       shipment_date: shipmentDate,
       // 配達希望日 (チェックイン日) — 指定すると Yamato は当日まで荷物を保持して配達.
       // 旅行者がチェックイン前に届いて受取拒否されるのを防ぐ.
