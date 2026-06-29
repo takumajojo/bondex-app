@@ -789,20 +789,12 @@ export default function OperatorPage() {
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
         <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/bondex-logo.png"
-              alt="BondEx"
-              className="h-12 w-auto object-contain"
-            />
-            <div className="border-l border-border pl-4">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                {t.brand}
-              </p>
-              <h1 className="text-xl font-semibold text-foreground mt-0.5">{t.pageTitle}</h1>
-            </div>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/bondex-logo.png"
+            alt="BondEx"
+            className="h-12 w-auto object-contain"
+          />
           <div className="flex items-center gap-4">
             <LocaleToggle locale={locale} onChange={setLocale} />
             {phase !== "idle" && (
