@@ -140,6 +140,7 @@ const messages = {
     familyNameLabel: "Family / group name",
     familyNamePlaceholder: "e.g. Johnson Family",
     travelerCountLabel: "Travelers",
+    missingFieldsTitle: "Please fill in these fields to continue:",
     settings: "Settings",
     settingsTitle: "Operator Settings",
     settingsHint: "These details are used in every voucher. Update them here, not per-booking.",
@@ -253,6 +254,7 @@ const messages = {
     familyNameLabel: "ファミリー名 / 団体名",
     familyNamePlaceholder: "例: Johnson Family",
     travelerCountLabel: "旅行者数",
+    missingFieldsTitle: "以下の項目を入力してください:",
     settings: "設定",
     settingsTitle: "オペレーター設定",
     settingsHint: "この情報は毎回のバウチャーで使用されます。予約ごとではなくここで管理します。",
@@ -1137,17 +1139,20 @@ function ReviewView({
   onContinue: () => void
 }) {
   const { guest, shipments } = itinerary
-  const canContinue =
-    !!settings?.tourCompany &&
-    shipments.length > 0 &&
-    shipments.every(
-      (s) =>
-        s.from.hotel.trim() &&
-        s.to.hotel.trim() &&
-        s.shipmentDate &&
-        s.expectedArrival &&
-        s.recipient.trim(),
-    )
+
+  // バリデーション — 何が足りないかを具体的に表示する
+  const missing: string[] = []
+  if (!settings?.tourCompany) missing.push(t.settingsRequired)
+  if (shipments.length === 0) missing.push(t.noLegs)
+  shipments.forEach((s, i) => {
+    const legPrefix = shipments.length > 1 ? `Leg ${i + 1}: ` : ""
+    if (!s.from.hotel.trim()) missing.push(`${legPrefix}${t.from} ${t.hotelNameLabel}`)
+    if (!s.to.hotel.trim()) missing.push(`${legPrefix}${t.to} ${t.hotelNameLabel}`)
+    if (!s.shipmentDate) missing.push(`${legPrefix}${t.dropOffDateLabel}`)
+    if (!s.expectedArrival) missing.push(`${legPrefix}${t.arrivalDateLabel}`)
+    if (!s.recipient.trim()) missing.push(`${legPrefix}${t.recipientLabelFull}`)
+  })
+  const canContinue = missing.length === 0
 
   return (
     <div className="space-y-8">
@@ -1289,7 +1294,16 @@ function ReviewView({
         </Button>
       </section>
       {!canContinue && (
-        <p className="text-xs text-muted-foreground text-right">{t.settingsRequired}</p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-xs font-medium text-amber-900 mb-2">
+            {t.missingFieldsTitle}
+          </p>
+          <ul className="text-xs text-amber-800 space-y-0.5 list-disc list-inside">
+            {missing.map((m, i) => (
+              <li key={i}>{m}</li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
