@@ -175,28 +175,35 @@ async function resolveYamatoAddress(
   recipient: string,
   apiKey: string,
   isSender: boolean = false,
+  placeId?: string,
 ): Promise<YamatoAddress | null> {
-  // Step 1: findplacefromtext (日本語)
-  const searchUrl = new URL(`${PLACES_BASE}/findplacefromtext/json`)
-  searchUrl.searchParams.set("input", hotelName)
-  searchUrl.searchParams.set("inputtype", "textquery")
-  searchUrl.searchParams.set("fields", "place_id,name")
-  searchUrl.searchParams.set("language", "ja")
-  searchUrl.searchParams.set("region", "jp")
-  searchUrl.searchParams.set("key", apiKey)
+  // place_id がフロントから渡されている場合は text search をスキップして直接 details へ.
+  // (operator が autocomplete から選択したホテル — 確定済み)
+  let resolvedPlaceId = placeId
+  if (!resolvedPlaceId) {
+    // Step 1: findplacefromtext (日本語)
+    const searchUrl = new URL(`${PLACES_BASE}/findplacefromtext/json`)
+    searchUrl.searchParams.set("input", hotelName)
+    searchUrl.searchParams.set("inputtype", "textquery")
+    searchUrl.searchParams.set("fields", "place_id,name")
+    searchUrl.searchParams.set("language", "ja")
+    searchUrl.searchParams.set("region", "jp")
+    searchUrl.searchParams.set("key", apiKey)
 
-  const searchRes = await fetch(searchUrl.toString())
-  if (!searchRes.ok) return null
-  const searchData = (await searchRes.json()) as {
-    status?: string
-    candidates?: Array<{ place_id?: string; name?: string }>
+    const searchRes = await fetch(searchUrl.toString())
+    if (!searchRes.ok) return null
+    const searchData = (await searchRes.json()) as {
+      status?: string
+      candidates?: Array<{ place_id?: string; name?: string }>
+    }
+    const candidate = searchData.candidates?.[0]
+    if (!candidate?.place_id) return null
+    resolvedPlaceId = candidate.place_id
   }
-  const candidate = searchData.candidates?.[0]
-  if (!candidate?.place_id) return null
 
   // Step 2: details (日本語) で address_components と phone を取得
   const detailsUrl = new URL(`${PLACES_BASE}/details/json`)
-  detailsUrl.searchParams.set("place_id", candidate.place_id)
+  detailsUrl.searchParams.set("place_id", resolvedPlaceId)
   detailsUrl.searchParams.set(
     "fields",
     "name,address_components,international_phone_number",
@@ -313,10 +320,12 @@ export async function POST(req: NextRequest) {
   const deliveryDate = rawDeliveryDate && isValidYmd(rawDeliveryDate) ? rawDeliveryDate : ""
   const suitcaseCount = Math.max(1, Math.floor(Number(body.suitcaseCount) || 1))
 
-  const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string }
-  const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string }
+  const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string; placeId?: string }
+  const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string; placeId?: string }
   const fromHotel = (fromInput.hotel ?? "").trim()
   const toHotel = (toInput.hotel ?? "").trim()
+  const fromPlaceId = (fromInput.placeId ?? "").trim() || undefined
+  const toPlaceId = (toInput.placeId ?? "").trim() || undefined
 
   if (!refNumber || !shipmentDate || !fromHotel || !toHotel) {
     return NextResponse.json(
@@ -378,8 +387,8 @@ export async function POST(req: NextRequest) {
 
   // Google Places で構造化住所を取得
   const [fromAddr, toAddr] = await Promise.all([
-    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true),  // sender = BondEx
-    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false),     // recipient = hotel
+    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId),  // sender = BondEx
+    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false, toPlaceId),     // recipient = hotel
   ])
 
   // 住所解決失敗時 — ヤマトに不完全な住所を送らずに 400 で早期エラー.

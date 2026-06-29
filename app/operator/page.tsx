@@ -35,6 +35,7 @@ import {
   isValidDeliveryDate,
   formatRangeHint,
 } from "@/lib/yamato-delivery"
+import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 
 const FLAT_RATE_YEN = 5000
 
@@ -348,6 +349,8 @@ interface ParsedShipmentLocation {
   hotel: string
   address: string
   city: string
+  /** Google Places place_id — set when operator selected from autocomplete. */
+  placeId?: string
 }
 
 interface ParsedShipment {
@@ -682,10 +685,10 @@ export default function OperatorPage() {
           body: JSON.stringify({
             refNumber: `${sharedBookingId}-L${legIndex + 1}`,
             shipmentDate: s.shipmentDate,
-            deliveryDate: s.expectedArrival,  // チェックイン日 = ヤマト配達希望日
+            deliveryDate: s.expectedArrival,
             suitcaseCount: s.suitcaseCount,
-            from: { hotel: s.from.hotel, recipient: s.recipient },
-            to: { hotel: s.to.hotel, recipient: s.recipient },
+            from: { hotel: s.from.hotel, recipient: s.recipient, placeId: s.from.placeId },
+            to: { hotel: s.to.hotel, recipient: s.recipient, placeId: s.to.placeId },
           }),
         })
         const data = await res.json().catch(() => null)
@@ -1400,7 +1403,7 @@ function ShipmentRow({
         )}
       </div>
 
-      {/* Section A: ホテル (名前・都市のみ) */}
+      {/* Section A: ホテル (autocomplete で検索・選択) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
         <div className="space-y-3">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
@@ -1408,25 +1411,37 @@ function ShipmentRow({
             {t.from}
           </p>
           <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">{t.hotelNameLabel}</label>
-            <Input
-              type="text"
-              placeholder={t.hotelNamePlaceholder}
+            <label className="text-[11px] text-muted-foreground" htmlFor={`from-hotel-${index}`}>
+              {t.hotelNameLabel}
+            </label>
+            <HotelSearchInput
+              inputId={`from-hotel-${index}`}
+              ariaLabel={`${t.from} ${t.hotelNameLabel}`}
               value={shipment.from.hotel}
-              onChange={(e) => onUpdate(index, { from: { ...shipment.from, hotel: e.target.value } })}
-              className="h-9 text-sm"
+              placeholder={t.hotelNamePlaceholder}
+              lang={locale}
+              selectedPlaceId={shipment.from.placeId}
+              onChange={(value) =>
+                onUpdate(index, {
+                  // 編集中は placeId を消す (候補から選び直すまで未確定扱い)
+                  from: { ...shipment.from, hotel: value, placeId: undefined },
+                })
+              }
+              onSelect={(c: PlaceCandidate) =>
+                onUpdate(index, {
+                  from: {
+                    hotel: c.name,
+                    address: c.address,
+                    city: c.city,
+                    placeId: c.placeId,
+                  },
+                })
+              }
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">{t.cityLabel}</label>
-            <Input
-              type="text"
-              placeholder={t.cityPlaceholder}
-              value={shipment.from.city}
-              onChange={(e) => onUpdate(index, { from: { ...shipment.from, city: e.target.value } })}
-              className="h-9 text-sm"
-            />
-          </div>
+          {shipment.from.city && (
+            <p className="text-[10px] text-muted-foreground pl-1">📍 {shipment.from.city}</p>
+          )}
         </div>
 
         <div className="space-y-3 md:border-l md:border-border md:pl-6">
@@ -1435,25 +1450,36 @@ function ShipmentRow({
             {t.to}
           </p>
           <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">{t.hotelNameLabel}</label>
-            <Input
-              type="text"
-              placeholder={t.hotelNamePlaceholder}
+            <label className="text-[11px] text-muted-foreground" htmlFor={`to-hotel-${index}`}>
+              {t.hotelNameLabel}
+            </label>
+            <HotelSearchInput
+              inputId={`to-hotel-${index}`}
+              ariaLabel={`${t.to} ${t.hotelNameLabel}`}
               value={shipment.to.hotel}
-              onChange={(e) => onUpdate(index, { to: { ...shipment.to, hotel: e.target.value } })}
-              className="h-9 text-sm"
+              placeholder={t.hotelNamePlaceholder}
+              lang={locale}
+              selectedPlaceId={shipment.to.placeId}
+              onChange={(value) =>
+                onUpdate(index, {
+                  to: { ...shipment.to, hotel: value, placeId: undefined },
+                })
+              }
+              onSelect={(c: PlaceCandidate) =>
+                onUpdate(index, {
+                  to: {
+                    hotel: c.name,
+                    address: c.address,
+                    city: c.city,
+                    placeId: c.placeId,
+                  },
+                })
+              }
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">{t.cityLabel}</label>
-            <Input
-              type="text"
-              placeholder={t.cityPlaceholder}
-              value={shipment.to.city}
-              onChange={(e) => onUpdate(index, { to: { ...shipment.to, city: e.target.value } })}
-              className="h-9 text-sm"
-            />
-          </div>
+          {shipment.to.city && (
+            <p className="text-[10px] text-muted-foreground pl-1">📍 {shipment.to.city}</p>
+          )}
         </div>
       </div>
 

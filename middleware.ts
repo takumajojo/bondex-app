@@ -53,5 +53,6 @@ export const config = {
     "/api/address/verify",
     "/api/voucher/generate",
     "/api/shipandco/create",
+    "/api/places/search",
   ],
 }
