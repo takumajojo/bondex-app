@@ -228,6 +228,11 @@ const styles = StyleSheet.create({
     height: 90,
     marginBottom: 6,
   },
+  logoSmall: {
+    width: 90,
+    height: 45,
+    marginBottom: 4,
+  },
 
   // ---------------- Top rule ----------------
   topRule: {
@@ -512,7 +517,39 @@ const styles = StyleSheet.create({
 // Per-leg voucher page
 // ---------------------------------------------------------------------------
 
-function LegPage({
+// ---- Shared footer ----
+function LegFooter({
+  data,
+  legIndex,
+  totalLegs,
+  pageType,
+}: {
+  data: VoucherInput
+  legIndex: number
+  totalLegs: number
+  pageType: "en" | "jp"
+}) {
+  const totalSuitcases = data.shipments.reduce((sum, s) => sum + s.suitcaseCount, 0)
+  return (
+    <View style={styles.footer} fixed>
+      <View style={styles.footerCol}>
+        <Text style={styles.footerCompany}>{data.companyName}</Text>
+        <Text style={styles.footerLine}>{data.companyAddress}</Text>
+        <Text style={styles.footerLine}>TEL: {data.contactPersonPhone}</Text>
+      </View>
+      <View style={styles.footerRight}>
+        <Text style={styles.footerLeg}>
+          {totalLegs > 1 ? `LEG ${legIndex + 1} / ${totalLegs}` : `SINGLE LEG`}
+          {pageType === "jp" ? " · FOR HOTEL STAFF" : ""}
+        </Text>
+        <Text style={styles.footerLegSub}>Total {totalSuitcases} luggage · {data.bookingId}</Text>
+      </View>
+    </View>
+  )
+}
+
+// ---- Page 1: English voucher (for traveler) ----
+function LegPageEn({
   data,
   shipment,
   legIndex,
@@ -523,12 +560,8 @@ function LegPage({
   legIndex: number
   totalLegs: number
 }) {
-  const totalSuitcases = data.shipments.reduce((sum, s) => sum + s.suitcaseCount, 0)
   const dropOffTime = shipment.dropOffTime?.trim() || "check-out"
   const pickUpNote = shipment.pickUpNote?.trim() || "when check-in"
-
-  const jpFromInstruction = `朝${dropOffTime}までにお客様がスーツケースを預けに来られますので「一時預かり」をお願い致します。午前中に配送業者のドライバーが集荷に伺いますのでお荷物をお渡しください。`
-  const jpToInstruction = `お客様のスーツケースが${formatJpDate(shipment.expectedArrival)}に届いております。チェックイン時にお客様にお渡しください。`
 
   return (
     <Page size="A4" style={styles.page}>
@@ -627,11 +660,51 @@ function LegPage({
         </View>
       </View>
 
+      <LegFooter data={data} legIndex={legIndex} totalLegs={totalLegs} pageType="en" />
+    </Page>
+  )
+}
+
+// ---- Page 2: Japanese message for hotel staff ----
+function LegPageJp({
+  data,
+  shipment,
+  legIndex,
+  totalLegs,
+}: {
+  data: VoucherInput
+  shipment: VoucherShipment
+  legIndex: number
+  totalLegs: number
+}) {
+  const dropOffTime = shipment.dropOffTime?.trim() || "check-out"
+  const jpFromInstruction = `朝${dropOffTime}までにお客様がスーツケースを預けに来られますので「一時預かり」をお願い致します。午前中に配送業者のドライバーが集荷に伺いますのでお荷物をお渡しください。`
+  const jpToInstruction = `お客様のスーツケースが${formatJpDate(shipment.expectedArrival)}に届いております。チェックイン時にお客様にお渡しください。`
+
+  return (
+    <Page size="A4" style={styles.page}>
+      {/* ---------------- Compact header for JP page ---------------- */}
+      <View style={styles.headerRow}>
+        <View style={styles.headerLeft}>
+          <Image style={styles.logoSmall} src={LOGO_PATH} />
+          <Text style={styles.serviceTitleMeta}>
+            VOUCHER · LUGGAGE FORWARDING · {data.bookingId}
+          </Text>
+        </View>
+        <View style={styles.headerRight}>
+          <View style={styles.headerRefBox}>
+            <Text style={styles.headerRefLabel}>FOR HOTEL STAFF</Text>
+            <Text style={styles.headerRefValue}>ホテル様向けご案内</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.topRule} />
+
       {/* ---------------- JP section ---------------- */}
       <View style={styles.jpSection}>
         <View style={styles.jpSectionHeader}>
           <Text style={styles.jpGreeting}>ホテルご担当者様へ</Text>
-          <Text style={styles.jpHeaderHint}>FOR HOTEL STAFF · 日本語</Text>
+          <Text style={styles.jpHeaderHint}>日本語のご案内</Text>
         </View>
         <Text style={styles.jpIntro}>
           この手配は以下の事業者により行われております。荷物配送に関するお問い合わせは、まず BondEx までご連絡ください。
@@ -695,22 +768,7 @@ function LegPage({
         </View>
       </View>
 
-      {/* ---------------- Footer ---------------- */}
-      <View style={styles.footer} fixed>
-        <View style={styles.footerCol}>
-          <Text style={styles.footerCompany}>{data.companyName}</Text>
-          <Text style={styles.footerLine}>{data.companyAddress}</Text>
-          <Text style={styles.footerLine}>TEL: {data.contactPersonPhone}</Text>
-        </View>
-        <View style={styles.footerRight}>
-          <Text style={styles.footerLeg}>
-            {totalLegs > 1
-              ? `LEG ${legIndex + 1} / ${totalLegs}`
-              : `SINGLE LEG`}
-          </Text>
-          <Text style={styles.footerLegSub}>Total {totalSuitcases} luggage · {data.bookingId}</Text>
-        </View>
-      </View>
+      <LegFooter data={data} legIndex={legIndex} totalLegs={totalLegs} pageType="jp" />
     </Page>
   )
 }
@@ -726,15 +784,28 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
       author={data.companyName}
       subject="Luggage Forwarding Voucher"
     >
-      {data.shipments.map((shipment, i) => (
-        <LegPage
-          key={i}
+      {/*
+       * 各 leg を 2 ページ構成:
+       *   Page 1 (EN voucher) — 旅行者向け。空港 / ホテルでスタッフに見せる
+       *   Page 2 (JP message) — ホテル担当者様向け詳細案内
+       * 分離することで JP セクションを読みやすい余白で描画できる
+       */}
+      {data.shipments.flatMap((shipment, i) => [
+        <LegPageEn
+          key={`en-${i}`}
           data={data}
           shipment={shipment}
           legIndex={i}
           totalLegs={data.shipments.length}
-        />
-      ))}
+        />,
+        <LegPageJp
+          key={`jp-${i}`}
+          data={data}
+          shipment={shipment}
+          legIndex={i}
+          totalLegs={data.shipments.length}
+        />,
+      ])}
     </Document>
   )
 }

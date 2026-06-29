@@ -224,31 +224,76 @@ async function resolveYamatoAddress(
   const components = result?.address_components ?? []
   if (components.length === 0) return null
 
-  // 日本の住所コンポーネント
+  // 日本の住所コンポーネント (23区/政令市/町村でフィールドの入り方が違うため複数フォールバック)
   const zip = pickComponent(components, "postal_code").replace(/-/g, "")
-  const prefecture = pickComponent(components, "administrative_area_level_1") // 例: 東京都
-  const locality = pickComponent(components, "locality") // 例: 港区 (Tokyo 23区は locality に入る)
-  const sub1 = pickComponent(components, "sublocality_level_1") // 港区 or 赤坂
-  const sub2 = pickComponent(components, "sublocality_level_2") // 赤坂
-  const sub3 = pickComponent(components, "sublocality_level_3") // 1丁目
-  const sub4 = pickComponent(components, "sublocality_level_4") // 12-33
+  const prefecture = pickComponent(components, "administrative_area_level_1") // 東京都, 神奈川県, 大阪府
+  const locality = pickComponent(components, "locality")                       // 港区 (23区) / 大阪市 (政令市)
+  const sub1 = pickComponent(components, "sublocality_level_1")                // 港区 / 北区 (政令市の区)
+  const sub2 = pickComponent(components, "sublocality_level_2")                // 赤坂 / 中崎西
+  const sub3 = pickComponent(components, "sublocality_level_3")                // 1丁目
+  const sub4 = pickComponent(components, "sublocality_level_4")                // 12-33
+  const admin2 = pickComponent(components, "administrative_area_level_2")      // 足柄下郡 (郡)
+  const admin3 = pickComponent(components, "administrative_area_level_3")      // 箱根町 (町)
+  const admin4 = pickComponent(components, "administrative_area_level_4")      // 大字
   const premise = pickComponent(components, "premise")
   const streetNumber = pickComponent(components, "street_number")
 
-  // Yamato/Ship&co の構造:
-  //   address1 = 番地以下のみ (例: "下丸屋町412") — 番地・町名
-  //   address2 = 市区郡町村のみ (例: "京都市中京区") — Yamato parser が "市区郡町村" として識別する
-  //   company  = ホテル名 (建物名)
+  // 市区郡町村抽出 — エリアごとに Google の component 構造が違うため複数パターンを試す:
+  //   (A) 23区     : locality="港区"           → 港区
+  //   (B) 政令市   : locality="大阪市", sub1="北区"  → 大阪市北区
+  //   (C) 町村     : admin2="足柄下郡", admin3="箱根町"  → 足柄下郡箱根町
+  //   (D) 県下市   : locality="厚木市"              → 厚木市
   //
-  // 注: address2 に番地混ぜると Yamato は "市区郡町村が無い" 扱いになる (EF011022).
-  //     完全に分離させる必要がある.
-  const cityPart = locality || ""
-  const wardPart = sub1 && sub1 !== cityPart ? sub1 : ""
-  const cityWard = (cityPart + wardPart) || prefecture || ""
+  // (A)〜(C) いずれも空 → (D) で fallback。さらに駄目なら formatted_address から正規表現抽出 (最終手段).
+  function deriveCityWard(): string {
+    // (B) 政令市 + 区 (locality に "市", sub1 に "区")
+    if (locality && /[市]$/.test(locality) && sub1 && sub1 !== locality) {
+      return locality + sub1
+    }
+    // (A) 単独区 (locality に 区 — Tokyo 23区パターン)
+    if (locality && /[区町村]$/.test(locality)) {
+      return locality
+    }
+    // (C) 郡 + 町村 (admin2 が "郡", admin3 が "町/村")
+    if (admin2 && /郡$/.test(admin2) && admin3) {
+      return admin2 + admin3
+    }
+    // (D) 単独市 (locality が "市")
+    if (locality && /市$/.test(locality)) {
+      return locality
+    }
+    // (E) admin3 単独 (locality 無しの町村)
+    if (admin3 && /[町村市区]$/.test(admin3)) {
+      return admin2 ? admin2 + admin3 : admin3
+    }
+    // (F) sub1 単独 (例外)
+    if (sub1) return sub1
+    return ""
+  }
+  let cityWard = deriveCityWard()
 
-  // cityWard が空のまま Yamato に投げると EF011022 が確実に発生する.
-  // ガベージを送らずに null で返して上位の 400 エラーに変換する.
-  if (!cityWard) return null
+  // 最終 fallback: formatted_address 文字列から抽出 (Google が address_components で取りこぼした場合)
+  if (!cityWard && result?.address_components) {
+    // formatted_address は別途取得していないので、components の long_name を連結して擬似 address を作る
+    const joinedAddr = components.map((c) => c.long_name).join("")
+    // "神奈川県足柄下郡箱根町湯本519" のような連結文字列から市区郡町村部分を抽出
+    const cityM = /(?:.+?[県府都]|北海道)((?:.+?郡)?(?:.+?[市区町村]))/u.exec(joinedAddr)
+    if (cityM) cityWard = cityM[1]
+  }
+
+  // ヤマトに不完全な住所を送らない (EF011022 への確実な事前ガード)
+  if (!cityWard) {
+    console.warn("[shipandco] cityWard derivation failed", {
+      hotelName,
+      prefecture,
+      locality,
+      sub1,
+      admin2,
+      admin3,
+      admin4,
+    })
+    return null
+  }
 
   // 番地以下のみ (locality と sub1 は除外)
   const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
@@ -390,6 +435,12 @@ export async function POST(req: NextRequest) {
     resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId),  // sender = BondEx
     resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false, toPlaceId),     // recipient = hotel
   ])
+
+  // 解決結果を Vercel ログに残す (EF011022 など再発時の根本特定用)
+  console.log("[shipandco] resolved addresses", {
+    from: fromAddr ? { city: fromAddr.city, address1: fromAddr.address1, address2: fromAddr.address2 } : null,
+    to: toAddr ? { city: toAddr.city, address1: toAddr.address1, address2: toAddr.address2 } : null,
+  })
 
   // 住所解決失敗時 — ヤマトに不完全な住所を送らずに 400 で早期エラー.
   // 操作員にホテル名の修正を促す (例: "Ace hotel kyoto" → 正式な "Ace Hotel Kyoto").
