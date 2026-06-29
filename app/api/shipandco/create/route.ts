@@ -157,34 +157,41 @@ async function resolveYamatoAddress(
   const premise = pickComponent(components, "premise")
   const streetNumber = pickComponent(components, "street_number")
 
-  // Yamato 形式:
+  // Yamato 形式 (旧 backend と同じマッピング):
   //   province: 都道府県 (東京都)
-  //   address1: 市区町村 + 丁目番地 (港区赤坂1丁目12-33) — Yamato は city/address1 を結合した文字列で見る
-  //   address2: 建物名 (ANA InterContinental Tokyo)
-  const cityForYamato = locality || sub1 || ""
-  const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
-  // locality と sub1 が異なる (Tokyo 23区パターン: locality=港区, sub1=赤坂) 場合は sub1 もパスに含める
-  if (locality && sub1 && locality !== sub1) {
-    streetParts.unshift(sub1)
+  //   address1: 市区町村 (港区) — short
+  //   address2: 完全な住所パス (港区赤坂1丁目12-33) — long, city も含む
+  //   company:  ホテル名 (建物名)
+  const cityForYamato = locality || sub1 || prefecture || ""
+
+  // 完全な住所パス: locality / sub1〜4 / premise / street_number を順に結合 (重複は除外)
+  const pathParts = [locality, sub1, sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
+  const uniqueParts: string[] = []
+  for (const p of pathParts) {
+    if (uniqueParts[uniqueParts.length - 1] !== p) uniqueParts.push(p)
   }
-  const streetPath = streetParts.join("")
-  const combinedAddress1 = (cityForYamato + streetPath) || "1番地"
+  const fullPath = uniqueParts.join("")
 
   // 国際電話形式 (+81-XX-XXXX-XXXX) を E.164 に正規化
   let phone = result?.international_phone_number ?? ""
   phone = phone.replace(/[^\d+]/g, "")
   if (!phone) phone = FALLBACK_PHONE
 
+  // Yamato は full_name に日本語名 (建物・代表者) を期待するケースが多い。
+  // 旅行者のローマ字名だと弾かれることがあるので、ホテル名にフォールバック。
+  const fullName = result?.name ?? hotelName
+
   return {
-    full_name: recipient || result?.name || hotelName,
+    full_name: fullName,
     company: result?.name ?? hotelName,
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
     city: cityForYamato,
-    address1: combinedAddress1,
-    address2: result?.name ?? hotelName,
+    address1: cityForYamato || fullPath || "1番地",
+    address2: fullPath || cityForYamato || "1番地",
+    extra: recipient || "", // 受取人名 (旅行者ローマ字名) は extra に逃がす
   }
 }
 
