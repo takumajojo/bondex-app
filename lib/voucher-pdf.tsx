@@ -185,19 +185,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   // 「Luggage Forwarding」を大きく目立たせる (高齢ゲスト向け視認性)
+  // descender (g/y/p/q) が下の行に触らないよう lineHeight を十分大きく + 余白を確保
   serviceTitle: {
     fontSize: 26,
     fontWeight: 500,
     color: C_FG,
     letterSpacing: -0.3,
-    lineHeight: 1.1,
-    marginTop: 10,
-    marginBottom: 2,
+    lineHeight: 1.6,
+    marginTop: 14,
+    marginBottom: 18,
   },
   serviceTitleMeta: {
     fontSize: 8.5,
     color: C_MUTED,
     letterSpacing: 1.5,
+    marginTop: 0,
+    paddingTop: 4,
   },
   headerRight: {
     flexDirection: "column",

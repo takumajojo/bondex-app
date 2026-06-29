@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
+import {
+  deliveryDateErrorCode,
+  getDeliverableRange,
+} from "@/lib/yamato-delivery"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -263,6 +267,14 @@ async function resolveYamatoAddress(
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
 
+  // Yamato 送り状の構造マッピング:
+  //   都道府県     → province
+  //   市区郡町村   → city と address2 の両方に入れる (Yamato parser は受取人側 address2 から読むため)
+  //   番地以下     → address1
+  //   建物名/会社  → company (ホテル名)
+  //
+  // 過去エラー EF011022 "お届け先市区郡町村が入力されていません" は to_address.address2 が
+  // ホテル名で埋まり、Yamato parser が 市区郡町村 を見つけられなかったために発生していた.
   return {
     full_name: fullName,
     company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
@@ -271,10 +283,10 @@ async function resolveYamatoAddress(
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
     city: cityWard || "市区郡町村不明",
-    address1: fullAddress || "1番地",
-    // 依頼主側は address2 にホテル名を入れない (Yamato shipper_name 長すぎ対策).
-    // ホテルでの集荷は from_address.address1 + ご依頼主名 BondEx で十分識別可能.
-    address2: isSender ? "" : (result?.name ?? hotelName),
+    address1: streetOnly || fullAddress || "1番地",
+    // address2 に 市区郡町村 を入れる (Yamato parser が認識するため).
+    // sender は BondEx 固定で受取人側ほどシビアではないが、同じ構造にしておく.
+    address2: cityWard || prefecture || "",
     extra: "",
   }
 }
@@ -347,6 +359,26 @@ export async function POST(req: NextRequest) {
       issuableFrom: issuableFromYmd(shipmentDate),
       daysUntilIssuable: gap - MAX_LEAD_DAYS,
     })
+  }
+
+  // 配達希望日 (deliveryDate) のヤマト配達ルール検証
+  // 宅急便 (常温): shipmentDate + 1日 〜 +7日 のみ指定可能
+  // 範囲外を Ship&co に送るとエラーになるので事前に弾く
+  if (deliveryDate) {
+    const delivErr = deliveryDateErrorCode(deliveryDate, shipmentDate, "standard")
+    if (delivErr) {
+      const range = getDeliverableRange(shipmentDate, "standard")
+      return NextResponse.json(
+        {
+          error: "deliveryDate is outside the Yamato deliverable window",
+          code: delivErr,
+          shipmentDate,
+          deliveryDate,
+          deliverableRange: range,
+        },
+        { status: 400 },
+      )
+    }
   }
 
   // Google Places で構造化住所を取得

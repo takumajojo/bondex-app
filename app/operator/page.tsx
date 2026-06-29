@@ -30,6 +30,11 @@ import {
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  getDeliverableRange,
+  isValidDeliveryDate,
+  formatRangeHint,
+} from "@/lib/yamato-delivery"
 
 const FLAT_RATE_YEN = 5000
 
@@ -141,6 +146,10 @@ const messages = {
     familyNamePlaceholder: "e.g. Johnson Family",
     travelerCountLabel: "Travelers",
     missingFieldsTitle: "Please fill in these fields to continue:",
+    deliveryOutOfRange: "Outside Yamato's deliverable window — pick a date in the range below.",
+    setShipDateFirst: "Set the drop-off date first to enable arrival-date selection.",
+    yamatoDateRange:
+      "Yamato allows delivery 1–7 days after the drop-off date.",
     settings: "Settings",
     settingsTitle: "Operator Settings",
     settingsHint: "These details are used in every voucher. Update them here, not per-booking.",
@@ -255,6 +264,10 @@ const messages = {
     familyNamePlaceholder: "例: Johnson Family",
     travelerCountLabel: "旅行者数",
     missingFieldsTitle: "以下の項目を入力してください:",
+    deliveryOutOfRange: "ヤマトの配達指定可能期間外です — 下のレンジ内から選んでください。",
+    setShipDateFirst: "発送日を先に入力すると、到着日が選べるようになります。",
+    yamatoDateRange:
+      "ヤマト宅急便は発送日の翌日から7日以内まで配達指定可能です。",
     settings: "設定",
     settingsTitle: "オペレーター設定",
     settingsHint: "この情報は毎回のバウチャーで使用されます。予約ごとではなくここで管理します。",
@@ -283,6 +296,10 @@ function mapShipmentError(code: string | undefined, t: Messages): string | null 
       return t.yamatoDateWindow
     case "SHIPMENT_DATE_INVALID":
       return t.yamatoDateInvalid
+    case "DELIVERY_BEFORE_MIN":
+    case "DELIVERY_AFTER_MAX":
+    case "DELIVERY_INVALID":
+      return `${t.deliveryOutOfRange} ${t.yamatoDateRange}`
     default:
       return null
   }
@@ -1041,6 +1058,7 @@ export default function OperatorPage() {
         {phase === "review" && itinerary && (
           <ReviewView
             t={t}
+            locale={locale}
             itinerary={itinerary}
             totalSuitcases={totalSuitcases}
             totalAmount={totalAmount}
@@ -1115,6 +1133,7 @@ function LocaleToggle({
 
 function ReviewView({
   t,
+  locale,
   itinerary,
   totalSuitcases,
   totalAmount,
@@ -1127,6 +1146,7 @@ function ReviewView({
   onContinue,
 }: {
   t: Messages
+  locale: Locale
   itinerary: EditableItinerary
   totalSuitcases: number
   totalAmount: number
@@ -1151,6 +1171,14 @@ function ReviewView({
     if (!s.shipmentDate) missing.push(`${legPrefix}${t.dropOffDateLabel}`)
     if (!s.expectedArrival) missing.push(`${legPrefix}${t.arrivalDateLabel}`)
     if (!s.recipient.trim()) missing.push(`${legPrefix}${t.recipientLabelFull}`)
+    // 配達日のヤマトレンジ判定 — shipmentDate と expectedArrival がそろっている時のみチェック
+    if (
+      s.shipmentDate &&
+      s.expectedArrival &&
+      !isValidDeliveryDate(s.expectedArrival, s.shipmentDate, "standard")
+    ) {
+      missing.push(`${legPrefix}${t.arrivalDateLabel} — ${t.yamatoDateRange}`)
+    }
   })
   const canContinue = missing.length === 0
 
@@ -1253,6 +1281,7 @@ function ReviewView({
               <ShipmentRow
                 key={i}
                 t={t}
+                locale={locale}
                 index={i}
                 shipment={s}
                 canRemove={shipments.length > 1}
@@ -1311,6 +1340,7 @@ function ReviewView({
 
 function ShipmentRow({
   t,
+  locale,
   index,
   shipment,
   canRemove,
@@ -1318,12 +1348,24 @@ function ShipmentRow({
   onRemove,
 }: {
   t: Messages
+  locale: Locale
   index: number
   shipment: EditableShipment
   canRemove: boolean
   onUpdate: (index: number, patch: Partial<EditableShipment>) => void
   onRemove: (index: number) => void
 }) {
+  // 配達日 (Arrival) のレンジ計算 — shipmentDate が確定したら有効
+  const deliverableRange = shipment.shipmentDate
+    ? getDeliverableRange(shipment.shipmentDate, "standard")
+    : null
+  const rangeHint = shipment.shipmentDate
+    ? formatRangeHint(shipment.shipmentDate, locale, "standard")
+    : ""
+  const arrivalOutOfRange =
+    shipment.shipmentDate &&
+    shipment.expectedArrival &&
+    !isValidDeliveryDate(shipment.expectedArrival, shipment.shipmentDate, "standard")
   return (
     <li className="rounded-2xl border border-border bg-white p-5">
       {/* Header: leg # + remove */}
@@ -1432,8 +1474,13 @@ function ShipmentRow({
               <Input
                 type="date"
                 value={shipment.expectedArrival}
+                min={deliverableRange?.min}
+                max={deliverableRange?.max}
+                disabled={!shipment.shipmentDate}
                 onChange={(e) => onUpdate(index, { expectedArrival: e.target.value })}
-                className="h-9 text-sm"
+                className={`h-9 text-sm ${arrivalOutOfRange ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                aria-invalid={arrivalOutOfRange ? true : undefined}
+                aria-describedby={`arrival-hint-${index}`}
               />
             </div>
             <div className="space-y-1">
@@ -1448,6 +1495,20 @@ function ShipmentRow({
               />
             </div>
           </div>
+          {/* ヤマト宅急便の指定可能レンジ表示 */}
+          {shipment.shipmentDate && (
+            <p
+              id={`arrival-hint-${index}`}
+              className={`text-[10px] ${arrivalOutOfRange ? "text-red-600 font-medium" : "text-muted-foreground"}`}
+              role={arrivalOutOfRange ? "alert" : undefined}
+            >
+              {arrivalOutOfRange ? `⚠ ${t.deliveryOutOfRange}　` : "📅 "}
+              {rangeHint}
+            </p>
+          )}
+          {!shipment.shipmentDate && (
+            <p className="text-[10px] text-muted-foreground">{t.setShipDateFirst}</p>
+          )}
         </div>
       </div>
 
