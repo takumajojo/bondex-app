@@ -97,6 +97,22 @@ function lastNameOnly(fullName: string): string {
 }
 
 /**
+ * 47 都道府県の明示リスト. あいまい正規表現の代わりに使用.
+ * 「京都府」を「京都」と誤抽出する旧 bug 防止のため.
+ */
+const JP_PREFECTURES = [
+  "北海道",
+  "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
+  "岐阜県", "静岡県", "愛知県", "三重県",
+  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+  "徳島県", "香川県", "愛媛県", "高知県",
+  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
+] as const
+
+/**
  * 日本の住所文字列から 市区郡町村 と 番地以下 を抽出する.
  * Google の formatted_address (例: "〒261-8501 千葉県千葉市美浜区浜田1-7 アパホテル...")
  * を入力とし、Yamato が必要とする構造に分解.
@@ -122,10 +138,16 @@ export function parseJpAddressString(addr: string): {
   const zip = zipM ? zipM[1].replace(/-/g, "") : ""
   if (zipM) s = s.slice(zipM[0].length).trim()
 
-  // 都道府県を抽出 (北海道 / 〇〇県 / 〇〇府 / 〇〇都)
-  const prefM = /^(.+?[県府都]|北海道)/u.exec(s)
-  const prefecture = prefM ? prefM[1] : ""
-  if (prefM) s = s.slice(prefecture.length).trim()
+  // 都道府県を抽出 — 47 都道府県の明示マッチング (あいまい regex の bug 回避).
+  // 例: "京都府京都市中京区" → "京都府" を正しく抽出 (旧 regex は "京都" としていた)
+  let prefecture = ""
+  for (const p of JP_PREFECTURES) {
+    if (s.startsWith(p)) {
+      prefecture = p
+      s = s.slice(p.length).trim()
+      break
+    }
+  }
 
   // 市区郡町村を抽出 — 優先順位順に試す:
   //   ①政令市+区 (千葉市美浜区)
@@ -317,6 +339,13 @@ async function resolveYamatoAddress(
   const parsed = parseJpAddressString(formattedAddress)
   let { zip, prefecture, cityWard, street } = parsed
 
+  // Vercel ログ用 — Google から受け取った生の formatted_address と分解結果
+  console.log("[shipandco] parseJpAddressString", {
+    hotelName,
+    formattedAddress,
+    parsed: { zip, prefecture, cityWard, street },
+  })
+
   // フォールバック: 個別 component から補完 (formatted_address が無いケース)
   if (!zip) zip = pickComponent(components, "postal_code").replace(/-/g, "")
   if (!prefecture) prefecture = pickComponent(components, "administrative_area_level_1")
@@ -492,10 +521,12 @@ export async function POST(req: NextRequest) {
     resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false, toPlaceId),     // recipient = hotel
   ])
 
-  // 解決結果を Vercel ログに残す (EF011022 など再発時の根本特定用)
+  // 解決結果を Vercel ログに残す (再発時の根本特定用) — 全フィールドを出力する
   console.log("[shipandco] resolved addresses", {
-    from: fromAddr ? { city: fromAddr.city, address1: fromAddr.address1, address2: fromAddr.address2 } : null,
-    to: toAddr ? { city: toAddr.city, address1: toAddr.address1, address2: toAddr.address2 } : null,
+    fromHotel,
+    toHotel,
+    from: fromAddr,
+    to: toAddr,
   })
 
   // 住所解決失敗時 — ヤマトに不完全な住所を送らずに 400 で早期エラー.
