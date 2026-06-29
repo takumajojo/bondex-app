@@ -400,16 +400,18 @@ async function resolveYamatoAddress(
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
 
-  // Yamato 送り状の構造マッピング (Ship&co の field 対応が判明したため確定):
-  //   province → 都道府県                  (例: 長崎県)
-  //   city     → 市区郡町村                (例: 雲仙市)
-  //   address1 → consignee_address3 = 町・番地 (例: 小浜町雲仙320)  ← 市区郡町村を入れると ES001014 "長すぎ"
-  //   address2 → consignee_address2 = 市区郡町村 (例: 雲仙市)        ← 空だと EF011022 "市区郡町村なし"
-  //   company  → 建物名/会社 (ホテル名)
+  // Yamato 送り状の構造マッピング (Ship&co の本当の field 対応 — 過去動いていた d345ef9 を確認):
+  //   province → 都道府県                        (例: 大分県)
+  //   address1 → consignee_address3 = 短い建物/番地  (例: 由布市)         ← cityWard を入れる (短い)
+  //   address2 → consignee_address2 = full address  (例: 由布市湯布院町川南1243) ← Yamato parser がここから 市区郡町村 を抽出
+  //   city     → 補助 (Yamato は使わないが整合性のため設定)
+  //   company  → ホテル名
   //
-  // エラー履歴:
-  //   - EF011022 (consignee_address2 で市区郡町村なし) → address2 に cityWard を入れて解決
-  //   - ES001014 (consignee_address3 = address1 が長すぎ) → address1 から cityWard を抜いて streetOnly のみに
+  // エラー履歴と確定マッピング:
+  //   - EF011022 (consignee_address2 missing): address2 に fullPath を入れることで解消
+  //   - ES001014 (consignee_address3 too long): address1 を短く (cityWard のみ) することで解消
+  //   - 推測で逆マッピングを試して再発させていたため、過去動作実績のある d345ef9 の構造に確定回帰
+  const fullPath = fullAddress || cityWard
   return {
     full_name: fullName,
     company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
@@ -418,10 +420,8 @@ async function resolveYamatoAddress(
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
     city: cityWard,
-    // address1 (= 町・番地) は 市区郡町村 を含めない. streetOnly が空ならホテル名で fallback (1文字以上必須のため).
-    address1: streetOnly || result?.name?.slice(0, 20) || hotelName.slice(0, 20) || "1番地",
-    // address2 (= 市区郡町村) — Yamato parser が必ずここから 市区郡町村 を抽出する.
-    address2: cityWard,
+    address1: cityWard,
+    address2: fullPath,
     extra: "",
   }
 }
