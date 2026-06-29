@@ -324,9 +324,9 @@ function LegPage({
         <Text style={styles.kvValue}>{shipment.suitcaseCount} luggage</Text>
       </View>
       <View style={styles.kvRow}>
-        <Text style={styles.kvKey}>Supplier</Text>
+        <Text style={styles.kvKey}>Forwarded by</Text>
         <Text style={styles.kvValue}>
-          {data.companyName} (Tel: {data.contactPersonPhone} *Japanese speaking only)
+          BondEx ({data.companyName}) — Tel: {data.contactPersonPhone}
         </Text>
       </View>
 
@@ -365,7 +365,7 @@ function LegPage({
       {/* JP section */}
       <Text style={styles.jpGreeting}>各ご担当者様へ</Text>
       <Text style={styles.jpIntro}>
-        ランドオペレーター[{data.tourCompany || "BondEx"}]がこちらの手配を行っております。何か不明な点がありましたら手配担当の{data.contactPersonName}までご連絡ください → {data.contactPersonPhone}
+        配送担当: BondEx (運営 {data.companyName}) — ランドオペレーター[{data.tourCompany || "BondEx"}]からの手配です。何かご不明な点がありましたら手配担当の{data.contactPersonName}までご連絡ください → {data.contactPersonPhone}
       </Text>
 
       <Text style={styles.jpHotelHeader}>{jpFromHeader}</Text>

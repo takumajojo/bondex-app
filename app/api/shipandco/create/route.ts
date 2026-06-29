@@ -137,9 +137,10 @@ function pickComponent(components: AddressComponent[], type: string): string {
   return components.find((c) => c.types.includes(type))?.long_name ?? ""
 }
 
-// 依頼主 (sender) の full_name は "BondEx" 固定にする (ES001023 ご依頼主名が長すぎ対策).
-// 受取人 (recipient) は受取人名 or ホテル名.
+// 依頼主 (sender) は BondEx 固定 (ES001023 ご依頼主名が長すぎ対策).
+// Yamato は shipper_name に full_name と company を結合した値を使う可能性があるため両方短くする.
 const SENDER_FULL_NAME = "BondEx"
+const SENDER_COMPANY = "BondEx"
 
 // Google Places (language=ja) でホテルを検索し、Yamato 形式の構造化住所を返す.
 // 失敗時はホテル名のみのフォールバックを返す (Ship&co は zip 必須なので最終的に弾かれる)
@@ -151,14 +152,14 @@ async function resolveYamatoAddress(
 ): Promise<YamatoAddress> {
   const fallback: YamatoAddress = {
     full_name: isSender ? SENDER_FULL_NAME : hotelName,
-    company: hotelName,
+    company: isSender ? SENDER_COMPANY : hotelName,
     phone: FALLBACK_PHONE,
     country: "JP",
     zip: FALLBACK_ZIP,
     province: "",
     city: "市区郡町村不明",
     address1: "1番地",
-    address2: "1番地",
+    address2: isSender ? "" : "1番地",
     extra: "",
   }
 
@@ -246,14 +247,16 @@ async function resolveYamatoAddress(
 
   return {
     full_name: fullName,
-    company: result?.name ?? hotelName,
+    company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
-    province: prefecture,                          // 都道府県
-    city: cityWard || "市区郡町村不明",              // 市区郡町村 (専用フィールドにも設定)
-    address1: fullAddress || "1番地",               // 完全な住所 (市区郡町村 + 番地以下)
-    address2: result?.name ?? hotelName,           // 建物名 (ホテル名)
+    province: prefecture,
+    city: cityWard || "市区郡町村不明",
+    address1: fullAddress || "1番地",
+    // 依頼主側は address2 にホテル名を入れない (Yamato shipper_name 長すぎ対策).
+    // ホテルでの集荷は from_address.address1 + ご依頼主名 BondEx で十分識別可能.
+    address2: isSender ? "" : (result?.name ?? hotelName),
     extra: "",
   }
 }
