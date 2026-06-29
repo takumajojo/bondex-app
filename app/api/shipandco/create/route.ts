@@ -314,14 +314,17 @@ async function resolveYamatoAddress(
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
 
-  // Yamato 送り状の構造マッピング:
-  //   都道府県     → province
-  //   市区郡町村   → city と address2 の両方に入れる (Yamato parser は受取人側 address2 から読むため)
-  //   番地以下     → address1
+  // Yamato 送り状の構造マッピング (過去の試行錯誤を踏まえた最終形):
+  //   都道府県     → province (例: 京都府)
+  //   市区郡町村   → city (例: 京都市中京区)
+  //   番地以下     → address1 (full address: 市区郡町村 + 町名番地 を入れる)
+  //   建物名混在   → address2 (full address: 市区郡町村 + 番地 を再掲) ← Yamato parser がここから 市区郡町村 を読むケースがある
   //   建物名/会社  → company (ホテル名)
   //
-  // 過去エラー EF011022 "お届け先市区郡町村が入力されていません" は to_address.address2 が
-  // ホテル名で埋まり、Yamato parser が 市区郡町村 を見つけられなかったために発生していた.
+  // 過去 EF011022 "お届け先市区郡町村が入力されていません" の根本原因:
+  //   1. address2 にホテル名を入れていた → 市区郡町村 が無い (旧 bug)
+  //   2. address2 に cityWard 単独を入れていた → Ship&co/Yamato が address2 を 「市区郡町村+番地」 として連結処理する場合に番地が無く弾く (このターンで再現)
+  //   → address1 と address2 両方に full address を入れる三重ガード方式に戻す.
   return {
     full_name: fullName,
     company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
@@ -329,11 +332,9 @@ async function resolveYamatoAddress(
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
-    city: cityWard || "市区郡町村不明",
-    address1: streetOnly || fullAddress || "1番地",
-    // address2 に 市区郡町村 を入れる (Yamato parser が認識するため).
-    // sender は BondEx 固定で受取人側ほどシビアではないが、同じ構造にしておく.
-    address2: cityWard || prefecture || "",
+    city: cityWard,
+    address1: fullAddress || cityWard,
+    address2: fullAddress || cityWard,
     extra: "",
   }
 }
