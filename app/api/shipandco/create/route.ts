@@ -345,9 +345,16 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 品名 (Yamato 送り状の品名欄): デフォルト「スーツケース」
+  // 品名 (Yamato 送り状の品名欄):
+  //   "スーツケース / {代表者名} / チェックイン {YYYY-MM-DD}" の形式に組み立て
+  //   個数は quantity に持たせる (送り状には品名1行で集約表示).
   const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
   const productName = rawProductName || "スーツケース"
+  const recipientName = (toInput.recipient ?? "").trim()
+  const productNameParts: string[] = [productName]
+  if (recipientName) productNameParts.push(`${recipientName} 様`)
+  if (deliveryDate) productNameParts.push(`チェックイン ${deliveryDate}`)
+  const productNameFull = productNameParts.join(" / ")
 
   const payload = {
     from_address: fromAddr,
@@ -363,13 +370,15 @@ export async function POST(req: NextRequest) {
       pack_amount: suitcaseCount,
       test: true, // POC 固定
     },
-    // Yamato は products の weight を見るので、各 suitcase に重量を持たせる
-    products: Array.from({ length: suitcaseCount }).map((_, i) => ({
-      name: suitcaseCount > 1 ? `${productName} ${i + 1}` : productName,
-      quantity: 1,
-      price: 5000,
-      weight: 10, // kg/個
-    })),
+    // 品名は1行に集約 (スーツケース / 代表者名 / チェックイン日). 個数は quantity で持たせる.
+    products: [
+      {
+        name: productNameFull,
+        quantity: suitcaseCount,
+        price: 5000,
+        weight: 10, // kg/個
+      },
+    ],
   }
 
   // POC デバッグ用: payload を console に出す (Vercel の Functions ログで確認可)
