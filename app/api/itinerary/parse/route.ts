@@ -37,6 +37,14 @@ Rules for "recipient" (重要):
 - NEVER write "Johnson Family", "The Smith Group", "Tanaka Sama" etc. — always one person
 - The same representative is used for ALL shipment legs in the itinerary
 
+Rules for hotel names (重要):
+- Output ONLY the hotel's own name. NEVER include the OTA/booking-channel name as a prefix or suffix.
+- Strip any leading channel name like "Expedia / ", "Booking.com / ", "Agoda / ", "Hotels.com / ",
+  "Rakuten Travel / ", "JTB / ", "Trip.com / ", "Booking / " — and any parenthetical channel
+  suffix like " (Expedia)", " (Booking.com)".
+- Example: "Expedia / ANA InterContinental Tokyo" → "ANA InterContinental Tokyo"
+- Example: "Hilton Kyoto (Booking.com)" → "Hilton Kyoto"
+
 Always call the extract_itinerary tool exactly once with your final answer. Do not output any other text.`
 
 const TOOL_SCHEMA = {
@@ -127,6 +135,60 @@ const TOOL_SCHEMA = {
   },
 }
 
+// 「Expedia / ANA InterContinental Tokyo」「Hilton Kyoto (Booking.com)」のような
+// OTA 名混入を除去する。複数チャンネルが連なるケースも考慮し正規表現で繰り返し除去。
+const OTA_CHANNELS = [
+  "Expedia",
+  "Booking\\.com",
+  "Booking",
+  "Agoda",
+  "Hotels\\.com",
+  "Rakuten Travel",
+  "Rakuten",
+  "JTB",
+  "Trip\\.com",
+  "Ctrip",
+  "Airbnb",
+]
+const OTA_PREFIX_RE = new RegExp(
+  `^\\s*(?:${OTA_CHANNELS.join("|")})\\s*[\\/|:\\-–—]\\s*`,
+  "i",
+)
+const OTA_SUFFIX_RE = new RegExp(
+  `\\s*[\\(\\[][\\s]*(?:${OTA_CHANNELS.join("|")})[\\s]*[\\)\\]]\\s*$`,
+  "i",
+)
+
+function cleanHotelName(name: unknown): string {
+  if (typeof name !== "string") return ""
+  let s = name.trim()
+  // Strip up to 3 times in case of stacked prefixes ("Booking / Expedia / Hotel")
+  for (let i = 0; i < 3; i++) {
+    const before = s
+    s = s.replace(OTA_PREFIX_RE, "").replace(OTA_SUFFIX_RE, "").trim()
+    if (s === before) break
+  }
+  return s
+}
+
+function scrubOtaPrefixes(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input
+  const obj = input as { shipments?: unknown }
+  if (!Array.isArray(obj.shipments)) return input
+  const shipments = obj.shipments.map((s) => {
+    if (!s || typeof s !== "object") return s
+    const sh = s as { from?: { hotel?: unknown }; to?: { hotel?: unknown } }
+    if (sh.from && typeof sh.from === "object" && "hotel" in sh.from) {
+      sh.from.hotel = cleanHotelName(sh.from.hotel)
+    }
+    if (sh.to && typeof sh.to === "object" && "hotel" in sh.to) {
+      sh.to.hotel = cleanHotelName(sh.to.hotel)
+    }
+    return sh
+  })
+  return { ...obj, shipments }
+}
+
 export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "itinerary-parse")
   if (!limit.ok) return limit.response
@@ -205,7 +267,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Model did not return tool_use" }, { status: 502 })
     }
 
-    return NextResponse.json(toolUse.input)
+    // Post-process safety net: strip OTA channel prefixes/suffixes from hotel names
+    // even if the AI failed to follow the prompt rule. Conservative regex — only well-known channels.
+    return NextResponse.json(scrubOtaPrefixes(toolUse.input))
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Anthropic error"
     return NextResponse.json({ error: msg }, { status: 502 })

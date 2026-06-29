@@ -18,6 +18,10 @@ import {
 const FONT_DIR = path.join(process.cwd(), "public", "fonts")
 const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
 
+// BondEx 自身のサポート窓口 — JP intro で代理店より先に表示される一次窓口。
+// 代理店経由ではなく BondEx に直接連絡してもらうための番号。
+const BONDEX_SUPPORT_PHONE = "+81-90-1680-1142"
+
 try {
   Font.register({
     family: "NotoSansJP",
@@ -52,6 +56,12 @@ export interface VoucherShipment {
   pickUpNote?: string
   specialNote?: string
   destinationNights?: number
+  /** Reservation booking name (may differ from recipient). Optional. */
+  bookingName?: string
+  /** Guest check-in date at the from-hotel (YYYY-MM-DD). Optional. */
+  fromCheckIn?: string
+  /** Guest check-out date at the to-hotel (YYYY-MM-DD). Optional. */
+  toCheckOut?: string
 }
 
 export interface VoucherInput {
@@ -174,6 +184,21 @@ const styles = StyleSheet.create({
     marginTop: 6,
     letterSpacing: 0.3,
   },
+  // 「Luggage Forwarding」を大きく目立たせる (高齢ゲスト向け視認性)
+  serviceTitle: {
+    fontSize: 26,
+    fontWeight: 500,
+    color: C_FG,
+    letterSpacing: -0.3,
+    lineHeight: 1.1,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  serviceTitleMeta: {
+    fontSize: 8.5,
+    color: C_MUTED,
+    letterSpacing: 1.5,
+  },
   headerRight: {
     flexDirection: "column",
     alignItems: "flex-end",
@@ -216,12 +241,13 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
   noticePill: {
-    paddingVertical: 5,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
     borderRadius: 999,
-    borderWidth: 0.5,
+    borderWidth: 0.7,
     borderColor: C_FG,
-    fontSize: 8.5,
+    fontSize: 9.5,
+    fontWeight: 500,
     color: C_FG,
     letterSpacing: 0.6,
   },
@@ -355,7 +381,21 @@ const styles = StyleSheet.create({
     color: C_FG_SOFT,
     lineHeight: 1.6,
     marginTop: 8,
+    marginBottom: 4,
+  },
+  jpContactList: {
+    marginTop: 4,
     marginBottom: 14,
+    paddingLeft: 10,
+  },
+  jpContactRow: {
+    fontSize: 9,
+    color: C_FG,
+    lineHeight: 1.55,
+    marginBottom: 2,
+  },
+  jpContactLabel: {
+    fontWeight: 500,
   },
   jpStep: {
     flexDirection: "row",
@@ -493,8 +533,9 @@ function LegPage({
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
           <Image style={styles.logo} src={LOGO_PATH} />
-          <Text style={styles.headerSubtitle}>
-            VOUCHER · LUGGAGE FORWARDING · Operated by {data.companyName}
+          <Text style={styles.serviceTitle}>Luggage Forwarding</Text>
+          <Text style={styles.serviceTitleMeta}>
+            VOUCHER · Operated by BondEx ({data.companyName})
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -510,7 +551,7 @@ function LegPage({
       {/* ---------------- Notice pill ---------------- */}
       <View style={styles.noticeWrap}>
         <Text style={styles.noticePill}>
-          PLEASE PRESENT THIS VOUCHER AT THE RECEPTION
+          PLEASE PRESENT THIS VOUCHER AT THE RECEPTION  WHEN CHECK-IN
         </Text>
       </View>
 
@@ -590,8 +631,19 @@ function LegPage({
           <Text style={styles.jpHeaderHint}>FOR HOTEL STAFF · 日本語</Text>
         </View>
         <Text style={styles.jpIntro}>
-          配送担当：BondEx（運営 {data.companyName}）— ランドオペレーター[{data.tourCompany || "BondEx"}]からの手配です。何かご不明な点がございましたら、手配担当の{data.contactPersonName}までご連絡ください　TEL: {data.contactPersonPhone}
+          この手配は以下の事業者により行われております。荷物配送に関するお問い合わせは、まず BondEx までご連絡ください。
         </Text>
+        <View style={styles.jpContactList}>
+          <Text style={styles.jpContactRow}>
+            <Text style={styles.jpContactLabel}>● 荷物配送手配業者：</Text>
+            BondEx（運営 {data.companyName}）　TEL: {BONDEX_SUPPORT_PHONE}
+          </Text>
+          <Text style={styles.jpContactRow}>
+            <Text style={styles.jpContactLabel}>● ランドオペレーター：</Text>
+            [{data.tourCompany || "—"}]　TEL: {data.contactPersonPhone}
+            {data.contactPersonName ? `　(担当：${data.contactPersonName})` : ""}
+          </Text>
+        </View>
 
         {/* Step 1: 発送元 */}
         <View style={styles.jpStep}>
@@ -604,7 +656,12 @@ function LegPage({
               <Text style={styles.jpStepHotel}>{shipment.from.hotel} 様</Text>
             </View>
             <Text style={styles.jpStepMeta}>
-              チェックイン日：{formatJpDate(shipment.shipmentDate)}　／　代表者 {data.representativeLabel}　{data.travelerCount}名様
+              ご宿泊期間：
+              {shipment.fromCheckIn ? `${formatJpDate(shipment.fromCheckIn)} 〜 ` : ""}
+              {formatJpDate(shipment.shipmentDate)}（ご出発日）
+            </Text>
+            <Text style={styles.jpStepMeta}>
+              ご予約者名：{shipment.bookingName || data.representativeLabel}　／　{data.travelerCount}名様
             </Text>
             <Text style={styles.jpStepInstruction}>{jpFromInstruction}</Text>
             {shipment.specialNote && (
@@ -624,7 +681,11 @@ function LegPage({
               <Text style={styles.jpStepHotel}>{shipment.to.hotel} 様</Text>
             </View>
             <Text style={styles.jpStepMeta}>
-              チェックイン日：{formatJpDate(shipment.expectedArrival)}　／　代表者 {data.representativeLabel}　{data.travelerCount}名様
+              ご宿泊期間：{formatJpDate(shipment.expectedArrival)}（チェックイン）
+              {shipment.toCheckOut ? ` 〜 ${formatJpDate(shipment.toCheckOut)}（チェックアウト）` : ""}
+            </Text>
+            <Text style={styles.jpStepMeta}>
+              ご予約者名：{shipment.bookingName || data.representativeLabel}　／　{data.travelerCount}名様
             </Text>
             <Text style={styles.jpStepInstruction}>{jpToInstruction}</Text>
           </View>

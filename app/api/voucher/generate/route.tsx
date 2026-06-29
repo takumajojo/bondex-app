@@ -27,6 +27,9 @@ interface RequestShipment {
   pickUpNote?: unknown
   specialNote?: unknown
   destinationNights?: unknown
+  bookingName?: unknown
+  fromCheckIn?: unknown
+  toCheckOut?: unknown
 }
 
 interface RequestBody {
@@ -74,6 +77,9 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
     pickUpNote: asString(s.pickUpNote).trim() || undefined,
     specialNote: asString(s.specialNote).trim() || undefined,
     destinationNights,
+    bookingName: asString(s.bookingName).trim() || undefined,
+    fromCheckIn: asString(s.fromCheckIn).trim() || undefined,
+    toCheckOut: asString(s.toCheckOut).trim() || undefined,
   }
 }
 

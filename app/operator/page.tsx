@@ -23,6 +23,9 @@ import {
   Settings,
   X,
   Clock,
+  Pencil,
+  Plus,
+  Trash2,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -116,6 +119,27 @@ const messages = {
     yamatoDateInvalid: "The shipment date is invalid. Please check the itinerary date.",
     notesLabel: "Notes (optional)",
     notesPlaceholder: "Anything to tell the hotel — e.g. drop-off by 8:00, fragile, senior guest…",
+    // New (Phase 2 — feedback from agency)
+    manualEntry: "Enter manually",
+    manualEntrySub: "Skip AI parsing and fill in the form by hand.",
+    orDivider: "or",
+    hotelNameLabel: "Hotel name",
+    hotelNamePlaceholder: "e.g. Hilton Tokyo",
+    cityLabel: "City / area",
+    cityPlaceholder: "e.g. Tokyo",
+    bookingNameLabel: "Booking name",
+    bookingNamePlaceholder: "Same as recipient if blank",
+    fromCheckInLabel: "From hotel — check-in",
+    toCheckOutLabel: "To hotel — check-out",
+    dropOffDateLabel: "Drop-off date",
+    arrivalDateLabel: "Arrival date",
+    optional: "(optional)",
+    addLegBtn: "Add another leg",
+    removeLeg: "Remove",
+    recipientLabelFull: "Recipient name (on shipping label)",
+    familyNameLabel: "Family / group name",
+    familyNamePlaceholder: "e.g. Johnson Family",
+    travelerCountLabel: "Travelers",
     settings: "Settings",
     settingsTitle: "Operator Settings",
     settingsHint: "These details are used in every voucher. Update them here, not per-booking.",
@@ -208,6 +232,27 @@ const messages = {
     yamatoDateInvalid: "出荷予定日が不正です。旅程の日付をご確認ください。",
     notesLabel: "備考 (任意)",
     notesPlaceholder: "ホテルに伝えたいことがあれば — 例: 8時までに発送、割れ物注意、高齢のお客様…",
+    // New (Phase 2 — 代理店フィードバック反映)
+    manualEntry: "マニュアル入力",
+    manualEntrySub: "AI 読み取りをスキップして手入力で進めます。",
+    orDivider: "または",
+    hotelNameLabel: "ホテル名",
+    hotelNamePlaceholder: "例: ヒルトン東京",
+    cityLabel: "都市・エリア",
+    cityPlaceholder: "例: 東京",
+    bookingNameLabel: "予約者名",
+    bookingNamePlaceholder: "空欄なら受取人と同じ",
+    fromCheckInLabel: "発送元ホテル・チェックイン日",
+    toCheckOutLabel: "発送先ホテル・チェックアウト日",
+    dropOffDateLabel: "発送日 (集荷)",
+    arrivalDateLabel: "到着日",
+    optional: "(任意)",
+    addLegBtn: "区間を追加",
+    removeLeg: "削除",
+    recipientLabelFull: "受取人名 (送り状)",
+    familyNameLabel: "ファミリー名 / 団体名",
+    familyNamePlaceholder: "例: Johnson Family",
+    travelerCountLabel: "旅行者数",
     settings: "設定",
     settingsTitle: "オペレーター設定",
     settingsHint: "この情報は毎回のバウチャーで使用されます。予約ごとではなくここで管理します。",
@@ -289,10 +334,14 @@ interface ParsedItinerary {
   shipments: ParsedShipment[]
 }
 
-// 編集可能な State: パース結果に suitcaseCount + 備考のみ加える
+// 編集可能な State: パース結果に suitcaseCount + 備考 + 予約者情報など
 interface EditableShipment extends ParsedShipment {
   suitcaseCount: number
   specialNote: string
+  // ホテル連絡時用の追加情報 (任意)
+  bookingName?: string    // 予約者名 (空なら recipient を使用)
+  fromCheckIn?: string    // 発送元ホテルへのチェックイン日 (YYYY-MM-DD)
+  toCheckOut?: string     // 発送先ホテルからのチェックアウト日 (YYYY-MM-DD)
 }
 
 interface EditableItinerary {
@@ -544,7 +593,7 @@ export default function OperatorPage() {
       itinerary.guest.travelers.find((tr) => tr.type === "adult") || itinerary.guest.travelers[0]
     const representativeLabel = representative
       ? `${representative.title ? representative.title + " " : ""}${representative.name}`
-      : itinerary.guest.familyName
+      : itinerary.shipments[0]?.recipient?.trim() || itinerary.guest.familyName || ""
 
     // クライアント側で Booking ID を1回だけ生成し、voucher / Yamato 両方に同じ ID を渡して
     // トレーサビリティを担保する (旧コードでは voucher と Yamato refNumber が別 ID になっていた)
@@ -571,6 +620,9 @@ export default function OperatorPage() {
         recipient: s.recipient,
         suitcaseCount: s.suitcaseCount,
         specialNote: s.specialNote,
+        bookingName: s.bookingName || "",
+        fromCheckIn: s.fromCheckIn || "",
+        toCheckOut: s.toCheckOut || "",
       })),
     }
 
@@ -764,25 +816,81 @@ export default function OperatorPage() {
     [handleFile],
   )
 
-  const updateSuitcaseCount = (index: number, value: number) => {
+  // 汎用 patch 更新 (ホテル名・日付・予約者名などの任意フィールド)
+  const updateShipment = (index: number, patch: Partial<EditableShipment>) => {
     if (!itinerary) return
-    const next = Math.max(0, Math.floor(value))
     setItinerary({
       ...itinerary,
-      shipments: itinerary.shipments.map((s, i) =>
-        i === index ? { ...s, suitcaseCount: next } : s,
-      ),
+      shipments: itinerary.shipments.map((s, i) => {
+        if (i !== index) return s
+        // from/to ネストは個別マージ
+        const next: EditableShipment = { ...s, ...patch }
+        if (patch.from) next.from = { ...s.from, ...patch.from }
+        if (patch.to) next.to = { ...s.to, ...patch.to }
+        return next
+      }),
     })
   }
 
-  const updateShipmentNote = (index: number, value: string) => {
+  const updateGuest = (patch: Partial<ParsedGuest>) => {
     if (!itinerary) return
     setItinerary({
       ...itinerary,
-      shipments: itinerary.shipments.map((s, i) =>
-        i === index ? { ...s, specialNote: value } : s,
-      ),
+      guest: { ...itinerary.guest, ...patch },
     })
+  }
+
+  const addLeg = () => {
+    if (!itinerary) return
+    const repName = itinerary.shipments[0]?.recipient || ""
+    const empty: EditableShipment = {
+      shipmentDate: "",
+      expectedArrival: "",
+      from: { hotel: "", address: "", city: "" },
+      to: { hotel: "", address: "", city: "" },
+      recipient: repName,
+      suitcaseCount: 1,
+      specialNote: "",
+    }
+    setItinerary({
+      ...itinerary,
+      shipments: [...itinerary.shipments, empty],
+    })
+  }
+
+  const removeLeg = (index: number) => {
+    if (!itinerary) return
+    if (itinerary.shipments.length <= 1) return // keep at least 1 leg
+    setItinerary({
+      ...itinerary,
+      shipments: itinerary.shipments.filter((_, i) => i !== index),
+    })
+  }
+
+  const startManualEntry = () => {
+    const scaffold: EditableItinerary = {
+      guest: {
+        familyName: "",
+        travelerCount: 1,
+        travelers: [],
+      },
+      shipments: [
+        {
+          shipmentDate: "",
+          expectedArrival: "",
+          from: { hotel: "", address: "", city: "" },
+          to: { hotel: "", address: "", city: "" },
+          recipient: "",
+          suitcaseCount: 1,
+          specialNote: "",
+        },
+      ],
+    }
+    setItinerary(scaffold)
+    setVerifications({ representative: false, legs: [{ names: false, dates: false, addresses: false }] })
+    setError("")
+    setFileName("")
+    setPhase("review")
   }
 
   return (
@@ -878,6 +986,27 @@ export default function OperatorPage() {
                 </div>
               </div>
             </label>
+
+            {/* Manual entry alternative — for tours with irregular info not on the sheet */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground uppercase tracking-widest">{t.orDivider}</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+            <button
+              type="button"
+              onClick={startManualEntry}
+              className="w-full rounded-2xl border border-border bg-white hover:bg-muted/40 transition-colors p-6 text-left flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <Pencil className="w-4 h-4 text-foreground" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">{t.manualEntry}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t.manualEntrySub}</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+            </button>
           </section>
         )}
 
@@ -915,8 +1044,10 @@ export default function OperatorPage() {
             totalAmount={totalAmount}
             settings={settings}
             onOpenSettings={() => setSettingsOpen(true)}
-            onUpdateSuitcaseCount={updateSuitcaseCount}
-            onUpdateShipmentNote={updateShipmentNote}
+            onUpdateShipment={updateShipment}
+            onUpdateGuest={updateGuest}
+            onAddLeg={addLeg}
+            onRemoveLeg={removeLeg}
             onContinue={goToConfirm}
           />
         )}
@@ -987,8 +1118,10 @@ function ReviewView({
   totalAmount,
   settings,
   onOpenSettings,
-  onUpdateSuitcaseCount,
-  onUpdateShipmentNote,
+  onUpdateShipment,
+  onUpdateGuest,
+  onAddLeg,
+  onRemoveLeg,
   onContinue,
 }: {
   t: Messages
@@ -997,27 +1130,55 @@ function ReviewView({
   totalAmount: number
   settings: OperatorSettings | null
   onOpenSettings: () => void
-  onUpdateSuitcaseCount: (index: number, value: number) => void
-  onUpdateShipmentNote: (index: number, value: string) => void
+  onUpdateShipment: (index: number, patch: Partial<EditableShipment>) => void
+  onUpdateGuest: (patch: Partial<ParsedGuest>) => void
+  onAddLeg: () => void
+  onRemoveLeg: (index: number) => void
   onContinue: () => void
 }) {
   const { guest, shipments } = itinerary
-  const canContinue = !!settings?.tourCompany && shipments.length > 0
+  const canContinue =
+    !!settings?.tourCompany &&
+    shipments.length > 0 &&
+    shipments.every(
+      (s) =>
+        s.from.hotel.trim() &&
+        s.to.hotel.trim() &&
+        s.shipmentDate &&
+        s.expectedArrival &&
+        s.recipient.trim(),
+    )
 
   return (
     <div className="space-y-8">
-      {/* Guest summary */}
+      {/* Guest summary — editable */}
       <section className="rounded-2xl border border-border bg-white p-6">
-        <div className="flex items-start justify-between gap-4">
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium mb-3">
+          {t.guest}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3">
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              {t.guest}
-            </p>
-            <h2 className="text-xl font-semibold text-foreground">{guest.familyName}</h2>
-            <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
-              <Users className="w-4 h-4" strokeWidth={1.5} />
-              {t.travelers(guest.travelerCount)}
-            </p>
+            <label className="text-[11px] text-muted-foreground">{t.familyNameLabel}</label>
+            <Input
+              type="text"
+              placeholder={t.familyNamePlaceholder}
+              value={guest.familyName}
+              onChange={(e) => onUpdateGuest({ familyName: e.target.value })}
+              className="h-10 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.travelerCountLabel}</label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={guest.travelerCount}
+              onChange={(e) =>
+                onUpdateGuest({ travelerCount: Math.max(1, Math.floor(Number(e.target.value))) })
+              }
+              className="h-10 text-sm text-center"
+            />
           </div>
         </div>
 
@@ -1089,12 +1250,22 @@ function ReviewView({
                 t={t}
                 index={i}
                 shipment={s}
-                onUpdateSuitcaseCount={onUpdateSuitcaseCount}
-                onUpdateShipmentNote={onUpdateShipmentNote}
+                canRemove={shipments.length > 1}
+                onUpdate={onUpdateShipment}
+                onRemove={onRemoveLeg}
               />
             ))}
           </ol>
         )}
+
+        <button
+          type="button"
+          onClick={onAddLeg}
+          className="w-full rounded-2xl border border-dashed border-border bg-transparent hover:bg-muted/30 transition-colors py-4 text-sm text-muted-foreground hover:text-foreground flex items-center justify-center gap-2"
+        >
+          <Plus className="w-4 h-4" strokeWidth={1.5} />
+          {t.addLegBtn}
+        </button>
       </section>
 
       {/* Totals + CTA */}
@@ -1128,96 +1299,197 @@ function ShipmentRow({
   t,
   index,
   shipment,
-  onUpdateSuitcaseCount,
-  onUpdateShipmentNote,
+  canRemove,
+  onUpdate,
+  onRemove,
 }: {
   t: Messages
   index: number
   shipment: EditableShipment
-  onUpdateSuitcaseCount: (index: number, value: number) => void
-  onUpdateShipmentNote: (index: number, value: string) => void
+  canRemove: boolean
+  onUpdate: (index: number, patch: Partial<EditableShipment>) => void
+  onRemove: (index: number) => void
 }) {
   return (
     <li className="rounded-2xl border border-border bg-white p-5">
-      <div className="flex items-start gap-4">
-        <div className="w-7 h-7 rounded-full bg-foreground text-background text-xs font-medium flex items-center justify-center shrink-0">
-          {index + 1}
-        </div>
-
-        <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
-          {/* From */}
-          <div className="space-y-1 min-w-0">
-            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              {t.from}
-            </p>
-            <p className="text-base font-medium text-foreground truncate">{shipment.from.hotel}</p>
-            <p className="text-xs text-muted-foreground flex items-start gap-1">
-              <MapPin className="w-3 h-3 mt-0.5 shrink-0" strokeWidth={1.5} />
-              <span className="leading-snug">{shipment.from.city || shipment.from.address}</span>
-            </p>
-            <p className="text-xs text-foreground/80 flex items-center gap-1 pt-1">
-              <Calendar className="w-3 h-3" strokeWidth={1.5} />
-              {t.shipOn(shipment.shipmentDate)}
-            </p>
-          </div>
-
-          {/* Arrow */}
-          <ArrowRight
-            className="w-5 h-5 text-muted-foreground hidden md:block"
-            strokeWidth={1.5}
-          />
-
-          {/* To */}
-          <div className="space-y-1 min-w-0">
-            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-              {t.to}
-            </p>
-            <p className="text-base font-medium text-foreground truncate">{shipment.to.hotel}</p>
-            <p className="text-xs text-muted-foreground flex items-start gap-1">
-              <MapPin className="w-3 h-3 mt-0.5 shrink-0" strokeWidth={1.5} />
-              <span className="leading-snug">{shipment.to.city || shipment.to.address}</span>
-            </p>
-            <p className="text-xs text-foreground/80 flex items-center gap-1 pt-1">
-              <Calendar className="w-3 h-3" strokeWidth={1.5} />
-              {t.arriveOn(shipment.expectedArrival)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Users className="w-3.5 h-3.5" strokeWidth={1.5} />
-          {t.recipientLabel}{" "}
-          <span className="text-foreground/80 font-medium">{shipment.recipient}</span>
-        </div>
+      {/* Header: leg # + remove */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <label className="text-xs text-muted-foreground flex items-center gap-2">
-            <Package className="w-3.5 h-3.5" strokeWidth={1.5} />
-            {t.suitcases}
-          </label>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={shipment.suitcaseCount}
-            onChange={(e) => onUpdateSuitcaseCount(index, Number(e.target.value))}
-            className="w-20 h-9 text-center"
-          />
-          <span className="text-xs text-muted-foreground tabular-nums">
-            ¥{(shipment.suitcaseCount * FLAT_RATE_YEN).toLocaleString()}
+          <div className="w-7 h-7 rounded-full bg-foreground text-background text-xs font-medium flex items-center justify-center shrink-0">
+            {index + 1}
+          </div>
+          <span className="text-sm font-medium text-foreground">
+            {t.from} → {t.to}
           </span>
         </div>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={() => onRemove(index)}
+            className="text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+            {t.removeLeg}
+          </button>
+        )}
       </div>
 
-      {/* 備考のみ */}
+      {/* From / To 2-column editable */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        {/* ----- FROM ----- */}
+        <div className="space-y-3">
+          <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
+            <MapPin className="w-3 h-3" strokeWidth={1.5} />
+            {t.from}
+          </p>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.hotelNameLabel}</label>
+            <Input
+              type="text"
+              placeholder={t.hotelNamePlaceholder}
+              value={shipment.from.hotel}
+              onChange={(e) => onUpdate(index, { from: { ...shipment.from, hotel: e.target.value } })}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.cityLabel}</label>
+            <Input
+              type="text"
+              placeholder={t.cityPlaceholder}
+              value={shipment.from.city}
+              onChange={(e) => onUpdate(index, { from: { ...shipment.from, city: e.target.value } })}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">
+                {t.fromCheckInLabel} <span className="text-muted-foreground/70">{t.optional}</span>
+              </label>
+              <Input
+                type="date"
+                value={shipment.fromCheckIn || ""}
+                onChange={(e) => onUpdate(index, { fromCheckIn: e.target.value })}
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">{t.dropOffDateLabel}</label>
+              <Input
+                type="date"
+                value={shipment.shipmentDate}
+                onChange={(e) => onUpdate(index, { shipmentDate: e.target.value })}
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ----- TO ----- */}
+        <div className="space-y-3 md:border-l md:border-border md:pl-6">
+          <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
+            <MapPin className="w-3 h-3" strokeWidth={1.5} />
+            {t.to}
+          </p>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.hotelNameLabel}</label>
+            <Input
+              type="text"
+              placeholder={t.hotelNamePlaceholder}
+              value={shipment.to.hotel}
+              onChange={(e) => onUpdate(index, { to: { ...shipment.to, hotel: e.target.value } })}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.cityLabel}</label>
+            <Input
+              type="text"
+              placeholder={t.cityPlaceholder}
+              value={shipment.to.city}
+              onChange={(e) => onUpdate(index, { to: { ...shipment.to, city: e.target.value } })}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">{t.arrivalDateLabel}</label>
+              <Input
+                type="date"
+                value={shipment.expectedArrival}
+                onChange={(e) => onUpdate(index, { expectedArrival: e.target.value })}
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">
+                {t.toCheckOutLabel} <span className="text-muted-foreground/70">{t.optional}</span>
+              </label>
+              <Input
+                type="date"
+                value={shipment.toCheckOut || ""}
+                onChange={(e) => onUpdate(index, { toCheckOut: e.target.value })}
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recipient / Booking name */}
+      <div className="mt-4 pt-4 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            <Users className="w-3 h-3" strokeWidth={1.5} />
+            {t.recipientLabelFull}
+          </label>
+          <Input
+            type="text"
+            value={shipment.recipient}
+            onChange={(e) => onUpdate(index, { recipient: e.target.value })}
+            className="h-9 text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">{t.bookingNameLabel}</label>
+          <Input
+            type="text"
+            placeholder={t.bookingNamePlaceholder}
+            value={shipment.bookingName || ""}
+            onChange={(e) => onUpdate(index, { bookingName: e.target.value })}
+            className="h-9 text-sm"
+          />
+        </div>
+      </div>
+
+      {/* Suitcase count + total */}
+      <div className="mt-4 pt-4 border-t border-border flex items-center justify-end gap-3">
+        <label className="text-xs text-muted-foreground flex items-center gap-2">
+          <Package className="w-3.5 h-3.5" strokeWidth={1.5} />
+          {t.suitcases}
+        </label>
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={shipment.suitcaseCount}
+          onChange={(e) => onUpdate(index, { suitcaseCount: Math.max(0, Math.floor(Number(e.target.value))) })}
+          className="w-20 h-9 text-center"
+        />
+        <span className="text-xs text-muted-foreground tabular-nums">
+          ¥{(shipment.suitcaseCount * FLAT_RATE_YEN).toLocaleString()}
+        </span>
+      </div>
+
+      {/* Notes */}
       <div className="mt-4 pt-4 border-t border-border space-y-1">
         <label className="text-xs text-muted-foreground">{t.notesLabel}</label>
         <Input
           type="text"
           placeholder={t.notesPlaceholder}
           value={shipment.specialNote}
-          onChange={(e) => onUpdateShipmentNote(index, e.target.value)}
+          onChange={(e) => onUpdate(index, { specialNote: e.target.value })}
           className="h-9 text-sm"
         />
       </div>
