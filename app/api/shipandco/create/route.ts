@@ -74,6 +74,12 @@ function isValidYmd(s: string): boolean {
   return new Date(t).toISOString().slice(0, 10) === s
 }
 
+// Yamato (Ship&co) 構造:
+//   province : 都道府県 (京都府)
+//   address1 : 市区郡町村 (京都市)
+//   address2 : 完全な住所パス (京都市中京区下丸屋町412) ← 市区郡町村 + 番地以下
+//   full_name / company : 建物・ホテル名 (ヒルトン京都)
+// 旧 backend (動作実績あり) と同じマッピング.
 interface YamatoAddress {
   full_name: string
   company: string
@@ -82,10 +88,9 @@ interface YamatoAddress {
   country: string
   zip: string
   province: string
-  city: string
   address1: string
   address2: string
-  extra?: string
+  extra: string
 }
 
 interface AddressComponent {
@@ -137,15 +142,15 @@ async function resolveYamatoAddress(
   apiKey: string,
 ): Promise<YamatoAddress> {
   const fallback: YamatoAddress = {
-    full_name: recipient || "Front Desk",
+    full_name: hotelName,
     company: hotelName,
     phone: FALLBACK_PHONE,
     country: "JP",
     zip: FALLBACK_ZIP,
     province: "",
-    city: "",
     address1: "1番地",
-    address2: hotelName || "",
+    address2: "1番地",
+    extra: "",
   }
 
   // Step 1: findplacefromtext (日本語)
@@ -200,32 +205,39 @@ async function resolveYamatoAddress(
   const premise = pickComponent(components, "premise")
   const streetNumber = pickComponent(components, "street_number")
 
-  // address1: 市区町村より下の住所 (丁目・番地)
-  // address2: 建物名 (ホテル名)
-  // Yamato: address2 必須 (なければホテル名で埋める)
+  // 旧 backend と同じマッピング:
+  //   address1 = 市区郡町村 (例: "京都市") — 短い、城市のみ
+  //   address2 = 完全な住所パス (例: "京都市中京区下丸屋町412") — 市区郡町村 + 番地以下を含む
+  //   full_name / company = ホテル名
   const cityForYamato = locality || sub1 || prefecture || ""
-  const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
-  // locality と sub1 が異なる場合 (Tokyo の港区/赤坂のパターン), sub1 も住所の一部
-  if (locality && sub1 && locality !== sub1) {
-    streetParts.unshift(sub1)
-  }
-  const address1 = streetParts.join("") || "1番地"
 
-  // 国際電話形式 (+81-XX-XXXX-XXXX) を Yamato 用 (E.164) に整形
+  // 完全な住所パス: locality + sub1〜4 + premise + street_number を順に結合 (重複は除外)
+  const pathParts = [locality, sub1, sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
+  const uniqueParts: string[] = []
+  for (const p of pathParts) {
+    if (uniqueParts[uniqueParts.length - 1] !== p) uniqueParts.push(p)
+  }
+  const fullPath = uniqueParts.join("")
+
+  // 国際電話形式 (+81-XX-XXXX-XXXX) を E.164 に正規化
   let phone = result?.international_phone_number ?? ""
   phone = phone.replace(/[^\d+]/g, "")
   if (!phone) phone = FALLBACK_PHONE
 
+  // Yamato は full_name に日本語名 (建物・代表者) を期待。
+  // 旅行者ローマ字名だと弾かれることがあるのでホテル名にフォールバック.
+  const fullName = result?.name ?? hotelName
+
   return {
-    full_name: recipient || result?.name || hotelName,
+    full_name: fullName,
     company: result?.name ?? hotelName,
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
-    city: cityForYamato,
-    address1,
-    address2: result?.name ?? hotelName,
+    address1: cityForYamato || fullPath || "1番地",
+    address2: fullPath || cityForYamato || "1番地",
+    extra: "",
   }
 }
 
