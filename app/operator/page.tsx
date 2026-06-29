@@ -620,15 +620,17 @@ export default function OperatorPage() {
               : errObj.detail
                 ? JSON.stringify(errObj.detail).slice(0, 200)
                 : ""
+          const parts: string[] = []
+          if (errObj.error) parts.push(errObj.error)
+          if (detailStr) parts.push(detailStr)
+          if (errObj.debugId) parts.push(`debug_id: ${errObj.debugId}`)
           return {
             legIndex,
             legLabel,
             labelUrl: "",
             trackingNumbers: [],
             status: "failed",
-            error: detailStr
-              ? `${errObj.error || res.statusText}: ${detailStr}`
-              : errObj.error || res.statusText,
+            error: parts.join(" · ") || res.statusText,
           }
         }
         const d = data as {

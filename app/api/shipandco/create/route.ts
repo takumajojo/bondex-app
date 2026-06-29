@@ -82,10 +82,9 @@ interface YamatoAddress {
   country: string
   zip: string
   province: string
-  city: string
   address1: string
   address2: string
-  extra?: string
+  extra: string
 }
 
 interface AddressComponent {
@@ -137,15 +136,15 @@ async function resolveYamatoAddress(
   apiKey: string,
 ): Promise<YamatoAddress> {
   const fallback: YamatoAddress = {
-    full_name: recipient || "Front Desk",
+    full_name: hotelName,
     company: hotelName,
     phone: FALLBACK_PHONE,
     country: "JP",
     zip: FALLBACK_ZIP,
     province: "",
-    city: "",
     address1: "1番地",
     address2: hotelName || "",
+    extra: "",
   }
 
   // Step 1: findplacefromtext (日本語)
@@ -200,32 +199,40 @@ async function resolveYamatoAddress(
   const premise = pickComponent(components, "premise")
   const streetNumber = pickComponent(components, "street_number")
 
-  // address1: 市区町村より下の住所 (丁目・番地)
-  // address2: 建物名 (ホテル名)
-  // Yamato: address2 必須 (なければホテル名で埋める)
+  // Yamato 形式 (旧 backend と同じマッピング):
+  //   province: 都道府県 (東京都)
+  //   address1: 市区町村 (港区) — short
+  //   address2: 完全な住所パス (港区赤坂1丁目12-33) — long, city も含む
+  //   company:  ホテル名 (建物名)
   const cityForYamato = locality || sub1 || prefecture || ""
-  const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
-  // locality と sub1 が異なる場合 (Tokyo の港区/赤坂のパターン), sub1 も住所の一部
-  if (locality && sub1 && locality !== sub1) {
-    streetParts.unshift(sub1)
-  }
-  const address1 = streetParts.join("") || "1番地"
 
-  // 国際電話形式 (+81-XX-XXXX-XXXX) を Yamato 用 (E.164) に整形
+  // 完全な住所パス: locality / sub1〜4 / premise / street_number を順に結合 (重複は除外)
+  const pathParts = [locality, sub1, sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
+  const uniqueParts: string[] = []
+  for (const p of pathParts) {
+    if (uniqueParts[uniqueParts.length - 1] !== p) uniqueParts.push(p)
+  }
+  const fullPath = uniqueParts.join("")
+
+  // 国際電話形式 (+81-XX-XXXX-XXXX) を E.164 に正規化
   let phone = result?.international_phone_number ?? ""
   phone = phone.replace(/[^\d+]/g, "")
   if (!phone) phone = FALLBACK_PHONE
 
+  // Yamato は full_name に日本語名 (建物・代表者) を期待するケースが多い。
+  // 旅行者のローマ字名だと弾かれることがあるので、ホテル名にフォールバック。
+  const fullName = result?.name ?? hotelName
+
   return {
-    full_name: recipient || result?.name || hotelName,
+    full_name: fullName,
     company: result?.name ?? hotelName,
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
-    city: cityForYamato,
-    address1,
-    address2: result?.name ?? hotelName,
+    address1: cityForYamato || fullPath || "1番地",
+    address2: fullPath || cityForYamato || "1番地",
+    extra: "",
   }
 }
 
@@ -319,15 +326,19 @@ export async function POST(req: NextRequest) {
       ref_number: refNumber,
       shipment_date: shipmentDate,
       pack_amount: suitcaseCount,
-      pack_size: 60, // ヤマト60サイズ相当をデフォルト (実運用では荷物サイズで調整)
       test: true, // POC 固定
     },
+    // Yamato は products の weight を見るので、各 suitcase に重量を持たせる
     products: Array.from({ length: suitcaseCount }).map((_, i) => ({
       name: `Luggage ${i + 1}`,
       quantity: 1,
       price: 5000,
+      weight: 10, // kg/個 — 実運用では旅程表パース結果から取れる
     })),
   }
+
+  // POC デバッグ用: payload を console に出す (Vercel の Functions ログで確認可)
+  console.log("[shipandco] payload:", JSON.stringify(payload, null, 2))
 
   try {
     const res = await fetch(`${SHIPANDCO_BASE}/shipments`, {
