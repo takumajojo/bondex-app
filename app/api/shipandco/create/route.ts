@@ -74,6 +74,12 @@ function isValidYmd(s: string): boolean {
   return new Date(t).toISOString().slice(0, 10) === s
 }
 
+// Yamato (Ship&co) 構造:
+//   province : 都道府県 (京都府)
+//   address1 : 市区郡町村 (京都市)
+//   address2 : 完全な住所パス (京都市中京区下丸屋町412) ← 市区郡町村 + 番地以下
+//   full_name / company : 建物・ホテル名 (ヒルトン京都)
+// 旧 backend (動作実績あり) と同じマッピング.
 interface YamatoAddress {
   full_name: string
   company: string
@@ -143,7 +149,7 @@ async function resolveYamatoAddress(
     zip: FALLBACK_ZIP,
     province: "",
     address1: "1番地",
-    address2: hotelName || "",
+    address2: "1番地",
     extra: "",
   }
 
@@ -199,14 +205,13 @@ async function resolveYamatoAddress(
   const premise = pickComponent(components, "premise")
   const streetNumber = pickComponent(components, "street_number")
 
-  // Yamato 形式 (旧 backend と同じマッピング):
-  //   province: 都道府県 (東京都)
-  //   address1: 市区町村 (港区) — short
-  //   address2: 完全な住所パス (港区赤坂1丁目12-33) — long, city も含む
-  //   company:  ホテル名 (建物名)
+  // 旧 backend と同じマッピング:
+  //   address1 = 市区郡町村 (例: "京都市") — 短い、城市のみ
+  //   address2 = 完全な住所パス (例: "京都市中京区下丸屋町412") — 市区郡町村 + 番地以下を含む
+  //   full_name / company = ホテル名
   const cityForYamato = locality || sub1 || prefecture || ""
 
-  // 完全な住所パス: locality / sub1〜4 / premise / street_number を順に結合 (重複は除外)
+  // 完全な住所パス: locality + sub1〜4 + premise + street_number を順に結合 (重複は除外)
   const pathParts = [locality, sub1, sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
   const uniqueParts: string[] = []
   for (const p of pathParts) {
@@ -219,8 +224,8 @@ async function resolveYamatoAddress(
   phone = phone.replace(/[^\d+]/g, "")
   if (!phone) phone = FALLBACK_PHONE
 
-  // Yamato は full_name に日本語名 (建物・代表者) を期待するケースが多い。
-  // 旅行者のローマ字名だと弾かれることがあるので、ホテル名にフォールバック。
+  // Yamato は full_name に日本語名 (建物・代表者) を期待。
+  // 旅行者ローマ字名だと弾かれることがあるのでホテル名にフォールバック.
   const fullName = result?.name ?? hotelName
 
   return {
