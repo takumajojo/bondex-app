@@ -258,6 +258,9 @@ export async function POST(req: NextRequest) {
     })),
   }
 
+  // POC デバッグ用: payload を console に出す (Vercel の Functions ログで確認可)
+  console.log("[shipandco] payload:", JSON.stringify(payload, null, 2))
+
   try {
     const res = await fetch(`${SHIPANDCO_BASE}/shipments`, {
       method: "POST",

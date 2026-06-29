@@ -575,22 +575,29 @@ export default function OperatorPage() {
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || !data) {
-          const errObj = (data ?? {}) as { error?: string; detail?: unknown }
+          const errObj = (data ?? {}) as {
+            error?: string
+            detail?: unknown
+            debugId?: string
+            code?: string
+          }
           const detailStr =
             typeof errObj.detail === "string"
               ? errObj.detail
               : errObj.detail
                 ? JSON.stringify(errObj.detail).slice(0, 200)
                 : ""
+          const parts: string[] = []
+          if (errObj.error) parts.push(errObj.error)
+          if (detailStr) parts.push(detailStr)
+          if (errObj.debugId) parts.push(`debug_id: ${errObj.debugId}`)
           return {
             legIndex,
             legLabel,
             labelUrl: "",
             trackingNumbers: [],
             status: "failed",
-            error: detailStr
-              ? `${errObj.error || res.statusText}: ${detailStr}`
-              : errObj.error || res.statusText,
+            error: parts.join(" · ") || res.statusText,
           }
         }
         const d = data as { label?: string; trackingNumbers?: string[] }
