@@ -130,59 +130,62 @@ export function parseJpAddressString(addr: string): {
   cityWard: string
   street: string
 } {
-  // "日本、" prefix / "Japan," prefix を除去
-  let s = (addr || "").replace(/^(?:日本[、,]?|Japan,)\s*/, "").trim()
+  const original = (addr || "").trim()
 
-  // 〒XXX-XXXX を抽出
-  const zipM = /^〒\s*(\d{3}-?\d{4})\s*/.exec(s)
+  // 〒XXX-XXXX を抽出 (位置を問わず)
+  const zipM = /〒\s*(\d{3}-?\d{4})/.exec(original)
   const zip = zipM ? zipM[1].replace(/-/g, "") : ""
-  if (zipM) s = s.slice(zipM[0].length).trim()
 
-  // 都道府県を抽出 — 47 都道府県の明示マッチング (あいまい regex の bug 回避).
-  // 例: "京都府京都市中京区" → "京都府" を正しく抽出 (旧 regex は "京都" としていた)
+  // 都道府県を文字列のどこからでも検索 (Google が英語/ホテル名先頭で返すケースに対応)
+  // 例: "Comic & Books, クインテッサホテル, 福岡県福岡市中央区..." でも "福岡県" を見つけられる
   let prefecture = ""
+  let prefStart = -1
   for (const p of JP_PREFECTURES) {
-    if (s.startsWith(p)) {
+    const idx = original.indexOf(p)
+    if (idx !== -1 && (prefStart === -1 || idx < prefStart)) {
       prefecture = p
-      s = s.slice(p.length).trim()
-      break
+      prefStart = idx
     }
   }
 
-  // 市区郡町村を抽出 — 優先順位順に試す:
-  //   ①政令市+区 (千葉市美浜区)
-  //   ②郡+町/村  (足柄下郡箱根町)
-  //   ③単独市    (雲仙市)
-  //   ④単独区    (港区)
-  //   ⑤町/村単独 (rare)
+  // 都道府県が見つからなかった = 日本以外 or パース不能
+  if (!prefecture) {
+    return { zip, prefecture: "", cityWard: "", street: original }
+  }
+
+  // 都道府県の直後から市区郡町村を抽出
+  let s = original.slice(prefStart + prefecture.length).trim()
+  // 先頭にあるかもしれない数字やノイズを skip しない (本来は無いはず)
+
+  // 市区郡町村を抽出 — 優先順位順に試す
   let cityWard = ""
   let m: RegExpExecArray | null
 
-  // ① 政令市 + 区
-  m = /^([^市区郡町村]+市)([^市区郡町村]+区)/u.exec(s)
+  // ① 政令市 + 区 (千葉市美浜区, 大阪市北区, 京都市中京区, 福岡市博多区)
+  m = /^([^市区郡町村\s]+市)([^市区郡町村\s]+区)/u.exec(s)
   if (m) {
     cityWard = m[1] + m[2]
     s = s.slice(m[0].length).trim()
   }
-  // ② 郡 + 町/村
+  // ② 郡 + 町/村 (足柄下郡箱根町)
   if (!cityWard) {
-    m = /^([^市区郡町村]+郡)([^市区郡町村]+[町村])/u.exec(s)
+    m = /^([^市区郡町村\s]+郡)([^市区郡町村\s]+[町村])/u.exec(s)
     if (m) {
       cityWard = m[1] + m[2]
       s = s.slice(m[0].length).trim()
     }
   }
-  // ③ 単独市
+  // ③ 単独市 (雲仙市, 厚木市)
   if (!cityWard) {
-    m = /^([^市区郡町村]+市)/u.exec(s)
+    m = /^([^市区郡町村\s]+市)/u.exec(s)
     if (m) {
       cityWard = m[1]
       s = s.slice(m[0].length).trim()
     }
   }
-  // ④ 単独区
+  // ④ 単独区 (港区, 渋谷区)
   if (!cityWard) {
-    m = /^([^市区郡町村]+区)/u.exec(s)
+    m = /^([^市区郡町村\s]+区)/u.exec(s)
     if (m) {
       cityWard = m[1]
       s = s.slice(m[0].length).trim()
@@ -190,7 +193,7 @@ export function parseJpAddressString(addr: string): {
   }
   // ⑤ 単独町/村
   if (!cityWard) {
-    m = /^([^市区郡町村]+[町村])/u.exec(s)
+    m = /^([^市区郡町村\s]+[町村])/u.exec(s)
     if (m) {
       cityWard = m[1]
       s = s.slice(m[0].length).trim()
