@@ -150,6 +150,10 @@ const messages = {
     setShipDateFirst: "Set the drop-off date first to enable arrival-date selection.",
     yamatoDateRange:
       "Yamato allows delivery 1–7 days after the drop-off date.",
+    addressResolutionFailed:
+      "Couldn't find this hotel in Google Maps. Please check the hotel name spelling (official name, no abbreviations) and try again.",
+    shippingScheduleHeading: "Shipping schedule",
+    hotelBookingInfoHeading: "Hotel reservation details",
     settings: "Settings",
     settingsTitle: "Operator Settings",
     settingsHint: "These details are used in every voucher. Update them here, not per-booking.",
@@ -268,6 +272,10 @@ const messages = {
     setShipDateFirst: "発送日を先に入力すると、到着日が選べるようになります。",
     yamatoDateRange:
       "ヤマト宅急便は発送日の翌日から7日以内まで配達指定可能です。",
+    addressResolutionFailed:
+      "Google マップでホテルを特定できませんでした。ホテル名の表記 (正式名称、略さない) を見直してください。",
+    shippingScheduleHeading: "配送日程",
+    hotelBookingInfoHeading: "ホテル予約情報",
     settings: "設定",
     settingsTitle: "オペレーター設定",
     settingsHint: "この情報は毎回のバウチャーで使用されます。予約ごとではなくここで管理します。",
@@ -300,6 +308,8 @@ function mapShipmentError(code: string | undefined, t: Messages): string | null 
     case "DELIVERY_AFTER_MAX":
     case "DELIVERY_INVALID":
       return `${t.deliveryOutOfRange} ${t.yamatoDateRange}`
+    case "ADDRESS_RESOLUTION_FAILED":
+      return t.addressResolutionFailed
     default:
       return null
   }
@@ -1390,9 +1400,8 @@ function ShipmentRow({
         )}
       </div>
 
-      {/* From / To 2-column editable */}
+      {/* Section A: ホテル (名前・都市のみ) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-        {/* ----- FROM ----- */}
         <div className="space-y-3">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
             <MapPin className="w-3 h-3" strokeWidth={1.5} />
@@ -1418,31 +1427,8 @@ function ShipmentRow({
               className="h-9 text-sm"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">
-                {t.fromCheckInLabel} <span className="text-muted-foreground/70">{t.optional}</span>
-              </label>
-              <Input
-                type="date"
-                value={shipment.fromCheckIn || ""}
-                onChange={(e) => onUpdate(index, { fromCheckIn: e.target.value })}
-                className="h-9 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">{t.dropOffDateLabel}</label>
-              <Input
-                type="date"
-                value={shipment.shipmentDate}
-                onChange={(e) => onUpdate(index, { shipmentDate: e.target.value })}
-                className="h-9 text-sm"
-              />
-            </div>
-          </div>
         </div>
 
-        {/* ----- TO ----- */}
         <div className="space-y-3 md:border-l md:border-border md:pl-6">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
             <MapPin className="w-3 h-3" strokeWidth={1.5} />
@@ -1468,75 +1454,110 @@ function ShipmentRow({
               className="h-9 text-sm"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">{t.arrivalDateLabel}</label>
-              <Input
-                type="date"
-                value={shipment.expectedArrival}
-                min={deliverableRange?.min}
-                max={deliverableRange?.max}
-                disabled={!shipment.shipmentDate}
-                onChange={(e) => onUpdate(index, { expectedArrival: e.target.value })}
-                className={`h-9 text-sm ${arrivalOutOfRange ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-                aria-invalid={arrivalOutOfRange ? true : undefined}
-                aria-describedby={`arrival-hint-${index}`}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">
-                {t.toCheckOutLabel} <span className="text-muted-foreground/70">{t.optional}</span>
-              </label>
-              <Input
-                type="date"
-                value={shipment.toCheckOut || ""}
-                onChange={(e) => onUpdate(index, { toCheckOut: e.target.value })}
-                className="h-9 text-sm"
-              />
-            </div>
-          </div>
-          {/* ヤマト宅急便の指定可能レンジ表示 */}
-          {shipment.shipmentDate && (
-            <p
-              id={`arrival-hint-${index}`}
-              className={`text-[10px] ${arrivalOutOfRange ? "text-red-600 font-medium" : "text-muted-foreground"}`}
-              role={arrivalOutOfRange ? "alert" : undefined}
-            >
-              {arrivalOutOfRange ? `⚠ ${t.deliveryOutOfRange}　` : "📅 "}
-              {rangeHint}
-            </p>
-          )}
-          {!shipment.shipmentDate && (
-            <p className="text-[10px] text-muted-foreground">{t.setShipDateFirst}</p>
-          )}
         </div>
       </div>
 
-      {/* Recipient / Booking name */}
-      <div className="mt-4 pt-4 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-        <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-            <Users className="w-3 h-3" strokeWidth={1.5} />
-            {t.recipientLabelFull}
-          </label>
-          <Input
-            type="text"
-            value={shipment.recipient}
-            onChange={(e) => onUpdate(index, { recipient: e.target.value })}
-            className="h-9 text-sm"
-          />
+      {/* Section B: 配送日程 (drop-off → arrival) — 一番大事な操作データ */}
+      <div className="mt-5 pt-5 border-t border-border space-y-3">
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
+          <Calendar className="w-3 h-3" strokeWidth={1.5} />
+          {t.shippingScheduleHeading}
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 md:gap-4 items-end">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground font-medium">{t.dropOffDateLabel}</label>
+            <Input
+              type="date"
+              value={shipment.shipmentDate}
+              onChange={(e) => onUpdate(index, { shipmentDate: e.target.value })}
+              className="h-10 text-sm"
+              aria-label={t.dropOffDateLabel}
+            />
+          </div>
+          <ArrowRight className="w-4 h-4 text-muted-foreground hidden md:block self-center mb-3" strokeWidth={1.5} />
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground font-medium">{t.arrivalDateLabel}</label>
+            <Input
+              type="date"
+              value={shipment.expectedArrival}
+              min={deliverableRange?.min}
+              max={deliverableRange?.max}
+              disabled={!shipment.shipmentDate}
+              onChange={(e) => onUpdate(index, { expectedArrival: e.target.value })}
+              className={`h-10 text-sm ${arrivalOutOfRange ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+              aria-invalid={arrivalOutOfRange ? true : undefined}
+              aria-describedby={`arrival-hint-${index}`}
+              aria-label={t.arrivalDateLabel}
+            />
+          </div>
         </div>
-        <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">{t.bookingNameLabel}</label>
-          <Input
-            type="text"
-            placeholder={t.bookingNamePlaceholder}
-            value={shipment.bookingName || ""}
-            onChange={(e) => onUpdate(index, { bookingName: e.target.value })}
-            className="h-9 text-sm"
-          />
-        </div>
+        {shipment.shipmentDate ? (
+          <p
+            id={`arrival-hint-${index}`}
+            className={`text-[11px] ${arrivalOutOfRange ? "text-red-600 font-medium" : "text-muted-foreground"}`}
+            role={arrivalOutOfRange ? "alert" : undefined}
+          >
+            {arrivalOutOfRange ? `⚠ ${t.deliveryOutOfRange}　` : "📅 "}
+            {rangeHint}
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">{t.setShipDateFirst}</p>
+        )}
       </div>
+
+      {/* Section C: Recipient (送り状受取人 — 必須) */}
+      <div className="mt-5 pt-5 border-t border-border space-y-1">
+        <label className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5">
+          <Users className="w-3 h-3" strokeWidth={1.5} />
+          {t.recipientLabelFull}
+        </label>
+        <Input
+          type="text"
+          value={shipment.recipient}
+          onChange={(e) => onUpdate(index, { recipient: e.target.value })}
+          className="h-10 text-sm"
+        />
+      </div>
+
+      {/* Section D: ホテル予約情報 (任意 — 緊急時にホテルへ連絡する際の参考情報) */}
+      <details className="mt-4 group">
+        <summary className="cursor-pointer text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5 list-none">
+          <span className="inline-block transition-transform group-open:rotate-90">▶</span>
+          {t.hotelBookingInfoHeading}
+          <span className="text-muted-foreground/70 normal-case tracking-normal">{t.optional}</span>
+        </summary>
+        <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.bookingNameLabel}</label>
+            <Input
+              type="text"
+              placeholder={t.bookingNamePlaceholder}
+              value={shipment.bookingName || ""}
+              onChange={(e) => onUpdate(index, { bookingName: e.target.value })}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div />
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.fromCheckInLabel}</label>
+            <Input
+              type="date"
+              value={shipment.fromCheckIn || ""}
+              onChange={(e) => onUpdate(index, { fromCheckIn: e.target.value })}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">{t.toCheckOutLabel}</label>
+            <Input
+              type="date"
+              value={shipment.toCheckOut || ""}
+              onChange={(e) => onUpdate(index, { toCheckOut: e.target.value })}
+              className="h-9 text-sm"
+            />
+          </div>
+        </div>
+      </details>
 
       {/* Suitcase count + total */}
       <div className="mt-4 pt-4 border-t border-border flex items-center justify-end gap-3">

@@ -166,25 +166,16 @@ const SENDER_COMPANY = "BondEx"
 
 // Google Places (language=ja) でホテルを検索し、Yamato 形式の構造化住所を返す.
 // 失敗時はホテル名のみのフォールバックを返す (Ship&co は zip 必須なので最終的に弾かれる)
+/**
+ * 住所解決の結果. null は呼び出し側で 400 エラーに変換する.
+ * Yamato は 市区郡町村 必須なので、解決できない場合はガベージを送らずフェイルファスト.
+ */
 async function resolveYamatoAddress(
   hotelName: string,
   recipient: string,
   apiKey: string,
   isSender: boolean = false,
-): Promise<YamatoAddress> {
-  const fallback: YamatoAddress = {
-    full_name: isSender ? SENDER_FULL_NAME : hotelName,
-    company: isSender ? SENDER_COMPANY : hotelName,
-    phone: FALLBACK_PHONE,
-    country: "JP",
-    zip: FALLBACK_ZIP,
-    province: "",
-    city: "市区郡町村不明",
-    address1: "1番地",
-    address2: isSender ? "" : "1番地",
-    extra: "",
-  }
-
+): Promise<YamatoAddress | null> {
   // Step 1: findplacefromtext (日本語)
   const searchUrl = new URL(`${PLACES_BASE}/findplacefromtext/json`)
   searchUrl.searchParams.set("input", hotelName)
@@ -195,13 +186,13 @@ async function resolveYamatoAddress(
   searchUrl.searchParams.set("key", apiKey)
 
   const searchRes = await fetch(searchUrl.toString())
-  if (!searchRes.ok) return fallback
+  if (!searchRes.ok) return null
   const searchData = (await searchRes.json()) as {
     status?: string
     candidates?: Array<{ place_id?: string; name?: string }>
   }
   const candidate = searchData.candidates?.[0]
-  if (!candidate?.place_id) return fallback
+  if (!candidate?.place_id) return null
 
   // Step 2: details (日本語) で address_components と phone を取得
   const detailsUrl = new URL(`${PLACES_BASE}/details/json`)
@@ -214,7 +205,7 @@ async function resolveYamatoAddress(
   detailsUrl.searchParams.set("key", apiKey)
 
   const detailsRes = await fetch(detailsUrl.toString())
-  if (!detailsRes.ok) return fallback
+  if (!detailsRes.ok) return null
   const detailsData = (await detailsRes.json()) as {
     result?: {
       name?: string
@@ -224,7 +215,7 @@ async function resolveYamatoAddress(
   }
   const result = detailsData.result
   const components = result?.address_components ?? []
-  if (components.length === 0) return fallback
+  if (components.length === 0) return null
 
   // 日本の住所コンポーネント
   const zip = pickComponent(components, "postal_code").replace(/-/g, "")
@@ -247,6 +238,10 @@ async function resolveYamatoAddress(
   const cityPart = locality || ""
   const wardPart = sub1 && sub1 !== cityPart ? sub1 : ""
   const cityWard = (cityPart + wardPart) || prefecture || ""
+
+  // cityWard が空のまま Yamato に投げると EF011022 が確実に発生する.
+  // ガベージを送らずに null で返して上位の 400 エラーに変換する.
+  if (!cityWard) return null
 
   // 番地以下のみ (locality と sub1 は除外)
   const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
@@ -386,6 +381,23 @@ export async function POST(req: NextRequest) {
     resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true),  // sender = BondEx
     resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false),     // recipient = hotel
   ])
+
+  // 住所解決失敗時 — ヤマトに不完全な住所を送らずに 400 で早期エラー.
+  // 操作員にホテル名の修正を促す (例: "Ace hotel kyoto" → 正式な "Ace Hotel Kyoto").
+  if (!fromAddr || !toAddr) {
+    const failed: string[] = []
+    if (!fromAddr) failed.push(`発送元: "${fromHotel}"`)
+    if (!toAddr) failed.push(`発送先: "${toHotel}"`)
+    return NextResponse.json(
+      {
+        error: "Could not resolve hotel address via Google Places",
+        code: "ADDRESS_RESOLUTION_FAILED",
+        failed,
+        hint: "ホテル名の表記を見直してください (正式名称、半角/全角統一など)。",
+      },
+      { status: 400 },
+    )
+  }
 
   const carrierId = await getYamatoCarrierId(token)
   if (!carrierId) {
