@@ -239,44 +239,59 @@ async function resolveYamatoAddress(
   const streetNumber = pickComponent(components, "street_number")
 
   // 市区郡町村抽出 — エリアごとに Google の component 構造が違うため複数パターンを試す:
-  //   (A) 23区     : locality="港区"           → 港区
-  //   (B) 政令市   : locality="大阪市", sub1="北区"  → 大阪市北区
-  //   (C) 町村     : admin2="足柄下郡", admin3="箱根町"  → 足柄下郡箱根町
-  //   (D) 県下市   : locality="厚木市"              → 厚木市
+  //   (A) 23区     : locality="港区"                        → 港区
+  //   (B) 政令市   : locality="大阪市", sub1="北区"          → 大阪市北区
+  //   (C) 町村     : admin2="足柄下郡", admin3="箱根町"      → 足柄下郡箱根町
+  //   (D) 県下市   : locality="雲仙市", sub1="小浜町"        → 雲仙市  (sub1 は street 側に回す)
   //
-  // (A)〜(C) いずれも空 → (D) で fallback。さらに駄目なら formatted_address から正規表現抽出 (最終手段).
+  // cityWard で「使った parts」を usedInCity に記録し、street には未使用 parts のみ入れる.
+  // これで sub1="小浜町" が cityWard と street で重複しない (ES001014 防止).
+  const usedInCity = new Set<string>()
   function deriveCityWard(): string {
-    // (B) 政令市 + 区 (locality に "市", sub1 に "区")
-    if (locality && /[市]$/.test(locality) && sub1 && sub1 !== locality) {
+    // (B) 政令市 + 区
+    if (locality && /[市]$/.test(locality) && sub1 && sub1 !== locality && /区$/.test(sub1)) {
+      usedInCity.add(locality)
+      usedInCity.add(sub1)
       return locality + sub1
     }
-    // (A) 単独区 (locality に 区 — Tokyo 23区パターン)
-    if (locality && /[区町村]$/.test(locality)) {
+    // (A) 単独区 (Tokyo 23区)
+    if (locality && /[区]$/.test(locality)) {
+      usedInCity.add(locality)
       return locality
     }
-    // (C) 郡 + 町村 (admin2 が "郡", admin3 が "町/村")
+    // (C) 郡 + 町村
     if (admin2 && /郡$/.test(admin2) && admin3) {
+      usedInCity.add(admin2)
+      usedInCity.add(admin3)
       return admin2 + admin3
     }
-    // (D) 単独市 (locality が "市")
+    // (D) 単独市 — sub1 は street 側に残す
     if (locality && /市$/.test(locality)) {
+      usedInCity.add(locality)
       return locality
     }
-    // (E) admin3 単独 (locality 無しの町村)
-    if (admin3 && /[町村市区]$/.test(admin3)) {
-      return admin2 ? admin2 + admin3 : admin3
+    // (E) 町村単独
+    if (admin3 && /[町村市]$/.test(admin3)) {
+      if (admin2) {
+        usedInCity.add(admin2)
+        usedInCity.add(admin3)
+        return admin2 + admin3
+      }
+      usedInCity.add(admin3)
+      return admin3
     }
     // (F) sub1 単独 (例外)
-    if (sub1) return sub1
+    if (sub1) {
+      usedInCity.add(sub1)
+      return sub1
+    }
     return ""
   }
   let cityWard = deriveCityWard()
 
-  // 最終 fallback: formatted_address 文字列から抽出 (Google が address_components で取りこぼした場合)
-  if (!cityWard && result?.address_components) {
-    // formatted_address は別途取得していないので、components の long_name を連結して擬似 address を作る
+  // 最終 fallback: components 連結文字列から抽出
+  if (!cityWard) {
     const joinedAddr = components.map((c) => c.long_name).join("")
-    // "神奈川県足柄下郡箱根町湯本519" のような連結文字列から市区郡町村部分を抽出
     const cityM = /(?:.+?[県府都]|北海道)((?:.+?郡)?(?:.+?[市区町村]))/u.exec(joinedAddr)
     if (cityM) cityWard = cityM[1]
   }
@@ -295,9 +310,11 @@ async function resolveYamatoAddress(
     return null
   }
 
-  // 番地以下のみ (locality と sub1 は除外)
-  const streetParts = [sub2, sub3, sub4, premise, streetNumber].filter(Boolean)
-  const streetOnly = streetParts.join("")
+  // street parts: cityWard 抽出で使われなかった address parts を結合.
+  // 例 (雲仙市): cityWard="雲仙市" → sub1="小浜町" は未使用 → streetOnly に含める
+  // 例 (大阪市北区): cityWard="大阪市北区" → sub1="北区" は使用済 → streetOnly に含めない
+  const orderedParts = [admin3, sub1, sub2, sub3, sub4, premise, streetNumber]
+  const streetOnly = orderedParts.filter((p) => p && !usedInCity.has(p)).join("")
 
   // 国際電話形式 (+81-XX-XXXX-XXXX) を E.164 に正規化
   let phone = result?.international_phone_number ?? ""
@@ -314,17 +331,16 @@ async function resolveYamatoAddress(
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
 
-  // Yamato 送り状の構造マッピング (過去の試行錯誤を踏まえた最終形):
-  //   都道府県     → province (例: 京都府)
-  //   市区郡町村   → city (例: 京都市中京区)
-  //   番地以下     → address1 (full address: 市区郡町村 + 町名番地 を入れる)
-  //   建物名混在   → address2 (full address: 市区郡町村 + 番地 を再掲) ← Yamato parser がここから 市区郡町村 を読むケースがある
-  //   建物名/会社  → company (ホテル名)
+  // Yamato 送り状の構造マッピング (Ship&co の field 対応が判明したため確定):
+  //   province → 都道府県                  (例: 長崎県)
+  //   city     → 市区郡町村                (例: 雲仙市)
+  //   address1 → consignee_address3 = 町・番地 (例: 小浜町雲仙320)  ← 市区郡町村を入れると ES001014 "長すぎ"
+  //   address2 → consignee_address2 = 市区郡町村 (例: 雲仙市)        ← 空だと EF011022 "市区郡町村なし"
+  //   company  → 建物名/会社 (ホテル名)
   //
-  // 過去 EF011022 "お届け先市区郡町村が入力されていません" の根本原因:
-  //   1. address2 にホテル名を入れていた → 市区郡町村 が無い (旧 bug)
-  //   2. address2 に cityWard 単独を入れていた → Ship&co/Yamato が address2 を 「市区郡町村+番地」 として連結処理する場合に番地が無く弾く (このターンで再現)
-  //   → address1 と address2 両方に full address を入れる三重ガード方式に戻す.
+  // エラー履歴:
+  //   - EF011022 (consignee_address2 で市区郡町村なし) → address2 に cityWard を入れて解決
+  //   - ES001014 (consignee_address3 = address1 が長すぎ) → address1 から cityWard を抜いて streetOnly のみに
   return {
     full_name: fullName,
     company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
@@ -333,8 +349,10 @@ async function resolveYamatoAddress(
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
     city: cityWard,
-    address1: fullAddress || cityWard,
-    address2: fullAddress || cityWard,
+    // address1 (= 町・番地) は 市区郡町村 を含めない. streetOnly が空ならホテル名で fallback (1文字以上必須のため).
+    address1: streetOnly || result?.name?.slice(0, 20) || hotelName.slice(0, 20) || "1番地",
+    // address2 (= 市区郡町村) — Yamato parser が必ずここから 市区郡町村 を抽出する.
+    address2: cityWard,
     extra: "",
   }
 }
