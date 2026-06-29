@@ -196,9 +196,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   logo: {
-    width: 52,
-    height: 52,
-    marginBottom: 8,
+    width: 180,
+    height: 90,
+    marginBottom: 6,
   },
 
   // ---------------- Top rule ----------------
@@ -492,14 +492,12 @@ function LegPage({
       {/* ---------------- Header ---------------- */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerEyebrow}>VOUCHER · BONDEX</Text>
-          <Text style={styles.headerTitle}>Luggage Forwarding</Text>
+          <Image style={styles.logo} src={LOGO_PATH} />
           <Text style={styles.headerSubtitle}>
-            Between hotels in Japan · Operated by {data.companyName}
+            VOUCHER · LUGGAGE FORWARDING · Operated by {data.companyName}
           </Text>
         </View>
         <View style={styles.headerRight}>
-          <Image style={styles.logo} src={LOGO_PATH} />
           <View style={styles.headerRefBox}>
             <Text style={styles.headerRefLabel}>REF</Text>
             <Text style={styles.headerRefValue}>{data.bookingId}</Text>
@@ -688,10 +686,11 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
       <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Text style={styles.headerEyebrow}>OPERATIONS</Text>
-            <Text style={styles.headerTitle}>{data.bookingId}</Text>
+            <Image style={styles.logo} src={LOGO_PATH} />
+            <Text style={styles.headerSubtitle}>
+              OPERATIONS · {data.bookingId}
+            </Text>
           </View>
-          <Image style={styles.logo} src={LOGO_PATH} />
         </View>
         <View style={styles.topRule} />
         <View style={{ height: 16 }} />

@@ -57,12 +57,15 @@ function BondExWireframesContent() {
     <main className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-12">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/bondex-logo.png"
+            alt="BondEx"
+            className="mx-auto h-32 sm:h-40 w-auto object-contain mb-4"
+          />
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted text-muted-foreground text-sm mb-4">
             Wireframes
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-foreground mb-3">
-            BondEx
-          </h1>
           <p className="text-muted-foreground text-lg max-w-md mx-auto text-balance">
             Luggage delivery platform for international travelers in Japan
           </p>

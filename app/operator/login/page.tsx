@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Lock, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -44,11 +44,16 @@ function LoginForm() {
         onSubmit={onSubmit}
         className="w-full max-w-sm bg-white rounded-2xl border border-border p-8 space-y-6"
       >
-        <div className="space-y-2 text-center">
-          <div className="inline-flex w-10 h-10 rounded-full bg-foreground/5 items-center justify-center">
-            <Lock className="w-5 h-5 text-foreground" strokeWidth={1.5} />
-          </div>
-          <h1 className="text-xl font-semibold text-foreground">BondEx Operator</h1>
+        <div className="space-y-3 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/bondex-logo.png"
+            alt="BondEx"
+            className="mx-auto h-20 w-auto object-contain"
+          />
+          <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+            Operator Console
+          </p>
           <p className="text-sm text-muted-foreground">Enter the shared access password.</p>
         </div>
 
