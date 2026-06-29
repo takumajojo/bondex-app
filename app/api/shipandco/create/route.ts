@@ -103,9 +103,11 @@ interface AddressComponent {
 interface CreateBody {
   refNumber?: unknown
   shipmentDate?: unknown
+  deliveryDate?: unknown  // 配達希望日 = チェックイン日 (Yamato setup.delivery_date)
   suitcaseCount?: unknown
   from?: unknown
   to?: unknown
+  productName?: unknown  // 例: "スーツケース" / "段ボール" / "ゴルフバッグ"
 }
 
 // in-memory cache for carrier_id
@@ -135,15 +137,20 @@ function pickComponent(components: AddressComponent[], type: string): string {
   return components.find((c) => c.types.includes(type))?.long_name ?? ""
 }
 
+// 依頼主 (sender) の full_name は "BondEx" 固定にする (ES001023 ご依頼主名が長すぎ対策).
+// 受取人 (recipient) は受取人名 or ホテル名.
+const SENDER_FULL_NAME = "BondEx"
+
 // Google Places (language=ja) でホテルを検索し、Yamato 形式の構造化住所を返す.
 // 失敗時はホテル名のみのフォールバックを返す (Ship&co は zip 必須なので最終的に弾かれる)
 async function resolveYamatoAddress(
   hotelName: string,
   recipient: string,
   apiKey: string,
+  isSender: boolean = false,
 ): Promise<YamatoAddress> {
   const fallback: YamatoAddress = {
-    full_name: hotelName,
+    full_name: isSender ? SENDER_FULL_NAME : hotelName,
     company: hotelName,
     phone: FALLBACK_PHONE,
     country: "JP",
@@ -227,9 +234,12 @@ async function resolveYamatoAddress(
   phone = phone.replace(/[^\d+]/g, "")
   if (!phone) phone = FALLBACK_PHONE
 
-  // Yamato は full_name に日本語名 (建物・代表者) を期待。
-  // 旅行者ローマ字名だと弾かれることがあるのでホテル名にフォールバック.
-  const fullName = result?.name ?? hotelName
+  // ご依頼主 (sender) = "BondEx" 固定 (ES001023 長すぎ対策)
+  // お届け先様名 (recipient) = 宿泊者名 (運送業法上 必須)。
+  //   recipient が空の場合のみ ホテル名にフォールバック.
+  const fullName = isSender
+    ? SENDER_FULL_NAME
+    : (recipient.trim() || result?.name || hotelName)
 
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
@@ -270,6 +280,9 @@ export async function POST(req: NextRequest) {
 
   const refNumber = typeof body.refNumber === "string" ? body.refNumber.trim() : ""
   const shipmentDate = typeof body.shipmentDate === "string" ? body.shipmentDate.trim() : ""
+  const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
+  // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
+  const deliveryDate = rawDeliveryDate && isValidYmd(rawDeliveryDate) ? rawDeliveryDate : ""
   const suitcaseCount = Math.max(1, Math.floor(Number(body.suitcaseCount) || 1))
 
   const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string }
@@ -317,8 +330,8 @@ export async function POST(req: NextRequest) {
 
   // Google Places で構造化住所を取得
   const [fromAddr, toAddr] = await Promise.all([
-    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey),
-    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey),
+    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true),  // sender = BondEx
+    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false),     // recipient = hotel
   ])
 
   const carrierId = await getYamatoCarrierId(token)
@@ -329,6 +342,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // 品名 (Yamato 送り状の品名欄): デフォルト「スーツケース」
+  const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
+  const productName = rawProductName || "スーツケース"
+
   const payload = {
     from_address: fromAddr,
     to_address: toAddr,
@@ -337,15 +354,18 @@ export async function POST(req: NextRequest) {
       service: "yamato_regular",
       ref_number: refNumber,
       shipment_date: shipmentDate,
+      // 配達希望日 (チェックイン日) — 指定すると Yamato は当日まで荷物を保持して配達.
+      // 旅行者がチェックイン前に届いて受取拒否されるのを防ぐ.
+      ...(deliveryDate ? { delivery_date: deliveryDate } : {}),
       pack_amount: suitcaseCount,
       test: true, // POC 固定
     },
     // Yamato は products の weight を見るので、各 suitcase に重量を持たせる
     products: Array.from({ length: suitcaseCount }).map((_, i) => ({
-      name: `Luggage ${i + 1}`,
+      name: suitcaseCount > 1 ? `${productName} ${i + 1}` : productName,
       quantity: 1,
       price: 5000,
-      weight: 10, // kg/個 — 実運用では旅程表パース結果から取れる
+      weight: 10, // kg/個
     })),
   }
 

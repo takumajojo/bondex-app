@@ -601,6 +601,7 @@ export default function OperatorPage() {
           body: JSON.stringify({
             refNumber: `${sharedBookingId}-L${legIndex + 1}`,
             shipmentDate: s.shipmentDate,
+            deliveryDate: s.expectedArrival,  // チェックイン日 = ヤマト配達希望日
             suitcaseCount: s.suitcaseCount,
             from: { hotel: s.from.hotel, recipient: s.recipient },
             to: { hotel: s.to.hotel, recipient: s.recipient },
@@ -608,7 +609,7 @@ export default function OperatorPage() {
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || !data) {
-          const errObj = (data ?? {}) as { error?: string; code?: string; detail?: unknown }
+          const errObj = (data ?? {}) as { error?: string; code?: string; detail?: unknown; debugId?: string }
           // 既知のエラーコードは業務向け日本語/英語にマッピング (生の API エラーを出さない)
           const mapped = mapShipmentError(errObj.code, t)
           if (mapped) {
