@@ -22,6 +22,7 @@ import {
   Download,
   Settings,
   X,
+  Clock,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -105,6 +106,14 @@ const messages = {
     yamatoLegLabel: (n: number) => `Leg ${n}`,
     yamatoTracking: "Tracking",
     yamatoLabelFailed: "Label issuance failed",
+    yamatoDeferred: (d: string) => `Scheduled — label will be issued on ${d}`,
+    yamatoDeferredNote:
+      "Yamato accepts labels only within 30 days of the shipment date. This leg is registered and will be issued automatically when it enters the window.",
+    yamatoDatePast:
+      "The shipment date is in the past — a label can't be issued. Please check the itinerary date.",
+    yamatoDateWindow:
+      "The shipment date is more than 30 days away, beyond Yamato's issuance window. The label will be issued automatically closer to the date.",
+    yamatoDateInvalid: "The shipment date is invalid. Please check the itinerary date.",
     notesLabel: "Notes (optional)",
     notesPlaceholder: "Anything to tell the hotel — e.g. drop-off by 8:00, fragile, senior guest…",
     settings: "Settings",
@@ -189,6 +198,14 @@ const messages = {
     yamatoLegLabel: (n: number) => `区間 ${n}`,
     yamatoTracking: "追跡番号",
     yamatoLabelFailed: "送り状発行に失敗",
+    yamatoDeferred: (d: string) => `発行予約済み — ${d} から発行可能`,
+    yamatoDeferredNote:
+      "ヤマトの送り状は出荷予定日の30日前から発行可能です。この区間は登録済みで、発行可能期間に入り次第、自動で発行されます。",
+    yamatoDatePast:
+      "出荷予定日が過去のため送り状を発行できません。旅程の日付をご確認ください。",
+    yamatoDateWindow:
+      "出荷予定日が30日以上先のため、ヤマトの発行可能期間を超えています。出荷予定日が近づき次第、自動で発行されます。",
+    yamatoDateInvalid: "出荷予定日が不正です。旅程の日付をご確認ください。",
     notesLabel: "備考 (任意)",
     notesPlaceholder: "ホテルに伝えたいことがあれば — 例: 8時までに発送、割れ物注意、高齢のお客様…",
     settings: "設定",
@@ -208,6 +225,21 @@ const messages = {
 } satisfies Record<Locale, Record<string, string | ((...args: never[]) => string)>>
 
 type Messages = typeof messages.en
+
+// Ship&co 発行 API の既知エラーコードを localized メッセージに変換。
+// 未知コードは null を返し、呼び出し側で生エラーにフォールバックする。
+function mapShipmentError(code: string | undefined, t: Messages): string | null {
+  switch (code) {
+    case "SHIPMENT_DATE_PAST":
+      return t.yamatoDatePast
+    case "SHIPANDCO_DATE_WINDOW":
+      return t.yamatoDateWindow
+    case "SHIPMENT_DATE_INVALID":
+      return t.yamatoDateInvalid
+    default:
+      return null
+  }
+}
 
 function useLocale() {
   const [locale, setLocaleState] = useState<Locale>("en")
@@ -281,8 +313,9 @@ interface YamatoLabel {
   legLabel: string // e.g. "Leg 1: Hyatt Hakone → Mitsui Kyoto"
   labelUrl: string
   trackingNumbers: string[]
-  status: "ok" | "failed"
+  status: "ok" | "failed" | "deferred"
   error?: string
+  issuableFrom?: string // deferred のとき: この日から発行可能 (YYYY-MM-DD)
 }
 
 // 検証チェック: 各 leg ごとに3軸 (Name / Date / Address)、最上段に Representative 1軸。
@@ -575,11 +608,11 @@ export default function OperatorPage() {
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || !data) {
-          const errObj = (data ?? {}) as {
-            error?: string
-            detail?: unknown
-            debugId?: string
-            code?: string
+          const errObj = (data ?? {}) as { error?: string; code?: string; detail?: unknown }
+          // 既知のエラーコードは業務向け日本語/英語にマッピング (生の API エラーを出さない)
+          const mapped = mapShipmentError(errObj.code, t)
+          if (mapped) {
+            return { legIndex, legLabel, labelUrl: "", trackingNumbers: [], status: "failed", error: mapped }
           }
           const detailStr =
             typeof errObj.detail === "string"
@@ -600,7 +633,23 @@ export default function OperatorPage() {
             error: parts.join(" · ") || res.statusText,
           }
         }
-        const d = data as { label?: string; trackingNumbers?: string[] }
+        const d = data as {
+          status?: string
+          label?: string
+          trackingNumbers?: string[]
+          issuableFrom?: string
+        }
+        // 30日超の区間は発行延期 (deferred) — エラーではなく予約済みとして扱う
+        if (d.status === "deferred") {
+          return {
+            legIndex,
+            legLabel,
+            labelUrl: "",
+            trackingNumbers: [],
+            status: "deferred",
+            issuableFrom: d.issuableFrom,
+          }
+        }
         return {
           legIndex,
           legLabel,
@@ -635,7 +684,7 @@ export default function OperatorPage() {
       setGenerationError(err instanceof Error ? err.message : "Generation failed")
       setPhase("confirm")
     }
-  }, [itinerary, settings])
+  }, [itinerary, settings, t])
 
   const setRepresentativeChecked = useCallback((checked: boolean) => {
     setVerifications((prev) => ({ ...prev, representative: checked }))
@@ -1728,6 +1777,16 @@ function GeneratedView({
                       </a>
                     )}
                   </>
+                ) : y.status === "deferred" ? (
+                  <div className="mt-1">
+                    <p className="text-xs text-sky-700 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+                      {y.issuableFrom ? t.yamatoDeferred(y.issuableFrom) : t.yamatoLabelFailed}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                      {t.yamatoDeferredNote}
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-xs text-amber-700 mt-1 flex items-center gap-1.5">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
