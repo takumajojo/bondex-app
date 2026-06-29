@@ -96,12 +96,99 @@ function lastNameOnly(fullName: string): string {
   return parts[parts.length - 1] || trimmed
 }
 
-// Yamato (Ship&co) 構造 — 全フィールドを明示:
-//   province : 都道府県 (京都府)
-//   city     : 市区郡町村 (京都市中京区) ← Yamato 必須
-//   address1 : 番地以下 (下丸屋町412)
-//   address2 : 建物名 / または full address (柔軟に対応)
-//   company  : ホテル名
+/**
+ * 日本の住所文字列から 市区郡町村 と 番地以下 を抽出する.
+ * Google の formatted_address (例: "〒261-8501 千葉県千葉市美浜区浜田1-7 アパホテル...")
+ * を入力とし、Yamato が必要とする構造に分解.
+ *
+ * 対応パターン:
+ *   - 政令市 + 区  : 千葉市美浜区, 大阪市北区, 京都市中京区, 福岡市博多区
+ *   - 東京23区     : 港区, 渋谷区, 新宿区
+ *   - 郡 + 町村    : 足柄下郡箱根町, 那須郡那須町
+ *   - 単独市       : 雲仙市, 厚木市, 浦安市
+ *   - 町村単独     : (rare)
+ */
+export function parseJpAddressString(addr: string): {
+  zip: string
+  prefecture: string
+  cityWard: string
+  street: string
+} {
+  // "日本、" prefix / "Japan," prefix を除去
+  let s = (addr || "").replace(/^(?:日本[、,]?|Japan,)\s*/, "").trim()
+
+  // 〒XXX-XXXX を抽出
+  const zipM = /^〒\s*(\d{3}-?\d{4})\s*/.exec(s)
+  const zip = zipM ? zipM[1].replace(/-/g, "") : ""
+  if (zipM) s = s.slice(zipM[0].length).trim()
+
+  // 都道府県を抽出 (北海道 / 〇〇県 / 〇〇府 / 〇〇都)
+  const prefM = /^(.+?[県府都]|北海道)/u.exec(s)
+  const prefecture = prefM ? prefM[1] : ""
+  if (prefM) s = s.slice(prefecture.length).trim()
+
+  // 市区郡町村を抽出 — 優先順位順に試す:
+  //   ①政令市+区 (千葉市美浜区)
+  //   ②郡+町/村  (足柄下郡箱根町)
+  //   ③単独市    (雲仙市)
+  //   ④単独区    (港区)
+  //   ⑤町/村単独 (rare)
+  let cityWard = ""
+  let m: RegExpExecArray | null
+
+  // ① 政令市 + 区
+  m = /^([^市区郡町村]+市)([^市区郡町村]+区)/u.exec(s)
+  if (m) {
+    cityWard = m[1] + m[2]
+    s = s.slice(m[0].length).trim()
+  }
+  // ② 郡 + 町/村
+  if (!cityWard) {
+    m = /^([^市区郡町村]+郡)([^市区郡町村]+[町村])/u.exec(s)
+    if (m) {
+      cityWard = m[1] + m[2]
+      s = s.slice(m[0].length).trim()
+    }
+  }
+  // ③ 単独市
+  if (!cityWard) {
+    m = /^([^市区郡町村]+市)/u.exec(s)
+    if (m) {
+      cityWard = m[1]
+      s = s.slice(m[0].length).trim()
+    }
+  }
+  // ④ 単独区
+  if (!cityWard) {
+    m = /^([^市区郡町村]+区)/u.exec(s)
+    if (m) {
+      cityWard = m[1]
+      s = s.slice(m[0].length).trim()
+    }
+  }
+  // ⑤ 単独町/村
+  if (!cityWard) {
+    m = /^([^市区郡町村]+[町村])/u.exec(s)
+    if (m) {
+      cityWard = m[1]
+      s = s.slice(m[0].length).trim()
+    }
+  }
+
+  return {
+    zip,
+    prefecture,
+    cityWard,
+    street: s.trim(),
+  }
+}
+
+// Yamato (Ship&co) 構造 — Ship&co の field マッピング:
+//   province : 都道府県 (例: 千葉県)
+//   city     : 市区郡町村 (例: 千葉市美浜区) ← Yamato 補助
+//   address1 : 番地以下 = consignee_address3 (例: 浜田1-7) ← cityWard 含めると ES001014
+//   address2 : 市区郡町村 = consignee_address2 (例: 千葉市美浜区) ← 空だと EF011022
+//   company  : 建物名 / ホテル名
 interface YamatoAddress {
   full_name: string
   company: string
@@ -201,12 +288,12 @@ async function resolveYamatoAddress(
     resolvedPlaceId = candidate.place_id
   }
 
-  // Step 2: details (日本語) で address_components と phone を取得
+  // Step 2: details (日本語) で formatted_address + address_components + phone を取得
   const detailsUrl = new URL(`${PLACES_BASE}/details/json`)
   detailsUrl.searchParams.set("place_id", resolvedPlaceId)
   detailsUrl.searchParams.set(
     "fields",
-    "name,address_components,international_phone_number",
+    "name,formatted_address,address_components,international_phone_number",
   )
   detailsUrl.searchParams.set("language", "ja")
   detailsUrl.searchParams.set("key", apiKey)
@@ -216,105 +303,55 @@ async function resolveYamatoAddress(
   const detailsData = (await detailsRes.json()) as {
     result?: {
       name?: string
+      formatted_address?: string
       address_components?: AddressComponent[]
       international_phone_number?: string
     }
   }
   const result = detailsData.result
   const components = result?.address_components ?? []
-  if (components.length === 0) return null
+  const formattedAddress = result?.formatted_address ?? ""
+  if (components.length === 0 && !formattedAddress) return null
 
-  // 日本の住所コンポーネント (23区/政令市/町村でフィールドの入り方が違うため複数フォールバック)
-  const zip = pickComponent(components, "postal_code").replace(/-/g, "")
-  const prefecture = pickComponent(components, "administrative_area_level_1") // 東京都, 神奈川県, 大阪府
-  const locality = pickComponent(components, "locality")                       // 港区 (23区) / 大阪市 (政令市)
-  const sub1 = pickComponent(components, "sublocality_level_1")                // 港区 / 北区 (政令市の区)
-  const sub2 = pickComponent(components, "sublocality_level_2")                // 赤坂 / 中崎西
-  const sub3 = pickComponent(components, "sublocality_level_3")                // 1丁目
-  const sub4 = pickComponent(components, "sublocality_level_4")                // 12-33
-  const admin2 = pickComponent(components, "administrative_area_level_2")      // 足柄下郡 (郡)
-  const admin3 = pickComponent(components, "administrative_area_level_3")      // 箱根町 (町)
-  const admin4 = pickComponent(components, "administrative_area_level_4")      // 大字
-  const premise = pickComponent(components, "premise")
-  const streetNumber = pickComponent(components, "street_number")
+  // 主軸: formatted_address (例: "〒261-8501 千葉県千葉市美浜区浜田1-7") を正規表現で構造分解
+  const parsed = parseJpAddressString(formattedAddress)
+  let { zip, prefecture, cityWard, street } = parsed
 
-  // 市区郡町村抽出 — エリアごとに Google の component 構造が違うため複数パターンを試す:
-  //   (A) 23区     : locality="港区"                        → 港区
-  //   (B) 政令市   : locality="大阪市", sub1="北区"          → 大阪市北区
-  //   (C) 町村     : admin2="足柄下郡", admin3="箱根町"      → 足柄下郡箱根町
-  //   (D) 県下市   : locality="雲仙市", sub1="小浜町"        → 雲仙市  (sub1 は street 側に回す)
-  //
-  // cityWard で「使った parts」を usedInCity に記録し、street には未使用 parts のみ入れる.
-  // これで sub1="小浜町" が cityWard と street で重複しない (ES001014 防止).
-  const usedInCity = new Set<string>()
-  function deriveCityWard(): string {
-    // (B) 政令市 + 区
-    if (locality && /[市]$/.test(locality) && sub1 && sub1 !== locality && /区$/.test(sub1)) {
-      usedInCity.add(locality)
-      usedInCity.add(sub1)
-      return locality + sub1
-    }
-    // (A) 単独区 (Tokyo 23区)
-    if (locality && /[区]$/.test(locality)) {
-      usedInCity.add(locality)
-      return locality
-    }
-    // (C) 郡 + 町村
-    if (admin2 && /郡$/.test(admin2) && admin3) {
-      usedInCity.add(admin2)
-      usedInCity.add(admin3)
-      return admin2 + admin3
-    }
-    // (D) 単独市 — sub1 は street 側に残す
-    if (locality && /市$/.test(locality)) {
-      usedInCity.add(locality)
-      return locality
-    }
-    // (E) 町村単独
-    if (admin3 && /[町村市]$/.test(admin3)) {
-      if (admin2) {
-        usedInCity.add(admin2)
-        usedInCity.add(admin3)
-        return admin2 + admin3
-      }
-      usedInCity.add(admin3)
-      return admin3
-    }
-    // (F) sub1 単独 (例外)
-    if (sub1) {
-      usedInCity.add(sub1)
-      return sub1
-    }
-    return ""
-  }
-  let cityWard = deriveCityWard()
+  // フォールバック: 個別 component から補完 (formatted_address が無いケース)
+  if (!zip) zip = pickComponent(components, "postal_code").replace(/-/g, "")
+  if (!prefecture) prefecture = pickComponent(components, "administrative_area_level_1")
 
-  // 最終 fallback: components 連結文字列から抽出
+  // formatted_address からの抽出が失敗 (旧 Places API レスポンスなど) なら最終 fallback:
+  // address_components の long_name を連結して再パース
   if (!cityWard) {
     const joinedAddr = components.map((c) => c.long_name).join("")
-    const cityM = /(?:.+?[県府都]|北海道)((?:.+?郡)?(?:.+?[市区町村]))/u.exec(joinedAddr)
-    if (cityM) cityWard = cityM[1]
+    const refallback = parseJpAddressString(joinedAddr)
+    cityWard = refallback.cityWard
+    if (!street) street = refallback.street
+    if (!prefecture) prefecture = refallback.prefecture
   }
 
   // ヤマトに不完全な住所を送らない (EF011022 への確実な事前ガード)
   if (!cityWard) {
     console.warn("[shipandco] cityWard derivation failed", {
       hotelName,
+      formattedAddress,
       prefecture,
-      locality,
-      sub1,
-      admin2,
-      admin3,
-      admin4,
+      street,
     })
     return null
   }
 
-  // street parts: cityWard 抽出で使われなかった address parts を結合.
-  // 例 (雲仙市): cityWard="雲仙市" → sub1="小浜町" は未使用 → streetOnly に含める
-  // 例 (大阪市北区): cityWard="大阪市北区" → sub1="北区" は使用済 → streetOnly に含めない
-  const orderedParts = [admin3, sub1, sub2, sub3, sub4, premise, streetNumber]
-  const streetOnly = orderedParts.filter((p) => p && !usedInCity.has(p)).join("")
+  // streetOnly: formatted_address パースで取れた street 部分.
+  // 末尾にホテル名 (建物名) が含まれていれば除去 — ex: "浜田1-7 アパホテル..." → "浜田1-7"
+  let streetOnly = street
+  if (result?.name && streetOnly.includes(result.name)) {
+    streetOnly = streetOnly.split(result.name)[0].trim()
+  }
+  // 空白以降を切り捨て (建物名がスペース区切りで続く場合の保険)
+  if (streetOnly.includes(" ")) {
+    streetOnly = streetOnly.split(/\s+/)[0]
+  }
 
   // 国際電話形式 (+81-XX-XXXX-XXXX) を E.164 に正規化
   let phone = result?.international_phone_number ?? ""
