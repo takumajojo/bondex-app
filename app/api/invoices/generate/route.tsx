@@ -50,7 +50,10 @@ export async function GET(req: NextRequest) {
   const year = Number(yearStr)
   const month = Number(monthStr)
   const fromDate = `${monthRaw}-01`
-  const toDate = `${monthRaw}-31`  // 月末より後でも OK (date 比較なら問題なし)
+  // 月末日を正確に算出 ("2026-06-31" 無効日付エラー対策)
+  // new Date(year, month, 0): month は JS Date で 0-indexed, day=0 は前月末日
+  const lastDay = new Date(year, month, 0).getDate()
+  const toDate = `${monthRaw}-${String(lastDay).padStart(2, "0")}`
 
   // 該当月の shipments を取得 — 失敗/キャンセル除外
   const { data, error } = await sb
