@@ -57,9 +57,18 @@ export type ShipmentInsert = {
 /**
  * 1件 upsert. booking_id + leg_index で重複時は update.
  * 発行成功時 / deferred / 失敗時いずれの状態でも呼べる.
+ *
+ * 重要: この関数は **絶対に throw しない**. DB 保存失敗が Yamato 発行成功を
+ *       覆い隠さないよう、内部で全エラーを握り潰してログに残す.
  */
 export async function saveShipment(input: Partial<ShipmentInsert>): Promise<void> {
-  const sb = getSupabase()
+  let sb: ReturnType<typeof getSupabase>
+  try {
+    sb = getSupabase()
+  } catch (err) {
+    console.error("[shipments-db] getSupabase failed:", err instanceof Error ? err.message : err)
+    return
+  }
   if (!sb) return
   if (!input.booking_id) return
   // 必須フィールドのデフォルト

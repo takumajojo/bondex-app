@@ -15,18 +15,30 @@ export function getBrowserSupabase(): SupabaseClient | null {
   if (typeof window === "undefined") return null
   if (_client) return _client
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon) return null
+  if (!rawUrl || !anon) return null
 
-  _client = createClient(url, anon, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  })
-  return _client
+  // URL を normalize (server-side と同じ処理)
+  let url = rawUrl.trim().replace(/\/+$/, "")
+  url = url.replace(/\/rest\/v1\/?$/, "")
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`
+  }
+
+  try {
+    _client = createClient(url, anon, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+    return _client
+  } catch (err) {
+    console.error("[supabase-browser] createClient failed:", err instanceof Error ? err.message : err)
+    return null
+  }
 }
 
 export function isBrowserSupabaseConfigured(): boolean {
