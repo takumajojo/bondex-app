@@ -49,10 +49,14 @@ export const config = {
   // /operator/login は除外して無限ループを防ぐ
   matcher: [
     "/operator",
+    "/operator/dashboard",
     "/api/itinerary/parse",
     "/api/address/verify",
     "/api/voucher/generate",
     "/api/shipandco/create",
     "/api/places/search",
+    "/api/shipments",
+    "/api/invoices/generate",
+    // /agency/* と /track/* と /api/track/* は public (代理店は Supabase Auth で、track は token-free)
   ],
 }

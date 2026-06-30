@@ -26,7 +26,9 @@ import {
   Pencil,
   Plus,
   Trash2,
+  LayoutDashboard,
 } from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -684,11 +686,31 @@ export default function OperatorPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             refNumber: `${sharedBookingId}-L${legIndex + 1}`,
+            bookingId: sharedBookingId,
+            legIndex,
             shipmentDate: s.shipmentDate,
             deliveryDate: s.expectedArrival,
             suitcaseCount: s.suitcaseCount,
-            from: { hotel: s.from.hotel, recipient: s.recipient, placeId: s.from.placeId },
-            to: { hotel: s.to.hotel, recipient: s.recipient, placeId: s.to.placeId },
+            from: {
+              hotel: s.from.hotel,
+              recipient: s.recipient,
+              placeId: s.from.placeId,
+              city: s.from.city,
+            },
+            to: {
+              hotel: s.to.hotel,
+              recipient: s.recipient,
+              placeId: s.to.placeId,
+              city: s.to.city,
+            },
+            // 管理ダッシュボード用メタ情報
+            agency: tourCompanyFromSettings,
+            representative: representativeLabel,
+            travelerCount: itinerary!.guest.travelerCount,
+            bookingName: s.bookingName || "",
+            fromCheckIn: s.fromCheckIn || "",
+            toCheckOut: s.toCheckOut || "",
+            specialNote: s.specialNote || "",
           }),
         })
         const data = await res.json().catch(() => null)
@@ -936,6 +958,13 @@ export default function OperatorPage() {
             className="h-12 w-auto object-contain"
           />
           <div className="flex items-center gap-4">
+            <Link
+              href="/operator/dashboard"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <LayoutDashboard className="w-4 h-4" strokeWidth={1.5} />
+              {locale === "ja" ? "ダッシュボード" : "Dashboard"}
+            </Link>
             <LocaleToggle locale={locale} onChange={setLocale} />
             {phase !== "idle" && (
               <button

@@ -589,6 +589,9 @@ function LegPageEn({
         <Text style={styles.noticePill}>
           PLEASE PRESENT THIS VOUCHER AT THE RECEPTION  WHEN CHECK-IN
         </Text>
+        <Text style={{ fontSize: 8, color: C_MUTED, marginTop: 6, textAlign: "center" }}>
+          Track: bondex.express/track/{data.bookingId}
+        </Text>
       </View>
 
       {/* ---------------- Journey card ---------------- */}

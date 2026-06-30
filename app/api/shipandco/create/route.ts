@@ -4,6 +4,7 @@ import {
   deliveryDateErrorCode,
   getDeliverableRange,
 } from "@/lib/yamato-delivery"
+import { saveShipment } from "@/lib/shipments-db"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -237,11 +238,21 @@ interface AddressComponent {
 interface CreateBody {
   refNumber?: unknown
   shipmentDate?: unknown
-  deliveryDate?: unknown  // 配達希望日 = チェックイン日 (Yamato setup.delivery_date)
+  deliveryDate?: unknown
   suitcaseCount?: unknown
   from?: unknown
   to?: unknown
-  productName?: unknown  // 例: "スーツケース" / "段ボール" / "ゴルフバッグ"
+  productName?: unknown
+  // 管理ダッシュボード用メタ情報
+  bookingId?: unknown
+  legIndex?: unknown
+  agency?: unknown
+  representative?: unknown
+  travelerCount?: unknown
+  bookingName?: unknown
+  fromCheckIn?: unknown
+  toCheckOut?: unknown
+  specialNote?: unknown
 }
 
 // in-memory cache for carrier_id
@@ -453,12 +464,23 @@ export async function POST(req: NextRequest) {
   const deliveryDate = rawDeliveryDate && isValidYmd(rawDeliveryDate) ? rawDeliveryDate : ""
   const suitcaseCount = Math.max(1, Math.floor(Number(body.suitcaseCount) || 1))
 
-  const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string; placeId?: string }
-  const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string; placeId?: string }
+  const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string }
+  const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string }
   const fromHotel = (fromInput.hotel ?? "").trim()
   const toHotel = (toInput.hotel ?? "").trim()
   const fromPlaceId = (fromInput.placeId ?? "").trim() || undefined
   const toPlaceId = (toInput.placeId ?? "").trim() || undefined
+
+  // 管理ダッシュボード用メタ情報
+  const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : ""
+  const legIndex = typeof body.legIndex === "number" ? body.legIndex : 0
+  const agency = typeof body.agency === "string" ? body.agency.trim() : ""
+  const representative = typeof body.representative === "string" ? body.representative.trim() : ""
+  const travelerCount = typeof body.travelerCount === "number" ? body.travelerCount : 1
+  const bookingName = typeof body.bookingName === "string" ? body.bookingName.trim() : ""
+  const fromCheckIn = typeof body.fromCheckIn === "string" ? body.fromCheckIn.trim() : ""
+  const toCheckOut = typeof body.toCheckOut === "string" ? body.toCheckOut.trim() : ""
+  const specialNote = typeof body.specialNote === "string" ? body.specialNote.trim() : ""
 
   if (!refNumber || !shipmentDate || !fromHotel || !toHotel) {
     return NextResponse.json(
@@ -489,11 +511,35 @@ export async function POST(req: NextRequest) {
   }
   if (gap > MAX_LEAD_DAYS) {
     // 30日超 — 今は発行できない。Ship&co を呼ばず deferred を返す。
-    // issuableFrom 以降に (将来の自動バッチが) 発行する。
+    const issuableFrom = issuableFromYmd(shipmentDate)
+    // 管理ダッシュボードに pending として登録 (issuableFrom 以降に自動発行する想定)
+    await saveShipment({
+      booking_id: bookingId || refNumber,
+      leg_index: legIndex,
+      agency,
+      representative,
+      traveler_count: travelerCount,
+      booking_name: bookingName || null,
+      shipment_date: shipmentDate,
+      expected_arrival: deliveryDate || null,
+      from_hotel: fromHotel,
+      from_place_id: fromPlaceId ?? null,
+      from_check_in: fromCheckIn || null,
+      to_hotel: toHotel,
+      to_place_id: toPlaceId ?? null,
+      to_check_out: toCheckOut || null,
+      recipient: (toInput.recipient ?? "").trim(),
+      suitcase_count: suitcaseCount,
+      amount_yen: suitcaseCount * 5000,
+      ship_ref_number: refNumber,
+      yamato_issuable_from: issuableFrom,
+      status: "pending",
+      notes: specialNote || null,
+    })
     return NextResponse.json({
       status: "deferred",
       shipmentDate,
-      issuableFrom: issuableFromYmd(shipmentDate),
+      issuableFrom,
       daysUntilIssuable: gap - MAX_LEAD_DAYS,
     })
   }
@@ -616,19 +662,43 @@ export async function POST(req: NextRequest) {
     } catch {
       // non-JSON
     }
+    // 共通のメタ情報 (DB 保存用)
+    const baseRecord = {
+      booking_id: bookingId || refNumber,
+      leg_index: legIndex,
+      agency,
+      representative,
+      traveler_count: travelerCount,
+      booking_name: bookingName || null,
+      shipment_date: shipmentDate,
+      expected_arrival: deliveryDate || null,
+      from_hotel: fromHotel,
+      from_city: fromAddr?.city || (fromInput.city ?? "") || null,
+      from_place_id: fromPlaceId ?? null,
+      from_check_in: fromCheckIn || null,
+      to_hotel: toHotel,
+      to_city: toAddr?.city || (toInput.city ?? "") || null,
+      to_place_id: toPlaceId ?? null,
+      to_check_out: toCheckOut || null,
+      recipient: (toInput.recipient ?? "").trim(),
+      suitcase_count: suitcaseCount,
+      amount_yen: suitcaseCount * 5000,
+      ship_ref_number: refNumber,
+      notes: specialNote || null,
+    }
+
     if (!res.ok) {
-      // Ship&co の error detail を呼び出し元に返す
       const detail = data ?? text
-      // ES003001 (30日制約) を検出したら code に正規化。
-      // 事前ガードで通常は届かないが、JST/サーバー時刻のズレ等の保険。
       const detailStr = typeof detail === "string" ? detail : JSON.stringify(detail)
       const code = /ES003001|30日以内/.test(detailStr) ? "SHIPANDCO_DATE_WINDOW" : undefined
+      // 失敗も DB に記録 — ダッシュボードで再試行できるように
+      await saveShipment({ ...baseRecord, status: "failed", error_message: detailStr.slice(0, 500) })
       return NextResponse.json(
         {
           error: `Ship&co error (${res.status})`,
           code,
           detail,
-          sentPayload: payload, // デバッグ用 (POC のみ — production では削除)
+          sentPayload: payload,
         },
         { status: 502 },
       )
@@ -643,6 +713,13 @@ export async function POST(req: NextRequest) {
         estimated_delivery_date?: string
       }
     }
+    // 成功 — Yamato 送り状情報も保存
+    await saveShipment({
+      ...baseRecord,
+      status: "issued",
+      yamato_tracking: d.delivery?.tracking_numbers ?? null,
+      yamato_label_url: d.delivery?.label ?? null,
+    })
     return NextResponse.json({
       status: "issued",
       id: d.id ?? "",
