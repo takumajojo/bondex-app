@@ -817,6 +817,10 @@ export default function OperatorPage() {
 
     const formData = new FormData()
     formData.append("file", file)
+    // 学習用に代理店名 (tourCompany) を渡す
+    if (settings?.tourCompany) {
+      formData.append("agency", settings.tourCompany)
+    }
 
     try {
       const res = await fetch("/api/itinerary/parse", {

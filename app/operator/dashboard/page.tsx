@@ -12,6 +12,7 @@ import {
   FileText,
   Download,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react"
 
 type ShipmentStatus =
@@ -213,6 +214,13 @@ export default function DashboardPage() {
               <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
               発行に戻る
             </Link>
+            <Link
+              href="/operator/claims"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <AlertTriangle className="w-4 h-4" strokeWidth={1.5} />
+              クレーム管理
+            </Link>
             <button
               onClick={() => void load()}
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -256,6 +264,43 @@ export default function DashboardPage() {
               <p className="text-xl font-semibold tabular-nums">{counts[st]}</p>
             </button>
           ))}
+        </section>
+
+        {/* Contract generator */}
+        <section className="rounded-2xl border border-border bg-white p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText className="w-4 h-4 text-foreground" strokeWidth={1.5} />
+            <h3 className="text-sm font-medium text-foreground">代理店契約書 発行</h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={invoiceAgency}
+              onChange={(e) => setInvoiceAgency(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-border bg-white text-sm"
+            >
+              <option value="">代理店を選択</option>
+              {agencies.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            <a
+              href={invoiceAgency ? `/api/contracts/generate?agency=${encodeURIComponent(invoiceAgency)}` : "#"}
+              onClick={(e) => { if (!invoiceAgency) e.preventDefault() }}
+              className={`h-9 px-4 rounded-lg text-sm font-medium inline-flex items-center gap-1.5 ${
+                invoiceAgency
+                  ? "bg-foreground text-background hover:bg-foreground/90"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              }`}
+            >
+              <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
+              契約書 PDF
+            </a>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            業務委託契約書 (取次業) のテンプレ PDF。当社情報と代理店情報を自動補完
+          </p>
         </section>
 
         {/* Invoice generator */}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { rateLimit } from "@/lib/rate-limit"
+import { saveParseLog, sha256Hex } from "@/lib/parse-log-db"
 
 export const runtime = "nodejs"
 
@@ -209,6 +210,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing 'file' field" }, { status: 400 })
   }
 
+  // 学習用 — どの代理店からの parse か (operator UI が agency パラメータを送る)
+  const agency = typeof form.get("agency") === "string" ? (form.get("agency") as string).trim() : ""
+  const fileName = (file as File).name || ""
+
   const mediaType = file.type || ""
   if (!ACCEPTED_MEDIA_TYPES.includes(mediaType as (typeof ACCEPTED_MEDIA_TYPES)[number])) {
     return NextResponse.json(
@@ -269,7 +274,19 @@ export async function POST(req: NextRequest) {
 
     // Post-process safety net: strip OTA channel prefixes/suffixes from hotel names
     // even if the AI failed to follow the prompt rule. Conservative regex — only well-known channels.
-    return NextResponse.json(scrubOtaPrefixes(toolUse.input))
+    const cleaned = scrubOtaPrefixes(toolUse.input)
+
+    // 学習用に parse_log に記録 (失敗してもレスポンスには影響しない)
+    void saveParseLog({
+      agency,
+      file_name: fileName,
+      file_hash: sha256Hex(buf),
+      file_size: buf.length,
+      file_type: mediaType,
+      ai_raw_output: cleaned,
+    })
+
+    return NextResponse.json(cleaned)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Anthropic error"
     return NextResponse.json({ error: msg }, { status: 502 })
