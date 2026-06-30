@@ -8,6 +8,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase"
 
 export const runtime = "nodejs"
+export const maxDuration = 30
 
 const VALID_STATUSES: ShipmentStatus[] = [
   "pending",
@@ -24,25 +25,35 @@ const VALID_STATUSES: ShipmentStatus[] = [
  *   query: agency, status, fromDate, toDate, limit
  */
 export async function GET(req: NextRequest) {
-  const limit = rateLimit(req, "shipments-list")
-  if (!limit.ok) return limit.response
+  try {
+    const limit = rateLimit(req, "shipments-list")
+    if (!limit.ok) return limit.response
 
-  if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        { error: "Supabase not configured", shipments: [], configured: false },
+        { status: 200 },
+      )
+    }
+
+    const sp = req.nextUrl.searchParams
+    const data = await listShipments({
+      agency: sp.get("agency") || undefined,
+      status: (sp.get("status") as ShipmentStatus) || undefined,
+      fromDate: sp.get("fromDate") || undefined,
+      toDate: sp.get("toDate") || undefined,
+      limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
+    })
+    return NextResponse.json({ configured: true, shipments: data })
+  } catch (err) {
+    // どんなエラーでも JSON で返す (フロントの parse 失敗を防ぐ)
+    const msg = err instanceof Error ? err.message : "Internal error"
+    console.error("[api/shipments] GET failed:", msg)
     return NextResponse.json(
-      { error: "Supabase not configured", shipments: [], configured: false },
-      { status: 200 },
+      { error: msg, shipments: [], configured: false },
+      { status: 500 },
     )
   }
-
-  const sp = req.nextUrl.searchParams
-  const data = await listShipments({
-    agency: sp.get("agency") || undefined,
-    status: (sp.get("status") as ShipmentStatus) || undefined,
-    fromDate: sp.get("fromDate") || undefined,
-    toDate: sp.get("toDate") || undefined,
-    limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
-  })
-  return NextResponse.json({ configured: true, shipments: data })
 }
 
 /**

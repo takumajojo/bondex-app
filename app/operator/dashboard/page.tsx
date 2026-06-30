@@ -81,7 +81,17 @@ export default function DashboardPage() {
       if (filterAgency) sp.set("agency", filterAgency)
       if (filterStatus) sp.set("status", filterStatus)
       const res = await fetch(`/api/shipments?${sp.toString()}`)
-      const data = await res.json()
+      const text = await res.text()
+      if (!res.ok) {
+        // API 側でエラー — 本文 (HTML or JSON) を出してデバッグしやすく
+        throw new Error(`API ${res.status}: ${text.slice(0, 200)}`)
+      }
+      let data: { configured?: boolean; shipments?: Shipment[] }
+      try {
+        data = JSON.parse(text)
+      } catch {
+        throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`)
+      }
       setConfigured(Boolean(data.configured))
       setItems(Array.isArray(data.shipments) ? data.shipments : [])
     } catch (err) {
