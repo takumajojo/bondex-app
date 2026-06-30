@@ -121,11 +121,21 @@ export default function DashboardPage() {
     }
   }
 
-  const agencies = useMemo(() => {
-    const set = new Set<string>()
-    items.forEach((it) => it.agency && set.add(it.agency))
-    return Array.from(set).sort()
-  }, [items])
+  // 代理店一覧は agencies マスタから直接取得 (shipments の有無に依らない)
+  const [agencies, setAgencies] = useState<string[]>([])
+  useEffect(() => {
+    let alive = true
+    fetch("/api/agencies")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive || !Array.isArray(d.agencies)) return
+        setAgencies(d.agencies.map((a: { name: string }) => a.name).filter(Boolean))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // 請求書発行 — 当月デフォルト
   const [invoiceMonth, setInvoiceMonth] = useState(() => {
