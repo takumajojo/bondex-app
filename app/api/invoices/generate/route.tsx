@@ -25,6 +25,16 @@ function endOfNextMonth(year: number, month: number): Date {
   return new Date(year, month + 1, 0)
 }
 
+/**
+ * 翌月締めの翌月20日 = 翌々月20日.
+ * 例: 6月分 → 7月末締め → 8月20日支払期限
+ */
+function paymentDueDate(year: number, month: number): Date {
+  // month は 1-12. 翌々月20日.
+  // JS Date は month=0-11 だが「2か月後」を計算するため month+2 をそのまま渡せば翌々月の 20日が得られる.
+  return new Date(year, month + 1, 20)  // month は 1-indexed, JS は 0-indexed なので +1 が「翌々月」
+}
+
 export async function GET(req: NextRequest) {
   const limit = rateLimit(req, "invoices-generate")
   if (!limit.ok) return limit.response
@@ -104,7 +114,10 @@ export async function GET(req: NextRequest) {
   }))
 
   const issuedDate = formatJpDate(new Date())
-  const dueDate = formatJpDate(endOfNextMonth(year, month))
+  // 締日: 翌月末日 (例: 6月分 → 7月末)
+  const closingDate = formatJpDate(endOfNextMonth(year, month))
+  // 支払期限: 締日の翌月20日 (例: 6月分 → 8月20日)
+  const dueDate = formatJpDate(paymentDueDate(year, month))
   const period = `${year}年${month}月分`
 
   const doc = (
@@ -124,9 +137,10 @@ export async function GET(req: NextRequest) {
           address: "〒158-0092 東京都世田谷区野毛1-9-12",
           phone: "+81-90-1680-1142",
           email: "support@bondex.express",
-          bankInfo: "三菱UFJ銀行 ◯◯支店 普通 1234567 カ）ジョジョ",
+          bankInfo: "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO",
           // 適格請求書登録番号は取得後にここを差し替える
         },
+        closingDate,
         items,
         taxRate: 0.10,
       }}

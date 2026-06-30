@@ -48,7 +48,8 @@ export interface InvoiceInput {
   invoiceNumber: string    // INV-2026-07-001
   issuedDate: string       // 2026年7月1日
   period: string           // 2026年6月分
-  dueDate: string          // 2026年7月末日
+  closingDate?: string     // 2026年7月末日 (締日)
+  dueDate: string          // 2026年8月20日 (支払期限)
   agency: {
     name: string
     contactPerson?: string
@@ -254,23 +255,69 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 500,
   },
-  // Bank info
+  // Bank info — 構造化テーブル風
   bankBlock: {
     marginTop: 24,
-    padding: 14,
+    padding: 16,
     backgroundColor: C_BG_SOFT,
-    borderRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: C_FG,
+  },
+  bankHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 10,
   },
   bankLabel: {
     fontSize: 8,
     color: C_MUTED,
-    letterSpacing: 1.5,
-    marginBottom: 6,
+    letterSpacing: 2,
   },
-  bankLine: {
+  bankDueLabel: {
+    fontSize: 8,
+    color: C_MUTED,
+    letterSpacing: 1.5,
+  },
+  bankDueValue: {
     fontSize: 10,
     color: C_FG,
-    lineHeight: 1.6,
+    fontWeight: 500,
+    marginLeft: 6,
+  },
+  bankGrid: {
+    flexDirection: "row",
+  },
+  bankCol: {
+    flexDirection: "column",
+    paddingRight: 12,
+  },
+  bankFieldLabel: {
+    fontSize: 7.5,
+    color: C_MUTED,
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  bankFieldValue: {
+    fontSize: 10,
+    color: C_FG,
+    fontWeight: 500,
+    marginBottom: 8,
+  },
+  bankNote: {
+    fontSize: 8,
+    color: C_MUTED,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: C_HAIRLINE,
+  },
+  // Formal greeting (請求書の上)
+  greeting: {
+    fontSize: 9.5,
+    color: C_FG,
+    lineHeight: 1.7,
+    marginBottom: 14,
   },
   // Footer
   footer: {
@@ -305,6 +352,41 @@ const styles = StyleSheet.create({
 // Document
 // ---------------------------------------------------------------------------
 
+/**
+ * "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO" 形式の文字列を
+ * 銀行名 / 支店 / 預金種別+口座番号 / 名義 に分解して 4 セルで表示する.
+ */
+function parseBankInfo(raw: string): React.JSX.Element {
+  // スペース区切りで最大 5 要素 (銀行 支店 種別 番号 名義...)
+  const parts = raw.split(/\s+/).filter(Boolean)
+  const bank = parts[0] || ""
+  const branch = parts[1] || ""
+  const type = parts[2] || ""
+  const num = parts[3] || ""
+  const holder = parts.slice(4).join(" ") || ""
+
+  return (
+    <View style={styles.bankGrid}>
+      <View style={[styles.bankCol, { width: 110 }]}>
+        <Text style={styles.bankFieldLabel}>銀行名</Text>
+        <Text style={styles.bankFieldValue}>{bank}</Text>
+      </View>
+      <View style={[styles.bankCol, { width: 110 }]}>
+        <Text style={styles.bankFieldLabel}>支店</Text>
+        <Text style={styles.bankFieldValue}>{branch}</Text>
+      </View>
+      <View style={[styles.bankCol, { width: 140 }]}>
+        <Text style={styles.bankFieldLabel}>口座</Text>
+        <Text style={styles.bankFieldValue}>{type}　{num}</Text>
+      </View>
+      <View style={[styles.bankCol, { flex: 1 }]}>
+        <Text style={styles.bankFieldLabel}>口座名義</Text>
+        <Text style={styles.bankFieldValue}>{holder}</Text>
+      </View>
+    </View>
+  )
+}
+
 export function InvoiceDocument({ data }: { data: InvoiceInput }) {
   const subtotal = data.items.reduce((sum, it) => sum + it.amountYen, 0)
   const taxRate = data.taxRate ?? 0.10
@@ -330,11 +412,12 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
               INVOICE NO.
             </Text>
             <Text style={styles.invoiceNumber}>{data.invoiceNumber}</Text>
-            <View style={{ height: 8 }} />
+            <View style={{ height: 10 }} />
             <Text style={styles.invoiceMeta}>
               発行日: {data.issuedDate}{"\n"}
-              対象期間: {data.period}{"\n"}
-              お支払期限: {data.dueDate}
+              対象期間: {data.period}
+              {data.closingDate ? `\n締日: ${data.closingDate}` : ""}
+              {"\n"}お支払期限: {data.dueDate}
             </Text>
           </View>
         </View>
@@ -351,6 +434,12 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
             <Text style={styles.toMeta}>{data.agency.billingAddress}</Text>
           )}
         </View>
+
+        {/* Greeting */}
+        <Text style={styles.greeting}>
+          拝啓 平素は格別のお引き立てを賜り、誠にありがとうございます。{"\n"}
+          下記の通りご請求申し上げます。ご査収のほど、よろしくお願い申し上げます。
+        </Text>
 
         {/* Summary box */}
         <View style={styles.summaryBox}>
@@ -412,12 +501,19 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           </View>
         </View>
 
-        {/* Bank info */}
+        {/* Bank info — 構造化表示 */}
         <View style={styles.bankBlock}>
-          <Text style={styles.bankLabel}>お振込先 / BANK INFO</Text>
-          <Text style={styles.bankLine}>{data.bondex.bankInfo}</Text>
-          <Text style={[styles.bankLine, { color: C_MUTED, fontSize: 8.5, marginTop: 4 }]}>
-            お振込手数料は貴社にてご負担をお願い申し上げます。
+          <View style={styles.bankHeader}>
+            <Text style={styles.bankLabel}>お振込先 / BANK INFO</Text>
+            <View style={{ flexDirection: "row" }}>
+              <Text style={styles.bankDueLabel}>お支払期限</Text>
+              <Text style={styles.bankDueValue}>{data.dueDate}</Text>
+            </View>
+          </View>
+          {parseBankInfo(data.bondex.bankInfo)}
+          <Text style={styles.bankNote}>
+            ・お振込手数料は貴社にてご負担をお願い申し上げます。{"\n"}
+            ・上記期限までにお手続きが難しい場合は、事前にご連絡ください。
           </Text>
         </View>
 
