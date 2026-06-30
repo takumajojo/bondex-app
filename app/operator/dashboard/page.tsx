@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileText,
   Download,
+  RefreshCw,
 } from "lucide-react"
 
 type ShipmentStatus =
@@ -395,6 +396,14 @@ export default function DashboardPage() {
                             -L{it.leg_index + 1}
                           </span>
                         </p>
+                        <a
+                          href={`/api/voucher/regenerate?booking_id=${encodeURIComponent(it.booking_id)}`}
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                          title="Voucher PDF を再ダウンロード"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5" strokeWidth={1.5} />
+                          Voucher 再発行
+                        </a>
                       </td>
                       <td className="p-3 align-top">
                         <p className="text-foreground">{it.representative}</p>
