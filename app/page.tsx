@@ -79,6 +79,92 @@ function SectionH2({
   )
 }
 
+// FlowLine — quiet, editorial horizontal/vertical process visualisation
+function FlowLine({
+  kicker,
+  kickerJp,
+  steps,
+  commentary,
+  variant = "muted",
+}: {
+  kicker: string
+  kickerJp: string
+  steps: string[]
+  commentary: string
+  variant?: "muted" | "accent"
+}) {
+  const isAccent = variant === "accent"
+  const dotColor = (i: number) =>
+    isAccent && i === steps.length - 1
+      ? "bg-[#C8102E]"
+      : isAccent
+      ? "bg-[#0F172A]"
+      : "bg-white border border-[#CBD5E1]"
+  const lineClass = isAccent
+    ? "bg-[#0F172A]/25"
+    : "bg-[repeating-linear-gradient(90deg,#CBD5E1_0px,#CBD5E1_3px,transparent_3px,transparent_7px)]"
+  const lineClassVertical = isAccent
+    ? "bg-[#0F172A]/25"
+    : "bg-[repeating-linear-gradient(180deg,#CBD5E1_0px,#CBD5E1_3px,transparent_3px,transparent_7px)]"
+  const textClass = (i: number) =>
+    isAccent
+      ? i === steps.length - 1
+        ? "text-[#C8102E] font-semibold"
+        : "text-[#0F172A] font-semibold"
+      : "text-[#64748B]"
+
+  return (
+    <div>
+      <div className="flex items-baseline gap-3 mb-9">
+        <span
+          className={`text-[11px] font-mono tracking-widest uppercase ${
+            isAccent ? "text-[#C8102E] font-semibold" : "text-[#94A3B8]"
+          }`}
+        >
+          {kicker}
+        </span>
+        <span className={`text-[13px] ${isAccent ? "text-[#0F172A]" : "text-[#64748B]"}`}>
+          {kickerJp}
+        </span>
+      </div>
+
+      {/* Desktop: horizontal flow */}
+      <div className="hidden md:flex items-start">
+        {steps.map((step, i) => (
+          <div key={step} className="flex-1 flex flex-col items-start min-w-0">
+            <div className="flex items-center w-full mb-5">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor(i)}`} />
+              {i < steps.length - 1 && <div className={`flex-1 h-px mx-2 ${lineClass}`} />}
+            </div>
+            <p className={`text-[14px] leading-snug pr-4 ${textClass(i)}`}>{step}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Mobile: vertical flow */}
+      <div className="md:hidden space-y-1">
+        {steps.map((step, i) => (
+          <div key={step} className="flex items-start gap-4">
+            <div className="flex flex-col items-center pt-2">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor(i)}`} />
+              {i < steps.length - 1 && <div className={`w-px h-7 mt-1 ${lineClassVertical}`} />}
+            </div>
+            <p className={`text-[14px] leading-snug pb-1 ${textClass(i)}`}>{step}</p>
+          </div>
+        ))}
+      </div>
+
+      <p
+        className={`mt-7 text-[13px] leading-[1.95] max-w-2xl ${
+          isAccent ? "text-[#334155]" : "text-[#94A3B8]"
+        }`}
+      >
+        {commentary}
+      </p>
+    </div>
+  )
+}
+
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-white text-[#0F172A]">
@@ -238,203 +324,71 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══════════════ Difference — 従来手配との比較 (visual-heavy) ═══════════════ */}
-      <section id="difference" className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
-        <div className="max-w-6xl mx-auto px-6 py-24 md:py-32">
-          <div className="mb-16 max-w-3xl">
+      {/* ═══════════════ Difference — quiet workflow unification ═══════════════ */}
+      <section id="difference" className="border-y border-[#E5E7EB] bg-white">
+        <div className="max-w-5xl mx-auto px-6 py-28 md:py-36">
+          <div className="mb-24 max-w-2xl">
             <Eyebrow en="DIFFERENCE" jp="従来手配との違い" />
-            <SectionH2 first="旅行者に頼らず、" second="手配をパッケージに組み込む。" />
-          </div>
-
-          {/* Split-screen visual diagrams */}
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
-            {/* ─── LEFT: 従来 (chaos, burden on traveler) ─── */}
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 md:p-10">
-              <p className="text-[10px] font-mono tracking-widest uppercase text-[#64748B] mb-6">
-                Conventional
+            <SectionH2 first="旅行者に手間をかけず、" second="配送手配を旅程に組み込む。" />
+            <div className="mt-9 space-y-5 text-[16px] text-[#334155] leading-[1.95]">
+              <p>
+                従来の宅配手配では、旅行者自身の申込・支払い・問い合わせが発生し、旅の途中に余計な負担が生まれます。
               </p>
-              <div className="relative w-full max-w-sm mx-auto mb-7">
-                <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
-                  {/* Dashed arrows from 4 corners converging on center */}
-                  <g stroke="#94A3B8" strokeWidth="2.5" fill="none" strokeDasharray="5 5" opacity="0.6" strokeLinecap="round">
-                    <path d="M 95 95 L 165 165" />
-                    <path d="M 305 95 L 235 165" />
-                    <path d="M 95 305 L 165 235" />
-                    <path d="M 305 305 L 235 235" />
-                  </g>
-                  {/* Arrow heads pointing inward */}
-                  <g fill="#94A3B8">
-                    <path d="M 165 165 L 158 168 L 162 173 Z" />
-                    <path d="M 235 165 L 242 168 L 238 173 Z" />
-                    <path d="M 165 235 L 158 232 L 162 227 Z" />
-                    <path d="M 235 235 L 242 232 L 238 227 Z" />
-                  </g>
-
-                  {/* Central traveler (stressed) */}
-                  <circle cx="200" cy="200" r="60" fill="#F1F3F5" stroke="#0F172A" strokeWidth="2.5" />
-                  {/* Person head */}
-                  <circle cx="200" cy="182" r="14" fill="none" stroke="#0F172A" strokeWidth="2.5" />
-                  {/* Body */}
-                  <path d="M 176 222 Q 176 202 200 202 Q 224 202 224 222" fill="none" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
-                  {/* Stress marks around head */}
-                  <path d="M 168 160 L 160 152" stroke="#EF4444" strokeWidth="2.8" strokeLinecap="round" />
-                  <path d="M 176 148 L 170 141" stroke="#EF4444" strokeWidth="2.8" strokeLinecap="round" />
-                  <path d="M 232 160 L 240 152" stroke="#EF4444" strokeWidth="2.8" strokeLinecap="round" />
-                  <path d="M 224 148 L 230 141" stroke="#EF4444" strokeWidth="2.8" strokeLinecap="round" />
-                  {/* Sweat drop */}
-                  <path d="M 216 178 Q 216 184 220 184 Q 224 184 224 178 Q 224 172 220 172 Z" fill="#94A3B8" />
-
-                  {/* 4 corner burden icons */}
-                  {/* Top-left: money ($) */}
-                  <circle cx="70" cy="70" r="32" fill="#FFFFFF" stroke="#94A3B8" strokeWidth="2.5" />
-                  <text x="70" y="82" textAnchor="middle" fontSize="30" fontWeight="900" fill="#0F172A">$</text>
-
-                  {/* Top-right: phone */}
-                  <circle cx="330" cy="70" r="32" fill="#FFFFFF" stroke="#94A3B8" strokeWidth="2.5" />
-                  <g transform="translate(313,53)" fill="#0F172A">
-                    <path d="M 4 4 Q 4 0 8 0 L 12 0 Q 16 0 17 4 L 19 10 Q 20 14 17 15 L 14 17 Q 18 24 25 28 L 27 25 Q 28 22 32 24 L 38 26 Q 42 27 42 31 L 42 35 Q 42 39 38 39 Q 20 39 8 27 Q -4 15 4 4 Z" />
-                  </g>
-
-                  {/* Bottom-left: search / lookup */}
-                  <circle cx="70" cy="330" r="32" fill="#FFFFFF" stroke="#94A3B8" strokeWidth="2.5" />
-                  <circle cx="65" cy="324" r="10" fill="none" stroke="#0F172A" strokeWidth="3.2" />
-                  <line x1="73" y1="332" x2="84" y2="344" stroke="#0F172A" strokeWidth="3.5" strokeLinecap="round" />
-
-                  {/* Bottom-right: language (EN) */}
-                  <circle cx="330" cy="330" r="32" fill="#FFFFFF" stroke="#94A3B8" strokeWidth="2.5" />
-                  <text x="330" y="341" textAnchor="middle" fontSize="19" fontWeight="900" fill="#0F172A" letterSpacing="1">EN</text>
-
-                  {/* Labels below icons */}
-                  <text x="70" y="122" textAnchor="middle" fontSize="10" fill="#64748B" letterSpacing="1">支払い</text>
-                  <text x="330" y="122" textAnchor="middle" fontSize="10" fill="#64748B" letterSpacing="1">問合せ</text>
-                  <text x="70" y="380" textAnchor="middle" fontSize="10" fill="#64748B" letterSpacing="1">業者探し</text>
-                  <text x="330" y="380" textAnchor="middle" fontSize="10" fill="#64748B" letterSpacing="1">言語対応</text>
-                </svg>
-              </div>
-              <p className="text-center text-[17px] font-bold text-[#334155] leading-relaxed">
-                旅行者に{" "}
-                <span className="text-[#EF4444]">4 つ以上の作業</span>
-                {" "}が集中
-              </p>
-            </div>
-
-            {/* ─── RIGHT: BondEx (clean linear flow) ─── */}
-            <div className="rounded-2xl border-2 border-[#C8102E] bg-white p-8 md:p-10 shadow-[0_1px_2px_rgba(200,16,46,0.04),0_12px_32px_rgba(200,16,46,0.08)]">
-              <p className="text-[10px] font-mono tracking-widest uppercase text-[#C8102E] mb-6 font-bold">
-                With BondEx
-              </p>
-              <div className="relative w-full max-w-sm mx-auto mb-7">
-                <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
-                  {/* Stage 1: 代理店 */}
-                  <rect x="130" y="20" width="140" height="66" rx="8" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-                  <text x="200" y="48" textAnchor="middle" fontSize="10" fill="#64748B" letterSpacing="2" fontFamily="monospace">
-                    AGENCY
-                  </text>
-                  <text x="200" y="72" textAnchor="middle" fontSize="18" fontWeight="700" fill="#0F172A">
-                    代理店
-                  </text>
-
-                  {/* Arrow 1: 旅程送付 */}
-                  <line x1="200" y1="94" x2="200" y2="128" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
-                  <path d="M 192 122 L 200 130 L 208 122" stroke="#0F172A" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  <text x="278" y="118" textAnchor="start" fontSize="11" fill="#64748B" fontWeight="500">旅程送付</text>
-
-                  {/* Stage 2: BondEx (red) */}
-                  <rect x="130" y="140" width="140" height="66" rx="8" fill="#C8102E" stroke="#C8102E" strokeWidth="2.5" />
-                  <text x="200" y="168" textAnchor="middle" fontSize="10" fill="#FFFFFF" opacity="0.9" letterSpacing="2" fontFamily="monospace">
-                    BONDEX
-                  </text>
-                  <text x="200" y="192" textAnchor="middle" fontSize="18" fontWeight="700" fill="#FFFFFF">
-                    手配代行
-                  </text>
-
-                  {/* Arrow 2 dashed: 自動配送 */}
-                  <line x1="200" y1="214" x2="200" y2="248" stroke="#C8102E" strokeWidth="2.5" strokeDasharray="5 5" strokeLinecap="round" />
-                  <path d="M 192 242 L 200 250 L 208 242" stroke="#C8102E" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  <text x="278" y="238" textAnchor="start" fontSize="11" fill="#C8102E" fontWeight="500">自動配送</text>
-
-                  {/* Stage 3: 旅行者 receiving */}
-                  <rect x="110" y="260" width="180" height="120" rx="8" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" />
-                  <text x="200" y="288" textAnchor="middle" fontSize="10" fill="#64748B" letterSpacing="2" fontFamily="monospace">
-                    TRAVELER
-                  </text>
-                  {/* Traveler person */}
-                  <circle cx="168" cy="325" r="13" fill="none" stroke="#0F172A" strokeWidth="2.5" />
-                  <path d="M 145 365 Q 145 345 168 345 Q 191 345 191 365" fill="none" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
-                  {/* Smile */}
-                  <path d="M 164 328 Q 168 331 172 328" fill="none" stroke="#0F172A" strokeWidth="1.5" strokeLinecap="round" />
-
-                  {/* Suitcase */}
-                  <rect x="210" y="322" width="28" height="34" rx="2" fill="#C8102E" />
-                  <rect x="218" y="315" width="12" height="7" rx="1.5" fill="none" stroke="#C8102E" strokeWidth="2.2" />
-                  <line x1="210" y1="335" x2="238" y2="335" stroke="#FFFFFF" strokeWidth="1.2" opacity="0.5" />
-                  <line x1="210" y1="345" x2="238" y2="345" stroke="#FFFFFF" strokeWidth="1.2" opacity="0.5" />
-
-                  {/* Check mark on delivery */}
-                  <circle cx="252" cy="304" r="11" fill="#C8102E" />
-                  <path d="M 247 304 L 251 308 L 258 300" stroke="#FFFFFF" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              <p className="text-center text-[17px] font-bold text-[#0F172A] leading-relaxed">
-                代理店様の{" "}
-                <span className="text-[#C8102E]">1 操作</span>
-                {" "}で完結、旅行者は手ぶら
+              <p>
+                BondEx は、代理店様から旅程を受け取り、配送手配・発行物・月次請求までまとめて代行します。
+                配送費を旅行パッケージに含められるため、旅行者は個別に支払う必要がありません。
               </p>
             </div>
           </div>
 
-          {/* Compact comparison table */}
-          <div className="rounded-2xl bg-white border border-[#E5E7EB] overflow-hidden mb-8">
-            <div className="grid grid-cols-[1.3fr_1fr_1fr] bg-[#F7F8FA] border-b border-[#E5E7EB]">
-              <div className="p-4 px-6">
-                <p className="text-[11px] font-mono tracking-widest uppercase text-[#64748B]">項目</p>
-              </div>
-              <div className="p-4 px-6 text-center">
-                <p className="text-[11px] font-mono tracking-widest uppercase text-[#64748B]">従来</p>
-              </div>
-              <div className="p-4 px-6 text-center">
-                <p className="text-[11px] font-mono tracking-widest uppercase text-[#C8102E] font-bold">BondEx</p>
-              </div>
-            </div>
+          <div className="mb-24 space-y-16">
+            <FlowLine
+              kicker="Conventional"
+              kickerJp="従来の手配"
+              steps={["旅行者", "配送申込", "支払い", "ホテル確認", "問い合わせ"]}
+              commentary="旅行者本人が申込・支払い・問い合わせを行い、旅程の途中で手続きが分散する。"
+              variant="muted"
+            />
+            <FlowLine
+              kicker="BondEx"
+              kickerJp="弊社の代行"
+              steps={["代理店", "旅程送付", "BondEx が手配", "バウチャー・送り状の共有", "旅行者は手ぶら"]}
+              commentary="代理店様が旅程を送るだけで、以降の手配・発行・共有・月次請求まで一本化されます。"
+              variant="accent"
+            />
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-x-10 gap-y-14 border-t border-[#0F172A] pt-14">
             {[
-              { label: "旅行者の作業数", before: "4 タスク以上", after: "0" },
-              { label: "支払いのタイミング", before: "現地・毎回", after: "代理店経由・月末1回" },
-              { label: "問い合わせ窓口", before: "旅行者本人", after: "代理店 → BondEx" },
-              { label: "旅行者の体験", before: "疲弊 😰", after: "手ぶらで快適 😊" },
-            ].map((row, i, arr) => (
-              <div
-                key={row.label}
-                className={`grid grid-cols-[1.3fr_1fr_1fr] ${
-                  i < arr.length - 1 ? "border-b border-[#E5E7EB]" : ""
-                }`}
-              >
-                <div className="p-5 px-6">
-                  <p className="text-[15px] font-semibold text-[#0F172A]">{row.label}</p>
-                </div>
-                <div className="p-5 px-6 text-center border-l border-[#E5E7EB]">
-                  <p className="text-[14px] text-[#64748B]">{row.before}</p>
-                </div>
-                <div className="p-5 px-6 text-center border-l border-[#E5E7EB] bg-[#C8102E]/[0.03]">
-                  <p className="text-[14px] font-bold text-[#0F172A]">{row.after}</p>
-                </div>
+              {
+                n: "01",
+                title: "旅行者の支払い負担をなくす",
+                body:
+                  "配送費を旅行パッケージに含められるため、現地での個別支払い・カード決済・言語での問い合わせが不要になります。",
+              },
+              {
+                n: "02",
+                title: "代理店の手配を一本化",
+                body:
+                  "旅程データを送るだけで、バウチャー・送り状・追跡情報まで一括で準備。月末締めの月次請求で経理処理も簡素化します。",
+              },
+              {
+                n: "03",
+                title: "旅行体験に自然に組み込める",
+                body:
+                  "荷物配送がオプションではなく、旅程の一部としてスムーズに案内できます。旅先での体験の中断がなくなります。",
+              },
+            ].map((c) => (
+              <div key={c.n}>
+                <p className="text-[11px] font-mono tracking-widest text-[#94A3B8] mb-5">
+                  {c.n}
+                </p>
+                <h3 className="text-[19px] font-bold tracking-tight text-[#0F172A] mb-4 leading-snug">
+                  {c.title}
+                </h3>
+                <p className="text-[14px] text-[#334155] leading-[1.95]">{c.body}</p>
               </div>
             ))}
-          </div>
-
-          {/* Bottom CTA bar */}
-          <div className="rounded-2xl bg-[#0F172A] text-white p-6 md:p-7 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <p className="text-[16px] font-medium leading-[1.8]">
-              旅行者には、手ぶらで移動できる体験を。代理店様には、配送手配を抱え込まない運用を。
-            </p>
-            <a
-              href={CONTACT_FORM_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-md bg-white text-[#0F172A] text-[14px] font-medium hover:bg-[#F8FAFC] shrink-0"
-            >
-              試験運用を相談
-              <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-            </a>
           </div>
         </div>
       </section>
