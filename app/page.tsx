@@ -14,9 +14,6 @@ import {
   CreditCard,
   Building2,
   Clock,
-  Check,
-  FolderOpen,
-  Paperclip,
 } from "lucide-react"
 
 const CONTACT_FORM_URL =
@@ -38,7 +35,7 @@ function FlowCard({
 }) {
   return (
     <div className="rounded-md border border-[#111]/10 bg-white overflow-hidden flex flex-col">
-      <div className="aspect-[3/4] bg-[#F1EBE0]/40 border-b border-[#111]/8 p-5 flex items-center justify-center">
+      <div className="aspect-square bg-[#FAF7F2] border-b border-[#111]/8 flex items-center justify-center">
         {children}
       </div>
       <div className="p-5">
@@ -56,52 +53,48 @@ function FlowCard({
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-[#FAF7F2] text-[#111]">
-      {/* ═══════════════ Header (transparent over hero) ═══════════════ */}
-      <header className="absolute top-0 left-0 right-0 z-40">
-        <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="inline-flex items-center bg-[#FAF7F2]/95 backdrop-blur-sm rounded-md px-3 py-1.5 shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/bondex-logo.png"
-              alt="BondEx"
-              className="h-8 w-auto object-contain"
-            />
-          </div>
-          <nav className="hidden md:flex items-center gap-8 text-[13px] text-white/90">
-            <a href="#function" className="hover:text-white drop-shadow">流れ</a>
-            <a href="#deliverables" className="hover:text-white drop-shadow">発行物</a>
-            <a href="#price" className="hover:text-white drop-shadow">料金</a>
-            <a href="#faq" className="hover:text-white drop-shadow">FAQ</a>
+      {/* ═══════════════ Header (solid sticky, above hero) ═══════════════ */}
+      <header className="sticky top-0 z-40 bg-[#FAF7F2] border-b border-[#111]/10">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/bondex-logo.png"
+            alt="BondEx"
+            className="h-9 w-auto object-contain"
+          />
+          <nav className="hidden md:flex items-center gap-8 text-[13px] text-[#111]/70">
+            <a href="#function" className="hover:text-[#111]">流れ</a>
+            <a href="#deliverables" className="hover:text-[#111]">発行物</a>
+            <a href="#price" className="hover:text-[#111]">料金</a>
+            <a href="#faq" className="hover:text-[#111]">FAQ</a>
           </nav>
           <Link
             href="/agency/login"
-            className="text-[12px] text-white/70 hover:text-white drop-shadow underline underline-offset-4 decoration-white/30 hover:decoration-white/70"
+            className="inline-flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-md border border-[#111]/15 hover:border-[#111]/50 text-[#111]/80 hover:text-[#111]"
           >
             代理店ログイン
+            <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5} />
           </Link>
         </div>
       </header>
 
       {/* ═══════════════ Hero — Full-bleed family image ═══════════════ */}
       <section
-        className="relative w-full h-screen min-h-[720px] max-h-[900px] overflow-hidden bg-cover bg-center bg-no-repeat flex items-end"
+        className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat flex items-end"
         style={{
           backgroundImage:
-            "linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.0) 30%, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.75) 100%), url('/hero-family.png')",
+            "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.0) 25%, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.78) 100%), url('/hero-family.png')",
         }}
       >
         <div className="w-full max-w-6xl mx-auto px-6 pb-16 md:pb-24 text-white">
           <p className="text-[11px] tracking-[0.4em] text-white/80 mb-6 drop-shadow">
             訪日旅行代理店様向け ・ 荷物配送手配代行
           </p>
-          <h1 className="text-4xl md:text-6xl lg:text-[76px] font-extrabold leading-[1.15] tracking-tight mb-8 drop-shadow-lg">
-            旅程を送るだけで、
-            <br />
-            荷物配送手配が完了。
+          <h1 className="text-4xl md:text-6xl lg:text-[76px] font-extrabold leading-[1.15] tracking-tight mb-8 drop-shadow-lg max-w-4xl">
+            旅程を送るだけで、荷物配送手配が完了。
           </h1>
           <p className="text-base md:text-lg text-white/90 max-w-2xl leading-relaxed mb-10 drop-shadow">
             バウチャー発行、送り状手配、月次請求、変更対応まで。
-            <br />
             BondEx が旅行代理店様の配送オペレーションを代行します。
           </p>
           <div className="flex flex-col items-start gap-3">
@@ -155,137 +148,202 @@ export default function LandingPage() {
           <div className="mb-16 max-w-xl">
             <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">FLOW / 流れ</p>
             <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
-              旅程を送ったら、
-              <br />
-              受け取るだけ。
+              旅程を送ったら、受け取るだけ。
             </h2>
           </div>
 
           <div className="grid md:grid-cols-5 gap-4">
-            {/* ─── 01: 旅程を送付 ─── */}
+            {/* ─── 01: 旅程を送付 (paper airplane w/ document trail) ─── */}
             <FlowCard n="01" title="旅程を送付" icon={Send} desc="PDF / Excel / 画像。何でも可。">
-              <div className="w-full bg-white shadow-sm rounded p-3 border border-[#111]/10">
-                <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-[#111]/10">
-                  <Paperclip className="w-3 h-3 text-[#111]/50" strokeWidth={1.8} />
-                  <span className="text-[9px] font-mono text-[#111]/60 truncate">
-                    fujiwara_itinerary.pdf
-                  </span>
-                </div>
-                <div className="space-y-1 text-[9px] leading-loose">
-                  <div className="text-[7px] tracking-widest text-[#111]/40">4-DAY JAPAN TRIP</div>
-                  <div className="text-[#111]/75">Day 1 · Tokyo</div>
-                  <div className="text-[#111]/75">Day 2 · Hakone</div>
-                  <div className="text-[#111]/75">Day 3 · Kyoto</div>
-                  <div className="text-[#111]/75">Day 4 · Osaka</div>
-                </div>
-              </div>
+              <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                <circle cx="120" cy="120" r="100" fill="#E8DFCE" opacity="0.55" />
+                {/* Paper document */}
+                <g transform="translate(38,60)">
+                  <rect x="0" y="0" width="90" height="115" rx="4" fill="#FFFFFF" stroke="#111" strokeWidth="2.5" />
+                  <rect x="10" y="14" width="34" height="6" rx="1.5" fill="#111" />
+                  <line x1="10" y1="34" x2="80" y2="34" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="48" x2="68" y2="48" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="62" x2="80" y2="62" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="76" x2="58" y2="76" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="90" x2="72" y2="90" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                </g>
+                {/* Paper airplane */}
+                <g transform="translate(148,100)">
+                  <path d="M 0 20 L 48 4 L 32 26 L 48 4 L 22 32 Z" fill="#111" stroke="#111" strokeWidth="2" strokeLinejoin="round" />
+                </g>
+                {/* Trail dots */}
+                <circle cx="146" cy="140" r="2.5" fill="#111" opacity="0.35" />
+                <circle cx="156" cy="152" r="2" fill="#111" opacity="0.25" />
+                <circle cx="167" cy="164" r="1.5" fill="#111" opacity="0.18" />
+              </svg>
             </FlowCard>
 
-            {/* ─── 02: AI が抽出 ─── */}
+            {/* ─── 02: AI が抽出 (magnifier over doc + sparkles) ─── */}
             <FlowCard n="02" title="AI が抽出" icon={Sparkles} desc="担当者が最終確認。">
-              <div className="w-full bg-white shadow-sm rounded p-3 border border-[#111]/10">
-                <div className="flex items-center gap-1.5 mb-3 pb-2 border-b border-[#111]/10">
-                  <Sparkles className="w-3 h-3 text-[#111]/70" strokeWidth={1.8} />
-                  <span className="text-[7px] font-mono tracking-widest text-[#111]/60 uppercase">
-                    Extracting
-                  </span>
-                </div>
-                <div className="space-y-2 text-[9px] leading-loose">
-                  {[
-                    "Guest: Fujiwara Family",
-                    "4 travelers · 8 pieces",
-                    "3 legs identified",
-                  ].map((line) => (
-                    <div key={line} className="flex items-start gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#111] flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-1.5 h-1.5 text-white" strokeWidth={3} />
-                      </div>
-                      <span className="text-[#111]/75">{line}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                <circle cx="120" cy="120" r="100" fill="#E8DFCE" opacity="0.55" />
+                {/* Document (behind) */}
+                <g transform="translate(30,70)">
+                  <rect x="0" y="0" width="88" height="112" rx="4" fill="#FFFFFF" stroke="#111" strokeWidth="2.5" />
+                  <line x1="10" y1="22" x2="70" y2="22" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="38" x2="60" y2="38" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="54" x2="70" y2="54" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="70" x2="50" y2="70" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                  <line x1="10" y1="86" x2="65" y2="86" stroke="#111" strokeWidth="2" opacity="0.25" strokeLinecap="round" />
+                </g>
+                {/* Magnifying glass */}
+                <g>
+                  <circle cx="150" cy="128" r="42" fill="#FFFFFF" fillOpacity="0.92" stroke="#111" strokeWidth="3.5" />
+                  {/* Data highlights inside */}
+                  <rect x="122" y="112" width="30" height="4" rx="1" fill="#111" opacity="0.8" />
+                  <rect x="122" y="124" width="42" height="4" rx="1" fill="#111" />
+                  <rect x="122" y="136" width="26" height="4" rx="1" fill="#111" opacity="0.8" />
+                  <rect x="122" y="148" width="38" height="4" rx="1" fill="#111" opacity="0.6" />
+                  {/* Handle */}
+                  <line x1="180" y1="158" x2="205" y2="185" stroke="#111" strokeWidth="6" strokeLinecap="round" />
+                </g>
+                {/* Sparkles */}
+                <g fill="#111">
+                  <path d="M 45 55 L 47 61 L 53 63 L 47 65 L 45 71 L 43 65 L 37 63 L 43 61 Z" opacity="0.55" />
+                  <path d="M 190 68 L 192 72 L 197 74 L 192 76 L 190 80 L 188 76 L 183 74 L 188 72 Z" opacity="0.55" />
+                </g>
+              </svg>
             </FlowCard>
 
-            {/* ─── 03: バウチャー即日 ─── */}
+            {/* ─── 03: バウチャー即日 (ticket with seal) ─── */}
             <FlowCard n="03" title="バウチャー即日" icon={BadgeCheck} desc="旅行者用引換証を当日発行。">
-              <div className="w-full bg-white shadow-sm rounded p-3 border border-[#111]/10">
-                <div className="text-center pb-2 mb-2 border-b border-[#111]/15">
-                  <div className="text-[10px] font-extrabold tracking-widest">BONDEX</div>
-                  <div className="text-[6px] tracking-widest text-[#111]/50 mt-0.5">
-                    LUGGAGE FORWARDING
-                  </div>
-                </div>
-                <div className="space-y-1.5 text-[9px]">
-                  <div>
-                    <div className="text-[6px] tracking-widest text-[#111]/50">FROM</div>
-                    <div className="font-bold text-[#111]">Hilton Tokyo</div>
-                  </div>
-                  <div>
-                    <div className="text-[6px] tracking-widest text-[#111]/50">TO</div>
-                    <div className="font-bold text-[#111]">Hyatt Kyoto</div>
-                  </div>
-                  <div>
-                    <div className="text-[6px] tracking-widest text-[#111]/50">DATE / PIECES</div>
-                    <div className="text-[#111]/75 text-[8px]">2026-07-10 · 8 pcs</div>
-                  </div>
-                </div>
-              </div>
+              <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                <circle cx="120" cy="120" r="100" fill="#E8DFCE" opacity="0.55" />
+                {/* Voucher ticket */}
+                <g transform="translate(35,58)">
+                  <path
+                    d="M 0 12 Q 0 0 12 0 L 158 0 Q 170 0 170 12 L 170 52 Q 160 58 160 66 Q 160 74 170 80 L 170 118 Q 170 130 158 130 L 12 130 Q 0 130 0 118 L 0 80 Q 10 74 10 66 Q 10 58 0 52 Z"
+                    fill="#FFFFFF"
+                    stroke="#111"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                  />
+                  {/* Perforation */}
+                  <line
+                    x1="10"
+                    y1="66"
+                    x2="160"
+                    y2="66"
+                    stroke="#111"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 4"
+                    opacity="0.5"
+                  />
+                  {/* Header (BONDEX mark) */}
+                  <rect x="20" y="18" width="60" height="6" rx="1.5" fill="#111" />
+                  <rect x="20" y="30" width="80" height="4" rx="1" fill="#111" opacity="0.4" />
+                  <rect x="20" y="44" width="50" height="4" rx="1" fill="#111" opacity="0.3" />
+                  {/* Bottom detail lines */}
+                  <rect x="20" y="82" width="45" height="4" rx="1" fill="#111" opacity="0.3" />
+                  <rect x="20" y="94" width="68" height="4" rx="1" fill="#111" opacity="0.3" />
+                  <rect x="20" y="106" width="40" height="4" rx="1" fill="#111" opacity="0.3" />
+                </g>
+                {/* Checkmark seal (over top-right) */}
+                <g transform="translate(178,68)">
+                  <circle cx="0" cy="0" r="22" fill="#111" />
+                  <path
+                    d="M -8 1 L -2 8 L 10 -6"
+                    stroke="#FAF7F2"
+                    strokeWidth="3.5"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </svg>
             </FlowCard>
 
-            {/* ─── 04: 送り状を発行 ─── */}
-            <FlowCard
-              n="04"
-              title="送り状を発行"
-              icon={CalendarClock}
-              desc="集荷 1ヶ月前から順次。"
-            >
-              <div className="w-full bg-white shadow-sm rounded p-3 border border-[#111]/10">
-                <div className="pb-2 mb-2 border-b border-[#111]/15">
-                  <span className="text-[9px] font-bold text-[#111]">ヤマト運輸 宅急便</span>
-                </div>
-                <div className="space-y-1.5 text-[9px]">
-                  <div>
-                    <div className="text-[6px] tracking-widest text-[#111]/50">TRACKING</div>
-                    <div className="font-mono font-bold text-[8px]">4877-3891-5591</div>
-                  </div>
-                  <div>
-                    <div className="text-[6px] tracking-widest text-[#111]/50">発送元</div>
-                    <div className="text-[#111]/75 text-[8px]">ヒルトン東京</div>
-                  </div>
-                  <div>
-                    <div className="text-[6px] tracking-widest text-[#111]/50">お届け先</div>
-                    <div className="text-[#111]/75 text-[8px]">ハイアット京都</div>
-                  </div>
-                </div>
-              </div>
+            {/* ─── 04: 送り状を発行 (package with barcode label) ─── */}
+            <FlowCard n="04" title="送り状を発行" icon={CalendarClock} desc="集荷 1ヶ月前から順次。">
+              <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                <circle cx="120" cy="120" r="100" fill="#E8DFCE" opacity="0.55" />
+                {/* Isometric package */}
+                <g transform="translate(38,55)">
+                  {/* Package (rectangular) */}
+                  <path
+                    d="M 0 40 L 82 12 L 164 40 L 164 128 L 82 156 L 0 128 Z"
+                    fill="#FFFFFF"
+                    stroke="#111"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                  />
+                  {/* Top edges */}
+                  <path
+                    d="M 0 40 L 82 68 L 164 40 M 82 68 L 82 156"
+                    stroke="#111"
+                    strokeWidth="2.5"
+                    fill="none"
+                    strokeLinejoin="round"
+                  />
+                  {/* Tape */}
+                  <path
+                    d="M 82 12 L 82 68"
+                    stroke="#111"
+                    strokeWidth="2.5"
+                    opacity="0.4"
+                  />
+                  {/* Shipping label (on left face) */}
+                  <g transform="translate(12,80)">
+                    <path d="M 0 0 L 55 -18 L 55 44 L 0 62 Z" fill="#FAF7F2" stroke="#111" strokeWidth="2" strokeLinejoin="round" />
+                    {/* Barcode lines */}
+                    <line x1="6" y1="6" x2="6" y2="52" stroke="#111" strokeWidth="1.5" />
+                    <line x1="11" y1="4.5" x2="11" y2="50.5" stroke="#111" strokeWidth="2.2" />
+                    <line x1="16" y1="3" x2="16" y2="49" stroke="#111" strokeWidth="1.2" />
+                    <line x1="20" y1="1.5" x2="20" y2="47.5" stroke="#111" strokeWidth="1.5" />
+                    <line x1="24" y1="0" x2="24" y2="46" stroke="#111" strokeWidth="1.2" />
+                    <line x1="29" y1="-1.5" x2="29" y2="44.5" stroke="#111" strokeWidth="2" />
+                    <line x1="34" y1="-3" x2="34" y2="43" stroke="#111" strokeWidth="1.5" />
+                    <line x1="38" y1="-4.5" x2="38" y2="41.5" stroke="#111" strokeWidth="1.2" />
+                    <line x1="43" y1="-6" x2="43" y2="40" stroke="#111" strokeWidth="2.2" />
+                  </g>
+                </g>
+              </svg>
             </FlowCard>
 
-            {/* ─── 05: Drive で共有 ─── */}
+            {/* ─── 05: Drive で共有 (folder + cloud + notification) ─── */}
             <FlowCard n="05" title="Drive で共有" icon={BellRing} desc="Email / Slack で通知。">
-              <div className="w-full bg-white shadow-sm rounded p-3 border border-[#111]/10">
-                <div className="flex items-center gap-1.5 pb-2 mb-2 border-b border-[#111]/10">
-                  <FolderOpen className="w-3 h-3 text-[#111]/60" strokeWidth={1.8} />
-                  <span className="text-[8px] font-medium text-[#111]/70 truncate">
-                    BDX-260710-428
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  {[
-                    "voucher_leg1.pdf",
-                    "voucher_leg2.pdf",
-                    "label_leg1.pdf",
-                    "label_leg2.pdf",
-                  ].map((f) => (
-                    <div key={f} className="flex items-center gap-1.5 py-0.5">
-                      <FileText className="w-2.5 h-2.5 text-[#111]/40 shrink-0" strokeWidth={1.8} />
-                      <span className="text-[8px] font-mono text-[#111]/65 truncate flex-1">
-                        {f}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                <circle cx="120" cy="120" r="100" fill="#E8DFCE" opacity="0.55" />
+                {/* Cloud (background) */}
+                <path
+                  d="M 60 68 Q 55 40 82 42 Q 92 22 116 32 Q 140 22 148 50 Q 172 48 168 74 Q 175 88 155 88 L 78 88 Q 55 88 60 68 Z"
+                  fill="#FFFFFF"
+                  stroke="#111"
+                  strokeWidth="2.5"
+                  strokeLinejoin="round"
+                  opacity="0.75"
+                />
+                {/* Folder */}
+                <g transform="translate(38,110)">
+                  <path
+                    d="M 0 8 Q 0 -2 10 -2 L 60 -2 L 72 10 L 154 10 Q 164 10 164 20 L 164 88 Q 164 98 154 98 L 10 98 Q 0 98 0 88 Z"
+                    fill="#FFFFFF"
+                    stroke="#111"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                  />
+                  {/* Peek of files inside */}
+                  <rect x="16" y="28" width="130" height="5" rx="1.5" fill="#111" opacity="0.35" />
+                  <rect x="16" y="44" width="108" height="5" rx="1.5" fill="#111" opacity="0.35" />
+                  <rect x="16" y="60" width="124" height="5" rx="1.5" fill="#111" opacity="0.35" />
+                  <rect x="16" y="76" width="90" height="5" rx="1.5" fill="#111" opacity="0.35" />
+                </g>
+                {/* Notification badge (top-right of folder) */}
+                <g transform="translate(185,105)">
+                  <circle cx="0" cy="0" r="20" fill="#111" />
+                  {/* Bell shape */}
+                  <path
+                    d="M -7 -3 Q -7 -12 0 -12 Q 7 -12 7 -3 L 7 3 Q 9 6 5 6 L -5 6 Q -9 6 -7 3 Z M -2 9 Q -2 12 0 12 Q 2 12 2 9"
+                    fill="#FAF7F2"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </svg>
             </FlowCard>
           </div>
         </div>
@@ -296,9 +354,7 @@ export default function LandingPage() {
         <div className="mb-14 max-w-xl">
           <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">DELIVERABLES / 発行物</p>
           <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
-            バウチャーと、
-            <br />
-            送り状。
+            バウチャーと、送り状。
           </h2>
         </div>
 
@@ -335,9 +391,7 @@ export default function LandingPage() {
           <div className="mb-14 max-w-xl">
             <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">PRICE / 料金</p>
             <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
-              1 件単価、
-              <br />
-              月次まとめ請求。
+              1 件単価、月次まとめ請求。
             </h2>
           </div>
 
