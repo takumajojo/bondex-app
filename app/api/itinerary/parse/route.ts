@@ -276,8 +276,11 @@ export async function POST(req: NextRequest) {
     // even if the AI failed to follow the prompt rule. Conservative regex — only well-known channels.
     const cleaned = scrubOtaPrefixes(toolUse.input)
 
-    // 学習用に parse_log に記録 (失敗してもレスポンスには影響しない)
-    void saveParseLog({
+    // 学習用に parse_log に記録.
+    // 注: Vercel サーバーレスでは fire-and-forget (void) だと関数終了時に
+    //     background promise が kill されるので、確実に書き込むため await する.
+    //     saveParseLog は throw しない設計なのでレスポンス失敗にはならない.
+    await saveParseLog({
       agency,
       file_name: fileName,
       file_hash: sha256Hex(buf),
