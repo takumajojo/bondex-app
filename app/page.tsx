@@ -581,13 +581,18 @@ export default function LandingPage() {
       {/* ═══════════════ Price (compressed) ═══════════════ */}
       <section id="price" className="border-y border-[#111]/8 bg-[#F1EBE0]/60">
         <div className="max-w-6xl mx-auto px-6 py-24 md:py-32">
-          <div className="mb-14 max-w-xl">
+          <div className="mb-14 max-w-2xl">
             <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">PRICE / 料金</p>
             <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
               1 件単価、
               <br />
               月次まとめ請求。
             </h2>
+            <p className="mt-8 text-[16px] text-[#111]/75 leading-loose">
+              初期費用・月額費用はありません。
+              <br />
+              送料は原則として均一単価でご案内し、正式な料金は取扱件数・配送条件を確認のうえ契約時に確定します。
+            </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
@@ -608,8 +613,9 @@ export default function LandingPage() {
           </div>
 
           <p className="mt-8 text-[13px] text-[#111]/60 leading-loose max-w-3xl">
-            サイズ・重量問わず 1 個単価は同じ (ヤマト運輸受託限度: 3辺合計 160cm・25kg 以内)。
-            単価詳細は個別ご案内いたします。
+            ヤマト運輸の受託限度 (3辺合計 160cm・25kg 以内) を超える荷物・
+            離島や一部地域宛・冷蔵冷凍等の特殊配送は原則対象外となります。
+            具体条件は個別にご相談ください。
           </p>
         </div>
       </section>
