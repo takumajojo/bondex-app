@@ -62,19 +62,28 @@ export default function LandingPage() {
             alt="BondEx"
             className="h-9 w-auto object-contain"
           />
-          <nav className="hidden md:flex items-center gap-8 text-[13px] text-[#111]/70">
+          <nav className="hidden md:flex items-center gap-7 text-[13px] text-[#111]/70">
             <a href="#function" className="hover:text-[#111]">流れ</a>
             <a href="#deliverables" className="hover:text-[#111]">発行物</a>
             <a href="#price" className="hover:text-[#111]">料金</a>
             <a href="#faq" className="hover:text-[#111]">FAQ</a>
           </nav>
-          <Link
-            href="/agency/login"
-            className="inline-flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-md border border-[#111]/15 hover:border-[#111]/50 text-[#111]/80 hover:text-[#111]"
-          >
-            代理店ログイン
-            <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </Link>
+          <div className="flex items-center gap-4">
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium px-4 py-1.5 rounded-md bg-[#111] text-[#FAF7F2] hover:bg-[#111]/85"
+            >
+              導入相談
+            </a>
+            <Link
+              href="/agency/login"
+              className="hidden sm:inline text-[12px] text-[#111]/60 hover:text-[#111] underline underline-offset-4 decoration-[#111]/25 hover:decoration-[#111]/60"
+            >
+              代理店ログイン
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -354,33 +363,213 @@ export default function LandingPage() {
         <div className="mb-14 max-w-xl">
           <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">DELIVERABLES / 発行物</p>
           <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
-            バウチャーと、送り状。
+            必要な発行物を、まとめて用意。
           </h2>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          <div className="rounded-md border border-[#111]/10 p-10 bg-white">
-            <div className="w-12 h-12 rounded-md bg-[#111] text-[#FAF7F2] flex items-center justify-center mb-6">
-              <FileText className="w-5 h-5" strokeWidth={1.5} />
+          {/* ─── Voucher card ─── */}
+          <div className="rounded-md border border-[#111]/10 bg-white overflow-hidden flex flex-col">
+            <div className="aspect-[16/9] bg-[#FAF7F2] border-b border-[#111]/8 flex items-center justify-center p-6">
+              <svg
+                viewBox="0 0 320 200"
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-full h-full max-h-[220px]"
+              >
+                <defs>
+                  <pattern id="qr" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+                    <rect x="0" y="0" width="2" height="2" fill="#111" />
+                    <rect x="2" y="2" width="2" height="2" fill="#111" />
+                  </pattern>
+                </defs>
+                {/* Left ticket body */}
+                <path
+                  d="M 20 20 L 220 20 L 220 92 Q 208 100 220 108 L 220 180 L 20 180 Z"
+                  fill="#FFFFFF"
+                  stroke="#111"
+                  strokeWidth="2.5"
+                  strokeLinejoin="round"
+                />
+                {/* Right stub */}
+                <path
+                  d="M 220 20 L 300 20 L 300 180 L 220 180 L 220 108 Q 232 100 220 92 Z"
+                  fill="#F1EBE0"
+                  stroke="#111"
+                  strokeWidth="2.5"
+                  strokeLinejoin="round"
+                />
+                {/* Perforation */}
+                <line
+                  x1="220"
+                  y1="20"
+                  x2="220"
+                  y2="180"
+                  stroke="#111"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                  opacity="0.4"
+                />
+                {/* Header */}
+                <rect x="35" y="35" width="90" height="8" rx="1.5" fill="#111" />
+                <rect x="35" y="52" width="60" height="4" rx="1" fill="#111" opacity="0.4" />
+                {/* Body labels: Traveler / Hotel / Date */}
+                <rect x="35" y="82" width="35" height="4" rx="1" fill="#111" opacity="0.6" />
+                <rect x="35" y="92" width="120" height="5" rx="1" fill="#111" opacity="0.3" />
+                <rect x="35" y="114" width="35" height="4" rx="1" fill="#111" opacity="0.6" />
+                <rect x="35" y="124" width="140" height="5" rx="1" fill="#111" opacity="0.3" />
+                <rect x="35" y="146" width="35" height="4" rx="1" fill="#111" opacity="0.6" />
+                <rect x="35" y="156" width="90" height="5" rx="1" fill="#111" opacity="0.3" />
+                {/* QR block */}
+                <g transform="translate(238, 60)">
+                  <rect x="0" y="0" width="46" height="46" fill="#FFFFFF" stroke="#111" strokeWidth="1.5" />
+                  {/* QR position markers (3 corners) */}
+                  <g fill="#111">
+                    <rect x="3" y="3" width="10" height="10" />
+                    <rect x="5" y="5" width="6" height="6" fill="#FFFFFF" />
+                    <rect x="7" y="7" width="2" height="2" fill="#111" />
+                    <rect x="33" y="3" width="10" height="10" />
+                    <rect x="35" y="5" width="6" height="6" fill="#FFFFFF" />
+                    <rect x="37" y="7" width="2" height="2" fill="#111" />
+                    <rect x="3" y="33" width="10" height="10" />
+                    <rect x="5" y="35" width="6" height="6" fill="#FFFFFF" />
+                    <rect x="7" y="37" width="2" height="2" fill="#111" />
+                  </g>
+                  {/* QR data area (pattern fills middle) */}
+                  <rect x="15" y="15" width="16" height="16" fill="url(#qr)" opacity="0.85" />
+                  <rect x="15" y="33" width="10" height="10" fill="url(#qr)" opacity="0.85" />
+                  <rect x="33" y="15" width="10" height="16" fill="url(#qr)" opacity="0.85" />
+                  <rect x="33" y="33" width="10" height="10" fill="url(#qr)" opacity="0.85" />
+                </g>
+              </svg>
             </div>
-            <p className="text-[10px] tracking-widest text-[#111]/50 mb-2">VOUCHER</p>
-            <h3 className="text-2xl font-extrabold tracking-tight mb-4">旅行者用バウチャー</h3>
-            <p className="text-[15px] text-[#111]/70 leading-loose">
-              旅程受領後、<strong className="text-[#111]">即日発行</strong>。
-              英/日バイリンガル、ホテル担当者向け一時預かり案内も同梱。
-            </p>
+            <div className="p-8 md:p-10">
+              <p className="text-[10px] tracking-widest text-[#111]/50 mb-2">VOUCHER</p>
+              <h3 className="text-2xl font-extrabold tracking-tight mb-4">旅行者用バウチャー</h3>
+              <p className="text-[15px] text-[#111]/70 leading-loose">
+                旅程受領後、<strong className="text-[#111]">即日発行</strong>。
+                英/日バイリンガル、ホテル担当者向け一時預かり案内も同梱。
+              </p>
+            </div>
           </div>
 
-          <div className="rounded-md border border-[#111]/10 p-10 bg-white">
-            <div className="w-12 h-12 rounded-md bg-[#111] text-[#FAF7F2] flex items-center justify-center mb-6">
-              <Truck className="w-5 h-5" strokeWidth={1.5} />
+          {/* ─── Waybill card ─── */}
+          <div className="rounded-md border border-[#111]/10 bg-white overflow-hidden flex flex-col">
+            <div className="aspect-[16/9] bg-[#FAF7F2] border-b border-[#111]/8 flex items-center justify-center p-6">
+              <svg
+                viewBox="0 0 320 200"
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-full h-full max-h-[220px]"
+              >
+                <defs>
+                  <pattern id="barcode" x="0" y="0" width="7" height="30" patternUnits="userSpaceOnUse">
+                    <rect x="0" y="0" width="1.5" height="30" fill="#111" />
+                    <rect x="2.5" y="0" width="2" height="30" fill="#111" />
+                    <rect x="5.5" y="0" width="1" height="30" fill="#111" />
+                  </pattern>
+                </defs>
+                {/* Label rectangle */}
+                <rect
+                  x="20"
+                  y="20"
+                  width="280"
+                  height="160"
+                  rx="4"
+                  fill="#FFFFFF"
+                  stroke="#111"
+                  strokeWidth="2.5"
+                />
+                {/* Header strip */}
+                <rect x="20" y="20" width="280" height="26" fill="#111" />
+                <text
+                  x="35"
+                  y="38"
+                  fill="#FAF7F2"
+                  fontSize="10"
+                  fontWeight="bold"
+                  letterSpacing="2"
+                  fontFamily="monospace"
+                >
+                  SHIPPING LABEL
+                </text>
+                {/* FROM box */}
+                <rect
+                  x="35"
+                  y="58"
+                  width="110"
+                  height="52"
+                  rx="2"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="1.5"
+                  opacity="0.55"
+                />
+                <rect x="43" y="64" width="24" height="3.5" rx="0.5" fill="#111" opacity="0.7" />
+                <rect x="43" y="76" width="65" height="4.5" rx="0.5" fill="#111" />
+                <rect x="43" y="88" width="70" height="3" rx="0.5" fill="#111" opacity="0.4" />
+                <rect x="43" y="97" width="55" height="3" rx="0.5" fill="#111" opacity="0.4" />
+                {/* Arrow */}
+                <path
+                  d="M 152 84 L 168 84 M 162 78 L 168 84 L 162 90"
+                  stroke="#111"
+                  strokeWidth="2.2"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {/* TO box */}
+                <rect
+                  x="175"
+                  y="58"
+                  width="110"
+                  height="52"
+                  rx="2"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="1.5"
+                  opacity="0.55"
+                />
+                <rect x="183" y="64" width="16" height="3.5" rx="0.5" fill="#111" opacity="0.7" />
+                <rect x="183" y="76" width="60" height="4.5" rx="0.5" fill="#111" />
+                <rect x="183" y="88" width="72" height="3" rx="0.5" fill="#111" opacity="0.4" />
+                <rect x="183" y="97" width="50" height="3" rx="0.5" fill="#111" opacity="0.4" />
+                {/* Barcode area */}
+                <rect
+                  x="35"
+                  y="122"
+                  width="250"
+                  height="42"
+                  fill="#FAF7F2"
+                  stroke="#111"
+                  strokeWidth="1.5"
+                  strokeOpacity="0.25"
+                />
+                <rect
+                  x="45"
+                  y="130"
+                  width="214"
+                  height="26"
+                  fill="url(#barcode)"
+                />
+                {/* Tracking number placeholder */}
+                <rect
+                  x="102"
+                  y="168"
+                  width="116"
+                  height="5"
+                  rx="0.5"
+                  fill="#111"
+                  opacity="0.55"
+                />
+              </svg>
             </div>
-            <p className="text-[10px] tracking-widest text-[#111]/50 mb-2">SHIPPING LABEL</p>
-            <h3 className="text-2xl font-extrabold tracking-tight mb-4">物流業者の送り状</h3>
-            <p className="text-[15px] text-[#111]/70 leading-loose">
-              集荷日の <strong className="text-[#111]">1 ヶ月前</strong> に発行 (物流業者仕様)。
-              追跡番号付き、現在ヤマト運輸の宅急便を利用中。
-            </p>
+            <div className="p-8 md:p-10">
+              <p className="text-[10px] tracking-widest text-[#111]/50 mb-2">SHIPPING LABEL</p>
+              <h3 className="text-2xl font-extrabold tracking-tight mb-4">物流業者の送り状</h3>
+              <p className="text-[15px] text-[#111]/70 leading-loose">
+                集荷日の <strong className="text-[#111]">1 ヶ月前</strong> に発行 (物流業者仕様)。
+                追跡番号付き、現在ヤマト運輸の宅急便を利用中。
+              </p>
+            </div>
           </div>
         </div>
       </section>
