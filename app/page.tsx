@@ -87,7 +87,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" aria-label="BondEx home" className="flex items-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-8 w-auto object-contain" />
+            <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {[
