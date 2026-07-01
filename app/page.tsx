@@ -120,7 +120,7 @@ const FAQ = [
   },
   {
     q: "補償はいくらまで? 高額品 (ブランド品・カメラ機材) は?",
-    a: "補償はヤマト運輸宅急便運送約款に基づき、1個あたり上限 30 万円です。BondEx 独自の追加補償は現時点でありません。宅急便約款上、現金・貴重品・宝石・美術品・貴金属・有価証券・生もの・危険物等は補償対象外または引受不可です。高額品を含む富裕層案件では、事前に品目確認のうえ、対象外品目は別手段 (旅行者による直送・手荷物携行) をご案内します。",
+    a: "補償は当社が利用する物流業者の運送約款に完全に準じます。現在はヤマト運輸を利用しており、宅急便運送約款に基づき 1 個あたり上限 30 万円です (現金・貴重品・宝石・美術品・貴金属・有価証券・生もの・危険物等は補償対象外または引受不可)。将来 佐川急便その他への切替を行う場合は、事前告知のうえ切替後の物流業者の運送約款が適用されます。BondEx 独自の追加補償は現時点でありません。高額品を含む富裕層案件では、事前に品目確認のうえ、対象外品目は別手段 (旅行者による直送・手荷物携行) をご案内します。",
   },
   {
     q: "AI 誤読で誤送先に届いてしまうリスクは?",
@@ -323,6 +323,190 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Product Preview */}
+      <section id="preview" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
+        <div className="max-w-2xl mb-10">
+          <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground mb-3">
+            Product Preview
+          </p>
+          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight mb-3">
+            実際の画面と発行物
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            代理店ポータル、旅行者向けバウチャー、公開トラッキング。全て稼働中の実物です。
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Mockup 1: Voucher PDF */}
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="aspect-[3/4] bg-white p-5 border-b border-border">
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-12 h-6 rounded-sm bg-foreground/10" />
+                <div className="text-right">
+                  <p className="text-[6px] tracking-[0.2em] text-muted-foreground">REF</p>
+                  <p className="text-[8px] font-mono">BDX-260630-428</p>
+                </div>
+              </div>
+              <div className="h-0.5 bg-foreground mb-3" />
+              <p className="text-xs font-semibold mb-3">Luggage Forwarding</p>
+              <div className="inline-block border border-foreground rounded-full px-2 py-0.5 mb-4">
+                <p className="text-[6px] tracking-[0.15em]">PLEASE PRESENT AT RECEPTION</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 bg-muted/40 rounded p-2 border border-border">
+                <div>
+                  <p className="text-[6px] tracking-[0.15em] text-muted-foreground mb-0.5">DROP-OFF</p>
+                  <p className="text-2xl font-bold leading-none">10<span className="text-[8px] ml-0.5">JUL</span></p>
+                  <p className="text-[7px] mt-1">ANA InterContinental Tokyo</p>
+                </div>
+                <div className="border-l border-border pl-2">
+                  <p className="text-[6px] tracking-[0.15em] text-muted-foreground mb-0.5">PICK-UP</p>
+                  <p className="text-2xl font-bold leading-none">12<span className="text-[8px] ml-0.5">JUL</span></p>
+                  <p className="text-[7px] mt-1">Hilton Kyoto</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-0.5">
+                <div className="flex justify-between text-[7px]">
+                  <span className="text-muted-foreground">NUMBER OF LUGGAGE</span>
+                  <span>3 pieces</span>
+                </div>
+                <div className="flex justify-between text-[7px]">
+                  <span className="text-muted-foreground">FORWARDED BY</span>
+                  <span>BondEx</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                Voucher (Traveler)
+              </p>
+              <h3 className="text-sm font-semibold text-foreground mb-1">旅行者向けバウチャー</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                英語と日本語 2 ページ構成。ホテル担当者様向け案内も同梱。
+              </p>
+            </div>
+          </div>
+
+          {/* Mockup 2: Tracking Page — live link */}
+          <a
+            href="/track/BDX-TEST-001"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-2xl border border-border bg-card overflow-hidden hover:border-foreground/40 transition-colors group"
+          >
+            <div className="aspect-[3/4] bg-slate-50 p-4 border-b border-border">
+              <div className="bg-white rounded-lg p-3 mb-3 border border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-6 h-3 rounded bg-foreground/10" />
+                  <div className="border-l border-border pl-2">
+                    <p className="text-[6px] tracking-widest text-muted-foreground">TRACK YOUR LUGGAGE</p>
+                    <p className="text-[8px] font-semibold">BDX-TEST-001</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-border">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[7px] tracking-widest text-muted-foreground">LEG 1</p>
+                  <div className="inline-block bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-[6px] font-semibold">
+                    📋 Label issued
+                  </div>
+                </div>
+                <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center text-center">
+                  <div>
+                    <p className="text-[6px] tracking-widest text-muted-foreground mb-0.5">DROP-OFF</p>
+                    <p className="text-[8px] font-semibold">Test Hotel A</p>
+                    <p className="text-[6px] text-muted-foreground">10 July 2026</p>
+                  </div>
+                  <div className="text-muted-foreground text-xs">→</div>
+                  <div>
+                    <p className="text-[6px] tracking-widest text-muted-foreground mb-0.5">PICK-UP</p>
+                    <p className="text-[8px] font-semibold">Test Hotel B</p>
+                    <p className="text-[6px] text-muted-foreground">11 July 2026</p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-border">
+                  <p className="text-[6px] tracking-widest text-muted-foreground mb-1">Yamato Tracking</p>
+                  <p className="text-[7px] font-mono">4877-3891-5591 ↗</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Public Tracking
+                </p>
+                <span className="text-[10px] text-emerald-700 font-medium">Live Demo →</span>
+              </div>
+              <h3 className="text-sm font-semibold text-foreground mb-1 group-hover:underline">
+                公開トラッキングページ
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                クリックで実物を開く。旅行者向け、認証不要、姓のみ匿名化。
+              </p>
+            </div>
+          </a>
+
+          {/* Mockup 3: Agency Portal */}
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="aspect-[3/4] bg-slate-50 p-3 border-b border-border">
+              <div className="bg-white border border-border rounded p-2 mb-2 flex items-center gap-2">
+                <div className="w-5 h-3 rounded bg-foreground/10" />
+                <div className="border-l border-border pl-2">
+                  <p className="text-[5px] tracking-widest text-muted-foreground">AGENCY PORTAL</p>
+                  <p className="text-[8px] font-semibold">My Japan Planner</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-1 mb-2">
+                {["発行済", "集荷済", "配達中", "配達完了"].map((s, i) => (
+                  <div key={s} className="bg-white border border-border rounded p-1.5">
+                    <p className="text-[5px] tracking-widest text-muted-foreground">{s}</p>
+                    <p className="text-sm font-bold">{[3, 2, 1, 5][i]}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-white border border-border rounded overflow-hidden">
+                <div className="bg-muted/40 px-2 py-1 grid grid-cols-[1fr_1fr_1fr_auto] gap-1 text-[5px] tracking-widest text-muted-foreground uppercase">
+                  <span>発行日</span>
+                  <span>予約番号</span>
+                  <span>代表者</span>
+                  <span>状況</span>
+                </div>
+                {[
+                  { d: "06/30", ref: "BDX-260630-428", rep: "Mr. Jack C.", s: "発行済" },
+                  { d: "06/30", ref: "BDX-260630-960", rep: "Mr. Jack C.", s: "発行済" },
+                  { d: "06/28", ref: "BDX-260628-172", rep: "Ms. Kim H.", s: "集荷済" },
+                ].map((r) => (
+                  <div
+                    key={r.ref}
+                    className="border-t border-border px-2 py-1.5 grid grid-cols-[1fr_1fr_1fr_auto] gap-1 text-[6px]"
+                  >
+                    <span>{r.d}</span>
+                    <span className="font-mono">{r.ref}</span>
+                    <span>{r.rep}</span>
+                    <span className="bg-blue-100 text-blue-800 px-1 rounded text-[5px] font-semibold self-center">
+                      {r.s}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                Agency Portal
+              </p>
+              <h3 className="text-sm font-semibold text-foreground mb-1">代理店ポータル</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                自社の案件のみ閲覧 (RLS で技術的に分離)。ステータス確認・請求書 DL。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground mt-6 text-center">
+          ※ 上記はいずれも <strong className="text-foreground">bondex.express 上で稼働中の実際の画面</strong>です (トラッキングはクリックで開けます)。個別デモをご希望の場合はお問い合わせください。
+        </p>
+      </section>
+
       {/* Pricing */}
       <section id="pricing" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
         <div className="grid md:grid-cols-[1fr_1.5fr] gap-10 items-start">
@@ -334,24 +518,38 @@ export default function LandingPage() {
               1 個 <span className="text-5xl md:text-6xl">¥5,000</span> 一律
             </h2>
             <p className="text-sm text-muted-foreground mb-1">税別 / 税込 ¥5,500</p>
-            <p className="text-xs text-muted-foreground italic">Flat ¥5,000 / bag (excl. tax)</p>
+            <p className="text-xs text-muted-foreground italic">Flat ¥5,000 / piece (excl. tax)</p>
           </div>
 
           <div className="rounded-3xl border border-border bg-card p-8">
+            <div className="mb-5 rounded-2xl bg-muted/40 border border-border p-4">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                Size · Weight
+              </p>
+              <p className="text-base font-semibold text-foreground leading-snug">
+                スーツケース・段ボール・ゴルフバッグ ── <br className="hidden md:block" />
+                <span className="whitespace-nowrap">サイズ・重量問わず 1 個 ¥5,000 一律</span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                機内持込サイズ (Sサイズ) から特大 (Lサイズ・XL) まで料金は変わりません。
+                ただし利用する物流業者の運送約款上の受託限度 (現在ヤマト運輸: 3辺合計 160cm・25kg 以内) を超えるものは対象外です。
+              </p>
+            </div>
+
             <p className="text-sm text-foreground mb-4 leading-relaxed">
-              距離・都市に関わらず一律。ヤマト運輸宅急便運送約款の範囲内 (3辺合計 160cm 以内・25kg 以内・貴重品/生もの/危険物等の禁制品を除く) が対象です。
+              距離・都市に関わらず一律。貴重品・生もの・危険物等、運送約款上の禁制品は対象外です。
             </p>
             <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-              ¥5,000 の内訳は「ヤマト運輸への実運賃 + BondEx 手配料 (AI 読取・Voucher/送り状発行・代理店ポータル・サポート)」。代理店様には契約時に内訳を書面開示します。離島・僻地・サイズオーバー・当日配送要件は原則対象外 (別途相談)。ヤマト運賃改定時は事前告知のうえ改定する場合があります。
+              ¥5,000 の内訳は「物流業者への実運賃 + BondEx 手配料 (AI 読取・Voucher/送り状発行・代理店ポータル・サポート)」。代理店様には契約時に内訳を書面開示します。離島・僻地・サイズオーバー・当日配送要件は原則対象外 (別途相談)。物流業者の運賃改定時は事前告知のうえ改定する場合があります。
             </p>
             <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-3">
               Included
             </p>
             <ul className="space-y-2 text-sm">
               {[
-                "ヤマト運輸 (宅急便) による実運送 (翌日配送・全国主要都市)",
+                "全国主要都市への翌日配送 (現在利用中の物流業者: ヤマト運輸 宅急便)",
                 "AI 旅程読取 + 人的ダブルチェック",
-                "Voucher (旅行者向け) + ホテル担当者様向け日本語案内 + ヤマト送り状の発行",
+                "Voucher (旅行者向け) + ホテル担当者様向け日本語案内 + 送り状の発行",
                 "代理店ポータル (案件管理・ステータス・請求書 DL)",
                 "公開トラッキングページ (署名付き URL、旅行終了後 30 日で自動失効)",
                 "メールサポート (日本語・英語、平日 9:00-18:00 JST)",
@@ -362,6 +560,48 @@ export default function LandingPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+
+        {/* 補償ポリシー — 物流業者依存であることを明示 */}
+        <div className="mt-8 rounded-3xl border border-amber-200 bg-amber-50/50 p-6 md:p-8">
+          <div className="flex items-start gap-3">
+            <Shield className="w-5 h-5 mt-0.5 shrink-0 text-amber-700" strokeWidth={1.5} />
+            <div>
+              <h3 className="text-base font-semibold text-foreground mb-2">
+                補償ポリシー — 物流業者の約款に準じます
+              </h3>
+              <p className="text-sm text-foreground/90 leading-relaxed mb-3">
+                BondEx は取次サービスであり、独自の補償制度はありません。荷物の紛失・破損・遅延時の補償は、<strong>実際に配送を担う物流業者の運送約款</strong>に完全に準じます。
+              </p>
+              <div className="grid md:grid-cols-2 gap-3 mt-4">
+                <div className="rounded-xl bg-background border border-border p-4">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+                    現在利用中の物流業者
+                  </p>
+                  <p className="text-sm font-semibold text-foreground mb-1">
+                    ヤマト運輸 (宅急便)
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    宅急便運送約款に基づき、1 個あたり <strong className="text-foreground">上限 30 万円</strong>。現金・貴重品・宝石・美術品・生もの・危険物・リチウム電池等は補償対象外または引受不可。
+                  </p>
+                </div>
+                <div className="rounded-xl bg-background border border-border p-4">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+                    他社利用時の例 (参考)
+                  </p>
+                  <p className="text-sm font-semibold text-foreground mb-1">
+                    佐川急便 (飛脚宅配便) の場合
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    飛脚宅配便運送約款に準じ、1 個あたり <strong className="text-foreground">上限 30 万円</strong>。禁制品・引受不可品目は各社約款による。将来物流業者を切替える際は、事前に告知のうえ、切替後は当該物流業者の約款が適用されます。
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-4 leading-relaxed">
+                高額品を含む案件では、事前に品目確認のうえ、対象外品目は別手段 (旅行者による直送・手荷物携行) をご案内します。
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -536,7 +776,7 @@ export default function LandingPage() {
         <div className="border-t border-border">
           <div className="max-w-6xl mx-auto px-6 py-4 text-[11px] text-muted-foreground leading-relaxed">
             <p className="mb-2">
-              <strong className="text-foreground">法的位置付け:</strong> BondEx は自らが運送を引き受ける運送人ではなく、旅程情報を受けてヤマト運輸への発送を取り次ぐ「取次サービス」です。実運送・運送責任・補償はヤマト運輸宅急便運送約款に従います。第一種貨物利用運送事業の登録要否については所管の運輸局に照会中で、書面回答取得後に照会番号と回答内容を本ページに掲載します。
+              <strong className="text-foreground">法的位置付け:</strong> BondEx は自らが運送を引き受ける運送人ではなく、旅程情報を受けて物流業者への発送を取り次ぐ「取次サービス」です。実運送・運送責任・補償は、当社が利用する物流業者 (現在: ヤマト運輸 宅急便運送約款) に完全に準じます。物流業者を変更する際は事前告知し、切替後は新たな物流業者の運送約款が適用されます。第一種貨物利用運送事業の登録要否については所管の運輸局に照会中で、書面回答取得後に照会番号と回答内容を本ページに掲載します。
             </p>
             <p>
               © {new Date().getFullYear()} 株式会社JOJO / BondEx · All rights reserved
