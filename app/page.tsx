@@ -99,8 +99,10 @@ export default function LandingPage() {
           <p className="text-[11px] tracking-[0.4em] text-white/80 mb-6 drop-shadow">
             訪日旅行代理店様向け ・ 荷物配送手配代行
           </p>
-          <h1 className="text-4xl md:text-6xl lg:text-[76px] font-extrabold leading-[1.15] tracking-tight mb-8 drop-shadow-lg max-w-4xl">
-            旅程を送るだけで、荷物配送手配が完了。
+          <h1 className="text-4xl md:text-6xl lg:text-[72px] font-extrabold leading-[1.15] tracking-tight mb-8 drop-shadow-lg max-w-4xl">
+            旅程を送るだけで、
+            <br />
+            荷物配送手配が完了。
           </h1>
           <p className="text-base md:text-lg text-white/90 max-w-2xl leading-relaxed mb-10 drop-shadow">
             バウチャー発行、送り状手配、月次請求、変更対応まで。
@@ -363,7 +365,9 @@ export default function LandingPage() {
         <div className="mb-14 max-w-xl">
           <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">DELIVERABLES / 発行物</p>
           <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
-            必要な発行物を、まとめて用意。
+            必要な発行物を、
+            <br />
+            まとめて用意。
           </h2>
         </div>
 
@@ -580,7 +584,9 @@ export default function LandingPage() {
           <div className="mb-14 max-w-xl">
             <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-4">PRICE / 料金</p>
             <h2 className="text-4xl md:text-[52px] font-extrabold tracking-tight leading-[1.2]">
-              1 件単価、月次まとめ請求。
+              1 件単価、
+              <br />
+              月次まとめ請求。
             </h2>
           </div>
 
