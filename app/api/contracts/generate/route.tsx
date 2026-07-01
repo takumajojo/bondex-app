@@ -67,7 +67,6 @@ export async function GET(req: NextRequest) {
             representativeTitle: "代表取締役",
             representativeName: "谷口 琢真",
             address: "〒158-0092 東京都世田谷区野毛1-9-12",
-            phone: "+81-90-1680-1142",
             email: "support@bondex.express",
             bankInfo: "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO",
           },

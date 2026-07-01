@@ -135,7 +135,6 @@ export async function GET(req: NextRequest) {
         bondex: {
           companyName: "株式会社JOJO",
           address: "〒158-0092 東京都世田谷区野毛1-9-12",
-          phone: "+81-90-1680-1142",
           email: "support@bondex.express",
           bankInfo: "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO",
           // 適格請求書登録番号は取得後にここを差し替える

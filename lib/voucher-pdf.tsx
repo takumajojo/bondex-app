@@ -19,8 +19,8 @@ const FONT_DIR = path.join(process.cwd(), "public", "fonts")
 const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
 
 // BondEx 自身のサポート窓口 — JP intro で代理店より先に表示される一次窓口。
-// 代理店経由ではなく BondEx に直接連絡してもらうための番号。
-const BONDEX_SUPPORT_PHONE = "+81-90-1680-1142"
+// 代理店経由ではなく BondEx に直接連絡してもらうための連絡先。
+const BONDEX_SUPPORT_EMAIL = "support@bondex.express"
 
 try {
   Font.register({
@@ -715,7 +715,7 @@ function LegPageJp({
         <View style={styles.jpContactList}>
           <Text style={styles.jpContactRow}>
             <Text style={styles.jpContactLabel}>● 荷物配送手配業者：</Text>
-            BondEx（運営 {data.companyName}）　TEL: {BONDEX_SUPPORT_PHONE}
+            BondEx（運営 {data.companyName}）　Email: {BONDEX_SUPPORT_EMAIL}
           </Text>
           <Text style={styles.jpContactRow}>
             <Text style={styles.jpContactLabel}>● ランドオペレーター：</Text>

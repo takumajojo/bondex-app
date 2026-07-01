@@ -170,7 +170,7 @@ export default async function TrackPage({
         <div className="rounded-2xl border border-border bg-white p-6 text-sm text-muted-foreground">
           <p className="font-medium text-foreground mb-2">Need help?</p>
           <p>
-            Contact BondEx support: <span className="font-mono">+81-90-1680-1142</span>
+            Contact BondEx support: <span className="font-mono">support@bondex.express</span>
           </p>
           <p className="text-xs mt-3 text-muted-foreground/80">
             This page is publicly accessible by URL only. Do not share publicly.

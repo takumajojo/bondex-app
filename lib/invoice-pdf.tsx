@@ -58,7 +58,6 @@ export interface InvoiceInput {
   bondex: {
     companyName: string    // 株式会社JOJO
     address: string        // 〒158-0092 東京都世田谷区野毛1-9-12
-    phone: string
     email: string
     bankInfo: string       // 三菱UFJ銀行 ◯◯支店 普通 1234567 カ）ジョジョ
     registrationNumber?: string  // 適格請求書発行事業者登録番号 (任意)
@@ -523,7 +522,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
             <Text style={styles.footerCompany}>{data.bondex.companyName}</Text>
             <Text style={styles.footerLine}>{data.bondex.address}</Text>
             <Text style={styles.footerLine}>
-              TEL: {data.bondex.phone}　Email: {data.bondex.email}
+              Email: {data.bondex.email}
             </Text>
             {data.bondex.registrationNumber && (
               <Text style={styles.footerLine}>

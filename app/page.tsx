@@ -7,13 +7,19 @@ import {
   FileText,
   Truck,
   Mail,
-  MessageSquare,
   FolderOpen,
-  CheckCircle2,
   Clock,
   Building2,
   CreditCard,
+  Send,
+  Sparkles,
+  BadgeCheck,
+  CalendarClock,
+  BellRing,
 } from "lucide-react"
+
+const CONTACT_FORM_URL =
+  "https://docs.google.com/forms/d/e/1FAIpQLSfztfArRTfT4lgAdcNHeZFCDE23gwWivcjgzOUOkUSH9ah_Ew/viewform?usp=header"
 
 export default function LandingPage() {
   return (
@@ -40,42 +46,86 @@ export default function LandingPage() {
       </header>
 
       {/* ─────────────── Hero ─────────────── */}
-      <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 md:pt-28 md:pb-20">
-        <div className="grid md:grid-cols-[1.3fr_1fr] gap-10 md:gap-16 items-center">
-          <div>
-            <p className="text-[11px] tracking-[0.3em] text-[#111]/50 mb-6">
-              HOTEL-TO-HOTEL LUGGAGE FORWARDING
-            </p>
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-semibold leading-[1.05] tracking-tight mb-6">
-              ホテル間の荷物、<br />
-              ぜんぶ引き受ける。
-            </h1>
-            <p className="text-lg text-[#111]/70 leading-relaxed max-w-lg">
-              旅程を投げるだけ。バウチャーと配送伝票を BondEx が発行し、
-              Google Drive で一括共有します。
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a
-                href="#contact"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-[#111] text-[#FAF7F2] text-sm font-medium hover:bg-[#111]/90"
-              >
-                導入相談
-                <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-              </a>
-              <a
-                href="#flow"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-md border border-[#111]/20 text-sm hover:border-[#111]/50"
-              >
-                流れを見る
-              </a>
-            </div>
+      <section className="relative overflow-hidden">
+        <div className="max-w-6xl mx-auto px-6 pt-24 pb-20 md:pt-36 md:pb-28 text-center">
+          <p className="text-[11px] tracking-[0.35em] text-[#111]/50 mb-8">
+            HOTEL-TO-HOTEL LUGGAGE FORWARDING
+          </p>
+          <h1 className="text-[44px] sm:text-6xl md:text-[80px] font-semibold leading-[1.05] tracking-tight mb-8">
+            ホテルからホテルへ、<br />
+            荷物を、置いてこよう。
+          </h1>
+          <p className="text-lg text-[#111]/70 leading-relaxed max-w-xl mx-auto">
+            旅程を送るだけ。バウチャーと配送伝票を BondEx が発行し、
+            Google Drive で一括共有します。
+          </p>
+
+          {/* Journey visual — 2 hotels + luggage motion */}
+          <div className="mt-14 md:mt-16 max-w-3xl mx-auto">
+            <svg viewBox="0 0 720 140" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+              {/* dotted travel path */}
+              <path
+                d="M 110 90 Q 360 20 610 90"
+                fill="none"
+                stroke="#111"
+                strokeOpacity="0.35"
+                strokeWidth="1.5"
+                strokeDasharray="2 5"
+              />
+              {/* hotel A */}
+              <g transform="translate(60,60)">
+                <rect x="0" y="0" width="60" height="70" fill="none" stroke="#111" strokeWidth="1.5" />
+                <line x1="0" y1="18" x2="60" y2="18" stroke="#111" strokeWidth="1.5" />
+                <rect x="10" y="26" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="26" y="26" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="42" y="26" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="10" y="44" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="26" y="44" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="42" y="44" width="8" height="10" fill="#111" opacity="0.5" />
+                <text x="30" y="10" textAnchor="middle" fontSize="9" fill="#111" fontFamily="serif" letterSpacing="2">HOTEL A</text>
+              </g>
+              {/* hotel B */}
+              <g transform="translate(600,60)">
+                <rect x="0" y="0" width="60" height="70" fill="none" stroke="#111" strokeWidth="1.5" />
+                <line x1="0" y1="18" x2="60" y2="18" stroke="#111" strokeWidth="1.5" />
+                <rect x="10" y="26" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="26" y="26" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="42" y="26" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="10" y="44" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="26" y="44" width="8" height="10" fill="#111" opacity="0.5" />
+                <rect x="42" y="44" width="8" height="10" fill="#111" opacity="0.5" />
+                <text x="30" y="10" textAnchor="middle" fontSize="9" fill="#111" fontFamily="serif" letterSpacing="2">HOTEL B</text>
+              </g>
+              {/* luggage in transit */}
+              <g transform="translate(348,32)">
+                <rect x="0" y="6" width="24" height="30" rx="3" fill="#111" />
+                <rect x="6" y="0" width="12" height="8" rx="2" fill="none" stroke="#111" strokeWidth="1.5" />
+                <line x1="4" y1="14" x2="20" y2="14" stroke="#FAF7F2" strokeWidth="1" />
+                <line x1="4" y1="26" x2="20" y2="26" stroke="#FAF7F2" strokeWidth="1" />
+              </g>
+              <text x="360" y="80" textAnchor="middle" fontSize="10" fill="#111" opacity="0.6" fontFamily="serif" letterSpacing="1.5">
+                BondEx
+              </text>
+            </svg>
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/hero-luggage-delivery.jpg"
-            alt=""
-            className="rounded-md object-cover w-full aspect-[4/5] md:aspect-[4/5] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.25)]"
-          />
+
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-md bg-[#111] text-[#FAF7F2] text-sm font-medium hover:bg-[#111]/90"
+            >
+              導入相談フォームへ
+              <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
+            </a>
+            <a
+              href="#flow"
+              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-md border border-[#111]/20 text-sm hover:border-[#111]/50"
+            >
+              流れを見る
+            </a>
+          </div>
         </div>
       </section>
 
@@ -109,7 +159,8 @@ export default function LandingPage() {
         <div className="mb-12 max-w-2xl">
           <p className="text-[11px] tracking-[0.3em] text-[#111]/50 mb-3">FLOW</p>
           <h2 className="text-4xl md:text-5xl font-semibold tracking-tight leading-tight">
-            旅程が届いたら、あとは受け取るだけ。
+            旅程を送ったら、<br />
+            あとは受け取るだけ。
           </h2>
         </div>
 
@@ -118,33 +169,33 @@ export default function LandingPage() {
           {[
             {
               n: "01",
-              title: "旅程を BondEx に送付",
-              body: "Excel / PDF / スクリーンショット・写真。何でも可。",
-              icon: FileText,
+              title: "旅程を送付",
+              body: "Excel / PDF / 画像。使い慣れたフォーマットのままで OK。",
+              icon: Send,
             },
             {
               n: "02",
-              title: "AI で自動抽出",
-              body: "ホテル・日程・荷物数を抽出、担当者が目視確認。",
-              icon: CheckCircle2,
+              title: "AI が自動抽出",
+              body: "ホテル・日程・荷物数を抽出。担当者が目視で最終確認。",
+              icon: Sparkles,
             },
             {
               n: "03",
               title: "バウチャー即日発行",
-              body: "旅行者に渡す引換証 (英/日) を当日中に発行。",
-              icon: FileText,
+              body: "旅行者にお渡しする引換証 (英/日) を当日中に発行。",
+              icon: BadgeCheck,
             },
             {
               n: "04",
-              title: "送り状 = 集荷1ヶ月前",
-              body: "物流業者の仕様上、送り状発行は集荷日の1ヶ月前から。",
-              icon: Clock,
+              title: "送り状は集荷 1ヶ月前",
+              body: "物流業者の仕様上、送り状発行は集荷日の1ヶ月前から順次。",
+              icon: CalendarClock,
             },
             {
               n: "05",
-              title: "Drive で一括共有 + 通知",
+              title: "Drive 共有 + 通知",
               body: "案件専用フォルダに集約 → Email / Slack でお知らせ。",
-              icon: FolderOpen,
+              icon: BellRing,
             },
           ].map((step, i, arr) => {
             const Icon = step.icon
@@ -274,7 +325,7 @@ export default function LandingPage() {
               {[
                 { icon: FolderOpen, label: "案件別 Drive フォルダ", body: "BDX-XXX ごとに 1 フォルダ、常時アクセス可" },
                 { icon: Mail, label: "Email 通知", body: "発行完了 / 追加のたびに担当者様宛にお知らせ" },
-                { icon: MessageSquare, label: "Slack 連携 (準備中)", body: "貴社チャンネルに直接投稿、ワンクリックで DL" },
+                { icon: BellRing, label: "Slack 連携 (準備中)", body: "貴社チャンネルに直接投稿、ワンクリックで DL" },
               ].map((c) => {
                 const Icon = c.icon
                 return (
@@ -497,23 +548,25 @@ export default function LandingPage() {
           </p>
           <div className="grid md:grid-cols-2 gap-4">
             <a
-              href="mailto:support@bondex.express?subject=BondEx%20導入相談"
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="rounded-md bg-[#FAF7F2] text-[#111] p-5 flex items-start gap-3 hover:bg-[#FAF7F2]/90"
+            >
+              <FileText className="w-5 h-5 mt-0.5 shrink-0" strokeWidth={1.5} />
+              <div className="text-left">
+                <p className="text-sm font-semibold">導入相談フォーム</p>
+                <p className="text-xs opacity-70 mt-0.5">3 分で入力、折り返しご連絡いたします</p>
+              </div>
+            </a>
+            <a
+              href="mailto:support@bondex.express?subject=BondEx%20導入相談"
+              className="rounded-md border border-[#FAF7F2]/30 p-5 flex items-start gap-3 hover:border-[#FAF7F2]/60"
             >
               <Mail className="w-5 h-5 mt-0.5 shrink-0" strokeWidth={1.5} />
               <div className="text-left">
                 <p className="text-sm font-semibold">Email</p>
                 <p className="text-xs opacity-70 mt-0.5">support@bondex.express</p>
-              </div>
-            </a>
-            <a
-              href="tel:+81-90-1680-1142"
-              className="rounded-md border border-[#FAF7F2]/30 p-5 flex items-start gap-3 hover:border-[#FAF7F2]/60"
-            >
-              <MessageSquare className="w-5 h-5 mt-0.5 shrink-0" strokeWidth={1.5} />
-              <div className="text-left">
-                <p className="text-sm font-semibold">電話</p>
-                <p className="text-xs opacity-70 mt-0.5">+81-90-1680-1142</p>
               </div>
             </a>
           </div>

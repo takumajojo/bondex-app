@@ -49,7 +49,6 @@ export interface ContractInput {
     representativeTitle: string  // 代表取締役
     representativeName: string   // 谷口 琢真
     address: string              // 〒158-0092 東京都世田谷区野毛1-9-12
-    phone: string
     email: string
     bankInfo: string             // 三菱UFJ銀行 田園調布駅前 普通 0145653 株式会社JOJO
   }
