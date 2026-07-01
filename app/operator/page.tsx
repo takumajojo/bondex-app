@@ -862,7 +862,10 @@ export default function OperatorPage() {
       setError(err instanceof Error ? err.message : "Upload failed")
       setPhase("error")
     }
-  }, [])
+    // 注: settings に依存 (agency を formData に含めるため).
+    // 空配列にすると初回レンダー時の settings=null が固定され、
+    // localStorage から読み込まれた後も反映されない (stale closure bug).
+  }, [settings])
 
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLLabelElement>) => {
