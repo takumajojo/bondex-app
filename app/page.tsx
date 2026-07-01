@@ -19,11 +19,6 @@ import {
   Plus,
   Minus,
   Ban,
-  Calendar,
-  Package,
-  CheckCircle2,
-  Check,
-  X,
 } from "lucide-react"
 
 const CONTACT_FORM_URL =
@@ -54,7 +49,7 @@ function Eyebrow({ en, jp, dark = false }: { en: string; jp: string; dark?: bool
   )
 }
 
-// H2 heading with proper Japanese wrap + semantic responsive break
+// H2 heading — mobile-safe: natural JP wrap, no forced atomic spans
 function SectionH2({
   first,
   second,
@@ -66,104 +61,19 @@ function SectionH2({
 }) {
   return (
     <h2
-      className={`text-[40px] md:text-[48px] font-bold tracking-normal leading-[1.45] text-[#0F172A] [word-break:keep-all] [overflow-wrap:break-word] ${className}`}
+      className={`text-3xl sm:text-[34px] md:text-[40px] lg:text-[44px] font-bold tracking-normal leading-[1.4] text-[#0F172A] ${className}`}
     >
-      <span className="inline-block">{first}</span>
+      {first}
       {second && (
         <>
           <br className="hidden md:inline" />
-          <span className="inline-block">{second}</span>
+          {second}
         </>
       )}
     </h2>
   )
 }
 
-// FlowLine — quiet, editorial horizontal/vertical process visualisation
-function FlowLine({
-  kicker,
-  kickerJp,
-  steps,
-  commentary,
-  variant = "muted",
-}: {
-  kicker: string
-  kickerJp: string
-  steps: string[]
-  commentary: string
-  variant?: "muted" | "accent"
-}) {
-  const isAccent = variant === "accent"
-  const dotColor = (i: number) =>
-    isAccent && i === steps.length - 1
-      ? "bg-[#C8102E]"
-      : isAccent
-      ? "bg-[#0F172A]"
-      : "bg-white border border-[#CBD5E1]"
-  const lineClass = isAccent
-    ? "bg-[#0F172A]/25"
-    : "bg-[repeating-linear-gradient(90deg,#CBD5E1_0px,#CBD5E1_3px,transparent_3px,transparent_7px)]"
-  const lineClassVertical = isAccent
-    ? "bg-[#0F172A]/25"
-    : "bg-[repeating-linear-gradient(180deg,#CBD5E1_0px,#CBD5E1_3px,transparent_3px,transparent_7px)]"
-  const textClass = (i: number) =>
-    isAccent
-      ? i === steps.length - 1
-        ? "text-[#C8102E] font-semibold"
-        : "text-[#0F172A] font-semibold"
-      : "text-[#64748B]"
-
-  return (
-    <div>
-      <div className="flex items-baseline gap-3 mb-9">
-        <span
-          className={`text-[11px] font-mono tracking-widest uppercase ${
-            isAccent ? "text-[#C8102E] font-semibold" : "text-[#94A3B8]"
-          }`}
-        >
-          {kicker}
-        </span>
-        <span className={`text-[13px] ${isAccent ? "text-[#0F172A]" : "text-[#64748B]"}`}>
-          {kickerJp}
-        </span>
-      </div>
-
-      {/* Desktop: horizontal flow */}
-      <div className="hidden md:flex items-start">
-        {steps.map((step, i) => (
-          <div key={step} className="flex-1 flex flex-col items-start min-w-0">
-            <div className="flex items-center w-full mb-5">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor(i)}`} />
-              {i < steps.length - 1 && <div className={`flex-1 h-px mx-2 ${lineClass}`} />}
-            </div>
-            <p className={`text-[14px] leading-snug pr-4 ${textClass(i)}`}>{step}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Mobile: vertical flow */}
-      <div className="md:hidden space-y-1">
-        {steps.map((step, i) => (
-          <div key={step} className="flex items-start gap-4">
-            <div className="flex flex-col items-center pt-2">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor(i)}`} />
-              {i < steps.length - 1 && <div className={`w-px h-7 mt-1 ${lineClassVertical}`} />}
-            </div>
-            <p className={`text-[14px] leading-snug pb-1 ${textClass(i)}`}>{step}</p>
-          </div>
-        ))}
-      </div>
-
-      <p
-        className={`mt-7 text-[13px] leading-[1.95] max-w-2xl ${
-          isAccent ? "text-[#334155]" : "text-[#94A3B8]"
-        }`}
-      >
-        {commentary}
-      </p>
-    </div>
-  )
-}
 
 export default function LandingPage() {
   return (
@@ -224,10 +134,10 @@ export default function LandingPage() {
           <p className="text-[12px] font-medium tracking-[0.15em] text-white/90 mb-6 drop-shadow">
             訪日旅行代理店様向け ・ 荷物配送手配代行
           </p>
-          <h1 className="text-4xl md:text-6xl lg:text-[64px] font-bold leading-[1.3] tracking-normal mb-8 drop-shadow-lg max-w-4xl [word-break:keep-all] [overflow-wrap:break-word]">
-            <span className="inline-block">旅程を送るだけで、</span>
+          <h1 className="text-3xl sm:text-5xl md:text-[54px] lg:text-[64px] font-bold leading-[1.3] tracking-normal mb-8 drop-shadow-lg max-w-4xl">
+            旅程を送るだけで、
             <br className="hidden md:inline" />
-            <span className="inline-block">荷物配送手配が完了。</span>
+            荷物配送手配が完了。
           </h1>
           <p className="text-base md:text-[17px] font-medium text-white/95 max-w-2xl leading-[1.8] mb-10 drop-shadow">
             バウチャー発行・送り状手配・月次請求・変更対応まで一括で。
@@ -324,69 +234,51 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══════════════ Difference — quiet workflow unification ═══════════════ */}
+      {/* ═══════════════ Difference — 3 quiet merit cards ═══════════════ */}
       <section id="difference" className="border-y border-[#E5E7EB] bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-28 md:py-36">
-          <div className="mb-24 max-w-2xl">
+        <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
+          <div className="mb-12 md:mb-16 max-w-2xl">
             <Eyebrow en="DIFFERENCE" jp="従来手配との違い" />
             <SectionH2 first="旅行者に手間をかけず、" second="配送手配を旅程に組み込む。" />
-            <div className="mt-9 space-y-5 text-[16px] text-[#334155] leading-[1.95]">
-              <p>
-                従来の宅配手配では、旅行者自身の申込・支払い・問い合わせが発生し、旅の途中に余計な負担が生まれます。
-              </p>
-              <p>
-                BondEx は、代理店様から旅程を受け取り、配送手配・発行物・月次請求までまとめて代行します。
-                配送費を旅行パッケージに含められるため、旅行者は個別に支払う必要がありません。
-              </p>
-            </div>
+            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
+              従来は旅行者自身が申込・支払い・問い合わせを行うため、旅の途中に手間が増えます。
+              BondEx は代理店様から旅程を受け取り、配送手配・発行物・月次請求までまとめて代行します。
+              配送費を旅行パッケージに含められるため、旅行者の個別支払いは不要です。
+            </p>
           </div>
 
-          <div className="mb-24 space-y-16">
-            <FlowLine
-              kicker="Conventional"
-              kickerJp="従来の手配"
-              steps={["旅行者", "配送申込", "支払い", "ホテル確認", "問い合わせ"]}
-              commentary="旅行者本人が申込・支払い・問い合わせを行い、旅程の途中で手続きが分散する。"
-              variant="muted"
-            />
-            <FlowLine
-              kicker="BondEx"
-              kickerJp="弊社の代行"
-              steps={["代理店", "旅程送付", "BondEx が手配", "バウチャー・送り状の共有", "旅行者は手ぶら"]}
-              commentary="代理店様が旅程を送るだけで、以降の手配・発行・共有・月次請求まで一本化されます。"
-              variant="accent"
-            />
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-x-10 gap-y-14 border-t border-[#0F172A] pt-14">
+          <div className="grid md:grid-cols-3 gap-4 md:gap-5">
             {[
               {
                 n: "01",
-                title: "旅行者の支払い負担をなくす",
+                title: "旅行者の個別支払いをなくす",
                 body:
-                  "配送費を旅行パッケージに含められるため、現地での個別支払い・カード決済・言語での問い合わせが不要になります。",
+                  "配送費を旅行パッケージに含められるため、現地での個別支払い・カード決済・言語対応が不要になります。",
               },
               {
                 n: "02",
                 title: "代理店の手配を一本化",
                 body:
-                  "旅程データを送るだけで、バウチャー・送り状・追跡情報まで一括で準備。月末締めの月次請求で経理処理も簡素化します。",
+                  "旅程データを送るだけで、バウチャー・送り状・追跡情報まで一括で準備します。",
               },
               {
                 n: "03",
                 title: "旅行体験に自然に組み込める",
                 body:
-                  "荷物配送がオプションではなく、旅程の一部としてスムーズに案内できます。旅先での体験の中断がなくなります。",
+                  "荷物配送をオプションではなく旅程の一部として案内でき、旅行中の中断や確認作業を減らせます。",
               },
             ].map((c) => (
-              <div key={c.n}>
-                <p className="text-[11px] font-mono tracking-widest text-[#94A3B8] mb-5">
+              <div
+                key={c.n}
+                className="rounded-lg border border-[#E5E7EB] bg-white p-6 md:p-7 border-l-2 border-l-[#C8102E]"
+              >
+                <p className="text-[11px] font-mono tracking-widest text-[#94A3B8] mb-4">
                   {c.n}
                 </p>
-                <h3 className="text-[19px] font-bold tracking-tight text-[#0F172A] mb-4 leading-snug">
+                <h3 className="text-[17px] md:text-[18px] font-bold tracking-tight text-[#0F172A] mb-3 leading-[1.5]">
                   {c.title}
                 </h3>
-                <p className="text-[14px] text-[#334155] leading-[1.95]">{c.body}</p>
+                <p className="text-[14px] text-[#334155] leading-[1.9]">{c.body}</p>
               </div>
             ))}
           </div>
@@ -745,63 +637,54 @@ export default function LandingPage() {
       </section>
 
       {/* ═══════════════ Price (Timeline visual) ═══════════════ */}
-      <section id="price" className="max-w-6xl mx-auto px-6 py-24 md:py-32">
-        <div className="mb-14 max-w-2xl">
+      <section id="price" className="max-w-6xl mx-auto px-5 sm:px-6 py-20 md:py-28">
+        <div className="mb-12 md:mb-16 max-w-2xl">
           <Eyebrow en="PRICE" jp="料金" />
           <SectionH2 first="1 件単価、" second="月次まとめ請求。" />
-          <p className="mt-8 text-[16px] font-medium text-[#334155] leading-[1.85]">
+          <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
             初期費用・月額費用はありません。
-            <br className="hidden md:inline" />
             送料は原則として均一単価でご案内し、正式な料金は取扱件数・配送条件を確認のうえ契約時に確定します。
           </p>
         </div>
 
-        {/* Billing timeline SVG */}
-        <div className="mb-10">
-          <div className="rounded-2xl bg-[#F7F8FA] border border-[#E5E7EB] p-8 md:p-12">
-            <p className="text-[10px] tracking-widest text-[#64748B] mb-8 uppercase">
-              Billing cycle / ご請求サイクル
+        {/* Billing conditions — quiet contract-style */}
+        <div className="grid md:grid-cols-[1fr_1.1fr] gap-8 md:gap-14 mb-12">
+          <div>
+            <p className="text-[11px] font-mono tracking-widest text-[#64748B] uppercase mb-4">
+              Billing / 請求条件
             </p>
-            <div className="grid grid-cols-5 gap-2 relative">
-              {/* Connecting line */}
-              <div className="hidden md:block absolute top-[28px] left-[10%] right-[10%] h-0.5 bg-gradient-to-r from-[#CBD5E1] via-[#C8102E]/40 to-[#0F172A]/60" />
-              {[
-                { icon: FileText, day: "手配日", label: "旅程受領・発行", sub: "T日" },
-                { icon: Package, day: "利用日", label: "集荷 → 配達", sub: "実運送" },
-                { icon: Calendar, day: "月末", label: "当月分を締め", sub: "自動集計", accent: true },
-                { icon: FileText, day: "翌月初", label: "PDF 請求書", sub: "Drive で共有", accent: true },
-                { icon: CreditCard, day: "翌月末", label: "お振込み", sub: "支払期限" },
-              ].map((t, i) => {
-                const Icon = t.icon
-                return (
-                  <div key={i} className="text-center relative z-10">
-                    <div
-                      className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-4 border-2 ${
-                        t.accent
-                          ? "bg-[#C8102E] border-[#C8102E] text-white"
-                          : "bg-white border-[#0F172A]/25 text-[#0F172A]"
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" strokeWidth={1.8} />
-                    </div>
-                    <p className="text-[11px] font-mono tracking-widest text-[#64748B] mb-1.5">
-                      {t.day}
-                    </p>
-                    <p className="text-[13px] font-bold text-[#0F172A] mb-1 leading-snug">
-                      {t.label}
-                    </p>
-                    <p className="text-[10px] text-[#64748B] leading-loose">{t.sub}</p>
-                  </div>
-                )
-              })}
-            </div>
-            <p className="mt-10 text-center text-[14px] font-medium text-[#0F172A]">
-              月次まとめ、締めは月末。運賃は BondEx が事前立替え。
+            <h3 className="text-2xl md:text-[28px] font-bold tracking-tight text-[#0F172A] mb-5 leading-[1.4]">
+              請求条件
+            </h3>
+            <p className="text-[15px] text-[#334155] leading-[1.9]">
+              配送費は BondEx が事前に立替え、月末に当月分をまとめて集計します。
+              翌月初に請求書を発行し、翌月末までにお支払いいただきます。
             </p>
           </div>
+
+          <dl className="border-t border-[#E5E7EB]">
+            {[
+              { term: "締め日", desc: "月末" },
+              { term: "請求書発行", desc: "翌月初" },
+              { term: "支払期限", desc: "翌月末" },
+              { term: "支払方法", desc: "銀行振込" },
+              { term: "運賃", desc: "BondEx が事前立替" },
+              { term: "請求単位", desc: "月次まとめ請求" },
+            ].map((row) => (
+              <div
+                key={row.term}
+                className="grid grid-cols-[minmax(0,110px)_1fr] gap-4 py-4 border-b border-[#E5E7EB]"
+              >
+                <dt className="text-[13px] text-[#64748B] leading-[1.7]">{row.term}</dt>
+                <dd className="text-[14px] md:text-[15px] font-semibold text-[#0F172A] leading-[1.7]">
+                  {row.desc}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
 
-        <p className="text-[13px] text-[#64748B] leading-[1.85] max-w-3xl">
+        <p className="text-[13px] text-[#64748B] leading-[1.9] max-w-3xl">
           ヤマト運輸の受託限度 (3辺合計 160cm・25kg 以内) を超える荷物・離島や一部地域宛・
           冷蔵冷凍等の特殊配送は原則対象外となります。具体条件は個別にご相談ください。
         </p>
@@ -906,9 +789,8 @@ export default function LandingPage() {
           <p className="text-[12px] font-medium tracking-[0.2em] text-white/80 mb-6 uppercase">
             Contact
           </p>
-          <h2 className="text-4xl md:text-[52px] font-bold tracking-normal leading-[1.35] mb-10 [word-break:keep-all] [overflow-wrap:break-word]">
-            <span className="inline-block">試験運用は</span>
-            <span className="inline-block">1 件から。</span>
+          <h2 className="text-3xl sm:text-4xl md:text-[46px] lg:text-[52px] font-bold tracking-normal leading-[1.35] mb-10">
+            試験運用は 1 件から。
           </h2>
           <p className="text-[16px] text-white/95 leading-[1.85] mb-12 max-w-2xl mx-auto">
             契約書・責任分界表・請求書サンプル・法務レビュー用パッケージを、
