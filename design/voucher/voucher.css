@@ -26,6 +26,7 @@
   --muted: #8a8a92;
   --red: #c8102e;
   --red-dark: #a00d25;
+  --red-soft: #e2314f; /* 墨ベタ地の上で使う明るめの赤 (広告バナー用) */
   --red-tint: #fdf3f4;
   --paper: #ffffff;
   --gray-bg: #f4f4f5;
@@ -385,36 +386,45 @@ html, body {
 .contact-cell .c-v { font-size: 8pt; font-weight: 700; margin-top: 0.8mm; line-height: 1.5; }
 .contact-cell .c-v small { font-weight: 400; color: var(--ink-soft); }
 
-/* about + partner — 営業モジュール (ホテル側メリット訴求 → パートナー登録導線) */
-.about-sales {
+/* about + partner — 営業バナー (広告枠): 墨ベタ地 + 白 CTA カードの誌面広告調 */
+.ad-banner {
   margin-top: 3mm;
-  border-top: 0.8mm solid var(--ink);
-  padding-top: 2.4mm;
+  background: var(--ink);
+  color: #fff;
+  border-top: 1.4mm solid var(--red);
+  padding: 4mm 4.5mm;
+  display: grid; grid-template-columns: 1fr 42mm; gap: 5mm;
+  align-items: center;
 }
-.as-head .a-title { font-size: 7.5pt; font-weight: 800; letter-spacing: 0.16em; }
-.as-head .a-title .a-sub { letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
-.as-headline { font-size: 12pt; font-weight: 800; letter-spacing: 0.02em; margin-top: 1.8mm; }
-.as-headline .accent { color: var(--red); }
-.as-lead { font-size: 7.2pt; color: var(--ink-soft); line-height: 1.55; margin-top: 1.2mm; }
-.as-body {
-  margin-top: 2.6mm;
-  display: grid; grid-template-columns: 1fr 1fr 1fr 50mm; gap: 3.2mm;
-  align-items: stretch;
+.ad-kicker {
+  font-size: 7pt; font-weight: 800; letter-spacing: 0.16em;
+  color: var(--red-soft);
 }
-.as-benefit { border-top: 0.4mm solid var(--gray-line); padding-top: 1.6mm; }
-.as-benefit .b-num { font-size: 8.5pt; font-weight: 800; color: var(--red); letter-spacing: 0.08em; }
-.as-benefit .b-title { font-size: 8pt; font-weight: 800; margin-top: 0.8mm; }
-.as-benefit .b-body { font-size: 6.6pt; color: var(--ink-soft); line-height: 1.55; margin-top: 0.8mm; }
-.partner-box {
-  border: 0.5mm solid var(--red);
-  padding: 2mm 2.8mm;
-  display: flex; gap: 2.5mm; align-items: center;
+.ad-kicker .ad-sub { letter-spacing: 0.05em; color: #9c9ca4; font-weight: 700; }
+.ad-headline { font-size: 12.5pt; font-weight: 800; letter-spacing: 0.02em; margin-top: 1.8mm; }
+.ad-headline .accent { color: var(--red-soft); }
+.ad-lead { font-size: 7pt; color: #c4c4cb; line-height: 1.55; margin-top: 1.2mm; }
+.ad-points { list-style: none; margin-top: 2.2mm; border-top: 0.3mm solid #3a3a41; padding-top: 2mm; }
+.ad-points li { display: flex; align-items: baseline; gap: 1.8mm; }
+.ad-points li + li { margin-top: 1.3mm; }
+.ad-points .pt-mark {
+  width: 1.7mm; height: 1.7mm; flex-shrink: 0;
+  background: var(--red-soft);
+  transform: translateY(-0.2mm);
 }
-.partner-box .p-words { min-width: 0; }
-.partner-box .p-words .p-title { font-size: 7.2pt; font-weight: 800; color: var(--red-dark); line-height: 1.35; }
-.partner-box .p-words .p-body { font-size: 6.2pt; color: var(--ink-soft); line-height: 1.5; margin-top: 0.6mm; }
-.partner-box .p-words .p-url { font-size: 6.2pt; font-weight: 700; margin-top: 0.6mm; word-break: break-all; }
-.partner-box svg { width: 13mm; height: 13mm; flex-shrink: 0; }
+.ad-points .pt-body { font-size: 7.2pt; color: #c4c4cb; line-height: 1.5; }
+.ad-points .pt-body strong { color: #fff; font-weight: 800; }
+.ad-cta {
+  background: #fff;
+  color: var(--ink);
+  padding: 2.8mm 2.5mm;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+}
+.ad-cta svg { width: 16mm; height: 16mm; }
+.ad-cta .cta-title { font-size: 7.5pt; font-weight: 800; color: var(--red-dark); margin-top: 1.4mm; }
+.ad-cta .cta-note { font-size: 5.8pt; color: var(--ink-soft); margin-top: 0.5mm; }
+.ad-cta .cta-url { font-size: 5.8pt; font-weight: 700; margin-top: 0.8mm; letter-spacing: 0.01em; }
 
 /* -------- requirement 3: cut-out baggage tag -------- */
 .tag-cutline {

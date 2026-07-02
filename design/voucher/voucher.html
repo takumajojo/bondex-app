@@ -319,40 +319,28 @@
     </div>
   </div>
 
-  <!-- 営業モジュール: ホテル側メリットを訴求し、パートナー登録へ誘導する -->
-  <div class="about-sales jp">
-    <div class="as-head">
-      <p class="a-title">ABOUT BONDEX <span class="a-sub">／ ホテル様へのご案内</span></p>
-      <p class="as-headline">フロント業務はそのままに、<span class="accent">ゲスト体験</span>を一段上へ。</p>
-      <p class="as-lead">BondEx（ボンデックス）は、訪日旅行者のホテル間荷物配送を手配するサービスです。ゲストは大きなスーツケースを持たずに身軽に移動でき、その体験が貴館の滞在満足度につながります。</p>
+  <!-- 営業バナー (広告枠): ホテル側メリットを訴求し、パートナー登録へ誘導する。
+       QR は https://bondex.express/partner をエンコード (node_modules/qrcode で生成)。
+       受け皿ページは未作成 — 後日タスク。 -->
+  <div class="ad-banner jp">
+    <div class="ad-main">
+      <p class="ad-kicker">ABOUT BONDEX <span class="ad-sub">／ ホテル様へのご案内</span></p>
+      <p class="ad-headline">フロント業務はそのままに、<span class="accent">ゲスト体験</span>を一段上へ。</p>
+      <p class="ad-lead">BondEx（ボンデックス）は、訪日旅行者のホテル間荷物配送を手配するサービスです。ゲストは大きなスーツケースを持たずに身軽に移動でき、その体験が貴館の滞在満足度につながります。</p>
+      <ul class="ad-points">
+        <li><span class="pt-mark"></span><p class="pt-body"><strong>伝票（送り状）の記入は不要</strong> — 送り状は BondEx がすべて手配します。</p></li>
+        <li><span class="pt-mark"></span><p class="pt-body"><strong>決済はお客様ご自身でキャッシュレス</strong> — 貴館での集金・立て替えはありません。</p></li>
+        <li><span class="pt-mark"></span><p class="pt-body"><strong>出荷方法は柔軟</strong> — BondEx 手配の集荷でも、貴館の通常の出荷に載せていただいても構いません。</p></li>
+      </ul>
     </div>
-    <div class="as-body">
-      <div class="as-benefit">
-        <p class="b-num">01</p>
-        <p class="b-title">費用のご負担はありません</p>
-        <p class="b-body">配送料は BondEx が手配・立て替え済み。ホテル様への請求や手数料は一切発生しません。</p>
-      </div>
-      <div class="as-benefit">
-        <p class="b-num">02</p>
-        <p class="b-title">業務は通常の荷物預かりのみ</p>
-        <p class="b-body">集荷手配・送り状・ゲストへの請求はすべて BondEx が対応。特別なオペレーションは不要です。</p>
-      </div>
-      <div class="as-benefit">
-        <p class="b-num">03</p>
-        <p class="b-title">ゲスト満足度の向上</p>
-        <p class="b-body">大きな荷物のないスムーズなチェックイン／アウトを実現。荷物のお問い合わせ窓口は BondEx が務めます。</p>
-      </div>
-      <div class="partner-box">
+    <div class="ad-cta">
       <svg viewBox="0 0 29 29" shape-rendering="crispEdges" aria-label="partner QR code">
         <rect width="29" height="29" fill="#fff"/>
-        <path fill="#16161a" d="M0 0h7v1H0zM10 0h3v1h-3zM16 0h2v1h-2zM22 0h7v1h-7zM0 1h1v1H0zM6 1h1v1H6zM9 1h1v1H9zM13 1h2v1h-2zM17 1h3v1h-3zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1H0zM2 2h3v1H2zM6 2h1v1H6zM9 2h3v1H9zM14 2h1v1h-1zM17 2h1v1h-1zM19 2h1v1h-1zM22 2h1v1h-1zM24 2h3v1h-3zM28 2h1v1h-1zM0 3h1v1H0zM2 3h3v1H2zM6 3h1v1H6zM8 3h2v1H8zM12 3h3v1h-3zM16 3h2v1h-2zM22 3h1v1h-1zM24 3h3v1h-3zM28 3h1v1h-1zM0 4h1v1H0zM2 4h3v1H2zM6 4h1v1H6zM9 4h1v1H9zM11 4h1v1h-1zM14 4h3v1h-3zM18 4h2v1h-2zM22 4h1v1h-1zM24 4h3v1h-3zM28 4h1v1h-1zM0 5h1v1H0zM6 5h1v1H6zM8 5h2v1H8zM12 5h1v1h-1zM15 5h1v1h-1zM17 5h2v1h-2zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h7v1H0zM8 6h1v1H8zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h7v1h-7zM8 7h3v1H8zM13 7h2v1h-2zM16 7h2v1h-2zM19 7h1v1h-1zM0 8h4v1H0zM5 8h2v1H5zM8 8h2v1H8zM11 8h3v1h-3zM15 8h2v1h-2zM18 8h4v1h-4zM23 8h3v1h-3zM27 8h2v1h-2zM0 9h2v1H0zM3 9h1v1H3zM6 9h1v1H6zM9 9h2v1H9zM12 9h1v1h-1zM14 9h3v1h-3zM18 9h1v1h-1zM21 9h2v1h-2zM25 9h1v1h-1zM27 9h1v1h-1zM1 10h2v1H1zM4 10h2v1H4zM7 10h2v1H7zM10 10h2v1h-2zM13 10h1v1h-1zM16 10h2v1h-2zM19 10h2v1h-2zM22 10h2v1h-2zM26 10h2v1h-2zM0 11h1v1H0zM3 11h2v1H3zM6 11h1v1H6zM8 11h2v1H8zM11 11h2v1h-2zM15 11h1v1h-1zM17 11h2v1h-2zM20 11h1v1h-1zM24 11h3v1h-3zM28 11h1v1h-1zM0 12h2v1H0zM4 12h1v1H4zM6 12h3v1H6zM10 12h1v1h-1zM12 12h4v1h-4zM17 12h1v1h-1zM19 12h3v1h-3zM23 12h2v1h-2zM26 12h1v1h-1zM28 12h1v1h-1zM1 13h1v1H1zM3 13h1v1H3zM5 13h1v1H5zM8 13h2v1H8zM11 13h1v1h-1zM13 13h2v1h-2zM16 13h2v1h-2zM19 13h1v1h-1zM21 13h2v1h-2zM24 13h1v1h-1zM26 13h2v1h-2zM0 14h2v1H0zM3 14h2v1H3zM6 14h2v1H6zM9 14h2v1H9zM12 14h1v1h-1zM14 14h2v1h-2zM17 14h1v1h-1zM19 14h2v1h-2zM22 14h1v1h-1zM24 14h2v1h-2zM27 14h2v1h-2zM1 15h1v1H1zM4 15h1v1H4zM7 15h1v1H7zM9 15h1v1H9zM11 15h3v1h-3zM15 15h2v1h-2zM18 15h1v1h-1zM20 15h3v1h-3zM24 15h1v1h-1zM26 15h1v1h-1zM0 16h3v1H0zM4 16h3v1H4zM8 16h1v1H8zM10 16h2v1h-2zM13 16h2v1h-2zM16 16h1v1h-1zM18 16h2v1h-2zM21 16h1v1h-1zM23 16h3v1h-3zM27 16h2v1h-2zM1 17h1v1H1zM3 17h1v1H3zM5 17h2v1H5zM8 17h2v1H8zM11 17h1v1h-1zM13 17h1v1h-1zM15 17h3v1h-3zM19 17h2v1h-2zM22 17h2v1h-2zM25 17h2v1h-2zM0 18h2v1H0zM3 18h1v1H3zM6 18h1v1H6zM8 18h1v1H8zM10 18h3v1h-3zM14 18h2v1h-2zM17 18h1v1h-1zM19 18h1v1h-1zM21 18h3v1h-3zM25 18h1v1h-1zM27 18h2v1h-2zM1 19h3v1H1zM5 19h1v1H5zM7 19h2v1H7zM10 19h1v1h-1zM12 19h2v1h-2zM15 19h1v1h-1zM17 19h2v1h-2zM20 19h1v1h-1zM23 19h1v1h-1zM25 19h3v1h-3zM0 20h1v1H0zM2 20h2v1H2zM5 20h1v1H5zM8 20h2v1H8zM11 20h2v1h-2zM14 20h3v1h-3zM18 20h1v1h-1zM20 20h2v1h-2zM23 20h2v1h-2zM26 20h3v1h-3zM8 21h1v1H8zM10 21h1v1h-1zM12 21h1v1h-1zM14 21h1v1h-1zM16 21h2v1h-2zM19 21h2v1h-2zM22 21h1v1h-1zM24 21h2v1h-2zM27 21h1v1h-1zM0 22h7v1H0zM8 22h2v1H8zM11 22h2v1h-2zM15 22h1v1h-1zM17 22h1v1h-1zM19 22h1v1h-1zM21 22h3v1h-3zM25 22h2v1h-2zM0 23h1v1H0zM6 23h1v1H6zM8 23h1v1H8zM10 23h1v1h-1zM12 23h3v1h-3zM16 23h2v1h-2zM19 23h2v1h-2zM23 23h2v1h-2zM26 23h1v1h-1zM28 23h1v1h-1zM0 24h1v1H0zM2 24h3v1H2zM6 24h1v1H6zM9 24h2v1H9zM12 24h1v1h-1zM14 24h2v1h-2zM17 24h1v1h-1zM19 24h1v1h-1zM21 24h1v1h-1zM23 24h2v1h-2zM26 24h2v1h-2zM0 25h1v1H0zM2 25h3v1H2zM6 25h1v1H6zM8 25h2v1H8zM11 25h2v1h-2zM14 25h1v1h-1zM16 25h2v1h-2zM19 25h2v1h-2zM22 25h2v1h-2zM25 25h1v1h-1zM27 25h1v1h-1zM0 26h1v1H0zM2 26h3v1H2zM6 26h1v1H6zM9 26h1v1H9zM11 26h1v1h-1zM13 26h3v1h-3zM17 26h1v1h-1zM19 26h1v1h-1zM21 26h2v1h-2zM24 26h2v1h-2zM27 26h2v1h-2zM0 27h1v1H0zM6 27h1v1H6zM8 27h2v1H8zM11 27h2v1h-2zM14 27h2v1h-2zM17 27h2v1h-2zM20 27h1v1h-1zM22 27h2v1h-2zM25 27h2v1h-2zM0 28h7v1H0zM9 28h1v1H9zM11 28h1v1h-1zM13 28h2v1h-2zM16 28h1v1h-1zM18 28h3v1h-3zM22 28h2v1h-2zM25 28h1v1h-1zM27 28h2v1h-2z"/>
+        <path fill="#16161a" d="M0 0h7v1H0zM10 0h1v1H10zM13 0h3v1H13zM17 0h3v1H17zM22 0h7v1H22zM0 1h1v1H0zM6 1h1v1H6zM10 1h2v1H10zM13 1h5v1H13zM20 1h1v1H20zM22 1h1v1H22zM28 1h1v1H28zM0 2h1v1H0zM2 2h3v1H2zM6 2h1v1H6zM8 2h4v1H8zM13 2h1v1H13zM15 2h1v1H15zM19 2h1v1H19zM22 2h1v1H22zM24 2h3v1H24zM28 2h1v1H28zM0 3h1v1H0zM2 3h3v1H2zM6 3h1v1H6zM8 3h1v1H8zM10 3h1v1H10zM12 3h1v1H12zM14 3h2v1H14zM17 3h1v1H17zM20 3h1v1H20zM22 3h1v1H22zM24 3h3v1H24zM28 3h1v1H28zM0 4h1v1H0zM2 4h3v1H2zM6 4h1v1H6zM8 4h1v1H8zM12 4h1v1H12zM15 4h2v1H15zM19 4h2v1H19zM22 4h1v1H22zM24 4h3v1H24zM28 4h1v1H28zM0 5h1v1H0zM6 5h1v1H6zM8 5h5v1H8zM18 5h1v1H18zM20 5h1v1H20zM22 5h1v1H22zM28 5h1v1H28zM0 6h7v1H0zM8 6h1v1H8zM10 6h1v1H10zM12 6h1v1H12zM14 6h1v1H14zM16 6h1v1H16zM18 6h1v1H18zM20 6h1v1H20zM22 6h7v1H22zM8 7h1v1H8zM10 7h2v1H10zM14 7h1v1H14zM16 7h1v1H16zM18 7h2v1H18zM0 8h1v1H0zM2 8h5v1H2zM12 8h1v1H12zM16 8h2v1H16zM20 8h1v1H20zM22 8h5v1H22zM2 9h3v1H2zM7 9h1v1H7zM12 9h4v1H12zM18 9h7v1H18zM28 9h1v1H28zM0 10h2v1H0zM5 10h2v1H5zM10 10h1v1H10zM13 10h4v1H13zM18 10h1v1H18zM20 10h1v1H20zM24 10h1v1H24zM3 11h1v1H3zM5 11h1v1H5zM7 11h5v1H7zM13 11h1v1H13zM15 11h1v1H15zM20 11h1v1H20zM23 11h3v1H23zM27 11h1v1H27zM0 12h1v1H0zM2 12h2v1H2zM6 12h2v1H6zM10 12h3v1H10zM14 12h2v1H14zM17 12h1v1H17zM25 12h2v1H25zM5 13h1v1H5zM15 13h2v1H15zM19 13h2v1H19zM22 13h3v1H22zM28 13h1v1H28zM0 14h5v1H0zM6 14h2v1H6zM9 14h1v1H9zM11 14h1v1H11zM17 14h2v1H17zM21 14h2v1H21zM25 14h2v1H25zM2 15h1v1H2zM4 15h2v1H4zM8 15h1v1H8zM11 15h2v1H11zM14 15h1v1H14zM16 15h1v1H16zM18 15h2v1H18zM21 15h1v1H21zM23 15h1v1H23zM27 15h1v1H27zM1 16h1v1H1zM4 16h5v1H4zM10 16h2v1H10zM16 16h2v1H16zM20 16h2v1H20zM25 16h2v1H25zM0 17h6v1H0zM7 17h1v1H7zM12 17h4v1H12zM19 17h6v1H19zM26 17h1v1H26zM28 17h1v1H28zM0 18h1v1H0zM5 18h3v1H5zM11 18h1v1H11zM13 18h4v1H13zM22 18h2v1H22zM26 18h1v1H26zM0 19h1v1H0zM3 19h1v1H3zM8 19h1v1H8zM10 19h1v1H10zM12 19h2v1H12zM15 19h1v1H15zM18 19h1v1H18zM21 19h3v1H21zM27 19h1v1H27zM0 20h1v1H0zM2 20h1v1H2zM4 20h1v1H4zM6 20h3v1H6zM14 20h2v1H14zM17 20h1v1H17zM20 20h5v1H20zM26 20h3v1H26zM8 21h3v1H8zM15 21h6v1H15zM24 21h5v1H24zM0 22h7v1H0zM9 22h4v1H9zM17 22h1v1H17zM19 22h2v1H19zM22 22h1v1H22zM24 22h3v1H24zM0 23h1v1H0zM6 23h1v1H6zM8 23h4v1H8zM14 23h1v1H14zM16 23h1v1H16zM18 23h3v1H18zM24 23h1v1H24zM27 23h2v1H27zM0 24h1v1H0zM2 24h3v1H2zM6 24h1v1H6zM8 24h2v1H8zM11 24h1v1H11zM17 24h1v1H17zM20 24h5v1H20zM26 24h1v1H26zM28 24h1v1H28zM0 25h1v1H0zM2 25h3v1H2zM6 25h1v1H6zM8 25h1v1H8zM12 25h4v1H12zM18 25h1v1H18zM25 25h2v1H25zM0 26h1v1H0zM2 26h3v1H2zM6 26h1v1H6zM8 26h1v1H8zM10 26h1v1H10zM12 26h4v1H12zM20 26h8v1H20zM0 27h1v1H0zM6 27h1v1H6zM10 27h2v1H10zM13 27h1v1H13zM19 27h2v1H19zM25 27h1v1H25zM27 27h1v1H27zM0 28h7v1H0zM8 28h1v1H8zM10 28h8v1H10zM19 28h1v1H19zM24 28h1v1H24zM26 28h1v1H26z"/>
       </svg>
-      <div class="p-words jp">
-        <p class="p-title">パートナーホテル募集中</p>
-        <p class="p-body">導入のご相談・詳細は二次元コードから。貴館のゲストサービス向上にご活用ください。</p>
-        <p class="p-url">bondex.express/partner</p>
-      </div>
-    </div>
+      <p class="cta-title">パートナーホテル募集中</p>
+      <p class="cta-note">導入のご相談・詳細はこちらから</p>
+      <p class="cta-url">https://bondex.express/partner</p>
     </div>
   </div>
 
