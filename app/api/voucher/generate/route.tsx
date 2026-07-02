@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { renderToBuffer } from "@react-pdf/renderer"
 import { rateLimit } from "@/lib/rate-limit"
+import { buildVoucherFileName } from "@/lib/utils"
 import {
   VoucherDocument,
   OperationsDocument,
@@ -35,7 +36,9 @@ interface RequestShipment {
 interface RequestBody {
   type?: unknown
   representativeLabel?: unknown
+  groupName?: unknown
   tourCompany?: unknown
+  tourNumber?: unknown
   travelerCount?: unknown
   bookingId?: unknown
   shipments?: unknown
@@ -132,11 +135,16 @@ export async function POST(req: NextRequest) {
   const companyName = asString(body.companyName).trim() || SUPPORT_DEFAULTS.companyName
   const companyAddress = asString(body.companyAddress).trim() || SUPPORT_DEFAULTS.companyAddress
 
+  const groupName = asString(body.groupName).trim() || undefined
+  const tourNumber = asString(body.tourNumber).trim() || undefined
+
   const input: VoucherInput = {
     bookingId,
     issuedDate: formatIssuedDate(),
     representativeLabel,
+    groupName,
     tourCompany,
+    tourNumber,
     travelerCount,
     shipments,
     totalAmount,
@@ -152,8 +160,12 @@ export async function POST(req: NextRequest) {
     const doc =
       type === "voucher" ? <VoucherDocument data={input} /> : <OperationsDocument data={input} />
     const buf = await renderToBuffer(doc)
-    const fileName =
-      type === "voucher" ? `bondex-voucher-${bookingId}.pdf` : `bondex-ops-${bookingId}.pdf`
+    const fileName = buildVoucherFileName({
+      bookingId,
+      tourNumber,
+      representativeLabel,
+      kind: type,
+    })
 
     return new NextResponse(new Uint8Array(buf), {
       status: 200,

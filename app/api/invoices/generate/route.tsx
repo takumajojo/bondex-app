@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, representative, suitcase_count, amount_yen, status",
+      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, representative, tour_number, suitcase_count, amount_yen, status",
     )
     .eq("agency", agency)
     .gte("shipment_date", fromDate)
@@ -106,6 +106,7 @@ export async function GET(req: NextRequest) {
   const items: InvoiceLineItem[] = data.map((s) => ({
     shipmentDate: s.shipment_date,
     bookingRef: `${s.booking_id}-L${(s.leg_index ?? 0) + 1}`,
+    tourNumber: s.tour_number || undefined,
     fromHotel: s.from_hotel ?? "",
     toHotel: s.to_hotel ?? "",
     representative: s.representative ?? "",

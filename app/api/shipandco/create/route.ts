@@ -253,6 +253,8 @@ interface CreateBody {
   fromCheckIn?: unknown
   toCheckOut?: unknown
   specialNote?: unknown
+  tourNumber?: unknown
+  groupName?: unknown
 }
 
 // in-memory cache for carrier_id
@@ -481,6 +483,8 @@ export async function POST(req: NextRequest) {
   const fromCheckIn = typeof body.fromCheckIn === "string" ? body.fromCheckIn.trim() : ""
   const toCheckOut = typeof body.toCheckOut === "string" ? body.toCheckOut.trim() : ""
   const specialNote = typeof body.specialNote === "string" ? body.specialNote.trim() : ""
+  const tourNumber = typeof body.tourNumber === "string" ? body.tourNumber.trim() : ""
+  const groupName = typeof body.groupName === "string" ? body.groupName.trim() : ""
 
   if (!refNumber || !shipmentDate || !fromHotel || !toHotel) {
     return NextResponse.json(
@@ -520,6 +524,8 @@ export async function POST(req: NextRequest) {
       representative,
       traveler_count: travelerCount,
       booking_name: bookingName || null,
+      tour_number: tourNumber || null,
+      group_name: groupName || null,
       shipment_date: shipmentDate,
       expected_arrival: deliveryDate || null,
       from_hotel: fromHotel,
@@ -670,6 +676,8 @@ export async function POST(req: NextRequest) {
       representative,
       traveler_count: travelerCount,
       booking_name: bookingName || null,
+      tour_number: tourNumber || null,
+      group_name: groupName || null,
       shipment_date: shipmentDate,
       expected_arrival: deliveryDate || null,
       from_hotel: fromHotel,

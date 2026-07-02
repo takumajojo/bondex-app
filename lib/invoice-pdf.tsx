@@ -30,6 +30,13 @@ try {
   // フォント未配置時は Helvetica fallback
 }
 
+// NotoSansJP は Latin Extended-A (Ō 等のマクロン付き文字) を含まないため、
+// voucher-pdf.tsx と同様にサニタイズしてから描画する。
+function safeText(input?: string | null): string {
+  if (!input) return ""
+  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -37,6 +44,9 @@ try {
 export interface InvoiceLineItem {
   shipmentDate: string  // YYYY-MM-DD
   bookingRef: string    // BDX-XXX-L1
+  /** Travel agency's own tour/booking number. Preferred over bookingRef when
+   *  present — this is what the agency actually reconciles against. */
+  tourNumber?: string
   fromHotel: string
   toHotel: string
   representative: string
@@ -461,7 +471,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
         <Text style={styles.tableHeading}>明細</Text>
         <View style={styles.tableHead}>
           <Text style={[styles.th, styles.col_date]}>発送日</Text>
-          <Text style={[styles.th, styles.col_ref]}>予約番号</Text>
+          <Text style={[styles.th, styles.col_ref]}>ツアー番号</Text>
           <Text style={[styles.th, styles.col_route]}>区間</Text>
           <Text style={[styles.th, styles.col_rep]}>代表者</Text>
           <Text style={[styles.th, styles.col_qty]}>個数</Text>
@@ -470,11 +480,13 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
         {data.items.map((it, i) => (
           <View key={i} style={styles.tableRow}>
             <Text style={[styles.td, styles.col_date]}>{formatJpDate(it.shipmentDate)}</Text>
-            <Text style={[styles.td, styles.col_ref, { fontSize: 8 }]}>{it.bookingRef}</Text>
-            <Text style={[styles.td, styles.col_route, { fontSize: 8.5 }]} wrap={false}>
-              {it.fromHotel} → {it.toHotel}
+            <Text style={[styles.td, styles.col_ref, { fontSize: 8 }]}>
+              {it.tourNumber || it.bookingRef}
             </Text>
-            <Text style={[styles.td, styles.col_rep, { fontSize: 8.5 }]}>{it.representative}</Text>
+            <Text style={[styles.td, styles.col_route, { fontSize: 8.5 }]} wrap={false}>
+              {safeText(it.fromHotel)} → {safeText(it.toHotel)}
+            </Text>
+            <Text style={[styles.td, styles.col_rep, { fontSize: 8.5 }]}>{safeText(it.representative)}</Text>
             <Text style={[styles.td, styles.col_qty]}>{it.suitcaseCount}</Text>
             <Text style={[styles.td, styles.col_amt]}>
               ¥{it.amountYen.toLocaleString()}

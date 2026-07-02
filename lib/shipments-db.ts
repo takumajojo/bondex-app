@@ -24,6 +24,8 @@ export interface ShipmentRecord {
   representative: string
   traveler_count: number
   booking_name: string | null
+  tour_number: string | null
+  group_name: string | null
   shipment_date: string  // YYYY-MM-DD
   expected_arrival: string | null
   from_hotel: string
@@ -79,6 +81,8 @@ export async function saveShipment(input: Partial<ShipmentInsert>): Promise<void
     representative: input.representative ?? "",
     traveler_count: input.traveler_count ?? 1,
     booking_name: input.booking_name ?? null,
+    tour_number: input.tour_number ?? null,
+    group_name: input.group_name ?? null,
     shipment_date: input.shipment_date ?? null,
     expected_arrival: input.expected_arrival ?? null,
     from_hotel: input.from_hotel ?? "",

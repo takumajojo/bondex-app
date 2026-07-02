@@ -36,6 +36,20 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// Text safety: NotoSansJP only covers basic Latin + Japanese, not Latin
+// Extended-A (macrons etc. — e.g. Ō / ō / Ā / ā). Hotel names sourced from
+// Google Places, AI itinerary parsing, or free-text guest names can contain
+// these and render as broken glyphs / mojibake in the PDF. We defensively
+// decompose + strip combining diacritics on every piece of free text that
+// enters the document, so "Ōsaka" renders as the always-safe "Osaka"
+// instead of corrupting on a guest- and hotel-facing document.
+// ---------------------------------------------------------------------------
+function safeText(input?: string | null): string {
+  if (!input) return ""
+  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -78,6 +92,20 @@ export interface VoucherInput {
   contactPersonPhone: string
   companyName: string
   companyAddress: string
+  /**
+   * Family / group name (e.g. "Johnson Family"). Optional — only shown
+   * alongside the representative name when the operator explicitly opts in
+   * (some agencies want it, some find it redundant / confusing for
+   * elderly guests). Defaults to representative-name-only when omitted.
+   */
+  groupName?: string
+  /** Travel agency's own tour/booking number, used for their reconciliation
+   *  and file naming. Not shown to the guest — internal ops sheet only. */
+  tourNumber?: string
+  /** Whether to print the CONTACT (phone) row on the guest-facing voucher.
+   *  Defaults to true; agencies routing their own contact number through
+   *  their itinerary may prefer to hide BondEx's operational number. */
+  showContact?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -187,13 +215,14 @@ const styles = StyleSheet.create({
   // 「Luggage Forwarding」を大きく目立たせる (高齢ゲスト向け視認性)
   // descender (g/y/p/q) が下の行に触らないよう lineHeight を十分大きく + 余白を確保
   serviceTitle: {
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: 500,
     color: C_FG,
     letterSpacing: -0.3,
-    lineHeight: 1.6,
+    lineHeight: 1.3,
     marginTop: 14,
-    marginBottom: 18,
+    marginBottom: 10,
+    maxWidth: 320,
   },
   serviceTitleMeta: {
     fontSize: 8.5,
@@ -569,9 +598,9 @@ function LegPageEn({
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
           <Image style={styles.logo} src={LOGO_PATH} />
-          <Text style={styles.serviceTitle}>Luggage Forwarding</Text>
+          <Text style={styles.serviceTitle}>Voucher · Luggage Forwarding Service</Text>
           <Text style={styles.serviceTitleMeta}>
-            VOUCHER · Operated by BondEx ({data.companyName})
+            Operated by BondEx ({safeText(data.companyName)})
           </Text>
         </View>
         <View style={styles.headerRight}>
@@ -592,6 +621,9 @@ function LegPageEn({
         <Text style={{ fontSize: 8, color: C_MUTED, marginTop: 6, textAlign: "center" }}>
           Track: bondex.express/track/{data.bookingId}
         </Text>
+        <Text style={{ fontSize: 7.5, color: C_MUTED, marginTop: 2, textAlign: "center" }}>
+          ホテル担当者様 → 次ページ「FOR HOTEL STAFF」をご確認ください / Hotel staff, please see page 2
+        </Text>
       </View>
 
       {/* ---------------- Journey card ---------------- */}
@@ -606,7 +638,7 @@ function LegPageEn({
             <Text style={styles.journeyMonth}>{monthShort(shipment.shipmentDate)}</Text>
             <Text style={styles.journeyYear}>{yearStr(shipment.shipmentDate)}</Text>
           </View>
-          <Text style={styles.journeyHotel}>{shipment.from.hotel}</Text>
+          <Text style={styles.journeyHotel}>{safeText(shipment.from.hotel)}</Text>
           <Text style={styles.journeyHotelMeta}>
             at the hotel&#x2019;s reception · by {dropOffTime}
           </Text>
@@ -622,7 +654,7 @@ function LegPageEn({
             <Text style={styles.journeyMonth}>{monthShort(shipment.expectedArrival)}</Text>
             <Text style={styles.journeyYear}>{yearStr(shipment.expectedArrival)}</Text>
           </View>
-          <Text style={styles.journeyHotel}>{shipment.to.hotel}</Text>
+          <Text style={styles.journeyHotel}>{safeText(shipment.to.hotel)}</Text>
           <Text style={styles.journeyHotelMeta}>
             at the hotel&#x2019;s reception · {pickUpNote}
           </Text>
@@ -639,26 +671,18 @@ function LegPageEn({
           <Text style={styles.detailLabel}>FORWARDED BY</Text>
           <Text style={styles.detailValue}>BondEx</Text>
         </View>
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>CONTACT</Text>
-          <Text style={styles.detailValue}>{data.contactPersonPhone}</Text>
-        </View>
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>FROM (EN)</Text>
-          <Text style={styles.detailValue}>
-            {formatEnDate(shipment.shipmentDate)} · {shipment.from.hotel}
-          </Text>
-        </View>
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>TO (EN)</Text>
-          <Text style={styles.detailValue}>
-            {formatEnDate(shipment.expectedArrival)} · {shipment.to.hotel}
-          </Text>
-        </View>
+        {data.showContact !== false && (
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>CONTACT</Text>
+            <Text style={styles.detailValue}>{data.contactPersonPhone}</Text>
+          </View>
+        )}
         <View style={styles.detailItem}>
           <Text style={styles.detailLabel}>REPRESENTATIVE</Text>
           <Text style={styles.detailValue}>
-            {data.representativeLabel} · {data.travelerCount} guest{data.travelerCount === 1 ? "" : "s"}
+            {safeText(data.representativeLabel)}
+            {data.groupName ? ` · ${safeText(data.groupName)}` : ""} · {data.travelerCount} guest
+            {data.travelerCount === 1 ? "" : "s"}
           </Text>
         </View>
       </View>
@@ -715,12 +739,12 @@ function LegPageJp({
         <View style={styles.jpContactList}>
           <Text style={styles.jpContactRow}>
             <Text style={styles.jpContactLabel}>● 荷物配送手配業者：</Text>
-            BondEx（運営 {data.companyName}）　Email: {BONDEX_SUPPORT_EMAIL}
+            BondEx（運営 {safeText(data.companyName)}）　Email: {BONDEX_SUPPORT_EMAIL}
           </Text>
           <Text style={styles.jpContactRow}>
             <Text style={styles.jpContactLabel}>● ランドオペレーター：</Text>
-            [{data.tourCompany || "—"}]　TEL: {data.contactPersonPhone}
-            {data.contactPersonName ? `　(担当：${data.contactPersonName})` : ""}
+            [{safeText(data.tourCompany) || "—"}]　TEL: {data.contactPersonPhone}
+            {data.contactPersonName ? `　(担当：${safeText(data.contactPersonName)})` : ""}
           </Text>
         </View>
 
@@ -732,15 +756,19 @@ function LegPageJp({
           <View style={styles.jpStepBody}>
             <View style={styles.jpStepTitleRow}>
               <Text style={styles.jpStepLabel}>発送元</Text>
-              <Text style={styles.jpStepHotel}>{shipment.from.hotel} 様</Text>
+              <Text style={styles.jpStepHotel}>{safeText(shipment.from.hotel)} 様</Text>
             </View>
             <Text style={styles.jpStepMeta}>
               ご宿泊期間：
-              {shipment.fromCheckIn ? `${formatJpDate(shipment.fromCheckIn)} 〜 ` : ""}
+              {/* チェックイン日は出発日より前であるべき。逆転している(=入力ミス/未確定)場合は
+                  誤情報をホテルに見せないよう出発日のみ表示する。 */}
+              {shipment.fromCheckIn && shipment.fromCheckIn < shipment.shipmentDate
+                ? `${formatJpDate(shipment.fromCheckIn)} 〜 `
+                : ""}
               {formatJpDate(shipment.shipmentDate)}（ご出発日）
             </Text>
             <Text style={styles.jpStepMeta}>
-              ご予約者名：{shipment.bookingName || data.representativeLabel}　／　{data.travelerCount}名様
+              ご予約者名：{safeText(shipment.bookingName) || safeText(data.representativeLabel)}　／　{data.travelerCount}名様
             </Text>
             <Text style={styles.jpStepInstruction}>{jpFromInstruction}</Text>
             {shipment.specialNote && (
@@ -757,14 +785,17 @@ function LegPageJp({
           <View style={styles.jpStepBody}>
             <View style={styles.jpStepTitleRow}>
               <Text style={styles.jpStepLabel}>発送先</Text>
-              <Text style={styles.jpStepHotel}>{shipment.to.hotel} 様</Text>
+              <Text style={styles.jpStepHotel}>{safeText(shipment.to.hotel)} 様</Text>
             </View>
             <Text style={styles.jpStepMeta}>
               ご宿泊期間：{formatJpDate(shipment.expectedArrival)}（チェックイン）
-              {shipment.toCheckOut ? ` 〜 ${formatJpDate(shipment.toCheckOut)}（チェックアウト）` : ""}
+              {/* チェックアウト日はチェックイン日より後であるべき。逆転している場合は表示しない。 */}
+              {shipment.toCheckOut && shipment.toCheckOut > shipment.expectedArrival
+                ? ` 〜 ${formatJpDate(shipment.toCheckOut)}（チェックアウト）`
+                : ""}
             </Text>
             <Text style={styles.jpStepMeta}>
-              ご予約者名：{shipment.bookingName || data.representativeLabel}　／　{data.travelerCount}名様
+              ご予約者名：{safeText(shipment.bookingName) || safeText(data.representativeLabel)}　／　{data.travelerCount}名様
             </Text>
             <Text style={styles.jpStepInstruction}>{jpToInstruction}</Text>
           </View>
@@ -839,12 +870,24 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
         </View>
         <View style={styles.opsKvRow}>
           <Text style={styles.opsKvKey}>Representative</Text>
-          <Text style={styles.opsKvValue}>{data.representativeLabel}</Text>
+          <Text style={styles.opsKvValue}>{safeText(data.representativeLabel)}</Text>
         </View>
+        {data.groupName && (
+          <View style={styles.opsKvRow}>
+            <Text style={styles.opsKvKey}>Group / family name</Text>
+            <Text style={styles.opsKvValue}>{safeText(data.groupName)}</Text>
+          </View>
+        )}
         <View style={styles.opsKvRow}>
           <Text style={styles.opsKvKey}>Tour company</Text>
-          <Text style={styles.opsKvValue}>{data.tourCompany}</Text>
+          <Text style={styles.opsKvValue}>{safeText(data.tourCompany)}</Text>
         </View>
+        {data.tourNumber && (
+          <View style={styles.opsKvRow}>
+            <Text style={styles.opsKvKey}>Tour number</Text>
+            <Text style={styles.opsKvValue}>{data.tourNumber}</Text>
+          </View>
+        )}
         <View style={styles.opsKvRow}>
           <Text style={styles.opsKvKey}>Travelers</Text>
           <Text style={styles.opsKvValue}>{data.travelerCount}</Text>
@@ -870,13 +913,13 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
             <View style={styles.opsKvRow}>
               <Text style={styles.opsKvKey}>From</Text>
               <Text style={styles.opsKvValue}>
-                {s.from.hotel} — {s.from.address || s.from.city}
+                {safeText(s.from.hotel)} — {s.from.address || s.from.city}
               </Text>
             </View>
             <View style={styles.opsKvRow}>
               <Text style={styles.opsKvKey}>To</Text>
               <Text style={styles.opsKvValue}>
-                {s.to.hotel} — {s.to.address || s.to.city}
+                {safeText(s.to.hotel)} — {s.to.address || s.to.city}
               </Text>
             </View>
             <View style={styles.opsKvRow}>

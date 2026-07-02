@@ -38,6 +38,7 @@ import {
   formatRangeHint,
 } from "@/lib/yamato-delivery"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
+import { buildVoucherFileName } from "@/lib/utils"
 
 const FLAT_RATE_YEN = 5000
 
@@ -139,6 +140,8 @@ const messages = {
     bookingNamePlaceholder: "Same as recipient if blank",
     fromCheckInLabel: "From hotel — check-in",
     toCheckOutLabel: "To hotel — check-out",
+    checkInAfterDepartureWarning: "This should be before the departure date — it won't be printed on the voucher.",
+    checkOutBeforeArrivalWarning: "This should be after the arrival date — it won't be printed on the voucher.",
     dropOffDateLabel: "Drop-off date",
     arrivalDateLabel: "Arrival date",
     optional: "(optional)",
@@ -147,7 +150,10 @@ const messages = {
     recipientLabelFull: "Recipient name (on shipping label)",
     familyNameLabel: "Family / group name",
     familyNamePlaceholder: "e.g. Johnson Family",
+    showGroupNameLabel: "Show group name on voucher (in addition to representative)",
     travelerCountLabel: "Travelers",
+    tourNumberLabel: "Tour / booking number (your reference)",
+    tourNumberPlaceholder: "e.g. JPT2607-045 — for your dashboard search & invoice, not shown to guest",
     missingFieldsTitle: "Please fill in these fields to continue:",
     deliveryOutOfRange: "Outside Yamato's deliverable window — pick a date in the range below.",
     setShipDateFirst: "Set the drop-off date first to enable arrival-date selection.",
@@ -261,6 +267,8 @@ const messages = {
     bookingNamePlaceholder: "空欄なら受取人と同じ",
     fromCheckInLabel: "発送元ホテル・チェックイン日",
     toCheckOutLabel: "発送先ホテル・チェックアウト日",
+    checkInAfterDepartureWarning: "出発日より前の日付にしてください（この値はバウチャーに印字されません）",
+    checkOutBeforeArrivalWarning: "到着日より後の日付にしてください（この値はバウチャーに印字されません）",
     dropOffDateLabel: "発送日 (集荷)",
     arrivalDateLabel: "到着日",
     optional: "(任意)",
@@ -269,7 +277,10 @@ const messages = {
     recipientLabelFull: "受取人名 (送り状)",
     familyNameLabel: "ファミリー名 / 団体名",
     familyNamePlaceholder: "例: Johnson Family",
+    showGroupNameLabel: "団体名もバウチャーに表示する（代表者名に加えて）",
     travelerCountLabel: "旅行者数",
+    tourNumberLabel: "ツアー番号（貴社管理用）",
+    tourNumberPlaceholder: "例: JPT2607-045 — ダッシュボード検索・請求書用。お客様向けバウチャーには表示されません",
     missingFieldsTitle: "以下の項目を入力してください:",
     deliveryOutOfRange: "ヤマトの配達指定可能期間外です — 下のレンジ内から選んでください。",
     setShipDateFirst: "発送日を先に入力すると、到着日が選べるようになります。",
@@ -345,6 +356,10 @@ interface ParsedGuest {
   familyName: string
   travelerCount: number
   travelers: ParsedTraveler[]
+  /** When true, the family/group name is shown alongside the representative
+   *  name on the guest-facing voucher. Off by default — representative name
+   *  alone is cleaner for most cases; some agencies want the group name too. */
+  showGroupName?: boolean
 }
 
 interface ParsedShipmentLocation {
@@ -381,6 +396,10 @@ interface EditableShipment extends ParsedShipment {
 interface EditableItinerary {
   guest: ParsedGuest
   shipments: EditableShipment[]
+  /** Travel agency's own tour/booking number (e.g. "JPT2607-045"). Optional —
+   *  used for their invoice reconciliation, dashboard search, and file
+   *  naming. Never printed on the guest-facing voucher. */
+  tourNumber?: string
 }
 
 type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generated" | "error"
@@ -389,6 +408,8 @@ interface GeneratedDocs {
   bookingId: string
   voucherUrl: string
   yamatoLabels: YamatoLabel[]
+  representativeLabel: string
+  tourNumber?: string
 }
 
 interface YamatoLabel {
@@ -487,6 +508,12 @@ export default function OperatorPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // 画面遷移のたびに先頭にスクロール。前の画面のスクロール位置を引き継ぐと、
+  // 次の画面が「途中から始まっている」ように見えてしまうため。
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" })
+  }, [phase])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // 初回マウントで localStorage から設定を復元。未設定なら設定モーダルを強制表示。
@@ -642,7 +669,9 @@ export default function OperatorPage() {
     const payload = {
       bookingId: sharedBookingId,
       representativeLabel,
+      groupName: itinerary.guest.showGroupName ? itinerary.guest.familyName.trim() || undefined : undefined,
       tourCompany: tourCompanyFromSettings,
+      tourNumber: itinerary.tourNumber?.trim() || undefined,
       travelerCount: itinerary.guest.travelerCount,
       contactPersonName: settings?.contactName || "",
       contactPersonPhone: settings?.contactPhone || "",
@@ -711,6 +740,8 @@ export default function OperatorPage() {
             fromCheckIn: s.fromCheckIn || "",
             toCheckOut: s.toCheckOut || "",
             specialNote: s.specialNote || "",
+            tourNumber: itinerary!.tourNumber || "",
+            groupName: itinerary!.guest.showGroupName ? itinerary!.guest.familyName || "" : "",
           }),
         })
         const data = await res.json().catch(() => null)
@@ -785,6 +816,8 @@ export default function OperatorPage() {
         bookingId: voucher.bookingId,
         voucherUrl: voucher.url,
         yamatoLabels,
+        representativeLabel,
+        tourNumber: itinerary.tourNumber?.trim() || undefined,
       })
       setPhase("generated")
     } catch (err) {
@@ -899,6 +932,11 @@ export default function OperatorPage() {
       ...itinerary,
       guest: { ...itinerary.guest, ...patch },
     })
+  }
+
+  const updateTourNumber = (tourNumber: string) => {
+    if (!itinerary) return
+    setItinerary({ ...itinerary, tourNumber })
   }
 
   const addLeg = () => {
@@ -1115,6 +1153,7 @@ export default function OperatorPage() {
             onOpenSettings={() => setSettingsOpen(true)}
             onUpdateShipment={updateShipment}
             onUpdateGuest={updateGuest}
+            onUpdateTourNumber={updateTourNumber}
             onAddLeg={addLeg}
             onRemoveLeg={removeLeg}
             onContinue={goToConfirm}
@@ -1190,6 +1229,7 @@ function ReviewView({
   onOpenSettings,
   onUpdateShipment,
   onUpdateGuest,
+  onUpdateTourNumber,
   onAddLeg,
   onRemoveLeg,
   onContinue,
@@ -1203,6 +1243,7 @@ function ReviewView({
   onOpenSettings: () => void
   onUpdateShipment: (index: number, patch: Partial<EditableShipment>) => void
   onUpdateGuest: (patch: Partial<ParsedGuest>) => void
+  onUpdateTourNumber: (tourNumber: string) => void
   onAddLeg: () => void
   onRemoveLeg: (index: number) => void
   onContinue: () => void
@@ -1262,6 +1303,27 @@ function ReviewView({
               className="h-10 text-sm text-center"
             />
           </div>
+        </div>
+        {guest.familyName.trim() && (
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!guest.showGroupName}
+              onChange={(e) => onUpdateGuest({ showGroupName: e.target.checked })}
+              className="h-3.5 w-3.5 rounded border-border"
+            />
+            {t.showGroupNameLabel}
+          </label>
+        )}
+        <div className="mt-4 pt-4 border-t border-border space-y-1">
+          <label className="text-[11px] text-muted-foreground">{t.tourNumberLabel}</label>
+          <Input
+            type="text"
+            placeholder={t.tourNumberPlaceholder}
+            value={itinerary.tourNumber || ""}
+            onChange={(e) => onUpdateTourNumber(e.target.value)}
+            className="h-10 text-sm"
+          />
         </div>
 
         {guest.travelers.length > 0 && (
@@ -1605,18 +1667,26 @@ function ShipmentRow({
             <Input
               type="date"
               value={shipment.fromCheckIn || ""}
+              max={shipment.shipmentDate || undefined}
               onChange={(e) => onUpdate(index, { fromCheckIn: e.target.value })}
               className="h-9 text-sm"
             />
+            {shipment.fromCheckIn && shipment.shipmentDate && shipment.fromCheckIn >= shipment.shipmentDate && (
+              <p className="text-[11px] text-amber-600">{t.checkInAfterDepartureWarning}</p>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-[11px] text-muted-foreground">{t.toCheckOutLabel}</label>
             <Input
               type="date"
               value={shipment.toCheckOut || ""}
+              min={shipment.expectedArrival || undefined}
               onChange={(e) => onUpdate(index, { toCheckOut: e.target.value })}
               className="h-9 text-sm"
             />
+            {shipment.toCheckOut && shipment.expectedArrival && shipment.toCheckOut <= shipment.expectedArrival && (
+              <p className="text-[11px] text-amber-600">{t.checkOutBeforeArrivalWarning}</p>
+            )}
           </div>
         </div>
       </details>
@@ -2164,7 +2234,12 @@ function GeneratedView({
           title={t.voucherCardTitle}
           subtitle={t.voucherCardSub}
           href={docs.voucherUrl}
-          downloadName={`bondex-voucher-${docs.bookingId}.pdf`}
+          downloadName={buildVoucherFileName({
+            bookingId: docs.bookingId,
+            tourNumber: docs.tourNumber,
+            representativeLabel: docs.representativeLabel,
+            kind: "voucher",
+          })}
           downloadLabel={t.download}
           previewLabel={t.preview}
         />
@@ -2198,7 +2273,13 @@ function GeneratedView({
                     </p>
                     {y.labelUrl && (
                       <a
-                        href={y.labelUrl}
+                        href={`/api/voucher/label?${new URLSearchParams({
+                          url: y.labelUrl,
+                          bookingId: docs.bookingId,
+                          ...(docs.tourNumber ? { tourNumber: docs.tourNumber } : {}),
+                          representative: docs.representativeLabel,
+                          leg: `L${y.legIndex + 1}`,
+                        }).toString()}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-foreground/80 underline underline-offset-2 mt-2"
