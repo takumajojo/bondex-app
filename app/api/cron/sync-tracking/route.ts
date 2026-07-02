@@ -189,15 +189,20 @@ export async function GET(req: NextRequest) {
     trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num }))
   })
 
+  const checkedAt = new Date().toISOString()
+
   const taskResults = await mapWithConcurrency(tasks, CONCURRENCY, async (task) => {
     const tracking = await fetchYamatoTracking(token, task.trackingNumber)
-    return { ...task, rawStatus: tracking?.current_status?.status }
+    return { ...task, current: tracking?.current_status }
   })
 
-  // Step 2: rowIndex ごとにグルーピングして、leg の代表ステータスを決定。
-  // 複数口の場合は「最も進んでいない番号」を代表とする — 1個でも未着なら
-  // leg 全体は "配達中" 扱いが安全。
+  // Step 2: rowIndex ごとにグルーピングして、(a) leg の代表ステータス、
+  // (b) 追跡番号ごとの詳細 (現在地・日時) を組み立てる。
+  // 代表ステータスは複数口のうち「最も進んでいない番号」を採用 — 1個でも
+  // 未着なら leg 全体は "配達中" 扱いが安全。詳細の方は個数分すべて保持する
+  // (公開トラッキングページで各番号を個別に表示するため).
   let updated = 0
+  let detailUpdated = 0
   let skipped = skippedNoTracking
   const unmapped: Array<{ bookingId: string; leg: number; raw: string }> = []
   const failures: Array<{ bookingId: string; leg: number; reason: string }> = []
@@ -209,20 +214,33 @@ export async function GET(req: NextRequest) {
     let bestRank = -1
     let bestStatus: ShipmentStatus | null = null
     let sawUnmapped: string | null = null
+    let anySuccess = false
 
-    for (const r of resultsForRow) {
-      if (!r.rawStatus) continue
-      const mapped = mapTrackingStatus(r.rawStatus)
-      if (!mapped) {
-        sawUnmapped = r.rawStatus
-        continue
+    const detail = resultsForRow.map((r) => {
+      const rawStatus = r.current?.status
+      if (!rawStatus) {
+        return { number: r.trackingNumber, checkedAt }
       }
-      const rank = progressionRank(mapped)
-      if (bestRank === -1 || rank < bestRank) {
-        bestRank = rank
-        bestStatus = mapped
+      anySuccess = true
+      const mapped = mapTrackingStatus(rawStatus)
+      if (mapped) {
+        const rank = progressionRank(mapped)
+        if (bestRank === -1 || rank < bestRank) {
+          bestRank = rank
+          bestStatus = mapped
+        }
+      } else {
+        sawUnmapped = rawStatus
       }
-    }
+      return {
+        number: r.trackingNumber,
+        status: mapped,
+        rawStatus,
+        location: r.current?.location,
+        date: r.current?.date,
+        checkedAt,
+      }
+    })
 
     if (sawUnmapped) {
       unmapped.push({ bookingId: row.booking_id, leg: row.leg_index, raw: sawUnmapped })
@@ -231,34 +249,45 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    if (!bestStatus) {
-      skipped++
-      continue
+    // Ship&co 側が今回まるごと応答しなかった場合 (全滅) は、既存の
+    // yamato_tracking_detail を空で上書きしない — 一時的な障害で
+    // 「今どこにあるか」の情報を消してしまわないため。
+    const updatePayload: Record<string, unknown> = {}
+    if (anySuccess) {
+      updatePayload.yamato_tracking_detail = detail
     }
 
     const currentRank = progressionRank(row.status as ShipmentStatus)
-    // 後退は絶対にしない。現在より前進している場合のみ更新。
-    if (bestRank <= currentRank) {
+    // 後退は絶対にしない。現在より前進している場合のみ status を更新。
+    const statusAdvances = bestStatus !== null && bestRank > currentRank
+    if (statusAdvances) {
+      updatePayload.status = bestStatus
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
       skipped++
       continue
     }
 
     const { error: updateError } = await sb
       .from("shipments")
-      .update({ status: bestStatus })
+      .update(updatePayload)
       .eq("id", row.id)
 
     if (updateError) {
       failures.push({ bookingId: row.booking_id, leg: row.leg_index, reason: updateError.message })
-    } else {
-      updated++
+      continue
     }
+    if (statusAdvances) updated++
+    if (anySuccess) detailUpdated++
+    if (!statusAdvances && !anySuccess) skipped++
   }
 
   return NextResponse.json({
     checked: rows.length,
     tasksRun: tasks.length,
     updated,
+    detailUpdated,
     skipped,
     unmapped,
     failures,

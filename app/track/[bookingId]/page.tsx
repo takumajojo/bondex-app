@@ -1,6 +1,14 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 
+interface TrackingNumberStatus {
+  number: string
+  status: string | null
+  location: string | null
+  date: string | null
+  checkedAt: string | null
+}
+
 interface LegStatus {
   legIndex: number
   shipmentDate: string
@@ -9,7 +17,7 @@ interface LegStatus {
   toHotel: string
   recipient: string
   status: string
-  tracking: string[]
+  tracking: TrackingNumberStatus[]
   updatedAt: string
 }
 
@@ -130,25 +138,61 @@ export default async function TrackPage({
                   </div>
                 </div>
 
-                {/* Tracking numbers */}
+                {/* Tracking numbers — each with its own live status/location */}
                 {leg.tracking.length > 0 && (
                   <div className="pt-4 border-t border-border">
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
-                      Yamato Tracking
+                      Yamato Tracking ({leg.tracking.length}{" "}
+                      {leg.tracking.length === 1 ? "piece" : "pieces"})
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {leg.tracking.map((t) => (
-                        <a
-                          key={t}
-                          href={`https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init=on&number00=1&number01=${t}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-mono px-3 py-1.5 rounded-md border border-border hover:border-foreground transition-colors"
-                        >
-                          {t} ↗
-                        </a>
-                      ))}
+                    <div className="space-y-2">
+                      {leg.tracking.map((t) => {
+                        const numMeta = t.status ? STATUS_META[t.status] : null
+                        return (
+                          <div
+                            key={t.number}
+                            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-3 py-2 text-xs"
+                          >
+                            <span className="font-mono text-foreground">{t.number}</span>
+                            {numMeta ? (
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${numMeta.color}`}
+                              >
+                                <span>{numMeta.emoji}</span>
+                                {numMeta.en}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                                Not yet checked · 未確認
+                              </span>
+                            )}
+                            {t.location && (
+                              <span className="text-muted-foreground">📍 {t.location}</span>
+                            )}
+                            {t.date && (
+                              <span className="text-muted-foreground">
+                                {new Date(t.date).toLocaleString("en-US", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}
+                              </span>
+                            )}
+                            <a
+                              href={`https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init=on&number00=1&number01=${t.number}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-auto text-muted-foreground hover:text-foreground underline underline-offset-2"
+                            >
+                              View on Yamato ↗
+                            </a>
+                          </div>
+                        )
+                      })}
                     </div>
+                    <p className="text-[10px] text-muted-foreground/70 mt-2">
+                      Status is refreshed hourly and may lag behind Yamato&apos;s own site by
+                      up to an hour.
+                    </p>
                   </div>
                 )}
 

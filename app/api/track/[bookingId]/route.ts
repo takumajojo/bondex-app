@@ -34,7 +34,7 @@ export async function GET(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, recipient, status, yamato_tracking, created_at, updated_at",
+      "booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, recipient, status, yamato_tracking, yamato_tracking_detail, created_at, updated_at",
     )
     .eq("booking_id", trimmed)
     .order("leg_index", { ascending: true })
@@ -54,18 +54,50 @@ export async function GET(
     return (title ? `${title} ${lastName}` : lastName).trim()
   }
 
+  interface TrackingDetailRow {
+    number: string
+    status?: string | null
+    rawStatus?: string
+    location?: string
+    date?: string
+    checkedAt: string
+  }
+
   return NextResponse.json({
     bookingId: trimmed,
-    legs: data.map((s) => ({
-      legIndex: s.leg_index,
-      shipmentDate: s.shipment_date,
-      expectedArrival: s.expected_arrival,
-      fromHotel: s.from_hotel,
-      toHotel: s.to_hotel,
-      recipient: anonymize(s.recipient || ""),
-      status: s.status,
-      tracking: s.yamato_tracking ?? [],
-      updatedAt: s.updated_at,
-    })),
+    legs: data.map((s) => {
+      // yamato_tracking (番号だけの配列) を正としつつ、cron が書き込んだ
+      // yamato_tracking_detail (番号ごとの現在地・ステータス) があれば番号単位でマージする。
+      // detail は「Ship&co から一度でも応答があった番号」だけなので、cron 未実行 /
+      // 応答なしの番号は number 以外 undefined のまま返す (UI 側で「未取得」表示にする).
+      const detailByNumber = new Map<string, TrackingDetailRow>(
+        ((s.yamato_tracking_detail as TrackingDetailRow[] | null) ?? []).map((d) => [
+          d.number,
+          d,
+        ]),
+      )
+      const tracking = ((s.yamato_tracking as string[] | null) ?? []).map((num) => {
+        const d = detailByNumber.get(num)
+        return {
+          number: num,
+          status: d?.status ?? null,
+          location: d?.location ?? null,
+          date: d?.date ?? null,
+          checkedAt: d?.checkedAt ?? null,
+        }
+      })
+
+      return {
+        legIndex: s.leg_index,
+        shipmentDate: s.shipment_date,
+        expectedArrival: s.expected_arrival,
+        fromHotel: s.from_hotel,
+        toHotel: s.to_hotel,
+        recipient: anonymize(s.recipient || ""),
+        status: s.status,
+        tracking,
+        updatedAt: s.updated_at,
+      }
+    }),
   })
 }
