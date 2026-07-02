@@ -20,14 +20,19 @@ jobs:
     steps:
       - name: Call BondEx tracking sync endpoint
         run: |
-          response=$(curl -s -w "\n%{http_code}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            https://bondex.express/api/cron/sync-tracking)
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "HTTP status: $http_code"
-          echo "$body"
-          if [ "$http_code" -ge 400 ]; then
-            echo "::error::sync-tracking failed with HTTP $http_code"
-            exit 1
-          fi
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2"
+            response=$(curl -s -w "\n%{http_code}" --max-time 120 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              https://bondex.express/api/cron/sync-tracking)
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::sync-tracking failed after 2 attempts"
+          exit 1

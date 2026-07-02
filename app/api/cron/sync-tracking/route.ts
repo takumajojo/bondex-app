@@ -110,6 +110,38 @@ async function fetchYamatoTracking(
   }
 }
 
+/**
+ * 単純な同時実行数制限つき map。
+ *
+ * 直列 (for...await) だと、1 leg に 5 個口 × 13 shipments のような実データでは
+ * 合計 30〜40 回の Ship&co 呼び出しが積み重なり、1 件 10s のタイムアウトでも
+ * 最悪 300〜400s になって関数がタイムアウトする (実際にこれで 2 回失敗した)。
+ * かといって全部同時に投げると Ship&co 側のレート制限に引っかかる恐れがあるため、
+ * 同時実行数を CONCURRENCY 件に制限しつつ並列化する。
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (true) {
+      const i = nextIndex++
+      if (i >= items.length) return
+      results[i] = await fn(items[i])
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
+  await Promise.all(workers)
+  return results
+}
+
+const CONCURRENCY = 6
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
   const expected = process.env.CRON_SECRET
@@ -142,37 +174,50 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  let checked = 0
+  const rows = (data ?? []).filter(
+    (row) => ((row.yamato_tracking as string[] | null) ?? []).length > 0,
+  )
+  const skippedNoTracking = (data?.length ?? 0) - rows.length
+
+  // Step 1: 全 shipment × 全追跡番号をフラットなタスク一覧にして、まとめて並列取得。
+  // 「1 leg 内で直列」ではなく「全体で並列」にすることで、leg 数や口数に関わらず
+  // 総所要時間が ceil(タスク総数 / CONCURRENCY) × 平均レイテンシ に収まる。
+  type Task = { rowIndex: number; trackingNumber: string }
+  const tasks: Task[] = []
+  rows.forEach((row, rowIndex) => {
+    const trackingNumbers = (row.yamato_tracking as string[] | null) ?? []
+    trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num }))
+  })
+
+  const taskResults = await mapWithConcurrency(tasks, CONCURRENCY, async (task) => {
+    const tracking = await fetchYamatoTracking(token, task.trackingNumber)
+    return { ...task, rawStatus: tracking?.current_status?.status }
+  })
+
+  // Step 2: rowIndex ごとにグルーピングして、leg の代表ステータスを決定。
+  // 複数口の場合は「最も進んでいない番号」を代表とする — 1個でも未着なら
+  // leg 全体は "配達中" 扱いが安全。
   let updated = 0
-  let skipped = 0
+  let skipped = skippedNoTracking
   const unmapped: Array<{ bookingId: string; leg: number; raw: string }> = []
   const failures: Array<{ bookingId: string; leg: number; reason: string }> = []
 
-  for (const row of data ?? []) {
-    const trackingNumbers = (row.yamato_tracking as string[] | null) ?? []
-    if (trackingNumbers.length === 0) {
-      skipped++
-      continue
-    }
-    checked++
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex]
+    const resultsForRow = taskResults.filter((r) => r.rowIndex === rowIndex)
 
-    // 複数口 (同一 leg に複数トラッキング番号) の場合は「最も進んでいない番号」を
-    // その leg の代表ステータスとする — 1個でも未着なら全体は "配達中" 扱いが安全。
     let bestRank = -1
     let bestStatus: ShipmentStatus | null = null
     let sawUnmapped: string | null = null
 
-    for (const num of trackingNumbers) {
-      const tracking = await fetchYamatoTracking(token, num)
-      const rawStatus = tracking?.current_status?.status
-      if (!rawStatus) continue
-      const mapped = mapTrackingStatus(rawStatus)
+    for (const r of resultsForRow) {
+      if (!r.rawStatus) continue
+      const mapped = mapTrackingStatus(r.rawStatus)
       if (!mapped) {
-        sawUnmapped = rawStatus
+        sawUnmapped = r.rawStatus
         continue
       }
       const rank = progressionRank(mapped)
-      // 初回 or より「手前」のステータスで上書き (=足並みを揃える)
       if (bestRank === -1 || rank < bestRank) {
         bestRank = rank
         bestStatus = mapped
@@ -211,7 +256,8 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    checked,
+    checked: rows.length,
+    tasksRun: tasks.length,
     updated,
     skipped,
     unmapped,
