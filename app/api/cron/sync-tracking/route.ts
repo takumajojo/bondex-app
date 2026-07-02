@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
+import { sendOpsAlert } from "@/lib/ops-alert"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 
 export const runtime = "nodejs"
@@ -48,18 +49,89 @@ function progressionRank(status: ShipmentStatus): number {
 }
 
 /**
- * Ship&co の current_status.status (未確定の語彙) を BondEx の ShipmentStatus に
- * キーワードベースでゆるく対応付ける。マッチしなければ null (= 何もしない)。
+ * 異常系ステータスの検知。ヤマト公式 FAQ (a_id/3887) の語彙 + 想定される
+ * 英語正規化の両方をカバーする。検知したら status は進めず、BondEx と
+ * ランドオペレーターへアラートを送る (自動で failed 等にはしない —
+ * 最終判断は人間に委ねる)。
+ *
+ * ヤマト側の異常系語彙 (公式 FAQ より):
+ *   遅延中（〇〇） / 調査中 / 持戻（〇〇） / 返品 / 返品完了 /
+ *   輸送経路修正 / 伝票番号誤り / 伝票番号未登録
+ */
+const EXCEPTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /遅延|delay/i, label: "遅延中 (delayed)" },
+  { pattern: /調査|investigat/i, label: "調査中 (under investigation)" },
+  { pattern: /持戻|bring.?back|attempt.*fail|absence/i, label: "持戻 (delivery attempted / brought back)" },
+  { pattern: /返品|return/i, label: "返品 (being returned)" },
+  { pattern: /経路修正|reroute|misroute|wrong.?route/i, label: "輸送経路修正 (rerouted)" },
+  { pattern: /伝票番号誤り|伝票番号未登録|not.?found|invalid.*number|unregistered/i, label: "伝票番号エラー (tracking number issue)" },
+  { pattern: /exception|hold.*exception|failed/i, label: "exception (carrier-reported problem)" },
+]
+
+function detectException(raw: string): string | null {
+  for (const { pattern, label } of EXCEPTION_PATTERNS) {
+    if (pattern.test(raw)) return label
+  }
+  return null
+}
+
+/**
+ * Ship&co の current_status.status を BondEx の ShipmentStatus に対応付ける。
+ *
+ * ヤマト公式 FAQ の全ステータス語彙 (日本語) と、Ship&co が英語正規化して
+ * 返す場合の両方をカバーする。判定順序が重要:
+ *   1. まず異常系 (呼び出し元で detectException を先に評価すること)
+ *   2. 「配達完了」系 — ただし "out for delivery" (持ち出し中 = 配達中) が
+ *      "deliver" を含むため、配達中系を先に判定しないと誤って delivered に
+ *      マップされる (実際に初期実装にあったバグ)
+ *   3. 配達中・輸送中系
+ *   4. 集荷・発送済み系
+ *
+ * マッチしなければ null (= 何もしない・unmapped としてログに残す)。
  */
 function mapTrackingStatus(raw: string): ShipmentStatus | null {
   const s = raw.toLowerCase()
-  if (s.includes("deliver")) return "delivered"
-  if (s.includes("transit") || s.includes("out_for_delivery") || s.includes("out for delivery")) {
+
+  // -- 配達中 (out for delivery) を「完了」より先に判定する --
+  if (
+    s.includes("out_for_delivery") ||
+    s.includes("out for delivery") ||
+    s.includes("配達中") ||
+    s.includes("持ち出し")
+  ) {
     return "in_transit"
   }
-  if (s.includes("picked_up") || s.includes("picked up") || s.includes("pickup_complete")) {
+
+  // -- 配達完了系 --
+  if (s.includes("配達完了") || /deliver/.test(s)) return "delivered"
+
+  // -- 輸送中系 (ヤマト語彙: 輸送中 / 作業店通過 / 配達店到着 / 配達準備中 /
+  //    転送 / 保管中系は「持ち出し前の正常な中間状態」として扱う) --
+  if (
+    s.includes("transit") ||
+    s.includes("輸送中") ||
+    s.includes("作業店通過") ||
+    s.includes("配達店到着") ||
+    s.includes("配達準備") ||
+    s.includes("転送") ||
+    s.includes("保管") ||
+    s.includes("hold") ||
+    s.includes("stored")
+  ) {
+    return "in_transit"
+  }
+
+  // -- 集荷・発送済み系 (ヤマト語彙: 荷物受付 / 発送済み) --
+  if (
+    s.includes("picked_up") ||
+    s.includes("picked up") ||
+    s.includes("pickup_complete") ||
+    s.includes("荷物受付") ||
+    s.includes("発送済")
+  ) {
     return "picked_up"
   }
+
   return null
 }
 
@@ -166,12 +238,21 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await sb
     .from("shipments")
-    .select("id, booking_id, leg_index, status, yamato_tracking")
+    .select("id, booking_id, leg_index, agency, status, yamato_tracking, yamato_tracking_detail")
     .not("yamato_tracking", "is", null)
     .not("status", "in", '("delivered","cancelled","failed")')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // ランドオペレーター通知用: 代理店名 → contact_email の対応表を 1 回で引く
+  const agencyEmailByName = new Map<string, string>()
+  {
+    const { data: agencies } = await sb.from("agencies").select("name, contact_email")
+    for (const a of agencies ?? []) {
+      if (a.name && a.contact_email) agencyEmailByName.set(a.name, a.contact_email)
+    }
   }
 
   const rows = (data ?? []).filter(
@@ -206,22 +287,61 @@ export async function GET(req: NextRequest) {
   let skipped = skippedNoTracking
   const unmapped: Array<{ bookingId: string; leg: number; raw: string }> = []
   const failures: Array<{ bookingId: string; leg: number; reason: string }> = []
+  const alertsSent: Array<{ bookingId: string; leg: number; exception: string }> = []
+
+  interface PrevDetail {
+    number: string
+    alertedException?: string
+  }
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex]
     const resultsForRow = taskResults.filter((r) => r.rowIndex === rowIndex)
 
+    // 前回 cron が保存した「通知済み異常」を番号単位で引き継ぐ —
+    // 同じ遅延に対して毎時アラートを打ち続けないための重複防止。
+    const prevAlerted = new Map<string, string>()
+    for (const d of (row.yamato_tracking_detail as PrevDetail[] | null) ?? []) {
+      if (d.alertedException) prevAlerted.set(d.number, d.alertedException)
+    }
+
     let bestRank = -1
     let bestStatus: ShipmentStatus | null = null
     let sawUnmapped: string | null = null
     let anySuccess = false
+    const newExceptions: Array<{ number: string; label: string; raw: string; location?: string }> = []
 
     const detail = resultsForRow.map((r) => {
       const rawStatus = r.current?.status
       if (!rawStatus) {
-        return { number: r.trackingNumber, checkedAt }
+        return { number: r.trackingNumber, checkedAt, alertedException: prevAlerted.get(r.trackingNumber) }
       }
       anySuccess = true
+
+      // 異常系を最優先で判定 — 異常中は status の前進判定に使わない
+      const exception = detectException(rawStatus)
+      if (exception) {
+        const alreadyAlerted = prevAlerted.get(r.trackingNumber) === exception
+        if (!alreadyAlerted) {
+          newExceptions.push({
+            number: r.trackingNumber,
+            label: exception,
+            raw: rawStatus,
+            location: r.current?.location,
+          })
+        }
+        return {
+          number: r.trackingNumber,
+          status: null,
+          rawStatus,
+          exception,
+          alertedException: exception,
+          location: r.current?.location,
+          date: r.current?.date,
+          checkedAt,
+        }
+      }
+
       const mapped = mapTrackingStatus(rawStatus)
       if (mapped) {
         const rank = progressionRank(mapped)
@@ -241,6 +361,28 @@ export async function GET(req: NextRequest) {
         checkedAt,
       }
     })
+
+    // 新規の異常があれば BondEx + ランドオペレーターへ即時通知
+    if (newExceptions.length > 0) {
+      const agencyEmail = agencyEmailByName.get(row.agency as string) ?? null
+      const legLabel = `${row.booking_id}-L${(row.leg_index as number) + 1}`
+      await sendOpsAlert({
+        subject: `【要確認】配送異常を検知 — ${legLabel}`,
+        lines: [
+          `予約: ${legLabel} (代理店: ${row.agency})`,
+          ...newExceptions.map(
+            (e) =>
+              `追跡番号 ${e.number}: ${e.label} — ヤマト側表示「${e.raw}」${e.location ? ` @ ${e.location}` : ""}`,
+          ),
+          `ダッシュボード: https://bondex.express/operator/dashboard`,
+          `お客様向け: https://bondex.express/track/${row.booking_id}`,
+        ],
+        agencyEmail,
+      })
+      for (const e of newExceptions) {
+        alertsSent.push({ bookingId: row.booking_id, leg: row.leg_index, exception: e.label })
+      }
+    }
 
     if (sawUnmapped) {
       unmapped.push({ bookingId: row.booking_id, leg: row.leg_index, raw: sawUnmapped })
@@ -290,6 +432,7 @@ export async function GET(req: NextRequest) {
     detailUpdated,
     skipped,
     unmapped,
+    alertsSent,
     failures,
   })
 }
