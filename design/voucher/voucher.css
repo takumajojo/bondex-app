@@ -81,7 +81,7 @@ html, body {
 [data-contact-mode="tour_operator"] .cl-tour { display: inline; }
 [data-contact-mode="hidden"] .cell-contact { display: none; }
 .cell-span2 { grid-column: span 2; }
-[data-contact-mode="hidden"] .cell-tracking { grid-column: span 4; }
+[data-contact-mode="hidden"] .cell-supplier { grid-column: span 4; }
 
 /* ============================================================
    Shared header
@@ -102,7 +102,8 @@ html, body {
   color: var(--red);
   line-height: 1;
 }
-/* 実装時は画像ロゴに差し替え: <img src="/bondex-logo.png" style="height:11mm"> */
+.brand-img { height: 10mm; width: auto; display: block; }
+.page-hotel .brand-img { height: 8.6mm; }
 
 .masthead-right { text-align: right; }
 .ref-label {
@@ -134,13 +135,22 @@ html, body {
 .doc-title h1 { font-size: 20pt; font-weight: 800; line-height: 1.12; }
 .doc-title .sub { font-size: 9pt; color: var(--ink-soft); margin-top: 1.5mm; }
 
-.qr-box { flex-shrink: 0; width: 34mm; text-align: center; }
-.qr-box svg { width: 23mm; height: 23mm; display: block; margin: 0 auto; }
-.qr-caption {
-  font-size: 6.5pt; font-weight: 700; letter-spacing: 0.18em;
-  color: var(--red); margin-top: 1.5mm;
+.tracking-module {
+  flex-shrink: 0; width: 42mm;
+  border: 0.5mm solid var(--ink);
+  text-align: center;
+  padding-bottom: 2mm;
 }
-.qr-url { font-size: 6.5pt; color: var(--ink-soft); margin-top: 0.8mm; word-break: break-all; line-height: 1.4; }
+.tracking-module .tm-head {
+  background: var(--red); color: #fff;
+  font-size: 7pt; font-weight: 800; letter-spacing: 0.2em;
+  padding: 1.4mm 0; margin-bottom: 2mm;
+}
+.tracking-module .tm-head .jp { letter-spacing: 0.05em; }
+.tracking-module svg { width: 20mm; height: 20mm; display: block; margin: 0 auto; }
+.tm-caption { font-size: 7pt; font-weight: 700; margin-top: 1.6mm; }
+.tm-caption-en { font-size: 6pt; color: var(--ink-soft); margin-top: 0.4mm; }
+.tm-note { font-size: 5.5pt; color: var(--muted); margin-top: 1.2mm; line-height: 1.5; }
 
 .present-strip {
   margin-top: 4mm;
@@ -344,6 +354,7 @@ html, body {
   color: var(--muted); text-transform: uppercase; line-height: 1.3;
 }
 .lookup-cell .lv { font-size: 8.5pt; font-weight: 700; margin-top: 0.7mm; line-height: 1.25; }
+.lookup-cell .nights { font-size: 7pt; color: var(--ink-soft); font-weight: 700; }
 /* 予約検索に使う「名前」「チェックイン日」を強調 (requirement 2) */
 .lookup-cell.primary .lv { font-size: 9.5pt; font-weight: 800; }
 .lookup-cell.primary .lk { color: var(--red-dark); font-weight: 700; }
