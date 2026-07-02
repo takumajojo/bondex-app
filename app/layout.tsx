@@ -8,10 +8,11 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'BondEx - Luggage Delivery Platform',
-  description: 'Luggage delivery platform for international travelers in Japan. UI wireframes for Traveler, Hotel Staff, and Admin roles.',
-  generator: 'v0.app',
+  title: 'BondEx | 荷物配送を、旅行商品の一部に。',
+  description:
+    'BondEx（ボンデックス）は、訪日旅行者のホテル間荷物配送を手配するサービスです。ゲストは大きなスーツケースを持たずに、身軽に日本を移動できます。',
   icons: {
+    // BondEx ロゴの頭文字モノグラム — 再生成: python3 scripts/generate-favicons.py
     icon: [
       {
         url: '/icon-light-32x32.png',
@@ -20,10 +21,6 @@ export const metadata: Metadata = {
       {
         url: '/icon-dark-32x32.png',
         media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
       },
     ],
     apple: '/apple-icon.png',
