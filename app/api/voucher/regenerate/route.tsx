@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { renderToBuffer } from "@react-pdf/renderer"
+import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { buildVoucherFileName } from "@/lib/utils"
@@ -70,6 +71,18 @@ export async function GET(req: NextRequest) {
     // 値があれば = 表示オプトイン済みとみなし、そのまま representative に併記する。
     const groupName = data[0].group_name || undefined
 
+    // react-pdf は canvas/JS を実行できないため、事前に画像化しておく (generate route と同様)。
+    let trackingQrDataUri: string | undefined
+    try {
+      trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
+        margin: 0,
+        width: 200,
+        color: { dark: "#1A1A1A", light: "#FFFFFF" },
+      })
+    } catch (err) {
+      console.error("[voucher/regenerate] QR generation failed:", err)
+    }
+
     const input: VoucherInput = {
       bookingId,
       issuedDate: formatIssuedDate(),
@@ -85,6 +98,10 @@ export async function GET(req: NextRequest) {
       contactPersonPhone: agencyRow?.contact_phone ?? "",
       companyName: SUPPORT_DEFAULTS.companyName,
       companyAddress: SUPPORT_DEFAULTS.companyAddress,
+      trackingQrDataUri,
+      // showContact: 発行時のトグル状態は operator のブラウザ localStorage にのみ保存され
+      // Supabase 側の shipments には残らないため、再発行時点では判別不能。
+      // 未指定 (undefined) にしておけば VoucherInput 側のデフォルト (表示する) が適用される。
       shipments: data.map((s) => ({
         shipmentDate: s.shipment_date,
         expectedArrival: s.expected_arrival ?? s.shipment_date,
