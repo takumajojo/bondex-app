@@ -48,6 +48,14 @@ interface RequestBody {
   companyName?: unknown
   companyAddress?: unknown
   showContact?: unknown
+  contactDisplayMode?: unknown
+}
+
+const CONTACT_MODES = ["bondex_support", "travel_agency", "tour_operator", "hidden"] as const
+type ContactMode = (typeof CONTACT_MODES)[number]
+
+function asContactMode(v: unknown): ContactMode | undefined {
+  return CONTACT_MODES.includes(v as ContactMode) ? (v as ContactMode) : undefined
 }
 
 function asString(v: unknown): string {
@@ -143,12 +151,19 @@ export async function POST(req: NextRequest) {
   // Voucher のみ QR を埋め込む — ops シートは内部用途で不要。
   // react-pdf は canvas/JS を実行できないため、事前に画像化しておく。
   let trackingQrDataUri: string | undefined
+  let partnerQrDataUri: string | undefined
   if (type === "voucher") {
     try {
       trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
         margin: 0,
         width: 200,
         color: { dark: "#1A1A1A", light: "#FFFFFF" },
+      })
+      // ページ2 営業バナー用のパートナー募集 QR
+      partnerQrDataUri = await QRCode.toDataURL("https://bondex.express/partner", {
+        margin: 0,
+        width: 200,
+        color: { dark: "#16161a", light: "#FFFFFF" },
       })
     } catch (err) {
       // QR 生成失敗は致命的ではない — voucher 自体は URL テキストで代替可能なので握り潰す
@@ -173,7 +188,9 @@ export async function POST(req: NextRequest) {
     companyName,
     companyAddress,
     trackingQrDataUri,
+    partnerQrDataUri,
     showContact: body.showContact !== false,
+    contactDisplayMode: asContactMode(body.contactDisplayMode),
   }
 
   try {

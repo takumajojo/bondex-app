@@ -1,0 +1,13 @@
+diff --git a/node_modules/@react-pdf/textkit/lib/textkit.js b/node_modules/@react-pdf/textkit/lib/textkit.js
+index 0b8b6fa..ce81e4a 100644
+--- a/node_modules/@react-pdf/textkit/lib/textkit.js
++++ b/node_modules/@react-pdf/textkit/lib/textkit.js
+@@ -2635,7 +2635,7 @@ const getNodes = (attributedString, { align }, options) => {
+             acc.push(linebreak.glue(width, start, end, stretch, shrink));
+         }
+         else {
+-            const hyphenated = syllables[index + 1] !== ' ';
++            const hyphenated = syllables[index + 1] !== ' ' && syllables[index + 1] !== '\u2009';
+             const end = start + s.length;
+             // Add box node. Box nodes are used to represent words.
+             acc.push(linebreak.box(width, start, end, hyphenated));

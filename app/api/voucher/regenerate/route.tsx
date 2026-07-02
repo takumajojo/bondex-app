@@ -73,11 +73,17 @@ export async function GET(req: NextRequest) {
 
     // react-pdf は canvas/JS を実行できないため、事前に画像化しておく (generate route と同様)。
     let trackingQrDataUri: string | undefined
+    let partnerQrDataUri: string | undefined
     try {
       trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
         margin: 0,
         width: 200,
         color: { dark: "#1A1A1A", light: "#FFFFFF" },
+      })
+      partnerQrDataUri = await QRCode.toDataURL("https://bondex.express/partner", {
+        margin: 0,
+        width: 200,
+        color: { dark: "#16161a", light: "#FFFFFF" },
       })
     } catch (err) {
       console.error("[voucher/regenerate] QR generation failed:", err)
@@ -99,9 +105,10 @@ export async function GET(req: NextRequest) {
       companyName: SUPPORT_DEFAULTS.companyName,
       companyAddress: SUPPORT_DEFAULTS.companyAddress,
       trackingQrDataUri,
-      // showContact: 発行時のトグル状態は operator のブラウザ localStorage にのみ保存され
-      // Supabase 側の shipments には残らないため、再発行時点では判別不能。
-      // 未指定 (undefined) にしておけば VoucherInput 側のデフォルト (表示する) が適用される。
+      partnerQrDataUri,
+      // showContact / contactDisplayMode: 発行時の設定は operator のブラウザ localStorage に
+      // のみ保存され Supabase 側の shipments には残らないため、再発行時点では判別不能。
+      // 未指定 (undefined) にしておけば VoucherInput 側のデフォルト (bondex_support) が適用される。
       shipments: data.map((s) => ({
         shipmentDate: s.shipment_date,
         expectedArrival: s.expected_arrival ?? s.shipment_date,
