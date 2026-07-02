@@ -484,7 +484,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
               {it.tourNumber || it.bookingRef}
             </Text>
             <Text style={[styles.td, styles.col_route, { fontSize: 8.5 }]} wrap={false}>
-              {safeText(it.fromHotel)} → {safeText(it.toHotel)}
+              {safeText(it.fromHotel)} ・{safeText(it.toHotel)}
             </Text>
             <Text style={[styles.td, styles.col_rep, { fontSize: 8.5 }]}>{safeText(it.representative)}</Text>
             <Text style={[styles.td, styles.col_qty]}>{it.suitcaseCount}</Text>

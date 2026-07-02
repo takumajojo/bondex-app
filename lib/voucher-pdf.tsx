@@ -622,7 +622,7 @@ function LegPageEn({
           Track: bondex.express/track/{data.bookingId}
         </Text>
         <Text style={{ fontSize: 7.5, color: C_MUTED, marginTop: 2, textAlign: "center" }}>
-          ホテル担当者様 → 次ページ「FOR HOTEL STAFF」をご確認ください / Hotel staff, please see page 2
+          ホテル担当者様・次ページ「FOR HOTEL STAFF」をご確認ください / Hotel staff, please see page 2
         </Text>
       </View>
 
@@ -738,11 +738,11 @@ function LegPageJp({
         </Text>
         <View style={styles.jpContactList}>
           <Text style={styles.jpContactRow}>
-            <Text style={styles.jpContactLabel}>● 荷物配送手配業者：</Text>
+            <Text style={styles.jpContactLabel}>・荷物配送手配業者：</Text>
             BondEx（運営 {safeText(data.companyName)}）　Email: {BONDEX_SUPPORT_EMAIL}
           </Text>
           <Text style={styles.jpContactRow}>
-            <Text style={styles.jpContactLabel}>● ランドオペレーター：</Text>
+            <Text style={styles.jpContactLabel}>・ランドオペレーター：</Text>
             [{safeText(data.tourCompany) || "—"}]　TEL: {data.contactPersonPhone}
             {data.contactPersonName ? `　(担当：${safeText(data.contactPersonName)})` : ""}
           </Text>
@@ -772,7 +772,7 @@ function LegPageJp({
             </Text>
             <Text style={styles.jpStepInstruction}>{jpFromInstruction}</Text>
             {shipment.specialNote && (
-              <Text style={styles.jpStepNote}>※ {shipment.specialNote}</Text>
+              <Text style={styles.jpStepNote}>・{safeText(shipment.specialNote)}</Text>
             )}
           </View>
         </View>

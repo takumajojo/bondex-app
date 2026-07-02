@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { renderToBuffer } from "@react-pdf/renderer"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
+import { buildVoucherFileName } from "@/lib/utils"
 import {
   VoucherDocument,
   SUPPORT_DEFAULTS,
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await sb
       .from("shipments")
       .select(
-        "booking_id, leg_index, agency, representative, traveler_count, booking_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes",
+        "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes",
       )
       .eq("booking_id", bookingId)
       .order("leg_index", { ascending: true })
@@ -63,11 +64,19 @@ export async function GET(req: NextRequest) {
       .eq("name", agencyName)
       .maybeSingle()
 
+    const representativeLabel = data[0].representative ?? ""
+    const tourNumber = data[0].tour_number || undefined
+    // group_name はブッキング時に「団体名も表示する」を選んだ場合のみ保存されている想定。
+    // 値があれば = 表示オプトイン済みとみなし、そのまま representative に併記する。
+    const groupName = data[0].group_name || undefined
+
     const input: VoucherInput = {
       bookingId,
       issuedDate: formatIssuedDate(),
-      representativeLabel: data[0].representative ?? "",
+      representativeLabel,
+      groupName,
       tourCompany: agencyName ?? "",
+      tourNumber,
       travelerCount: data[0].traveler_count ?? 1,
       totalAmount: data.reduce((sum, s) => sum + (s.amount_yen ?? 0), 0),
       supportPhone: SUPPORT_DEFAULTS.phone,
@@ -99,11 +108,17 @@ export async function GET(req: NextRequest) {
     }
 
     const buf = await renderToBuffer(<VoucherDocument data={input} />)
+    const fileName = buildVoucherFileName({
+      bookingId,
+      tourNumber,
+      representativeLabel,
+      kind: "voucher",
+    })
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="bondex-voucher-${bookingId}.pdf"`,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
         "X-Booking-Id": bookingId,
         "Cache-Control": "no-store",
       },
