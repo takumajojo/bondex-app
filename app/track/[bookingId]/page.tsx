@@ -36,6 +36,75 @@ const STATUS_META: Record<string, { label: string; en: string; color: string; em
   cancelled:  { label: "キャンセル", en: "Cancelled",          color: "bg-zinc-200 text-zinc-700", emoji: "✖" },
 }
 
+// 追跡番号 1 個あたりの進捗を表す 4 ステージ。"issued" (未集荷) を含めて、
+// Ship&co からまだ応答がない (status === null) 場合もここに正しく位置づける
+// ("未確認" という曖昧な別枠ではなく、「まだ発行済の段階」として扱う).
+const PIECE_STEPS: Array<{ key: string; label: string }> = [
+  { key: "issued", label: "発行済" },
+  { key: "picked_up", label: "集荷済" },
+  { key: "in_transit", label: "配送中" },
+  { key: "delivered", label: "配達完了" },
+]
+
+/**
+ * ドット・線・ドット…の並びで進捗を表す軽量ステッパー。
+ * テキストの長さに左右されないので、長い場所情報が来ても崩れない
+ * (場所・日時はこのコンポーネントの外側、別の行で表示する).
+ */
+function TrackingStepper({ status }: { status: string | null }) {
+  const idx = PIECE_STEPS.findIndex((s) => s.key === status)
+  const activeIndex = idx === -1 ? 0 : idx // null/不明は "issued" 扱い
+
+  return (
+    <div>
+      <div className="flex items-center">
+        {PIECE_STEPS.map((step, i) => (
+          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+            <div
+              className={`w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center ${
+                i <= activeIndex
+                  ? "bg-emerald-500 border-emerald-500"
+                  : "bg-white border-border"
+              }`}
+            >
+              {i <= activeIndex && (
+                <svg viewBox="0 0 10 10" className="w-2 h-2" fill="none">
+                  <path
+                    d="M2 5.2 L4.2 7.4 L8 3"
+                    stroke="white"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </div>
+            {i < PIECE_STEPS.length - 1 && (
+              <div
+                className={`flex-1 h-0.5 mx-0.5 ${
+                  i < activeIndex ? "bg-emerald-500" : "bg-border"
+                }`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex mt-1">
+        {PIECE_STEPS.map((step, i) => (
+          <p
+            key={step.key}
+            className={`flex-1 text-[9px] leading-tight ${
+              i === 0 ? "text-left" : i === PIECE_STEPS.length - 1 ? "text-right" : "text-center"
+            } ${i === activeIndex ? "font-semibold text-foreground" : "text-muted-foreground"}`}
+          >
+            {step.label}
+          </p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 async function fetchTrack(bookingId: string): Promise<TrackData | null> {
   const h = await headers()
   const host = h.get("host") || "localhost:3000"
@@ -138,58 +207,57 @@ export default async function TrackPage({
                   </div>
                 </div>
 
-                {/* Tracking numbers — each with its own live status/location */}
+                {/* Tracking numbers — each with its own visual progress + location */}
                 {leg.tracking.length > 0 && (
                   <div className="pt-4 border-t border-border">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
                       Yamato Tracking ({leg.tracking.length}{" "}
                       {leg.tracking.length === 1 ? "piece" : "pieces"})
                     </p>
-                    <div className="space-y-2">
-                      {leg.tracking.map((t) => {
-                        const numMeta = t.status ? STATUS_META[t.status] : null
-                        return (
-                          <div
-                            key={t.number}
-                            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border px-3 py-2 text-xs"
-                          >
-                            <span className="font-mono text-foreground">{t.number}</span>
-                            {numMeta ? (
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${numMeta.color}`}
-                              >
-                                <span>{numMeta.emoji}</span>
-                                {numMeta.en}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                                Not yet checked · 未確認
-                              </span>
-                            )}
-                            {t.location && (
-                              <span className="text-muted-foreground">📍 {t.location}</span>
-                            )}
-                            {t.date && (
-                              <span className="text-muted-foreground">
-                                {new Date(t.date).toLocaleString("en-US", {
-                                  dateStyle: "medium",
-                                  timeStyle: "short",
-                                })}
-                              </span>
-                            )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {leg.tracking.map((t) => (
+                        <div key={t.number} className="rounded-lg border border-border p-3">
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <span className="font-mono text-[11px] text-foreground truncate">
+                              {t.number}
+                            </span>
                             <a
                               href={`https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init=on&number00=1&number01=${t.number}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="ml-auto text-muted-foreground hover:text-foreground underline underline-offset-2"
+                              className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
                             >
-                              View on Yamato ↗
+                              Yamato ↗
                             </a>
                           </div>
-                        )
-                      })}
+
+                          <TrackingStepper status={t.status} />
+
+                          {(t.location || t.date) && (
+                            <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+                              {t.location && (
+                                <p className="text-[11px] text-muted-foreground flex gap-1.5">
+                                  <span className="shrink-0">📍</span>
+                                  <span className="break-words">{t.location}</span>
+                                </p>
+                              )}
+                              {t.date && (
+                                <p className="text-[11px] text-muted-foreground flex gap-1.5">
+                                  <span className="shrink-0">🕐</span>
+                                  <span>
+                                    {new Date(t.date).toLocaleString("en-US", {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                    })}
+                                  </span>
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-[10px] text-muted-foreground/70 mt-2">
+                    <p className="text-[10px] text-muted-foreground/70 mt-3">
                       Status is refreshed hourly and may lag behind Yamato&apos;s own site by
                       up to an hour.
                     </p>
