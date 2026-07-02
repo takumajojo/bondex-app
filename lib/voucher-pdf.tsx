@@ -106,6 +106,10 @@ export interface VoucherInput {
    *  Defaults to true; agencies routing their own contact number through
    *  their itinerary may prefer to hide BondEx's operational number. */
   showContact?: boolean
+  /** Base64 PNG data URI of a QR code pointing at the public tracking page.
+   *  Generated server-side (before render) so react-pdf can embed it as a
+   *  plain image — react-pdf cannot execute canvas/JS QR libraries itself. */
+  trackingQrDataUri?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +255,21 @@ const styles = StyleSheet.create({
     fontWeight: 500,
     color: C_FG,
     letterSpacing: 0.5,
+  },
+  headerQrWrap: {
+    flexDirection: "column",
+    alignItems: "flex-end",
+    marginTop: 10,
+  },
+  headerQrImage: {
+    width: 46,
+    height: 46,
+  },
+  headerQrCaption: {
+    fontSize: 5.5,
+    color: C_MUTED,
+    letterSpacing: 1,
+    marginTop: 3,
   },
   logo: {
     width: 180,
@@ -608,6 +627,12 @@ function LegPageEn({
             <Text style={styles.headerRefLabel}>REF</Text>
             <Text style={styles.headerRefValue}>{data.bookingId}</Text>
           </View>
+          {data.trackingQrDataUri && (
+            <View style={styles.headerQrWrap}>
+              <Image style={styles.headerQrImage} src={data.trackingQrDataUri} />
+              <Text style={styles.headerQrCaption}>SCAN TO TRACK</Text>
+            </View>
+          )}
         </View>
       </View>
 

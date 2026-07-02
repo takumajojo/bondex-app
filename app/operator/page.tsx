@@ -172,6 +172,7 @@ const messages = {
     settingsContactNamePlaceholder: "e.g. 谷口",
     settingsContactPhone: "Contact phone",
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
+    settingsShowContactOnVoucher: "Show this contact number on the guest voucher",
     settingsSave: "Save",
     settingsCancel: "Cancel",
     settingsRequired: "Please set up your tour company first.",
@@ -299,6 +300,7 @@ const messages = {
     settingsContactNamePlaceholder: "例: 谷口",
     settingsContactPhone: "連絡先",
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
+    settingsShowContactOnVoucher: "この連絡先をお客様用バウチャーに表示する",
     settingsSave: "保存",
     settingsCancel: "キャンセル",
     settingsRequired: "最初に旅行会社情報を登録してください。",
@@ -450,6 +452,10 @@ interface OperatorSettings {
   tourCompany: string
   contactName: string
   contactPhone: string
+  /** Print BondEx's CONTACT phone row on the guest voucher. Default true.
+   *  Some agencies route their own emergency contact through the itinerary
+   *  already and prefer not to show a second number to the guest. */
+  showContactOnVoucher?: boolean
 }
 function loadSettings(): OperatorSettings | null {
   if (typeof window === "undefined") return null
@@ -675,6 +681,7 @@ export default function OperatorPage() {
       travelerCount: itinerary.guest.travelerCount,
       contactPersonName: settings?.contactName || "",
       contactPersonPhone: settings?.contactPhone || "",
+      showContact: settings?.showContactOnVoucher !== false,
       shipments: itinerary.shipments.map((s) => ({
         shipmentDate: s.shipmentDate,
         expectedArrival: s.expectedArrival,
@@ -2120,6 +2127,9 @@ function SettingsModal({
   const [tourCompany, setTourCompany] = useState(initial?.tourCompany || "")
   const [contactName, setContactName] = useState(initial?.contactName || "")
   const [contactPhone, setContactPhone] = useState(initial?.contactPhone || "")
+  const [showContactOnVoucher, setShowContactOnVoucher] = useState(
+    initial?.showContactOnVoucher !== false,
+  )
 
   const canSave = tourCompany.trim().length > 0
 
@@ -2174,6 +2184,15 @@ function SettingsModal({
               className="h-10"
             />
           </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none pt-1">
+            <input
+              type="checkbox"
+              checked={showContactOnVoucher}
+              onChange={(e) => setShowContactOnVoucher(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-border"
+            />
+            {t.settingsShowContactOnVoucher}
+          </label>
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-2">
@@ -2189,6 +2208,7 @@ function SettingsModal({
                 tourCompany: tourCompany.trim(),
                 contactName: contactName.trim(),
                 contactPhone: contactPhone.trim(),
+                showContactOnVoucher,
               })
             }}
             disabled={!canSave}

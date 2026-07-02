@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { renderToBuffer } from "@react-pdf/renderer"
+import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName } from "@/lib/utils"
 import {
@@ -46,6 +47,7 @@ interface RequestBody {
   contactPersonPhone?: unknown
   companyName?: unknown
   companyAddress?: unknown
+  showContact?: unknown
 }
 
 function asString(v: unknown): string {
@@ -138,6 +140,22 @@ export async function POST(req: NextRequest) {
   const groupName = asString(body.groupName).trim() || undefined
   const tourNumber = asString(body.tourNumber).trim() || undefined
 
+  // Voucher のみ QR を埋め込む — ops シートは内部用途で不要。
+  // react-pdf は canvas/JS を実行できないため、事前に画像化しておく。
+  let trackingQrDataUri: string | undefined
+  if (type === "voucher") {
+    try {
+      trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
+        margin: 0,
+        width: 200,
+        color: { dark: "#1A1A1A", light: "#FFFFFF" },
+      })
+    } catch (err) {
+      // QR 生成失敗は致命的ではない — voucher 自体は URL テキストで代替可能なので握り潰す
+      console.error("[voucher/generate] QR generation failed:", err)
+    }
+  }
+
   const input: VoucherInput = {
     bookingId,
     issuedDate: formatIssuedDate(),
@@ -154,6 +172,8 @@ export async function POST(req: NextRequest) {
     contactPersonPhone,
     companyName,
     companyAddress,
+    trackingQrDataUri,
+    showContact: body.showContact !== false,
   }
 
   try {
