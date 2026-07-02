@@ -237,13 +237,37 @@ export default function LandingPage() {
       {/* ═══════════════ Difference — 旅行商品の付加価値化 ═══════════════ */}
       <section id="difference" className="border-y border-[#E5E7EB] bg-white">
         <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
-          <div className="mb-12 md:mb-16 max-w-2xl">
+          <div className="mb-14 md:mb-16 max-w-2xl">
             <Eyebrow en="DIFFERENCE" jp="従来手配との違い" />
             <SectionH2 first="荷物配送を、" second="旅行商品の一部に。" />
             <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
               BondEx は、旅程データをもとに荷物配送の手配・発行物・月次請求まで代行します。
               旅行代理店様は、手ぶら観光やホテル間配送を旅行プランの付加価値として案内できます。
             </p>
+          </div>
+
+          {/* Quiet editorial comparison — hairline rules only, no icons/circles/timeline */}
+          <div className="grid md:grid-cols-2 border-t border-[#0F172A]/15 divide-y md:divide-y-0 md:divide-x divide-[#0F172A]/10 mb-14 md:mb-16">
+            <div className="py-8 md:py-10 md:pr-12">
+              <p className="text-[11px] font-mono tracking-widest uppercase text-[#94A3B8] mb-3">
+                Conventional
+              </p>
+              <h3 className="text-[16px] font-bold text-[#64748B] mb-4">従来の手配</h3>
+              <p className="text-[14px] text-[#64748B] leading-[1.95]">
+                旅行者自身が配送業者を探し、個別に申込・支払いを行います。
+                バウチャーや送り状は旅程とは別に管理され、変更や遅延の問い合わせも旅行者本人が対応します。
+              </p>
+            </div>
+            <div className="py-8 md:py-10 md:pl-12">
+              <p className="text-[11px] font-mono tracking-widest uppercase text-[#C8102E] mb-3">
+                BondEx
+              </p>
+              <h3 className="text-[16px] font-bold text-[#0F172A] mb-4">弊社の手配</h3>
+              <p className="text-[14px] text-[#334155] leading-[1.95]">
+                代理店様が旅程データを送るだけで、バウチャー・送り状・追跡情報をまとめて準備します。
+                配送費は旅行代金に含められ、手ぶら観光を旅行プランの一部としてご案内いただけます。
+              </p>
+            </div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4 md:gap-5">
@@ -292,12 +316,8 @@ export default function LandingPage() {
             <SectionH2 first="旅程を送ったら、" second="受け取るだけ。" />
           </div>
 
-          <div className="relative">
-            {/* Connecting dashed line behind cards */}
-            <div className="hidden md:block absolute top-[92px] left-[5%] right-[5%] h-px border-t-2 border-dashed border-[#CBD5E1] z-0" />
-
-            <div className="grid md:grid-cols-5 gap-4 relative z-10">
-              {[
+          {(() => {
+            const flowSteps = [
                 {
                   n: "01",
                   title: "旅程を送付",
@@ -419,22 +439,53 @@ export default function LandingPage() {
                     </svg>
                   ),
                 },
-              ].map((step) => (
-                <div key={step.n} className="flex flex-col">
-                  <div className="aspect-square rounded-full bg-white border border-[#E5E7EB] shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)] mb-5 flex items-center justify-center p-3">
-                    {step.svg}
-                  </div>
-                  <p className="text-[13px] font-mono font-bold tracking-widest text-[#C8102E] mb-2">
-                    {step.n}
-                  </p>
-                  <h3 className="text-[15px] font-bold tracking-tight text-[#0F172A] mb-2 leading-snug">
-                    {step.title}
-                  </h3>
-                  <p className="text-[12px] text-[#64748B] leading-[1.85]">{step.desc}</p>
+            ]
+
+            return (
+              <>
+                {/* Mobile: compact horizontal list, fixed-size icons — no full-width blow-up */}
+                <div className="md:hidden divide-y divide-[#E5E7EB] border-t border-b border-[#E5E7EB]">
+                  {flowSteps.map((step) => (
+                    <div key={step.n} className="flex items-center gap-4 py-5">
+                      <div className="w-14 h-14 shrink-0 rounded-full bg-white border border-[#E5E7EB] flex items-center justify-center p-2">
+                        {step.svg}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-mono font-bold tracking-widest text-[#C8102E] mb-1">
+                          {step.n}
+                        </p>
+                        <h3 className="text-[14px] font-bold tracking-tight text-[#0F172A] mb-0.5 leading-snug">
+                          {step.title}
+                        </h3>
+                        <p className="text-[12px] text-[#64748B] leading-[1.6]">{step.desc}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+
+                {/* Desktop: 5-col circles with connecting dashed line */}
+                <div className="hidden md:block relative">
+                  <div className="absolute top-[92px] left-[5%] right-[5%] h-px border-t-2 border-dashed border-[#CBD5E1] z-0" />
+                  <div className="grid grid-cols-5 gap-4 relative z-10">
+                    {flowSteps.map((step) => (
+                      <div key={step.n} className="flex flex-col">
+                        <div className="aspect-square rounded-full bg-white border border-[#E5E7EB] shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)] mb-5 flex items-center justify-center p-3">
+                          {step.svg}
+                        </div>
+                        <p className="text-[13px] font-mono font-bold tracking-widest text-[#C8102E] mb-2">
+                          {step.n}
+                        </p>
+                        <h3 className="text-[15px] font-bold tracking-tight text-[#0F172A] mb-2 leading-snug">
+                          {step.title}
+                        </h3>
+                        <p className="text-[12px] text-[#64748B] leading-[1.85]">{step.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )
+          })()}
         </div>
       </section>
 
