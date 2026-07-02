@@ -59,6 +59,7 @@ export const config = {
     "/api/invoices/generate",
     "/api/agencies",
     "/api/voucher/regenerate",
+    "/api/voucher/label",
     "/operator/claims",
     "/api/claims",
     "/api/contracts/generate",
