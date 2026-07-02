@@ -345,10 +345,13 @@ html, body {
   background: var(--paper);
   border: 0.4mm solid var(--ink);
   display: grid;
-  grid-template-columns: 1.4fr 1.2fr 0.7fr 0.7fr;
+  grid-template-columns: 1.15fr 1fr; /* 2×2 — 値が1行に収まる幅を確保 */
 }
 .lookup-cell { padding: 1.6mm 2.2mm; }
-.lookup-cell + .lookup-cell { border-left: 0.3mm solid var(--gray-line); }
+.lookup-cell:nth-child(even) { border-left: 0.3mm solid var(--gray-line); }
+.lookup-cell:nth-child(n+3) { border-top: 0.3mm solid var(--gray-line); }
+/* 日付・人数は絶対に折り返さない (氏名のみ長い場合の折返しを許容) */
+.lookup-cell .lv.nowrap { white-space: nowrap; }
 .lookup-cell .lk {
   font-size: 5.5pt; letter-spacing: 0.08em;
   color: var(--muted); text-transform: uppercase; line-height: 1.3;
@@ -455,7 +458,7 @@ html, body {
 
 .p2-footer {
   padding-top: 2mm;
-  margin-top: 2.2mm;
+  margin-top: auto; /* タグ削除に伴い最下部固定 (タグ復活時は固定マージンに戻す) */
   border-top: 0.3mm solid var(--gray-line);
   display: flex; justify-content: space-between;
   font-size: 6.5pt; color: var(--muted);

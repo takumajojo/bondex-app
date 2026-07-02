@@ -269,12 +269,12 @@
           <p class="lv" data-slot="lookupGuestFrom">Emma Watson</p>
         </div>
         <div class="lookup-cell primary">
-          <p class="lk">Check-in Date / <span class="jp">チェックイン日</span></p>
-          <p class="lv jp" data-slot="lookupCheckinFrom">2026年7月8日 <span class="nights">～2泊</span></p>
+          <p class="lk">Check-in / <span class="jp">チェックイン日</span></p>
+          <p class="lv jp nowrap" data-slot="lookupCheckinFrom">2026年7月8日 <span class="nights">～2泊</span></p>
         </div>
         <div class="lookup-cell">
           <p class="lk">Stay / <span class="jp">人数</span></p>
-          <p class="lv" data-slot="lookupStayFrom">1 guest</p>
+          <p class="lv nowrap" data-slot="lookupStayFrom">1 guest</p>
         </div>
         <div class="lookup-cell">
           <p class="lk">Room No. / <span class="jp">お部屋番号</span></p>
@@ -292,12 +292,12 @@
           <p class="lv" data-slot="lookupGuestTo">Emma Watson</p>
         </div>
         <div class="lookup-cell primary">
-          <p class="lk">Check-in Date / <span class="jp">チェックイン日</span></p>
-          <p class="lv jp" data-slot="lookupCheckinTo">2026年7月11日 <span class="nights">～2泊</span></p>
+          <p class="lk">Check-in / <span class="jp">チェックイン日</span></p>
+          <p class="lv jp nowrap" data-slot="lookupCheckinTo">2026年7月11日 <span class="nights">～2泊</span></p>
         </div>
         <div class="lookup-cell">
           <p class="lk">Stay / <span class="jp">人数</span></p>
-          <p class="lv" data-slot="lookupStayTo">1 guest</p>
+          <p class="lv nowrap" data-slot="lookupStayTo">1 guest</p>
         </div>
         <div class="lookup-cell">
           <p class="lk">Room No. / <span class="jp">お部屋番号</span></p>
@@ -337,52 +337,9 @@
     </div>
   </div>
 
-  <!-- requirement 3: cut-out baggage tag -->
-  <div class="tag-cutline jp">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-      <circle cx="6" cy="6" r="2.6" stroke="#8a8a92" stroke-width="1.6"/>
-      <circle cx="6" cy="18" r="2.6" stroke="#8a8a92" stroke-width="1.6"/>
-      <path d="M8.2 7.6 L20 16.5M8.2 16.4 L20 7.5" stroke="#8a8a92" stroke-width="1.6" stroke-linecap="round"/>
-    </svg>
-    <span>切り取り線 / CUT HERE — 荷物用タグ / BAGGAGE TAG</span>
-  </div>
-  <div class="baggage-tag">
-    <div class="bt-spine">BONDEX</div>
-    <div class="bt-main">
-      <div class="bt-row1">
-        <div class="bt-guest">
-          <p class="btk">Guest / <span class="jp">ご予約者名</span></p>
-          <p class="btv" data-slot="tagGuest">Emma Watson</p>
-        </div>
-        <div class="bt-ref">
-          <p class="btk">REF</p>
-          <p class="btv" data-slot="tagRef">BDX-260702-147</p>
-        </div>
-      </div>
-      <div class="bt-row2">
-        <div class="bt-field">
-          <p class="btk">Check-in / <span class="jp">チェックイン</span></p>
-          <p class="btv jp" data-slot="tagCheckin">2026年7月11日</p>
-        </div>
-        <div class="bt-field">
-          <p class="btk">Pick-up Hotel / <span class="jp">お受け取りホテル</span></p>
-          <p class="btv" data-slot="tagHotel">Imperial Hotel Osaka<span class="jp-sub jp">帝国ホテル 大阪</span></p>
-        </div>
-        <div class="bt-field">
-          <p class="btk">Luggage / <span class="jp">個数</span></p>
-          <p class="btv" data-slot="tagPieces">1 piece</p>
-        </div>
-      </div>
-      <p class="bt-keep jp">このタグをお荷物と一緒に保管してください / Please attach or keep this tag with the luggage.</p>
-    </div>
-    <div class="bt-qr">
-      <svg viewBox="0 0 29 29" shape-rendering="crispEdges" aria-label="tag tracking QR code">
-        <rect width="29" height="29" fill="#fff"/>
-        <path fill="#16161a" d="M0 0h7v1H0zM10 0h2v1h-2zM14 0h3v1h-3zM19 0h1v1h-1zM22 0h7v1h-7zM0 1h1v1H0zM6 1h1v1H6zM9 1h1v1H9zM12 1h1v1h-1zM15 1h2v1h-2zM18 1h2v1h-2zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1H0zM2 2h3v1H2zM6 2h1v1H6zM8 2h2v1H8zM13 2h4v1h-4zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h3v1h-3zM28 2h1v1h-1zM0 3h1v1H0zM2 3h3v1H2zM6 3h1v1H6zM9 3h3v1H9zM14 3h1v1h-1zM16 3h3v1h-3zM22 3h1v1h-1zM24 3h3v1h-3zM28 3h1v1h-1zM0 4h1v1H0zM2 4h3v1H2zM6 4h1v1H6zM8 4h1v1H8zM11 4h2v1h-2zM15 4h2v1h-2zM19 4h2v1h-2zM22 4h1v1h-1zM24 4h3v1h-3zM28 4h1v1h-1zM0 5h1v1H0zM6 5h1v1H6zM9 5h2v1H9zM13 5h1v1h-1zM16 5h1v1h-1zM18 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h7v1H0zM8 6h1v1H8zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h7v1h-7zM9 7h2v1H9zM13 7h3v1h-3zM17 7h2v1h-2zM0 8h2v1H0zM3 8h4v1H3zM8 8h3v1H8zM12 8h1v1h-1zM14 8h4v1h-4zM19 8h4v1h-4zM24 8h2v1h-2zM27 8h2v1h-2zM1 9h1v1H1zM4 9h1v1H4zM7 9h1v1H7zM10 9h2v1h-2zM14 9h2v1h-2zM18 9h1v1h-1zM20 9h3v1h-3zM24 9h1v1h-1zM26 9h1v1h-1zM0 10h2v1H0zM3 10h1v1H3zM5 10h2v1H5zM9 10h1v1H9zM11 10h4v1h-4zM17 10h2v1h-2zM21 10h2v1h-2zM25 10h2v1h-2zM28 10h1v1h-1zM0 11h1v1H0zM2 11h2v1H2zM7 11h2v1H7zM10 11h1v1h-1zM13 11h2v1h-2zM16 11h1v1h-1zM19 11h1v1h-1zM22 11h2v1h-2zM26 11h2v1h-2zM1 12h3v1H1zM5 12h2v1H5zM8 12h2v1H8zM12 12h2v1h-2zM15 12h3v1h-3zM20 12h3v1h-3zM24 12h1v1h-1zM27 12h1v1h-1zM0 13h1v1H0zM3 13h2v1H3zM6 13h1v1H6zM9 13h1v1H9zM11 13h2v1h-2zM14 13h1v1h-1zM17 13h3v1h-3zM21 13h1v1h-1zM24 13h3v1h-3zM28 13h1v1h-1zM1 14h2v1H1zM4 14h3v1H4zM8 14h1v1H8zM10 14h2v1h-2zM13 14h3v1h-3zM18 14h1v1h-1zM20 14h2v1h-2zM23 14h2v1h-2zM26 14h1v1h-1zM0 15h2v1H0zM3 15h1v1H3zM6 15h2v1H6zM9 15h2v1H9zM12 15h1v1h-1zM15 15h2v1h-2zM19 15h2v1h-2zM22 15h1v1h-1zM25 15h3v1h-3zM1 16h1v1H1zM4 16h2v1H4zM7 16h1v1H7zM10 16h1v1h-1zM13 16h2v1h-2zM16 16h2v1h-2zM19 16h1v1h-1zM21 16h3v1h-3zM26 16h2v1h-2zM0 17h3v1H0zM5 17h1v1H5zM8 17h3v1H8zM12 17h2v1h-2zM15 17h1v1h-1zM17 17h2v1h-2zM20 17h1v1h-1zM23 17h2v1h-2zM27 17h2v1h-2zM1 18h1v1H1zM3 18h2v1H3zM6 18h2v1H6zM9 18h1v1H9zM11 18h3v1h-3zM16 18h1v1h-1zM18 18h3v1h-3zM22 18h2v1h-2zM25 18h1v1h-1zM28 18h1v1h-1zM0 19h1v1H0zM2 19h1v1H2zM5 19h2v1H5zM8 19h1v1H8zM10 19h2v1h-2zM14 19h2v1h-2zM17 19h1v1h-1zM19 19h2v1h-2zM23 19h1v1h-1zM26 19h2v1h-2zM1 20h4v1H1zM6 20h1v1H6zM8 20h2v1H8zM11 20h1v1h-1zM13 20h3v1h-3zM18 20h3v1h-3zM22 20h2v1h-2zM25 20h4v1h-4zM8 21h2v1H8zM12 21h2v1h-2zM15 21h2v1h-2zM19 21h1v1h-1zM21 21h1v1h-1zM24 21h1v1h-1zM26 21h2v1h-2zM0 22h7v1H0zM8 22h1v1H8zM10 22h2v1h-2zM14 22h1v1h-1zM16 22h2v1h-2zM20 22h2v1h-2zM24 22h1v1h-1zM26 22h1v1h-1zM0 23h1v1H0zM6 23h1v1H6zM9 23h2v1H9zM13 23h3v1h-3zM17 23h1v1h-1zM19 23h1v1h-1zM22 23h3v1h-3zM26 23h2v1h-2zM0 24h1v1H0zM2 24h3v1H2zM6 24h1v1H6zM8 24h1v1H8zM10 24h1v1h-1zM12 24h2v1h-2zM15 24h3v1h-3zM19 24h2v1h-2zM23 24h2v1h-2zM27 24h1v1h-1zM0 25h1v1H0zM2 25h3v1H2zM6 25h1v1H6zM9 25h3v1H9zM14 25h1v1h-1zM16 25h2v1h-2zM19 25h1v1h-1zM21 25h2v1h-2zM25 25h2v1h-2zM0 26h1v1H0zM2 26h3v1H2zM6 26h1v1H6zM8 26h2v1H8zM11 26h2v1h-2zM14 26h2v1h-2zM17 26h2v1h-2zM20 26h2v1h-2zM23 26h1v1h-1zM26 26h2v1h-2zM0 27h1v1H0zM6 27h1v1H6zM9 27h1v1H9zM11 27h1v1h-1zM13 27h4v1h-4zM18 27h2v1h-2zM21 27h1v1h-1zM24 27h2v1h-2zM27 27h1v1h-1zM0 28h7v1H0zM8 28h2v1H8zM12 28h2v1h-2zM15 28h1v1h-1zM17 28h1v1h-1zM19 28h3v1h-3zM23 28h2v1h-2zM26 28h2v1h-2z"/>
-      </svg>
-      <p class="bq-url">bondex.express/track/<br>BDX-260702-147</p>
-    </div>
-  </div>
+  <!-- 切り取り式バゲージタグは現在不使用 (ユーザー判断で一旦削除)。
+       将来復活させる場合は git 履歴 (commit a2d1d82 / b7d8ea6) の
+       .tag-cutline + .baggage-tag ブロックを参照。CSS は残してある。 -->
 
   <footer class="p2-footer jp">
     <span>株式会社JOJO ／ 〒158-0092 東京都世田谷区野毛1-9-12</span>
