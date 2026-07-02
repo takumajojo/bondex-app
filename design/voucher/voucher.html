@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>BondEx — Luggage Forwarding Voucher (BDX-260702-147)</title>
+<title>BondEx — Luggage Forwarding Voucher (BDX-260702-147-A)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;0,800;1,800&family=Noto+Sans+JP:wght@400;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="voucher.css">
@@ -25,9 +25,29 @@
     </div>
     <div class="masthead-right">
       <p class="ref-label">REF</p>
-      <p class="ref-value" data-slot="bookingId">BDX-260702-147</p>
+      <!-- 複数配送: バウチャー番号は bookingId + 区間サフィックス (-A / -B / -C ...) -->
+      <p class="ref-value" data-slot="voucherRef">BDX-260702-147-A</p>
     </div>
   </header>
+
+  <!-- 複数配送対応: この用紙が対象とする区間を最上部で大きく明示。
+       ツアー客が複数枚持っていても「どのホテルに渡す紙か」が一瞬で分かるようにする。
+       注: 「→」は Inter には有るが NotoSansJP に無い — react-pdf 移植時は
+       EN フォントで描画するか SVG 矢印にすること。 -->
+  <div class="leg-banner">
+    <div class="lb-left">
+      <p class="lb-kicker">THIS VOUCHER IS FOR</p>
+      <p class="lb-leg" data-slot="legLabel">LEG 1 / 3</p>
+    </div>
+    <div class="lb-main">
+      <p class="lb-route" data-slot="legRoute">Hilton Tokyo <span class="lb-arrow">&rarr;</span> Imperial Hotel Osaka</p>
+      <p class="lb-dates">
+        <span>Drop-off: <strong data-slot="legDropDate">10 JUL 2026</strong></span>
+        <span class="lb-sep"></span>
+        <span>Pick-up: <strong data-slot="legPickDate">11 JUL 2026</strong></span>
+      </p>
+    </div>
+  </div>
 
   <div class="doc-title">
     <div>
@@ -76,6 +96,12 @@
         <p class="en">At the hotel&rsquo;s reception &middot; by check-out</p>
         <p class="ja jp">チェックアウトまでに受付へお預けください</p>
       </div>
+      <!-- 複数配送: この用紙をどのホテルにいつ渡すかを明示 -->
+      <div class="give-to">
+        <p class="gt-en">PLEASE GIVE THIS VOUCHER TO:</p>
+        <p class="gt-hotel"><span data-slot="giveToHotelEn">Hilton Tokyo</span> <span class="gt-date">on <span data-slot="giveToDateEn">10 JUL 2026</span></span></p>
+        <p class="gt-ja jp">このバウチャーは <strong data-slot="giveToDateJa">2026年7月10日</strong> に<strong data-slot="giveToHotelJa">ヒルトン東京</strong>へお渡しください</p>
+      </div>
     </div>
 
     <div class="journey-arrow">
@@ -115,7 +141,8 @@
     </div>
     <div class="detail-cell">
       <p class="k">SERVICE TYPE / <span class="jp">種別</span></p>
-      <p class="v">SINGLE LEG<small>Point to Point</small></p>
+      <!-- 単区間予約の場合は "SINGLE LEG / Point to Point" を表示 -->
+      <p class="v" data-slot="serviceType">MULTI-LEG<small>Leg 1 of 3</small></p>
     </div>
     <div class="detail-cell">
       <p class="k">FORWARDED BY / <span class="jp">手配</span></p>
@@ -136,27 +163,35 @@
     </div>
   </div>
 
-  <!-- tagline + abstract route line-art -->
-  <div class="tag-band">
-    <div class="words">
-      <p class="en">Travel lighter. Travel better.<br><em>BondEx delivers.</em></p>
-      <p class="ja jp">手ぶらで、日本をもっと自由に。次のホテルへ、お荷物をお届けします。</p>
-    </div>
-    <div class="art">
-      <svg width="200" height="48" viewBox="0 0 220 52" fill="none">
-        <rect x="4" y="18" width="24" height="30" rx="3" stroke="#16161a" stroke-width="2"/>
-        <path d="M10 18v-5a6 6 0 0 1 12 0v5" stroke="#16161a" stroke-width="2"/>
-        <line x1="12" y1="26" x2="12" y2="40" stroke="#c8102e" stroke-width="1.6"/>
-        <line x1="20" y1="26" x2="20" y2="40" stroke="#c8102e" stroke-width="1.6"/>
-        <path d="M36 33 C 70 8, 150 8, 184 33" stroke="#16161a" stroke-width="1.6" stroke-dasharray="1 6" stroke-linecap="round"/>
-        <circle cx="110" cy="14.5" r="3.4" fill="#c8102e"/>
-        <rect x="192" y="18" width="24" height="30" rx="3" stroke="#16161a" stroke-width="2"/>
-        <path d="M198 18v-5a6 6 0 0 1 12 0v5" stroke="#16161a" stroke-width="2"/>
-        <line x1="200" y1="26" x2="200" y2="40" stroke="#c8102e" stroke-width="1.6"/>
-        <line x1="208" y1="26" x2="208" y2="40" stroke="#c8102e" stroke-width="1.6"/>
-      </svg>
+  <!-- 複数配送: 旅程全体のミニ一覧 (補助情報なので小さく)。
+       該当 LEG のみ赤 (.current)、他はグレー。単区間予約では非表示にする。 -->
+  <div class="route-list">
+    <p class="rl-head">YOUR LUGGAGE ROUTE <span class="jp">／ 旅程全体</span></p>
+    <div data-slot="routeRows">
+      <div class="rl-row current">
+        <span class="rl-leg">LEG 1 / 3</span>
+        <span class="rl-date">10 JUL</span>
+        <span class="rl-route">Hilton Tokyo &rarr; Imperial Hotel Osaka</span>
+        <span class="rl-chip">CURRENT <span class="jp">／ この用紙</span></span>
+      </div>
+      <div class="rl-row">
+        <span class="rl-leg">LEG 2 / 3</span>
+        <span class="rl-date">12 JUL</span>
+        <span class="rl-route">Imperial Hotel Osaka &rarr; Hotel The Mitsui Kyoto</span>
+        <span class="rl-chip"></span>
+      </div>
+      <div class="rl-row">
+        <span class="rl-leg">LEG 3 / 3</span>
+        <span class="rl-date">15 JUL</span>
+        <span class="rl-route">Hotel The Mitsui Kyoto &rarr; Hilton Tokyo</span>
+        <span class="rl-chip"></span>
+      </div>
     </div>
   </div>
+
+  <!-- tag-band (タグライン + ラインアート) は複数配送要素の追加に伴い削除。
+       ブランド訴求はページ 2 の営業バナーに集約。
+       復活させる場合は git 履歴 (commit 5a89b06 以前) の .tag-band ブロックを参照。 -->
 
   <!-- requirement 1: hotel-staff redirect (red alert card, not a small footnote) -->
   <div class="staff-alert">
@@ -196,11 +231,26 @@
     </div>
     <div class="masthead-right">
       <p class="p2-head-tag">FOR HOTEL STAFF <span class="ja jp">/ ホテルご担当者様へ</span></p>
-      <p class="ref-label" style="margin-top:1.5mm">REFERENCE: <span data-slot="bookingId">BDX-260702-147</span></p>
+      <p class="ref-label" style="margin-top:1.5mm">REFERENCE: <span data-slot="voucherRef">BDX-260702-147-A</span></p>
     </div>
   </header>
 
   <p class="lead-statement jp">本バウチャーは、弊社にて集荷依頼済みの荷物配送サービスです。</p>
+
+  <!-- 複数配送: この用紙が対象とする配送区間を冒頭で明示。
+       スタッフが見た瞬間「この紙はこの区間の配送用」と分かるようにする。 -->
+  <div class="leg-strip jp">
+    <div class="ls-left">
+      <p class="ls-cap">配送区間 / SEGMENT</p>
+      <p class="ls-badge" data-slot="legLabelP2">LEG 1 / 3</p>
+    </div>
+    <div class="ls-grid">
+      <div><p class="ls-k">発送元</p><p class="ls-v" data-slot="legFromJa">ヒルトン 東京</p></div>
+      <div><p class="ls-k">発送日</p><p class="ls-v" data-slot="legDropJa">2026年7月10日</p></div>
+      <div><p class="ls-k">到着先</p><p class="ls-v" data-slot="legToJa">帝国ホテル 大阪</p></div>
+      <div><p class="ls-k">到着日</p><p class="ls-v" data-slot="legPickJa">2026年7月11日</p></div>
+    </div>
+  </div>
 
   <div class="notice-row">
     <div class="notice-card accent">
@@ -350,7 +400,7 @@
 
   <footer class="p2-footer jp">
     <span>株式会社JOJO ／ 〒158-0092 東京都世田谷区野毛1-9-12</span>
-    <span>REFERENCE: <span data-slot="bookingId">BDX-260702-147</span> ・ FOR HOTEL STAFF</span>
+    <span>REFERENCE: <span data-slot="voucherRef">BDX-260702-147-A</span> ・ FOR HOTEL STAFF</span>
   </footer>
 </section>
 

@@ -91,7 +91,7 @@ html, body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding-bottom: 3.2mm;
+  padding-bottom: 2.6mm;
   border-bottom: 0.8mm solid var(--rule);
 }
 .brand {
@@ -126,14 +126,36 @@ html, body {
 /* ============================================================
    Page 1 — guest voucher
    ============================================================ */
+
+/* 複数配送: この用紙の対象区間バナー (最上部・赤ベタで一瞬で判別) */
+.leg-banner {
+  margin-top: 3mm;
+  background: var(--red);
+  color: #fff;
+  padding: 2.6mm 4mm;
+  display: grid; grid-template-columns: auto 1fr; gap: 4.5mm;
+  align-items: center;
+}
+.lb-kicker { font-size: 6.2pt; font-weight: 800; letter-spacing: 0.18em; color: rgba(255,255,255,.8); }
+.lb-leg { font-size: 16pt; font-weight: 800; line-height: 1.05; margin-top: 0.6mm; letter-spacing: 0.02em; }
+.lb-main { border-left: 0.4mm solid rgba(255,255,255,.45); padding-left: 4.5mm; }
+.lb-route { font-size: 11.5pt; font-weight: 800; line-height: 1.2; }
+.lb-route .lb-arrow { font-weight: 400; }
+.lb-dates { font-size: 7.5pt; color: rgba(255,255,255,.85); margin-top: 1mm; }
+.lb-dates strong { color: #fff; font-weight: 800; }
+.lb-sep {
+  display: inline-block; width: 1.4mm; height: 1.4mm;
+  background: rgba(255,255,255,.6); margin: 0 2.2mm 0.3mm; vertical-align: middle;
+}
+
 .doc-title {
-  margin-top: 5mm;
+  margin-top: 2.2mm;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 8mm;
 }
-.doc-title h1 { font-size: 20pt; font-weight: 800; line-height: 1.12; }
+.doc-title h1 { font-size: 17pt; font-weight: 800; line-height: 1.12; }
 .doc-title .sub { font-size: 9pt; color: var(--ink-soft); margin-top: 1.5mm; }
 
 .tracking-module {
@@ -145,27 +167,27 @@ html, body {
 .tracking-module .tm-head {
   background: var(--red); color: #fff;
   font-size: 7pt; font-weight: 800; letter-spacing: 0.2em;
-  padding: 1.4mm 0; margin-bottom: 2mm;
+  padding: 1.2mm 0; margin-bottom: 1.6mm;
 }
 .tracking-module .tm-head .jp { letter-spacing: 0.05em; }
-.tracking-module svg { width: 20mm; height: 20mm; display: block; margin: 0 auto; }
-.tm-caption { font-size: 7pt; font-weight: 700; margin-top: 1.6mm; }
-.tm-caption-en { font-size: 6pt; color: var(--ink-soft); margin-top: 0.4mm; }
-.tm-note { font-size: 5.5pt; color: var(--muted); margin-top: 1.2mm; line-height: 1.5; }
+.tracking-module svg { width: 15mm; height: 15mm; display: block; margin: 0 auto; }
+.tm-caption { font-size: 7pt; font-weight: 700; margin-top: 1.2mm; }
+.tm-caption-en { font-size: 6pt; color: var(--ink-soft); margin-top: 0.3mm; }
+.tm-note { font-size: 5pt; color: var(--muted); margin-top: 0.9mm; line-height: 1.4; }
 
 .present-strip {
-  margin-top: 4mm;
+  margin-top: 3mm;
   border: 0.5mm solid var(--ink);
-  padding: 2.6mm 5mm;
+  padding: 2.2mm 5mm;
   display: flex; align-items: center; gap: 4mm;
 }
 .present-strip .icon { flex-shrink: 0; }
-.present-strip .en { font-size: 10pt; font-weight: 700; }
+.present-strip .en { font-size: 9.5pt; font-weight: 700; }
 .present-strip .ja { font-size: 8pt; color: var(--ink-soft); margin-top: 0.6mm; }
 
 /* journey hero */
 .journey {
-  margin-top: 5mm;
+  margin-top: 3.5mm;
   display: grid;
   grid-template-columns: 1fr 12mm 1fr;
   align-items: stretch;
@@ -189,25 +211,38 @@ html, body {
   border-bottom: 0.3mm solid var(--gray-line);
   padding-bottom: 2.2mm;
 }
-.leg-date .day { font-size: 28pt; font-weight: 800; line-height: 0.9; }
+.leg-date .day { font-size: 23pt; font-weight: 800; line-height: 0.9; }
 .leg-date .my { font-size: 9pt; font-weight: 700; letter-spacing: 0.06em; }
 .leg-date .dow { font-size: 8pt; color: var(--red); font-weight: 700; }
 
-.leg-hotel { margin-top: 2.6mm; }
+.leg-hotel { margin-top: 2mm; }
 .leg-hotel .en { font-size: 12pt; font-weight: 700; line-height: 1.2; }
-.leg-hotel .ja { font-size: 9pt; color: var(--ink-soft); margin-top: 0.8mm; }
-.leg-hotel .addr { font-size: 7pt; color: var(--muted); margin-top: 1.4mm; line-height: 1.5; }
+.leg-hotel .ja { font-size: 9pt; color: var(--ink-soft); margin-top: 0.6mm; }
+.leg-hotel .addr { font-size: 7pt; color: var(--muted); margin-top: 1mm; line-height: 1.4; }
 
-.leg-when { margin-top: auto; padding-top: 2.6mm; font-size: 7.5pt; line-height: 1.5; }
+.leg-when { margin-top: auto; padding-top: 1.6mm; font-size: 7.5pt; line-height: 1.45; }
 .leg-when .en { font-weight: 700; }
 .leg-when .ja { color: var(--ink-soft); }
+
+/* 複数配送: この用紙のお渡し先 (DROP-OFF カード内で明示) */
+.give-to {
+  margin-top: 1.8mm;
+  background: var(--red-tint);
+  border-left: 1mm solid var(--red);
+  padding: 1.5mm 2.2mm;
+}
+.give-to .gt-en { font-size: 6.2pt; font-weight: 800; letter-spacing: 0.12em; color: var(--red-dark); }
+.give-to .gt-hotel { font-size: 9pt; font-weight: 800; margin-top: 0.5mm; }
+.give-to .gt-hotel .gt-date { font-size: 7.5pt; font-weight: 700; color: var(--ink-soft); }
+.give-to .gt-ja { font-size: 6.2pt; color: var(--ink-soft); margin-top: 0.5mm; line-height: 1.45; }
+.give-to .gt-ja strong { color: var(--ink); }
 
 .journey-arrow { display: flex; align-items: center; justify-content: center; }
 .journey-arrow svg { width: 9mm; height: 9mm; }
 
 /* details grid */
 .detail-grid {
-  margin-top: 5mm;
+  margin-top: 3.5mm;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-top: 0.5mm solid var(--ink);
@@ -216,8 +251,8 @@ html, body {
 .detail-cell {
   border-right: 0.5mm solid var(--ink);
   border-bottom: 0.5mm solid var(--ink);
-  padding: 2.6mm 3.5mm;
-  min-height: 16mm;
+  padding: 2.4mm 3.5mm;
+  min-height: 13.5mm;
 }
 .detail-cell .k {
   font-size: 6pt; letter-spacing: 0.16em;
@@ -227,25 +262,46 @@ html, body {
 .detail-cell .v { font-size: 10pt; font-weight: 700; margin-top: 1.2mm; line-height: 1.25; }
 .detail-cell .v small { display: block; font-size: 7pt; font-weight: 400; color: var(--ink-soft); margin-top: 0.6mm; }
 
-/* tagline band */
+/* 複数配送: 旅程全体のミニ一覧 (補助情報なので控えめに) */
+.route-list {
+  margin-top: 3mm;
+  border: 0.4mm solid var(--gray-line);
+  padding: 1.8mm 3mm 1.6mm;
+}
+.rl-head { font-size: 6.2pt; font-weight: 800; letter-spacing: 0.16em; color: var(--muted); }
+.rl-row {
+  display: grid; grid-template-columns: 15mm 11mm 1fr auto;
+  gap: 3mm; align-items: baseline;
+  padding: 0.7mm 0 0.5mm;
+  font-size: 7pt; color: var(--muted);
+}
+.rl-row + .rl-row { border-top: 0.3mm dotted var(--gray-line); }
+.rl-row .rl-leg { font-weight: 800; letter-spacing: 0.04em; }
+.rl-row .rl-date { font-weight: 700; }
+.rl-row.current { color: var(--red-dark); }
+.rl-row.current .rl-route { font-weight: 800; }
+.rl-chip { justify-self: end; font-size: 5.5pt; font-weight: 800; letter-spacing: 0.08em; }
+.rl-row.current .rl-chip { background: var(--red); color: #fff; padding: 0.5mm 1.8mm; }
+
+/* tagline band (複数配送要素の追加に伴いスリム化) */
 .tag-band {
-  margin-top: 5mm;
+  margin-top: 3mm;
   background: var(--gray-bg);
-  padding: 4mm 6mm;
+  padding: 2.2mm 5mm;
   display: flex; align-items: center; justify-content: space-between; gap: 6mm;
 }
-.tag-band .words .en { font-size: 11.5pt; font-weight: 800; line-height: 1.25; }
+.tag-band .words .en { font-size: 9.5pt; font-weight: 800; line-height: 1.25; }
 .tag-band .words .en em { color: var(--red); font-style: normal; }
-.tag-band .words .ja { font-size: 8pt; color: var(--ink-soft); margin-top: 1.2mm; line-height: 1.6; }
+.tag-band .words .ja { font-size: 7pt; color: var(--ink-soft); margin-top: 0.6mm; line-height: 1.5; }
 .tag-band .art { flex-shrink: 0; }
-.tag-band .art svg { display: block; }
+.tag-band .art svg { display: block; width: 38mm; height: 9mm; }
 
 /* -------- requirement 1: hotel-staff redirect card (page 1) -------- */
 .staff-alert {
   margin-top: auto; /* occupies the free zone above the footer */
   border: 0.8mm solid var(--red);
   background: var(--red-tint);
-  padding: 3.6mm 5mm;
+  padding: 3mm 5mm;
   display: flex; gap: 4.5mm; align-items: center;
 }
 .staff-alert .sa-icon { flex-shrink: 0; }
@@ -258,8 +314,8 @@ html, body {
 .staff-alert .sa-body-en { font-size: 7.5pt; color: var(--ink-soft); margin-top: 0.8mm; line-height: 1.5; }
 
 .p1-footer {
-  margin-top: 4mm;
-  padding-top: 3mm;
+  margin-top: 2.5mm;
+  padding-top: 2.4mm;
   border-top: 0.3mm solid var(--gray-line);
   display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm;
 }
@@ -275,7 +331,27 @@ html, body {
 .p2-head-tag { font-size: 11pt; font-weight: 800; color: var(--red); }
 .p2-head-tag .ja { font-size: 9pt; color: var(--ink); font-weight: 700; }
 
-.lead-statement { margin-top: 2.4mm; font-size: 11pt; font-weight: 800; line-height: 1.4; }
+.lead-statement { margin-top: 2.2mm; font-size: 11pt; font-weight: 800; line-height: 1.4; }
+
+/* 複数配送: 対象区間ストリップ (墨ベタ + 赤バッジ — 見た瞬間に区間が分かる) */
+.leg-strip {
+  margin-top: 2.2mm;
+  background: var(--ink);
+  color: #fff;
+  padding: 2.2mm 3.2mm;
+  display: flex; align-items: center; gap: 5mm;
+}
+.ls-left { flex-shrink: 0; }
+.ls-cap { font-size: 5.6pt; letter-spacing: 0.14em; color: #9c9ca4; font-weight: 700; }
+.ls-badge {
+  margin-top: 0.8mm;
+  background: var(--red); color: #fff;
+  font-size: 10.5pt; font-weight: 800; letter-spacing: 0.04em;
+  padding: 0.8mm 2.6mm; display: inline-block;
+}
+.ls-grid { flex: 1; display: grid; grid-template-columns: 1.4fr 1fr 1.4fr 1fr; gap: 3mm; }
+.ls-k { font-size: 5.8pt; letter-spacing: 0.12em; color: #9c9ca4; }
+.ls-v { font-size: 9pt; font-weight: 800; margin-top: 0.5mm; white-space: nowrap; }
 
 .notice-row {
   margin-top: 2.4mm;
@@ -334,7 +410,7 @@ html, body {
 .room-note .rn-en { color: var(--ink-soft); margin-top: 0.3mm; font-size: 6.5pt; }
 
 /* -------- requirement 2: reservation lookup panels -------- */
-.hotel-detail { margin-top: 2.8mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+.hotel-detail { margin-top: 2.4mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
 .hd-block { background: var(--gray-bg); padding: 2.6mm 3.2mm; }
 .hd-block .hd-no { font-size: 7pt; font-weight: 800; letter-spacing: 0.12em; }
 .hd-block.depart .hd-no { color: var(--red); }
@@ -373,7 +449,7 @@ html, body {
 
 /* contact strip */
 .contact-strip {
-  margin-top: 2.8mm;
+  margin-top: 2.4mm;
   border: 0.5mm solid var(--ink);
   display: grid; grid-template-columns: 1fr 1fr;
 }
@@ -388,11 +464,11 @@ html, body {
 
 /* about + partner — 営業バナー (広告枠): 墨ベタ地 + 白 CTA カードの誌面広告調 */
 .ad-banner {
-  margin-top: 3mm;
+  margin-top: 2.6mm;
   background: var(--ink);
   color: #fff;
   border-top: 1.4mm solid var(--red);
-  padding: 4mm 4.5mm;
+  padding: 3.2mm 4.5mm;
   display: grid; grid-template-columns: 1fr 42mm; gap: 5mm;
   align-items: center;
 }
