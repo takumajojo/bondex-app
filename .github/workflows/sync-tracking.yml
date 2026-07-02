@@ -1,0 +1,33 @@
+name: Sync Yamato tracking
+
+# Vercel Hobby プランの cron は 1日1回までしか許可されないため
+# (公式ドキュメント: https://vercel.com/docs/cron-jobs/usage-and-pricing)、
+# GitHub Actions から定期的に /api/cron/sync-tracking を叩く方式にしている。
+#
+# 事前設定が必要:
+#   Repository → Settings → Secrets and variables → Actions
+#   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
+
+on:
+  schedule:
+    # 毎時 5 分 (00分ちょうどは GitHub Actions が混雑しやすいので少しずらす)
+    - cron: "5 * * * *"
+  workflow_dispatch: {}  # 手動実行 (Actions タブから "Run workflow" で即実行できる)
+
+jobs:
+  sync-tracking:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx tracking sync endpoint
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://bondex.express/api/cron/sync-tracking)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "$body"
+          if [ "$http_code" -ge 400 ]; then
+            echo "::error::sync-tracking failed with HTTP $http_code"
+            exit 1
+          fi
