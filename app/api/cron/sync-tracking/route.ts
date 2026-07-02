@@ -3,7 +3,10 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 
 export const runtime = "nodejs"
-export const maxDuration = 60
+// Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
+// (公式ドキュメント確認済み, 2026-07-02). 個々の Ship&co 呼び出しには
+// 別途 10s のタイムアウトを設けているので、ここは安全マージンとして最大値を確保。
+export const maxDuration = 300
 
 /**
  * Vercel Cron から定期実行: Ship&co の GET トラッキング API をポーリングして
@@ -71,19 +74,39 @@ interface TrackingResponse {
   current_status?: TrackingCurrentStatus
 }
 
+const SHIPANDCO_TIMEOUT_MS = 10_000
+
+/**
+ * 1件の Ship&co 呼び出しがハングすると batch 全体が maxDuration まで
+ * ブロックされてしまうため、個別に AbortController でタイムアウトを切る。
+ */
 async function fetchYamatoTracking(
   token: string,
   trackingNumber: string,
 ): Promise<TrackingResponse | null> {
-  const res = await fetch(
-    `${SHIPANDCO_BASE}/tracking/yamato/${encodeURIComponent(trackingNumber)}`,
-    { headers: { "x-access-token": token, "Content-Type": "application/json" } },
-  )
-  if (!res.ok) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), SHIPANDCO_TIMEOUT_MS)
   try {
+    const res = await fetch(
+      `${SHIPANDCO_BASE}/tracking/yamato/${encodeURIComponent(trackingNumber)}`,
+      {
+        headers: { "x-access-token": token, "Content-Type": "application/json" },
+        signal: controller.signal,
+      },
+    )
+    if (!res.ok) {
+      console.error(
+        `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${trackingNumber}`,
+      )
+      return null
+    }
     return (await res.json()) as TrackingResponse
-  } catch {
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    console.error(`[cron/sync-tracking] Ship&co call failed for ${trackingNumber}: ${reason}`)
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
