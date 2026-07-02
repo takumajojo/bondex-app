@@ -2,7 +2,7 @@
    BondEx Luggage Forwarding Voucher — print template
    A4 portrait × 2 pages
    Page 1: GUEST COPY (EN primary / JP secondary)
-   Page 2: FOR HOTEL STAFF (JP primary)
+   Page 2: FOR HOTEL STAFF (JP primary) + cut-out baggage tag
 
    Design language:
      mid-century structural (Eames / USM) — grid, rules, flat color
@@ -10,8 +10,14 @@
      No photos. No stereotypical Japan motifs. Line work only.
 
    Data replacement:
-     All variable data is marked with data-slot="..." attributes in
-     the HTML so a future integration can swap values programmatically.
+     All variable data is marked with data-slot="..." attributes.
+
+   Contact display mode (requirement 5):
+     Set data-contact-mode on <body> to one of:
+       "bondex_support"  → label CONTACT, BondEx support number
+       "travel_agency"   → label TRAVEL AGENCY CONTACT
+       "tour_operator"   → label TOUR OPERATOR CONTACT
+       "hidden"          → contact cell removed, tracking cell expands
    ============================================================ */
 
 :root {
@@ -20,6 +26,7 @@
   --muted: #8a8a92;
   --red: #c8102e;
   --red-dark: #a00d25;
+  --red-tint: #fdf3f4;
   --paper: #ffffff;
   --gray-bg: #f4f4f5;
   --gray-line: #e3e3e6;
@@ -34,7 +41,7 @@
 html, body {
   font-family: var(--font-en), var(--font-jp);
   color: var(--ink);
-  background: #d8d8dc; /* screen preview backdrop; hidden in print */
+  background: #d8d8dc;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -44,10 +51,10 @@ html, body {
 /* ---------- sheet = one A4 page ---------- */
 .sheet {
   width: 210mm;
-  height: 296mm; /* 1mm safety under exact A4 to avoid spill to blank page */
+  height: 296mm;
   background: var(--paper);
   margin: 8mm auto;
-  padding: 13mm 14mm 11mm;
+  padding: 12mm 14mm 10mm;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -58,17 +65,23 @@ html, body {
 
 @media print {
   html, body { background: none; }
-  .sheet {
-    margin: 0;
-    box-shadow: none;
-    page-break-after: always;
-  }
+  .sheet { margin: 0; box-shadow: none; page-break-after: always; }
   .sheet:last-child { page-break-after: auto; }
 }
-
 @media screen {
   .sheet { box-shadow: 0 6px 32px rgba(0, 0, 0, 0.18); }
 }
+
+/* ============================================================
+   Contact display mode switching (requirement 5)
+   ============================================================ */
+.cl { display: none; }
+[data-contact-mode="bondex_support"] .cl-bondex { display: inline; }
+[data-contact-mode="travel_agency"] .cl-agency { display: inline; }
+[data-contact-mode="tour_operator"] .cl-tour { display: inline; }
+[data-contact-mode="hidden"] .cell-contact { display: none; }
+.cell-span2 { grid-column: span 2; }
+[data-contact-mode="hidden"] .cell-tracking { grid-column: span 4; }
 
 /* ============================================================
    Shared header
@@ -77,21 +90,19 @@ html, body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding-bottom: 5mm;
+  padding-bottom: 3.2mm;
   border-bottom: 0.8mm solid var(--rule);
 }
-
 .brand {
   font-family: var(--font-en);
   font-style: italic;
   font-weight: 800;
-  font-size: 26pt;
+  font-size: 25pt;
   letter-spacing: -0.02em;
   color: var(--red);
   line-height: 1;
 }
-/* 実装時は上を画像ロゴに差し替え:
-   <img src="/bondex-logo.png" style="height:11mm"> */
+/* 実装時は画像ロゴに差し替え: <img src="/bondex-logo.png" style="height:11mm"> */
 
 .masthead-right { text-align: right; }
 .ref-label {
@@ -100,13 +111,7 @@ html, body {
   color: var(--muted);
   text-transform: uppercase;
 }
-.ref-value {
-  font-size: 13pt;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  margin-top: 1mm;
-}
-
+.ref-value { font-size: 13pt; font-weight: 700; margin-top: 1mm; }
 .copy-tag {
   display: inline-block;
   margin-top: 2mm;
@@ -120,125 +125,78 @@ html, body {
    Page 1 — guest voucher
    ============================================================ */
 .doc-title {
-  margin-top: 6mm;
+  margin-top: 5mm;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 8mm;
 }
-.doc-title h1 {
-  font-size: 21pt;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
-}
-.doc-title .sub {
-  font-size: 9pt;
-  color: var(--ink-soft);
-  margin-top: 1.5mm;
-}
+.doc-title h1 { font-size: 20pt; font-weight: 800; line-height: 1.12; }
+.doc-title .sub { font-size: 9pt; color: var(--ink-soft); margin-top: 1.5mm; }
 
-/* QR block */
-.qr-box {
-  flex-shrink: 0;
-  width: 34mm;
-  text-align: center;
-}
-.qr-box svg { width: 24mm; height: 24mm; display: block; margin: 0 auto; }
+.qr-box { flex-shrink: 0; width: 34mm; text-align: center; }
+.qr-box svg { width: 23mm; height: 23mm; display: block; margin: 0 auto; }
 .qr-caption {
-  font-size: 6.5pt;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--red);
-  margin-top: 1.5mm;
+  font-size: 6.5pt; font-weight: 700; letter-spacing: 0.18em;
+  color: var(--red); margin-top: 1.5mm;
 }
-.qr-url {
-  font-size: 6.5pt;
-  color: var(--ink-soft);
-  margin-top: 0.8mm;
-  word-break: break-all;
-  line-height: 1.4;
-}
+.qr-url { font-size: 6.5pt; color: var(--ink-soft); margin-top: 0.8mm; word-break: break-all; line-height: 1.4; }
 
-/* present-at-reception instruction */
 .present-strip {
-  margin-top: 5mm;
+  margin-top: 4mm;
   border: 0.5mm solid var(--ink);
-  padding: 3mm 5mm;
-  display: flex;
-  align-items: center;
-  gap: 4mm;
+  padding: 2.6mm 5mm;
+  display: flex; align-items: center; gap: 4mm;
 }
 .present-strip .icon { flex-shrink: 0; }
 .present-strip .en { font-size: 10pt; font-weight: 700; }
 .present-strip .ja { font-size: 8pt; color: var(--ink-soft); margin-top: 0.6mm; }
 
-/* ---------- journey hero ---------- */
+/* journey hero */
 .journey {
-  margin-top: 6mm;
+  margin-top: 5mm;
   display: grid;
   grid-template-columns: 1fr 12mm 1fr;
   align-items: stretch;
 }
-
 .leg-card {
   border: 0.5mm solid var(--ink);
-  padding: 4.5mm 5mm 4mm;
-  display: flex;
-  flex-direction: column;
+  padding: 4.5mm 5mm 3.5mm;
+  display: flex; flex-direction: column;
 }
 .leg-card .leg-tab {
   align-self: flex-start;
-  font-size: 7pt;
-  font-weight: 800;
-  letter-spacing: 0.2em;
-  color: #fff;
-  padding: 1.2mm 3mm;
-  margin: -4.5mm 0 3mm -5mm; /* bleed into the border corner */
+  font-size: 7pt; font-weight: 800; letter-spacing: 0.2em;
+  color: #fff; padding: 1.2mm 3mm;
+  margin: -4.5mm 0 3mm -5mm;
 }
 .leg-drop .leg-tab { background: var(--red); }
 .leg-pick .leg-tab { background: var(--ink); }
 
 .leg-date {
-  display: flex;
-  align-items: baseline;
-  gap: 2.5mm;
+  display: flex; align-items: baseline; gap: 2.5mm;
   border-bottom: 0.3mm solid var(--gray-line);
-  padding-bottom: 2.5mm;
+  padding-bottom: 2.2mm;
 }
-.leg-date .day { font-size: 30pt; font-weight: 800; line-height: 0.9; }
+.leg-date .day { font-size: 28pt; font-weight: 800; line-height: 0.9; }
 .leg-date .my { font-size: 9pt; font-weight: 700; letter-spacing: 0.06em; }
 .leg-date .dow { font-size: 8pt; color: var(--red); font-weight: 700; }
 
-.leg-hotel { margin-top: 3mm; }
+.leg-hotel { margin-top: 2.6mm; }
 .leg-hotel .en { font-size: 12pt; font-weight: 700; line-height: 1.2; }
 .leg-hotel .ja { font-size: 9pt; color: var(--ink-soft); margin-top: 0.8mm; }
-.leg-hotel .addr {
-  font-size: 7pt;
-  color: var(--muted);
-  margin-top: 1.6mm;
-  line-height: 1.5;
-}
+.leg-hotel .addr { font-size: 7pt; color: var(--muted); margin-top: 1.4mm; line-height: 1.5; }
 
-.leg-when {
-  margin-top: auto;
-  padding-top: 3mm;
-  font-size: 7.5pt;
-  line-height: 1.5;
-}
+.leg-when { margin-top: auto; padding-top: 2.6mm; font-size: 7.5pt; line-height: 1.5; }
 .leg-when .en { font-weight: 700; }
 .leg-when .ja { color: var(--ink-soft); }
 
-.journey-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+.journey-arrow { display: flex; align-items: center; justify-content: center; }
 .journey-arrow svg { width: 9mm; height: 9mm; }
 
-/* ---------- details grid ---------- */
+/* details grid */
 .detail-grid {
-  margin-top: 6mm;
+  margin-top: 5mm;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-top: 0.5mm solid var(--ink);
@@ -247,126 +205,87 @@ html, body {
 .detail-cell {
   border-right: 0.5mm solid var(--ink);
   border-bottom: 0.5mm solid var(--ink);
-  padding: 3mm 3.5mm;
-  min-height: 17mm;
+  padding: 2.6mm 3.5mm;
+  min-height: 16mm;
 }
 .detail-cell .k {
-  font-size: 6pt;
-  letter-spacing: 0.16em;
-  color: var(--muted);
-  text-transform: uppercase;
+  font-size: 6pt; letter-spacing: 0.16em;
+  color: var(--muted); text-transform: uppercase;
 }
 .detail-cell .k .jp { letter-spacing: 0.05em; }
-.detail-cell .v { font-size: 10pt; font-weight: 700; margin-top: 1.4mm; line-height: 1.25; }
+.detail-cell .v { font-size: 10pt; font-weight: 700; margin-top: 1.2mm; line-height: 1.25; }
 .detail-cell .v small { display: block; font-size: 7pt; font-weight: 400; color: var(--ink-soft); margin-top: 0.6mm; }
 
-/* ---------- tagline band with line-art ---------- */
+/* tagline band */
 .tag-band {
-  margin-top: 6mm;
+  margin-top: 5mm;
   background: var(--gray-bg);
-  padding: 5mm 6mm;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6mm;
+  padding: 4mm 6mm;
+  display: flex; align-items: center; justify-content: space-between; gap: 6mm;
 }
-.tag-band .words .en {
-  font-size: 12pt;
-  font-weight: 800;
-  line-height: 1.25;
-}
+.tag-band .words .en { font-size: 11.5pt; font-weight: 800; line-height: 1.25; }
 .tag-band .words .en em { color: var(--red); font-style: normal; }
-.tag-band .words .ja { font-size: 8pt; color: var(--ink-soft); margin-top: 1.5mm; line-height: 1.6; }
+.tag-band .words .ja { font-size: 8pt; color: var(--ink-soft); margin-top: 1.2mm; line-height: 1.6; }
 .tag-band .art { flex-shrink: 0; }
 .tag-band .art svg { display: block; }
 
-/* ---------- page footer ---------- */
+/* -------- requirement 1: hotel-staff redirect card (page 1) -------- */
+.staff-alert {
+  margin-top: auto; /* occupies the free zone above the footer */
+  border: 0.8mm solid var(--red);
+  background: var(--red-tint);
+  padding: 3.6mm 5mm;
+  display: flex; gap: 4.5mm; align-items: center;
+}
+.staff-alert .sa-icon { flex-shrink: 0; }
+.staff-alert .sa-head {
+  font-size: 11pt; font-weight: 800; color: var(--red-dark);
+  line-height: 1.3;
+}
+.staff-alert .sa-head .en { font-size: 8pt; letter-spacing: 0.12em; }
+.staff-alert .sa-body { font-size: 8.5pt; margin-top: 1.2mm; line-height: 1.55; font-weight: 700; }
+.staff-alert .sa-body-en { font-size: 7.5pt; color: var(--ink-soft); margin-top: 0.8mm; line-height: 1.5; }
+
 .p1-footer {
-  margin-top: auto;
-  padding-top: 4mm;
+  margin-top: 4mm;
+  padding-top: 3mm;
   border-top: 0.3mm solid var(--gray-line);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 6mm;
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm;
 }
 .p1-footer .co { font-size: 7pt; color: var(--muted); line-height: 1.6; }
 .p1-footer .co strong { color: var(--ink-soft); }
-.next-page-note {
-  text-align: right;
-  font-size: 8pt;
-  font-weight: 700;
-  line-height: 1.5;
-}
+.next-page-note { text-align: right; font-size: 8pt; font-weight: 700; line-height: 1.5; }
 .next-page-note .ja { display: block; font-size: 7pt; font-weight: 400; color: var(--ink-soft); }
 .next-page-note .arrow { color: var(--red); }
 
 /* ============================================================
    Page 2 — hotel staff
    ============================================================ */
-.p2-head-tag {
-  font-size: 11pt;
-  font-weight: 800;
-  color: var(--red);
-  letter-spacing: 0.04em;
-}
+.p2-head-tag { font-size: 11pt; font-weight: 800; color: var(--red); }
 .p2-head-tag .ja { font-size: 9pt; color: var(--ink); font-weight: 700; }
 
-.lead-statement {
-  margin-top: 3.5mm;
-  font-size: 12pt;
-  font-weight: 800;
-  line-height: 1.45;
-}
+.lead-statement { margin-top: 2.4mm; font-size: 11pt; font-weight: 800; line-height: 1.4; }
 
-/* three key-notice cards */
 .notice-row {
-  margin-top: 3.5mm;
+  margin-top: 2.4mm;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 3.5mm;
+  gap: 3mm;
 }
-.notice-card {
-  border: 0.6mm solid var(--ink);
-  padding: 3.5mm 4mm;
-}
-.notice-card.accent { border-color: var(--red); background: #fdf3f4; }
-.notice-card .n-icon { margin-bottom: 2mm; }
-.notice-card .n-title {
-  font-size: 9.5pt;
-  font-weight: 800;
-  line-height: 1.4;
-}
+.notice-card { border: 0.6mm solid var(--ink); padding: 2.3mm 3.2mm; }
+.notice-card.accent { border-color: var(--red); background: var(--red-tint); }
+.notice-card .n-icon { margin-bottom: 1.6mm; }
+.notice-card .n-title { font-size: 9pt; font-weight: 800; line-height: 1.35; }
 .notice-card.accent .n-title { color: var(--red-dark); }
-.notice-card .n-sub {
-  font-size: 7.5pt;
-  color: var(--ink-soft);
-  margin-top: 1.2mm;
-  line-height: 1.55;
-}
+.notice-card .n-sub { font-size: 6.8pt; color: var(--ink-soft); margin-top: 1mm; line-height: 1.5; }
 
-/* flow section */
-.flow-title {
-  margin-top: 4mm;
-  font-size: 8pt;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: var(--muted);
-}
-.flow-cols {
-  margin-top: 2.5mm;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4mm;
-}
-.flow-col { border: 0.4mm solid var(--gray-line); padding: 3.5mm 4mm; }
+.flow-title { margin-top: 2.6mm; font-size: 8pt; font-weight: 800; letter-spacing: 0.18em; color: var(--muted); }
+.flow-cols { margin-top: 2mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+.flow-col { border: 0.4mm solid var(--gray-line); padding: 2.5mm 3mm; }
 .flow-col-head {
   display: inline-block;
-  font-size: 8pt;
-  font-weight: 800;
-  color: #fff;
-  padding: 1.2mm 3mm;
-  margin-bottom: 3mm;
+  font-size: 8pt; font-weight: 800; color: #fff;
+  padding: 1.2mm 3mm; margin-bottom: 2mm;
 }
 .flow-col.depart .flow-col-head { background: var(--red); }
 .flow-col.arrive .flow-col-head { background: var(--ink); }
@@ -375,22 +294,16 @@ html, body {
 .flow-steps li {
   counter-increment: step;
   position: relative;
-  padding: 0 0 2.2mm 8.5mm;
-  font-size: 8pt;
-  line-height: 1.5;
+  padding: 0 0 1.8mm 8.5mm;
+  font-size: 8pt; line-height: 1.45;
 }
 .flow-steps li:last-child { padding-bottom: 0; }
 .flow-steps li::before {
   content: counter(step);
-  position: absolute;
-  left: 0; top: 0;
-  width: 5.5mm; height: 5.5mm;
-  border-radius: 50%;
-  font-size: 7.5pt;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: absolute; left: 0; top: 0;
+  width: 5.2mm; height: 5.2mm; border-radius: 50%;
+  font-size: 7.5pt; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
   color: #fff;
 }
 .flow-col.depart .flow-steps li::before { background: var(--red); }
@@ -398,86 +311,141 @@ html, body {
 .flow-steps .s-main { font-weight: 700; display: block; }
 .flow-steps .s-sub { color: var(--ink-soft); font-size: 7pt; }
 
-/* booking-specific detail blocks */
-.hotel-detail {
-  margin-top: 3.5mm;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4mm;
+/* requirement 4: soft room-delivery note in arrive flow */
+.room-note {
+  margin-top: 1.8mm;
+  background: var(--gray-bg);
+  border-left: 0.8mm solid var(--ink);
+  padding: 1.5mm 2.5mm;
+  font-size: 7pt; line-height: 1.5;
 }
-.hd-block { background: var(--gray-bg); padding: 3.5mm 4mm; }
-.hd-block .hd-no {
-  font-size: 7pt;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-}
+.room-note .rn-ja { font-weight: 700; }
+.room-note .rn-en { color: var(--ink-soft); margin-top: 0.3mm; font-size: 6.5pt; }
+
+/* -------- requirement 2: reservation lookup panels -------- */
+.hotel-detail { margin-top: 2.8mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+.hd-block { background: var(--gray-bg); padding: 2.6mm 3.2mm; }
+.hd-block .hd-no { font-size: 7pt; font-weight: 800; letter-spacing: 0.12em; }
 .hd-block.depart .hd-no { color: var(--red); }
 .hd-block.arrive .hd-no { color: var(--ink); }
-.hd-block .hd-hotel { font-size: 10.5pt; font-weight: 800; margin-top: 1mm; }
-.hd-block dl { margin-top: 1.6mm; }
-.hd-block dl div { display: flex; gap: 2mm; font-size: 7.5pt; line-height: 1.65; }
-.hd-block dt { color: var(--muted); flex-shrink: 0; }
-.hd-block dd { color: var(--ink-soft); }
-.hd-block dd strong { color: var(--ink); }
+.hd-block .hd-hotel { font-size: 10pt; font-weight: 800; margin-top: 0.8mm; }
+
+.lookup-grid {
+  margin-top: 2mm;
+  background: var(--paper);
+  border: 0.4mm solid var(--ink);
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr 0.7fr 0.7fr;
+}
+.lookup-cell { padding: 1.6mm 2.2mm; }
+.lookup-cell + .lookup-cell { border-left: 0.3mm solid var(--gray-line); }
+.lookup-cell .lk {
+  font-size: 5.5pt; letter-spacing: 0.08em;
+  color: var(--muted); text-transform: uppercase; line-height: 1.3;
+}
+.lookup-cell .lv { font-size: 8.5pt; font-weight: 700; margin-top: 0.7mm; line-height: 1.25; }
+/* 予約検索に使う「名前」「チェックイン日」を強調 (requirement 2) */
+.lookup-cell.primary .lv { font-size: 9.5pt; font-weight: 800; }
+.lookup-cell.primary .lk { color: var(--red-dark); font-weight: 700; }
+.lookup-cell .lv.blank {
+  color: var(--muted); font-weight: 400;
+  border-bottom: 0.3mm solid var(--muted);
+  min-height: 4mm;
+}
+
+.hd-note { margin-top: 1.8mm; font-size: 7.2pt; line-height: 1.6; color: var(--ink-soft); }
+.hd-note strong { color: var(--ink); }
 
 /* contact strip */
 .contact-strip {
-  margin-top: 3.5mm;
+  margin-top: 2.8mm;
   border: 0.5mm solid var(--ink);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: grid; grid-template-columns: 1fr 1fr;
 }
-.contact-cell { padding: 3mm 4mm; }
+.contact-cell { padding: 2mm 3.5mm; }
 .contact-cell + .contact-cell { border-left: 0.5mm solid var(--ink); }
 .contact-cell .c-k {
-  font-size: 6.5pt;
-  letter-spacing: 0.14em;
-  color: var(--muted);
-  text-transform: uppercase;
+  font-size: 6.5pt; letter-spacing: 0.14em;
+  color: var(--muted); text-transform: uppercase;
 }
-.contact-cell .c-v { font-size: 8.5pt; font-weight: 700; margin-top: 1mm; line-height: 1.55; }
+.contact-cell .c-v { font-size: 8pt; font-weight: 700; margin-top: 0.8mm; line-height: 1.5; }
 .contact-cell .c-v small { font-weight: 400; color: var(--ink-soft); }
 
-/* about + partner */
+/* about + partner (compressed to make room for the tag) */
 .about-row {
-  margin-top: auto;
-  padding-top: 4mm;
-  display: grid;
-  grid-template-columns: 1fr 52mm;
-  gap: 5mm;
-  align-items: stretch;
+  margin-top: 2.8mm;
+  display: grid; grid-template-columns: 1fr 56mm; gap: 4mm; align-items: stretch;
 }
-.about-box { border-top: 0.8mm solid var(--ink); padding-top: 3mm; }
-.about-box .a-title {
-  font-size: 8pt;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-}
-.about-box .a-body {
-  font-size: 8pt;
-  color: var(--ink-soft);
-  line-height: 1.75;
-  margin-top: 2mm;
-}
+.about-box { border-top: 0.8mm solid var(--ink); padding-top: 2mm; }
+.about-box .a-title { font-size: 7.5pt; font-weight: 800; letter-spacing: 0.16em; }
+.about-box .a-body { font-size: 7.2pt; color: var(--ink-soft); line-height: 1.5; margin-top: 1mm; }
 .partner-box {
   border: 0.5mm solid var(--red);
-  padding: 3mm 3.5mm;
-  display: flex;
-  gap: 3mm;
-  align-items: center;
+  padding: 2mm 2.8mm;
+  display: flex; gap: 2.5mm; align-items: center;
 }
 .partner-box .p-words { min-width: 0; }
-.partner-box .p-words .p-title { font-size: 7.5pt; font-weight: 800; color: var(--red-dark); line-height: 1.4; }
-.partner-box .p-words .p-body { font-size: 6.6pt; color: var(--ink-soft); line-height: 1.55; margin-top: 1mm; }
-.partner-box .p-words .p-url { font-size: 6.4pt; font-weight: 700; margin-top: 1mm; word-break: break-all; }
-.partner-box svg { width: 17mm; height: 17mm; flex-shrink: 0; }
+.partner-box .p-words .p-title { font-size: 7.2pt; font-weight: 800; color: var(--red-dark); line-height: 1.35; }
+.partner-box .p-words .p-body { font-size: 6.2pt; color: var(--ink-soft); line-height: 1.5; margin-top: 0.6mm; }
+.partner-box .p-words .p-url { font-size: 6.2pt; font-weight: 700; margin-top: 0.6mm; word-break: break-all; }
+.partner-box svg { width: 13mm; height: 13mm; flex-shrink: 0; }
+
+/* -------- requirement 3: cut-out baggage tag -------- */
+.tag-cutline {
+  margin-top: auto;
+  padding-top: 2.2mm;
+  border-top: 0.4mm dashed var(--muted);
+  display: flex; align-items: center; gap: 2mm;
+  font-size: 6.5pt; color: var(--muted);
+}
+.tag-cutline svg { flex-shrink: 0; }
+
+.baggage-tag {
+  margin-top: 1.6mm;
+  border: 0.7mm solid var(--ink);
+  display: grid;
+  grid-template-columns: 9mm 1fr 22mm;
+  align-items: stretch;
+}
+.bt-spine {
+  background: var(--red);
+  color: #fff;
+  writing-mode: vertical-rl;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8pt; font-weight: 800; letter-spacing: 0.22em;
+  padding: 2mm 0;
+}
+.bt-main { padding: 2.2mm 3.5mm; display: flex; flex-direction: column; }
+.bt-row1 {
+  display: flex; align-items: baseline; gap: 4mm;
+  border-bottom: 0.3mm solid var(--gray-line);
+  padding-bottom: 1.6mm;
+}
+.bt-guest .btk { font-size: 5.5pt; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
+.bt-guest .btv { font-size: 12pt; font-weight: 800; line-height: 1.15; }
+.bt-ref { margin-left: auto; text-align: right; }
+.bt-ref .btk { font-size: 5.5pt; letter-spacing: 0.1em; color: var(--muted); }
+.bt-ref .btv { font-size: 9.5pt; font-weight: 800; }
+.bt-row2 { display: flex; gap: 5mm; padding-top: 1.6mm; }
+.bt-field .btk { font-size: 5.5pt; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+.bt-field .btv { font-size: 8.5pt; font-weight: 700; margin-top: 0.5mm; line-height: 1.3; }
+.bt-field .btv .jp-sub { display: block; font-size: 6.5pt; color: var(--ink-soft); font-weight: 400; }
+.bt-keep {
+  margin-top: auto; padding-top: 1.4mm;
+  font-size: 6.2pt; color: var(--ink-soft); line-height: 1.45;
+}
+.bt-qr {
+  border-left: 0.4mm solid var(--gray-line);
+  padding: 2mm;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.bt-qr svg { width: 15mm; height: 15mm; }
+.bt-qr .bq-url { font-size: 5pt; color: var(--muted); margin-top: 1mm; text-align: center; word-break: break-all; line-height: 1.3; }
 
 .p2-footer {
-  padding-top: 3mm;
-  margin-top: 4mm;
+  padding-top: 2mm;
+  margin-top: 2.2mm;
   border-top: 0.3mm solid var(--gray-line);
-  display: flex;
-  justify-content: space-between;
-  font-size: 6.5pt;
-  color: var(--muted);
+  display: flex; justify-content: space-between;
+  font-size: 6.5pt; color: var(--muted);
 }

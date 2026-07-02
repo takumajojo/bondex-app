@@ -7,7 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;0,800;1,800&family=Noto+Sans+JP:wght@400;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="voucher.css">
 </head>
-<body>
+<!--
+  data-contact-mode: "bondex_support" | "travel_agency" | "tour_operator" | "hidden"
+  (requirement 5 — CONTACT 欄のラベル切替 / 非表示)
+-->
+<body data-contact-mode="bondex_support">
 
 <!-- ============================================================
      PAGE 1 — GUEST COPY (EN primary / JP secondary)
@@ -115,25 +119,29 @@
       <p class="k">FORWARDED BY / <span class="jp">手配</span></p>
       <p class="v">BondEx</p>
     </div>
-    <div class="detail-cell" style="grid-column: span 2">
-      <p class="k">CONTACT / <span class="jp">お問い合わせ</span></p>
-      <p class="v" data-slot="contact">+81-XX-XXXX-XXXX<small>9:00 – 18:00 JST &middot; support@bondex.express</small></p>
+    <!-- requirement 5: label switches with body[data-contact-mode] -->
+    <div class="detail-cell cell-span2 cell-contact">
+      <p class="k">
+        <span class="cl cl-bondex">CONTACT / <span class="jp">お問い合わせ</span></span>
+        <span class="cl cl-agency">TRAVEL AGENCY CONTACT / <span class="jp">旅行会社連絡先</span></span>
+        <span class="cl cl-tour">TOUR OPERATOR CONTACT / <span class="jp">ランドオペレーター連絡先</span></span>
+      </p>
+      <p class="v" data-slot="contact">+81-XX-XXXX-XXXX<small>9:00 &ndash; 18:00 JST &middot; support@bondex.express</small></p>
     </div>
-    <div class="detail-cell" style="grid-column: span 2">
+    <div class="detail-cell cell-span2 cell-tracking">
       <p class="k">TRACKING / <span class="jp">追跡</span></p>
       <p class="v" style="font-size:8.5pt" data-slot="trackUrlInline">bondex.express/track/BDX-260702-147<small class="jp">配送状況は上記 URL または QR コードからご確認いただけます</small></p>
     </div>
   </div>
 
-  <!-- tagline + abstract route line-art (no landmarks, structural only) -->
+  <!-- tagline + abstract route line-art -->
   <div class="tag-band">
     <div class="words">
       <p class="en">Travel lighter. Travel better.<br><em>BondEx delivers.</em></p>
       <p class="ja jp">手ぶらで、日本をもっと自由に。次のホテルへ、お荷物をお届けします。</p>
     </div>
     <div class="art">
-      <svg width="220" height="52" viewBox="0 0 220 52" fill="none">
-        <!-- abstract route: suitcase → dotted path → suitcase (structural line work) -->
+      <svg width="200" height="48" viewBox="0 0 220 52" fill="none">
         <rect x="4" y="18" width="24" height="30" rx="3" stroke="#16161a" stroke-width="2"/>
         <path d="M10 18v-5a6 6 0 0 1 12 0v5" stroke="#16161a" stroke-width="2"/>
         <line x1="12" y1="26" x2="12" y2="40" stroke="#c8102e" stroke-width="1.6"/>
@@ -145,6 +153,20 @@
         <line x1="200" y1="26" x2="200" y2="40" stroke="#c8102e" stroke-width="1.6"/>
         <line x1="208" y1="26" x2="208" y2="40" stroke="#c8102e" stroke-width="1.6"/>
       </svg>
+    </div>
+  </div>
+
+  <!-- requirement 1: hotel-staff redirect (red alert card, not a small footnote) -->
+  <div class="staff-alert">
+    <svg class="sa-icon" width="34" height="34" viewBox="0 0 34 34" fill="none">
+      <rect x="1.5" y="1.5" width="31" height="31" rx="15.5" stroke="#a00d25" stroke-width="2"/>
+      <path d="M17 9v11" stroke="#a00d25" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="17" cy="25" r="1.9" fill="#a00d25"/>
+    </svg>
+    <div>
+      <p class="sa-head jp">ホテルご担当者様へ <span class="en">/ FOR HOTEL STAFF</span></p>
+      <p class="sa-body jp">このお荷物は BondEx にて集荷依頼済みです。必ず 2 ページ目の「FOR HOTEL STAFF」をご確認ください。</p>
+      <p class="sa-body-en">Hotel staff: Please see page 2 before handling this luggage.</p>
     </div>
   </div>
 
@@ -176,11 +198,11 @@
     </div>
   </header>
 
-  <p class="lead-statement jp">本バウチャーは、弊社にて集荷依頼済みの<br>荷物配送サービスです。</p>
+  <p class="lead-statement jp">本バウチャーは、弊社にて集荷依頼済みの荷物配送サービスです。</p>
 
   <div class="notice-row">
     <div class="notice-card accent">
-      <svg class="n-icon" width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <svg class="n-icon" width="20" height="20" viewBox="0 0 22 22" fill="none">
         <rect x="2" y="6" width="12" height="11" rx="1.5" stroke="#a00d25" stroke-width="1.6"/>
         <path d="M14 9h3.5l2.5 3.5V17h-6" stroke="#a00d25" stroke-width="1.6" stroke-linejoin="round"/>
         <circle cx="6.5" cy="17" r="1.8" fill="#fff" stroke="#a00d25" stroke-width="1.4"/>
@@ -190,7 +212,7 @@
       <p class="n-sub jp">通常の出荷荷物と同じお取り扱いで結構です。</p>
     </div>
     <div class="notice-card accent">
-      <svg class="n-icon" width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <svg class="n-icon" width="20" height="20" viewBox="0 0 22 22" fill="none">
         <circle cx="11" cy="11" r="9" stroke="#a00d25" stroke-width="1.6"/>
         <path d="M11 6.5v9M8 9.2c0-1.2 1.3-2 3-2s3 .8 3 2-1.3 1.8-3 2-3 .8-3 2 1.3 2 3 2 3-.8 3-2" stroke="#a00d25" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
@@ -198,7 +220,7 @@
       <p class="n-sub jp">宿泊者様からの料金徴収は不要です。</p>
     </div>
     <div class="notice-card">
-      <svg class="n-icon" width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <svg class="n-icon" width="20" height="20" viewBox="0 0 22 22" fill="none">
         <rect x="3" y="3" width="16" height="16" rx="2" stroke="#16161a" stroke-width="1.6"/>
         <path d="M7 11.5l3 3 5.5-6" stroke="#16161a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -213,8 +235,8 @@
       <span class="flow-col-head jp">① 発送元ホテル（ご出発ホテル）での対応</span>
       <ol class="flow-steps jp">
         <li><span class="s-main">お客様がチェックアウト時に荷物をお持ち込み</span><span class="s-sub">本バウチャーの内容をご確認ください</span></li>
-        <li><span class="s-main">出荷する荷物としてお預かり</span><span class="s-sub">通常の荷物出荷と同様に、フロントまたはバックヤードで保管</span></li>
-        <li><span class="s-main">ドライバーが集荷に伺います</span><span class="s-sub">ドライバーがバウチャー内容（ホテル名・予約番号・お客様名）を確認します</span></li>
+        <li><span class="s-main">出荷する荷物としてお預かり</span><span class="s-sub">フロント等で通常の出荷荷物と同様に保管</span></li>
+        <li><span class="s-main">ドライバーが集荷に伺います</span><span class="s-sub">バウチャー内容を確認します</span></li>
         <li><span class="s-main">荷物をドライバーへお渡し</span><span class="s-sub">確認後、お渡しください</span></li>
       </ol>
     </div>
@@ -223,39 +245,71 @@
       <ol class="flow-steps jp">
         <li><span class="s-main">ドライバーが荷物をお届け</span><span class="s-sub">ドライバーがバウチャー内容を確認します</span></li>
         <li><span class="s-main">到着荷物としてお預かり</span><span class="s-sub">通常の荷物お預かりと同様に保管</span></li>
-        <li><span class="s-main">お客様がチェックイン</span><span class="s-sub">お客様がチェックインされます</span></li>
+        <li><span class="s-main">お客様がチェックイン</span></li>
         <li><span class="s-main">荷物をお客様へお渡し</span><span class="s-sub">バウチャー記載のご予約名でお渡しください</span></li>
       </ol>
+      <!-- requirement 4: 任意対応のお願い (強制表現にしない) -->
+      <div class="room-note jp">
+        <p class="rn-ja">お部屋番号が確定している場合：お客様のチェックイン前に、可能であればお部屋までお運びいただけると幸いです。</p>
+        <p class="rn-en">If the room number has already been assigned, please deliver the luggage to the guest room when possible.</p>
+      </div>
     </div>
   </div>
 
+  <!-- requirement 2: 予約検索用パネル (名前 + チェックイン日を強調) -->
   <div class="hotel-detail">
     <div class="hd-block depart">
       <p class="hd-no jp">01 発送元</p>
       <p class="hd-hotel jp" data-slot="fromHotelJaP2">ヒルトン 東京 様</p>
-      <dl class="jp">
-        <div><dt>ご宿泊期間：</dt><dd data-slot="fromStay">2026年7月10日（ご出発日）</dd></div>
-        <div><dt>ご予約者名：</dt><dd data-slot="guestP2a"><strong>Emma Watson</strong> ／ 1名様</dd></div>
-        <div><dt>お預かり：</dt><dd>チェックアウト時にお客様がスーツケースをお預けに来られます。<strong>出荷する荷物</strong>としてお預かりください。</dd></div>
-        <div><dt>集荷：</dt><dd>配送業者のドライバーが集荷に伺いますので、荷物をお渡しください。</dd></div>
-      </dl>
+      <div class="lookup-grid">
+        <div class="lookup-cell primary">
+          <p class="lk">Guest Name / <span class="jp">ご予約者名</span></p>
+          <p class="lv" data-slot="lookupGuestFrom">Emma Watson</p>
+        </div>
+        <div class="lookup-cell primary">
+          <p class="lk">Check-in Date / <span class="jp">チェックイン日</span></p>
+          <p class="lv jp" data-slot="lookupCheckinFrom">2026年7月10日</p>
+        </div>
+        <div class="lookup-cell">
+          <p class="lk">Stay / <span class="jp">人数</span></p>
+          <p class="lv" data-slot="lookupStayFrom">1 guest</p>
+        </div>
+        <div class="lookup-cell">
+          <p class="lk">Room No. / <span class="jp">お部屋番号</span></p>
+          <p class="lv blank" data-slot="lookupRoomFrom">&nbsp;</p>
+        </div>
+      </div>
+      <p class="hd-note jp">チェックアウト時にお客様がお預けに来られます。<strong>出荷する荷物</strong>としてお預かりのうえ、集荷ドライバーへお渡しください。</p>
     </div>
     <div class="hd-block arrive">
       <p class="hd-no jp">02 発送先</p>
       <p class="hd-hotel jp" data-slot="toHotelJaP2">帝国ホテル 大阪 様</p>
-      <dl class="jp">
-        <div><dt>ご宿泊期間：</dt><dd data-slot="toStay">2026年7月11日（チェックイン）</dd></div>
-        <div><dt>ご予約者名：</dt><dd data-slot="guestP2b"><strong>Emma Watson</strong> ／ 1名様</dd></div>
-        <div><dt>お届け：</dt><dd>スーツケースが <strong>2026年7月11日</strong> に届きます。<strong>到着済み荷物</strong>としてお預かりください。</dd></div>
-        <div><dt>お渡し：</dt><dd>チェックイン時にお客様へお渡しください。</dd></div>
-      </dl>
+      <div class="lookup-grid">
+        <div class="lookup-cell primary">
+          <p class="lk">Guest Name / <span class="jp">ご予約者名</span></p>
+          <p class="lv" data-slot="lookupGuestTo">Emma Watson</p>
+        </div>
+        <div class="lookup-cell primary">
+          <p class="lk">Check-in Date / <span class="jp">チェックイン日</span></p>
+          <p class="lv jp" data-slot="lookupCheckinTo">2026年7月11日</p>
+        </div>
+        <div class="lookup-cell">
+          <p class="lk">Stay / <span class="jp">人数</span></p>
+          <p class="lv" data-slot="lookupStayTo">1 guest</p>
+        </div>
+        <div class="lookup-cell">
+          <p class="lk">Room No. / <span class="jp">お部屋番号</span></p>
+          <p class="lv blank" data-slot="lookupRoomTo">&nbsp;</p>
+        </div>
+      </div>
+      <p class="hd-note jp"><strong>2026年7月11日</strong> にスーツケースが届きます。<strong>到着済み荷物</strong>としてお預かりのうえ、チェックイン時にお客様へお渡しください。</p>
     </div>
   </div>
 
   <div class="contact-strip jp">
     <div class="contact-cell">
       <p class="c-k">荷物配送手配業者 / Forwarding Operator</p>
-      <p class="c-v">BondEx サポートデスク<br><small>Email: support@bondex.express ／ TEL: <span data-slot="bondexTel">+81-XX-XXXX-XXXX</span>（9:00 – 18:00 JST）</small></p>
+      <p class="c-v">BondEx サポートデスク<br><small>Email: support@bondex.express ／ TEL: <span data-slot="bondexTel">+81-XX-XXXX-XXXX</span>（9:00 &ndash; 18:00 JST）</small></p>
     </div>
     <div class="contact-cell">
       <p class="c-k">ランドオペレーター / Land Operator</p>
@@ -278,6 +332,53 @@
         <p class="p-body">BondEx では提携ホテルを募集しています。ゲストの利便性向上にご活用ください。</p>
         <p class="p-url">bondex.express/partner</p>
       </div>
+    </div>
+  </div>
+
+  <!-- requirement 3: cut-out baggage tag -->
+  <div class="tag-cutline jp">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <circle cx="6" cy="6" r="2.6" stroke="#8a8a92" stroke-width="1.6"/>
+      <circle cx="6" cy="18" r="2.6" stroke="#8a8a92" stroke-width="1.6"/>
+      <path d="M8.2 7.6 L20 16.5M8.2 16.4 L20 7.5" stroke="#8a8a92" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    <span>切り取り線 / CUT HERE — 荷物用タグ / BAGGAGE TAG</span>
+  </div>
+  <div class="baggage-tag">
+    <div class="bt-spine">BONDEX</div>
+    <div class="bt-main">
+      <div class="bt-row1">
+        <div class="bt-guest">
+          <p class="btk">Guest / <span class="jp">ご予約者名</span></p>
+          <p class="btv" data-slot="tagGuest">Emma Watson</p>
+        </div>
+        <div class="bt-ref">
+          <p class="btk">REF</p>
+          <p class="btv" data-slot="tagRef">BDX-260702-147</p>
+        </div>
+      </div>
+      <div class="bt-row2">
+        <div class="bt-field">
+          <p class="btk">Check-in / <span class="jp">チェックイン</span></p>
+          <p class="btv jp" data-slot="tagCheckin">2026年7月11日</p>
+        </div>
+        <div class="bt-field">
+          <p class="btk">Pick-up Hotel / <span class="jp">お受け取りホテル</span></p>
+          <p class="btv" data-slot="tagHotel">Imperial Hotel Osaka<span class="jp-sub jp">帝国ホテル 大阪</span></p>
+        </div>
+        <div class="bt-field">
+          <p class="btk">Luggage / <span class="jp">個数</span></p>
+          <p class="btv" data-slot="tagPieces">1 piece</p>
+        </div>
+      </div>
+      <p class="bt-keep jp">このタグをお荷物と一緒に保管してください / Please attach or keep this tag with the luggage.</p>
+    </div>
+    <div class="bt-qr">
+      <svg viewBox="0 0 29 29" shape-rendering="crispEdges" aria-label="tag tracking QR code">
+        <rect width="29" height="29" fill="#fff"/>
+        <path fill="#16161a" d="M0 0h7v1H0zM10 0h2v1h-2zM14 0h3v1h-3zM19 0h1v1h-1zM22 0h7v1h-7zM0 1h1v1H0zM6 1h1v1H6zM9 1h1v1H9zM12 1h1v1h-1zM15 1h2v1h-2zM18 1h2v1h-2zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1H0zM2 2h3v1H2zM6 2h1v1H6zM8 2h2v1H8zM13 2h4v1h-4zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h3v1h-3zM28 2h1v1h-1zM0 3h1v1H0zM2 3h3v1H2zM6 3h1v1H6zM9 3h3v1H9zM14 3h1v1h-1zM16 3h3v1h-3zM22 3h1v1h-1zM24 3h3v1h-3zM28 3h1v1h-1zM0 4h1v1H0zM2 4h3v1H2zM6 4h1v1H6zM8 4h1v1H8zM11 4h2v1h-2zM15 4h2v1h-2zM19 4h2v1h-2zM22 4h1v1h-1zM24 4h3v1h-3zM28 4h1v1h-1zM0 5h1v1H0zM6 5h1v1H6zM9 5h2v1H9zM13 5h1v1h-1zM16 5h1v1h-1zM18 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h7v1H0zM8 6h1v1H8zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h7v1h-7zM9 7h2v1H9zM13 7h3v1h-3zM17 7h2v1h-2zM0 8h2v1H0zM3 8h4v1H3zM8 8h3v1H8zM12 8h1v1h-1zM14 8h4v1h-4zM19 8h4v1h-4zM24 8h2v1h-2zM27 8h2v1h-2zM1 9h1v1H1zM4 9h1v1H4zM7 9h1v1H7zM10 9h2v1h-2zM14 9h2v1h-2zM18 9h1v1h-1zM20 9h3v1h-3zM24 9h1v1h-1zM26 9h1v1h-1zM0 10h2v1H0zM3 10h1v1H3zM5 10h2v1H5zM9 10h1v1H9zM11 10h4v1h-4zM17 10h2v1h-2zM21 10h2v1h-2zM25 10h2v1h-2zM28 10h1v1h-1zM0 11h1v1H0zM2 11h2v1H2zM7 11h2v1H7zM10 11h1v1h-1zM13 11h2v1h-2zM16 11h1v1h-1zM19 11h1v1h-1zM22 11h2v1h-2zM26 11h2v1h-2zM1 12h3v1H1zM5 12h2v1H5zM8 12h2v1H8zM12 12h2v1h-2zM15 12h3v1h-3zM20 12h3v1h-3zM24 12h1v1h-1zM27 12h1v1h-1zM0 13h1v1H0zM3 13h2v1H3zM6 13h1v1H6zM9 13h1v1H9zM11 13h2v1h-2zM14 13h1v1h-1zM17 13h3v1h-3zM21 13h1v1h-1zM24 13h3v1h-3zM28 13h1v1h-1zM1 14h2v1H1zM4 14h3v1H4zM8 14h1v1H8zM10 14h2v1h-2zM13 14h3v1h-3zM18 14h1v1h-1zM20 14h2v1h-2zM23 14h2v1h-2zM26 14h1v1h-1zM0 15h2v1H0zM3 15h1v1H3zM6 15h2v1H6zM9 15h2v1H9zM12 15h1v1h-1zM15 15h2v1h-2zM19 15h2v1h-2zM22 15h1v1h-1zM25 15h3v1h-3zM1 16h1v1H1zM4 16h2v1H4zM7 16h1v1H7zM10 16h1v1h-1zM13 16h2v1h-2zM16 16h2v1h-2zM19 16h1v1h-1zM21 16h3v1h-3zM26 16h2v1h-2zM0 17h3v1H0zM5 17h1v1H5zM8 17h3v1H8zM12 17h2v1h-2zM15 17h1v1h-1zM17 17h2v1h-2zM20 17h1v1h-1zM23 17h2v1h-2zM27 17h2v1h-2zM1 18h1v1H1zM3 18h2v1H3zM6 18h2v1H6zM9 18h1v1H9zM11 18h3v1h-3zM16 18h1v1h-1zM18 18h3v1h-3zM22 18h2v1h-2zM25 18h1v1h-1zM28 18h1v1h-1zM0 19h1v1H0zM2 19h1v1H2zM5 19h2v1H5zM8 19h1v1H8zM10 19h2v1h-2zM14 19h2v1h-2zM17 19h1v1h-1zM19 19h2v1h-2zM23 19h1v1h-1zM26 19h2v1h-2zM1 20h4v1H1zM6 20h1v1H6zM8 20h2v1H8zM11 20h1v1h-1zM13 20h3v1h-3zM18 20h3v1h-3zM22 20h2v1h-2zM25 20h4v1h-4zM8 21h2v1H8zM12 21h2v1h-2zM15 21h2v1h-2zM19 21h1v1h-1zM21 21h1v1h-1zM24 21h1v1h-1zM26 21h2v1h-2zM0 22h7v1H0zM8 22h1v1H8zM10 22h2v1h-2zM14 22h1v1h-1zM16 22h2v1h-2zM20 22h2v1h-2zM24 22h1v1h-1zM26 22h1v1h-1zM0 23h1v1H0zM6 23h1v1H6zM9 23h2v1H9zM13 23h3v1h-3zM17 23h1v1h-1zM19 23h1v1h-1zM22 23h3v1h-3zM26 23h2v1h-2zM0 24h1v1H0zM2 24h3v1H2zM6 24h1v1H6zM8 24h1v1H8zM10 24h1v1h-1zM12 24h2v1h-2zM15 24h3v1h-3zM19 24h2v1h-2zM23 24h2v1h-2zM27 24h1v1h-1zM0 25h1v1H0zM2 25h3v1H2zM6 25h1v1H6zM9 25h3v1H9zM14 25h1v1h-1zM16 25h2v1h-2zM19 25h1v1h-1zM21 25h2v1h-2zM25 25h2v1h-2zM0 26h1v1H0zM2 26h3v1H2zM6 26h1v1H6zM8 26h2v1H8zM11 26h2v1h-2zM14 26h2v1h-2zM17 26h2v1h-2zM20 26h2v1h-2zM23 26h1v1h-1zM26 26h2v1h-2zM0 27h1v1H0zM6 27h1v1H6zM9 27h1v1H9zM11 27h1v1h-1zM13 27h4v1h-4zM18 27h2v1h-2zM21 27h1v1h-1zM24 27h2v1h-2zM27 27h1v1h-1zM0 28h7v1H0zM8 28h2v1H8zM12 28h2v1h-2zM15 28h1v1h-1zM17 28h1v1h-1zM19 28h3v1h-3zM23 28h2v1h-2zM26 28h2v1h-2z"/>
+      </svg>
+      <p class="bq-url">bondex.express/track/<br>BDX-260702-147</p>
     </div>
   </div>
 
