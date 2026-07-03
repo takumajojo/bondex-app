@@ -84,8 +84,8 @@ function SectionH2({
 const DEMO_SCENES = [
   {
     step: "STEP 1",
-    title: "旅程表を送るだけ",
-    body: "お客様の旅程 (PDF・Excel・画像) をそのまま送付",
+    title: "旅程と配送日を送る",
+    body: "旅程 (PDF・Excel・画像) と「いつ・どこから送るか」を指定",
     art: (
       <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
         <rect x="52" y="24" width="88" height="120" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
@@ -230,7 +230,7 @@ function HeroDemo() {
 
       <div className="flex items-center justify-between px-5 pt-4">
         <p className="text-[12px] font-bold tracking-[0.12em] text-[#0F172A]">
-          15秒でわかる <span className="text-[#C8102E]">BondEx</span>
+          すぐにわかる <span className="text-[#C8102E]">BondEx</span> の仕組み
         </p>
         <div className="flex items-center gap-1.5">
           {DEMO_SCENES.map((_, i) => (
@@ -253,11 +253,7 @@ function HeroDemo() {
 
       {/* キャプション */}
       <div key={`cap-${scene}`} className="px-5 pt-4 pb-3 bdx-rise">
-        <p className="text-[11px] font-mono tracking-widest text-[#C8102E] font-bold">
-          {s.step}
-          <span className="text-[#CBD5E1] mx-2">/</span>
-          <span className="text-[#64748B] font-sans tracking-normal">4シーン自動再生</span>
-        </p>
+        <p className="text-[11px] font-mono tracking-widest text-[#C8102E] font-bold">{s.step}</p>
         <p className="text-[16px] font-bold text-[#0F172A] mt-1">{s.title}</p>
         <p className="text-[13px] text-[#334155] mt-0.5 leading-relaxed">{s.body}</p>
       </div>
@@ -324,13 +320,15 @@ export default function LandingPage() {
         <p className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wide text-[#C8102E] border border-[#C8102E]/30 bg-[#C8102E]/5 rounded-full px-3 py-1.5 mb-5">
           訪日旅行代理店・ランドオペレーター向け
         </p>
-        <h1 className="text-[32px] font-bold leading-[1.35] text-[#0F172A] mb-4">
-          旅程を送るだけで、
+        <h1 className="text-[30px] font-bold leading-[1.4] text-[#0F172A] mb-4">
+          旅程と配送日を
+          <br />
+          送るだけで、
           <br />
           荷物配送手配が完了。
         </h1>
         <p className="text-[14px] text-[#334155] leading-[1.9] mb-5">
-          ホテル間の荷物配送に必要な面倒ごとを、BondEx がまとめて代行します。
+          「いつ・どのホテルから送るか」をご指定いただければ、あとの面倒ごとは BondEx がまとめて代行します。
         </p>
         <ul className="space-y-2.5 mb-7">
           {[
@@ -362,6 +360,10 @@ export default function LandingPage() {
             料金を見る
           </a>
         </div>
+        {/* サービス理解の順番: メッセージ → 仕組みデモ → ゲスト体験の写真 */}
+        <div className="mb-6">
+          <HeroDemo />
+        </div>
         {/* 写真は「ゲスト体験」を語るビジュアルとしてキャプション付きで使う */}
         <div
           className="relative h-52 rounded-2xl overflow-hidden bg-cover bg-center"
@@ -389,19 +391,19 @@ export default function LandingPage() {
             "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.0) 25%, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.78) 100%), url('/hero-family.png')",
         }}
       >
-        <div className="w-full max-w-6xl mx-auto px-6 pb-16 md:pb-24 text-white">
+        <div className="w-full max-w-6xl mx-auto px-6 pb-16 md:pb-44 text-white">
           <p className="text-[12px] font-medium tracking-[0.15em] text-white/90 mb-6 drop-shadow">
             訪日旅行代理店様向け ・ 荷物配送手配代行
           </p>
           <h1 className="text-3xl sm:text-5xl md:text-[54px] lg:text-[64px] font-bold leading-[1.3] tracking-normal mb-8 drop-shadow-lg max-w-4xl">
-            旅程を送るだけで、
+            旅程と配送日を送るだけで、
             <br className="hidden md:inline" />
             荷物配送手配が完了。
           </h1>
           <p className="text-base md:text-[17px] font-medium text-white/95 max-w-2xl leading-[1.8] mb-10 drop-shadow">
-            バウチャー発行・送り状手配・月次請求・変更対応まで一括で。
+            「いつ・どのホテルから送るか」の指定だけで、バウチャー発行・送り状手配・
             <br className="hidden md:inline" />
-            旅行代理店様に代わり、BondEx が配送事業者との取次を担当します。
+            月次請求・変更対応まで。BondEx が配送事業者との取次を担当します。
           </p>
           <div className="flex flex-col items-start gap-3">
             <a
@@ -420,8 +422,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══════════════ 15秒でわかる BondEx (自動再生デモ) ═══════════════ */}
-      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-6 md:pt-20">
+      {/* ═══════════════ すぐにわかる BondEx の仕組み (自動再生デモ) ═══════════════
+          モバイルはヒーロー内に表示済みのため md 以上のみ。
+          ヒーロー写真の下端に重ねてファーストビューから見えるようにする。 */}
+      <section className="hidden md:block relative z-10 max-w-6xl mx-auto px-6 -mt-28">
         <div className="max-w-2xl mx-auto">
           <HeroDemo />
         </div>
@@ -433,8 +437,8 @@ export default function LandingPage() {
           {[
             {
               n: "01",
-              title: "旅程を送るだけ",
-              body: "PDF / Excel / 画像。何でも受け付けます。",
+              title: "旅程と配送日を送る",
+              body: "旅程は PDF / Excel / 画像で。各区間の配送日をご指定ください。",
               icon: (
                 <svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
                   <rect x="18" y="12" width="52" height="72" rx="4" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" />

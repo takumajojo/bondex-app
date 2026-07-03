@@ -239,6 +239,8 @@ interface CreateBody {
   refNumber?: unknown
   shipmentDate?: unknown
   deliveryDate?: unknown
+  /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon) がデフォルト。 */
+  deliveryTime?: unknown
   suitcaseCount?: unknown
   from?: unknown
   to?: unknown
@@ -461,6 +463,18 @@ export async function POST(req: NextRequest) {
 
   const refNumber = typeof body.refNumber === "string" ? body.refNumber.trim() : ""
   const shipmentDate = typeof body.shipmentDate === "string" ? body.shipmentDate.trim() : ""
+  // 配達時間帯: 旅行会社の要望により AM (午前中) 指定を標準とする。
+  // 明示指定があれば許可リスト内でそれを採用。エリア・サービスによる可否は
+  // ヤマト側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
+  const YAMATO_TIME_SLOTS = [
+    "not-specified", "before-noon", "before-ten", "before-five",
+    "14-16", "16-18", "18-20", "19-21",
+  ] as const
+  const rawDeliveryTime = typeof body.deliveryTime === "string" ? body.deliveryTime.trim() : ""
+  const deliveryTime = (YAMATO_TIME_SLOTS as readonly string[]).includes(rawDeliveryTime)
+    ? rawDeliveryTime
+    : "before-noon"
+
   const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
   // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
   const deliveryDate = rawDeliveryDate && isValidYmd(rawDeliveryDate) ? rawDeliveryDate : ""
@@ -634,7 +648,12 @@ export async function POST(req: NextRequest) {
       shipment_date: shipmentDate,
       // 配達希望日 (チェックイン日) — 指定すると Yamato は当日まで荷物を保持して配達.
       // 旅行者がチェックイン前に届いて受取拒否されるのを防ぐ.
-      ...(deliveryDate ? { delivery_date: deliveryDate } : {}),
+      // 公式ドキュメント上の正式フィールドは "date" (JP 国内のみ)。従来送っていた
+      // "delivery_date" はドキュメントに存在しない (無視されていた可能性が高い) ため
+      // 両方送り、実荷物での検証後に delivery_date を削除する。
+      ...(deliveryDate ? { date: deliveryDate, delivery_date: deliveryDate } : {}),
+      // 配達時間帯 — 標準で午前中 (before-noon)。
+      time: deliveryTime,
       pack_amount: suitcaseCount,
       test: true, // POC 固定
     },
