@@ -831,12 +831,13 @@ const GUEST_L10N = {
     kicker: "THIS VOUCHER IS FOR",
     dropLabel: "Drop-off: ",
     pickLabel: "Pick-up: ",
-    present: "Please present this voucher at the reception when checking in.",
+    present: "Please present this voucher at the reception when dropping off and picking up your luggage.",
     dropWhen: (t?: string) => `At the hotel's reception ・ by ${t || "check-out"}`,
     pickWhen: (t?: string) => `At the hotel's reception ・ ${t || "when check-in"}`,
     giveTo: "PLEASE GIVE THIS VOUCHER TO:",
     giveToDate: (ymd: string) => `on ${formatEnDate(ymd)}`,
     scanCaption: "Scan for live delivery status",
+    tmNote: "* Tracking may take a few hours to update after the courier receives your luggage.",
     routeHead: "YOUR LUGGAGE ROUTE ／ 旅程全体",
     currentChip: "CURRENT ／ この用紙",
   },
@@ -845,12 +846,13 @@ const GUEST_L10N = {
     kicker: "本凭证适用区间",
     dropLabel: "寄出 Drop-off: ",
     pickLabel: "领取 Pick-up: ",
-    present: "办理入住时，请向酒店前台出示本凭证。",
+    present: "寄存行李及领取行李时，请向酒店前台出示本凭证。",
     dropWhen: (t?: string) => (t ? `请于 ${t} 前交至酒店前台` : "请在退房前交至酒店前台"),
     pickWhen: (_t?: string) => "办理入住时向酒店前台领取",
     giveTo: "请将本凭证交给以下酒店：",
     giveToDate: (ymd: string) => `（${formatJpDate(ymd)} 交付）`,
     scanCaption: "扫码查看行李配送状态",
+    tmNote: "* 行李由配送员揽收后，追踪信息可能需要数小时更新。",
     routeHead: "YOUR LUGGAGE ROUTE ／ 行李路线",
     currentChip: "CURRENT ／ 本张凭证",
   },
@@ -960,9 +962,7 @@ function GuestPage({
           )}
           <Text style={vs.tmCaption}>{jb("ここで荷物の配送状況がわかります")}</Text>
           <Text style={[vs.tmCaptionEn, zf]}>{jb(L.scanCaption)}</Text>
-          <Text style={vs.tmNote}>
-            {jb("※配送員がお荷物を受付けてから反映までお時間をいただく場合があります")}
-          </Text>
+          <Text style={[vs.tmNote, zf]}>{jb(L.tmNote)}</Text>
         </View>
       </View>
 
@@ -971,7 +971,7 @@ function GuestPage({
         <CheckCircleIcon />
         <View style={vs.psWords}>
           <Text style={[vs.psEn, zf]}>{jb(L.present)}</Text>
-          <Text style={vs.psJa}>{jb("チェックインの際に本バウチャーをホテルの受付にご提示ください")}</Text>
+          <Text style={vs.psJa}>{jb("お荷物のお預け時・お受け取り時に、本バウチャーを受付にご提示ください")}</Text>
         </View>
       </View>
 
@@ -1186,7 +1186,7 @@ function LookupGrid({
       </View>
       <View style={[vs.lookupRow, vs.lookupRow2]}>
         <View style={[vs.lookupCell, vs.lookupCellL]}>
-          <Text style={vs.lk}>STAY / 人数</Text>
+          <Text style={vs.lk}>GUESTS / ご宿泊人数</Text>
           <Text style={vs.lv}>
             {travelerCount} guest{travelerCount === 1 ? "" : "s"}
           </Text>
@@ -1325,9 +1325,11 @@ function HotelStaffPage({
             travelerCount={data.travelerCount}
           />
           <Text style={vs.hdNote}>
-            {jb("チェックアウト時にお客様がお預けに来られます。")}
+            {jb("チェックアウト時にお客様が、本バウチャーと")}
+            <Text style={vs.hdNoteStrong}>{jb("お荷物と同じ枚数の印字済み送り状")}</Text>
+            {jb("をお持ちになります。")}
             <Text style={vs.hdNoteStrong}>{jb("出荷する荷物")}</Text>
-            {jb("としてお預かりのうえ、集荷ドライバーへお渡しください。")}
+            {jb("としてお預かりのうえ、送り状とあわせて集荷ドライバーへお渡しください。")}
           </Text>
           {shipment.specialNote ? (
             <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
