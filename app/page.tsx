@@ -106,7 +106,7 @@ const DEMO_SCENES = [
   {
     step: "STEP 2",
     title: "BondEx が配送を手配",
-    body: "バウチャーとヤマト送り状を発行してお渡し",
+    body: "バウチャーと送り状を発行してお渡し",
     art: (
       <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
         <g className="bdx-rise">
@@ -121,7 +121,7 @@ const DEMO_SCENES = [
         </g>
         <g className="bdx-rise-delay">
           <rect x="176" y="46" width="86" height="100" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-          <text x="219" y="66" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0F172A">ヤマト送り状</text>
+          <text x="219" y="66" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0F172A">送り状</text>
           <line x1="190" y1="82" x2="248" y2="82" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
           <line x1="190" y1="98" x2="236" y2="98" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
           <g>
@@ -138,7 +138,7 @@ const DEMO_SCENES = [
   {
     step: "STEP 3",
     title: "ゲストは手ぶらで移動",
-    body: "荷物はホテルからホテルへ、ヤマト運輸が配送",
+    body: "荷物はホテルからホテルへ、提携の物流会社が配送",
     art: (
       <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
         <rect x="24" y="52" width="56" height="76" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
@@ -334,7 +334,7 @@ export default function LandingPage() {
         </p>
         <ul className="space-y-2.5 mb-7">
           {[
-            "バウチャー・ヤマト送り状の作成はすべて BondEx",
+            "バウチャー・送り状の作成はすべて BondEx",
             "運賃は立替、月末にまとめて一括請求",
             "変更・問い合わせの窓口も BondEx に一本化",
           ].map((b) => (
@@ -362,15 +362,23 @@ export default function LandingPage() {
             料金を見る
           </a>
         </div>
+        {/* 写真は「ゲスト体験」を語るビジュアルとしてキャプション付きで使う */}
         <div
-          className="h-44 rounded-2xl bg-cover bg-center"
-          style={{
-            backgroundImage:
-              "linear-gradient(180deg, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.45) 100%), url('/hero-family.png')",
-          }}
+          className="relative h-52 rounded-2xl overflow-hidden bg-cover bg-center"
+          style={{ backgroundImage: "url('/hero-family.png')" }}
           role="img"
           aria-label="スーツケースを持たずに日本を旅行する家族"
-        />
+        >
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+          <div className="absolute bottom-4 left-4 right-4">
+            <p className="text-white text-[16px] font-bold leading-snug drop-shadow">
+              ゲストは手ぶらで、次の街へ。
+            </p>
+            <p className="text-white/85 text-[11.5px] mt-1 drop-shadow">
+              お荷物はホテルからホテルへ、BondEx が配送手配
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* ═══════════════ Hero (desktop) — Full-bleed family image ═══════════════ */}
@@ -420,8 +428,8 @@ export default function LandingPage() {
       </section>
 
       {/* ═══════════════ Value in 3 (compact pictograms) ═══════════════ */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-24 md:pt-20 md:pb-32">
-        <div className="grid md:grid-cols-3 gap-12 md:gap-16">
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 pb-16 md:pt-20 md:pb-32">
+        <div className="grid gap-7 md:grid-cols-3 md:gap-16">
           {[
             {
               n: "01",
@@ -482,11 +490,16 @@ export default function LandingPage() {
               ),
             },
           ].map((v) => (
-            <div key={v.n} className="flex flex-col">
-              <div className="mb-6">{v.icon}</div>
-              <p className="text-[11px] font-mono tracking-widest text-[#64748B] mb-3">{v.n}</p>
-              <h3 className="text-xl font-bold tracking-tight mb-4 text-[#0F172A]">{v.title}</h3>
-              <p className="text-[15px] font-medium text-[#334155] leading-[1.85]">{v.body}</p>
+            <div key={v.n} className="flex items-start gap-4 md:block">
+              {/* モバイル: 枠付きの小アイコンを左に、テキストを右に (縦の間延び防止) */}
+              <div className="w-14 h-14 shrink-0 rounded-2xl border border-[#E5E7EB] bg-[#F7F8FA] flex items-center justify-center [&_svg]:w-9 [&_svg]:h-9 md:w-auto md:h-auto md:border-0 md:bg-transparent md:rounded-none md:block md:mb-6 md:[&_svg]:w-16 md:[&_svg]:h-16">
+                {v.icon}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-mono tracking-widest text-[#64748B] mb-1 md:mb-3">{v.n}</p>
+                <h3 className="text-[16px] md:text-xl font-bold tracking-tight mb-1 md:mb-4 text-[#0F172A]">{v.title}</h3>
+                <p className="text-[13px] md:text-[15px] font-medium text-[#334155] leading-[1.75] md:leading-[1.85]">{v.body}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -761,7 +774,7 @@ export default function LandingPage() {
               <svg
                 viewBox="0 0 320 200"
                 xmlns="http://www.w3.org/2000/svg"
-                className="w-full h-full max-h-[220px]"
+                className="w-full h-auto max-h-[220px]"
               >
                 <defs>
                   <pattern id="qr" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
@@ -839,7 +852,7 @@ export default function LandingPage() {
               <svg
                 viewBox="0 0 320 200"
                 xmlns="http://www.w3.org/2000/svg"
-                className="w-full h-full max-h-[220px]"
+                className="w-full h-auto max-h-[220px]"
               >
                 <defs>
                   <pattern id="barcode" x="0" y="0" width="7" height="30" patternUnits="userSpaceOnUse">
@@ -878,7 +891,7 @@ export default function LandingPage() {
               </h3>
               <p className="text-[15px] text-[#334155] leading-[1.85]">
                 集荷日の <strong className="text-[#0F172A]">1 ヶ月前</strong> に発行 (物流業者仕様)。
-                追跡番号付き、現在ヤマト運輸の宅急便を利用中。
+                追跡番号付き、大手宅配便ネットワークを利用。
               </p>
             </div>
           </div>
@@ -900,7 +913,7 @@ export default function LandingPage() {
                 title: "補償",
                 head: "1 個あたり最大 30 万円",
                 body:
-                  "配送はヤマト運輸の宅急便。宅急便運送約款に基づき、1 個あたり最大 30 万円まで補償されます。",
+                  "配送は大手宅配便。運送約款に基づき、1 個あたり最大 30 万円まで補償されます。",
                 anchor: "#faq",
               },
               {
@@ -993,7 +1006,7 @@ export default function LandingPage() {
         </div>
 
         <p className="text-[13px] text-[#64748B] leading-[1.9] max-w-3xl">
-          ヤマト運輸の受託限度 (3辺合計 160cm・25kg 以内) を超える荷物・離島や一部地域宛・
+          宅配便の受託限度 (3辺合計 160cm・25kg 以内) を超える荷物・離島や一部地域宛・
           冷蔵冷凍等の特殊配送は原則対象外となります。具体条件は個別にご相談ください。
         </p>
       </section>
@@ -1012,7 +1025,7 @@ export default function LandingPage() {
               {
                 icon: Shield,
                 label: "補償",
-                text: "ヤマト運輸で 1 個あたり最大 30 万円まで。",
+                text: "提携物流会社の約款で 1 個あたり最大 30 万円まで。",
               },
               {
                 icon: Clock,
@@ -1054,7 +1067,7 @@ export default function LandingPage() {
               },
               {
                 q: "バウチャーはすぐ発行できるのに、送り状はなぜ 1ヶ月前?",
-                a: "物流業者 (ヤマト運輸等) の発行仕様上、集荷日から 30 日以内でないと送り状を発行できないためです。バウチャーは BondEx 発行のため即日対応可能です。",
+                a: "物流業者の発行仕様上、集荷日から 30 日以内でないと送り状を発行できないためです。バウチャーは BondEx 発行のため即日対応可能です。",
               },
               {
                 q: "料金の請求サイクルは?",
@@ -1062,7 +1075,7 @@ export default function LandingPage() {
               },
               {
                 q: "補償の範囲は?",
-                a: "実運送を担う物流業者の運送約款に完全に準じます。現在ヤマト運輸の宅急便で 1 個あたり上限 30 万円。BondEx 独自の追加補償はありません。",
+                a: "実運送を担う物流業者の運送約款に完全に準じます。現在の提携宅配便で 1 個あたり上限 30 万円。BondEx 独自の追加補償はありません。",
               },
               {
                 q: "運用中のサポート体制は?",
@@ -1143,7 +1156,7 @@ export default function LandingPage() {
         <div className="border-t border-[#E5E7EB]">
           <div className="max-w-6xl mx-auto px-6 py-6 text-[12px] text-[#64748B] leading-[1.9]">
             BondEx は運送人ではなく、旅程情報を受けて物流業者への発送を取り次ぐ取次サービスです。
-            実運送・運送責任・補償は当社が利用する物流業者 (現在: ヤマト運輸 宅急便運送約款) に準じます。
+            実運送・運送責任・補償は当社が利用する物流業者の運送約款に準じます。
             <br />
             © {new Date().getFullYear()} 株式会社JOJO / BondEx
           </div>
