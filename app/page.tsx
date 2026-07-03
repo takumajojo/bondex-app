@@ -247,7 +247,7 @@ function HeroDemo() {
       </div>
 
       {/* シーン描画エリア */}
-      <div key={scene} className="relative h-48 sm:h-56 mx-5 mt-3 rounded-xl bg-[#F7F8FA]">
+      <div key={scene} className="relative h-36 sm:h-56 mx-5 mt-3 rounded-xl bg-[#F7F8FA]">
         {s.art}
       </div>
 
@@ -333,7 +333,7 @@ export default function LandingPage() {
         <ul className="space-y-2.5 mb-7">
           {[
             "バウチャー・送り状の作成はすべて BondEx",
-            "運賃は立替、月末にまとめて一括請求",
+            "配送費は月次でまとめて精算",
             "変更・問い合わせの窓口も BondEx に一本化",
           ].map((b) => (
             <li key={b} className="flex items-start gap-2.5 text-[14px] font-medium text-[#0F172A]">
@@ -354,11 +354,33 @@ export default function LandingPage() {
           導入相談へ
           <ArrowRight className="w-4 h-4" strokeWidth={2} />
         </a>
-        <div className="flex items-center justify-between mt-3 mb-6">
+        <a
+          href="/samples/bondex-sample-voucher.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2.5 flex items-center justify-center gap-2 w-full h-[48px] rounded-xl border border-[#CBD5E1] bg-white text-[14px] font-bold text-[#0F172A] hover:bg-[#F7F8FA]"
+        >
+          サンプル PDF を見る
+        </a>
+        <div className="flex items-center justify-between mt-3 mb-5">
           <p className="text-[11px] text-[#64748B]">通常 1 営業日以内にご連絡します。</p>
           <a href="#price" className="text-[12px] font-medium text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1]">
             料金を見る
           </a>
+        </div>
+        {/* 数字で即判断できる安心材料 (CV 導線) */}
+        <div className="grid grid-cols-2 gap-2 mb-6">
+          {[
+            ["初期費用", "0円"],
+            ["利用単位", "1件から"],
+            ["バウチャー", "即日発行"],
+            ["お支払い", "月次まとめ"],
+          ].map(([k, v]) => (
+            <div key={k} className="rounded-xl border border-[#E5E7EB] bg-[#F7F8FA] px-3.5 py-2.5">
+              <p className="text-[10px] text-[#64748B]">{k}</p>
+              <p className="text-[15px] font-bold text-[#0F172A]">{v}</p>
+            </div>
+          ))}
         </div>
         {/* サービス理解の順番: メッセージ → 仕組みデモ → ゲスト体験の写真 */}
         <div className="mb-6">
@@ -406,15 +428,25 @@ export default function LandingPage() {
             月次請求・変更対応まで。BondEx が配送事業者との取次を担当します。
           </p>
           <div className="flex flex-col items-start gap-3">
-            <a
-              href={CONTACT_FORM_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-7 py-4 rounded-md bg-[#C8102E] text-white text-[15px] font-medium hover:bg-[#A00D25]"
-            >
-              導入相談へ
-              <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
-            </a>
+            <div className="flex items-center gap-3">
+              <a
+                href={CONTACT_FORM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-7 py-4 rounded-md bg-[#C8102E] text-white text-[15px] font-medium hover:bg-[#A00D25]"
+              >
+                導入相談へ
+                <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
+              </a>
+              <a
+                href="/samples/bondex-sample-voucher.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-7 py-4 rounded-md border border-white/60 bg-white/10 backdrop-blur text-white text-[15px] font-medium hover:bg-white/20"
+              >
+                サンプル PDF を見る
+              </a>
+            </div>
             <p className="text-[12px] text-white/85 drop-shadow ml-1">
               通常 1 営業日以内にご連絡します。
             </p>
@@ -428,6 +460,63 @@ export default function LandingPage() {
       <section className="hidden md:block relative z-10 max-w-6xl mx-auto px-6 -mt-28">
         <div className="max-w-2xl mx-auto">
           <HeroDemo />
+        </div>
+      </section>
+
+      {/* ═══════════════ 実物サンプル (信頼材料は早く見せる) ═══════════════ */}
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-end justify-between mb-4">
+            <div>
+              <p className="text-[12px] font-medium text-[#64748B] mb-2">
+                <span className="tracking-[0.2em] uppercase">Sample</span>
+                <span className="mx-2 text-[#CBD5E1]">/</span>
+                実物イメージ
+              </p>
+              <h2 className="text-[20px] md:text-[26px] font-bold text-[#0F172A] leading-snug">
+                実際に発行されるバウチャー
+              </h2>
+            </div>
+            <a
+              href="/samples/bondex-sample-voucher.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 text-[13px] font-medium text-[#C8102E] hover:text-[#A00D25] underline underline-offset-4 shrink-0"
+            >
+              PDF で開く
+              <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+            </a>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:gap-5">
+            {[
+              { src: "/samples/voucher-page-1.png", label: "ゲスト用 (英語主体)" },
+              { src: "/samples/voucher-page-2.png", label: "ホテルスタッフ用 (日本語)" },
+            ].map((pg) => (
+              <figure key={pg.src}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={pg.src}
+                  alt={`バウチャー見本 — ${pg.label}`}
+                  loading="lazy"
+                  className="w-full h-auto rounded-lg border border-[#E5E7EB] shadow-[0_1px_2px_rgba(15,23,42,0.05),0_10px_28px_rgba(15,23,42,0.08)] bg-white"
+                />
+                <figcaption className="mt-2 text-[11px] md:text-[12px] font-medium text-[#64748B] text-center">
+                  {pg.label}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-[#94A3B8] text-center">
+            見本は架空データです。追跡 QR・区間表示・多区間の旅程一覧にも対応しています。
+          </p>
+          <a
+            href="/samples/bondex-sample-voucher.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="sm:hidden mt-4 flex items-center justify-center gap-2 w-full h-[46px] rounded-xl border border-[#CBD5E1] bg-white text-[13.5px] font-bold text-[#0F172A]"
+          >
+            サンプル PDF を開く
+          </a>
         </div>
       </section>
 
@@ -470,7 +559,7 @@ export default function LandingPage() {
             {
               n: "03",
               title: "月次まとめ請求",
-              body: "運賃立替、月末締め翌月末払い。",
+              body: "月末締め・翌月末払いのまとめ精算。",
               icon: (
                 <svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
                   <rect x="16" y="20" width="64" height="60" rx="4" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" />
@@ -982,7 +1071,7 @@ export default function LandingPage() {
               請求条件
             </h3>
             <p className="text-[15px] text-[#334155] leading-[1.9]">
-              配送費は BondEx が事前に立替え、月末に当月分をまとめて集計します。
+              配送費は月次でまとめて精算。月末に当月分をまとめて集計します。
               翌月初に請求書を発行し、翌月末までにお支払いいただきます。
             </p>
           </div>
@@ -993,7 +1082,7 @@ export default function LandingPage() {
               { term: "請求書発行", desc: "翌月初" },
               { term: "支払期限", desc: "翌月末" },
               { term: "支払方法", desc: "銀行振込" },
-              { term: "運賃", desc: "BondEx が事前立替" },
+              { term: "運賃", desc: "月次まとめ精算" },
               { term: "請求単位", desc: "月次まとめ請求" },
             ].map((row) => (
               <div

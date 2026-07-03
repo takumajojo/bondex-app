@@ -10,7 +10,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'BondEx | 荷物配送を、旅行商品の一部に。',
   description:
-    'BondEx（ボンデックス）は、訪日旅行者のホテル間荷物配送を手配するサービスです。ゲストは大きなスーツケースを持たずに、身軽に日本を移動できます。',
+    'BondEx（ボンデックス）は、訪日旅行代理店・ランドオペレーター向けの荷物配送手配代行サービスです。旅程データからバウチャー・送り状・追跡情報・月次請求までまとめて対応します。',
   icons: {
     // BondEx ロゴの頭文字モノグラム — 再生成: python3 scripts/generate-favicons.py
     icon: [
