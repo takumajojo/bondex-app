@@ -105,6 +105,9 @@ const messages = {
     toShort: "To:",
     generatingVouchers: "Generating documents…",
     docsReady: "Documents ready",
+    backToEditAfterIssue: "Go back and edit",
+    reissueNote: "If you spot a mistake, go back, fix it, and issue again. Re-issuing creates a new booking number.",
+    openFullPreview: "Open full preview in a new tab",
     bookingId: "Booking",
     voucherCardTitle: "Hotel Voucher",
     voucherCardSub: "Preview, then send a printed copy in the welcome packet to the traveler's first hotel.",
@@ -238,6 +241,9 @@ const messages = {
     toShort: "To:",
     generatingVouchers: "書類を生成中…",
     docsReady: "書類が用意できました",
+    backToEditAfterIssue: "戻って修正する",
+    reissueNote: "誤りがあった場合は戻って修正し、再度発行してください。再発行すると新しい予約番号になります。",
+    openFullPreview: "全画面プレビューを新しいタブで開く",
     bookingId: "予約番号",
     voucherCardTitle: "ホテル向けバウチャー",
     voucherCardSub: "プレビューで内容を確認し、印刷して旅行者の初日ホテルに送付します。",
@@ -1212,7 +1218,7 @@ export default function OperatorPage() {
         )}
 
         {phase === "generated" && generatedDocs && (
-          <GeneratedView t={t} docs={generatedDocs} onReset={reset} />
+          <GeneratedView t={t} docs={generatedDocs} onReset={reset} onBackToEdit={backToReview} />
         )}
       </div>
     </main>
@@ -2255,10 +2261,12 @@ function GeneratedView({
   t,
   docs,
   onReset,
+  onBackToEdit,
 }: {
   t: Messages
   docs: GeneratedDocs
   onReset: () => void
+  onBackToEdit: () => void
 }) {
   return (
     <div className="space-y-8">
@@ -2287,6 +2295,7 @@ function GeneratedView({
           })}
           downloadLabel={t.download}
           previewLabel={t.preview}
+          openFullLabel={t.openFullPreview}
         />
       </section>
 
@@ -2357,14 +2366,24 @@ function GeneratedView({
         </section>
       )}
 
-      <div className="flex items-center justify-end">
-        <button
-          onClick={onReset}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" strokeWidth={1.5} />
-          {t.newBooking}
-        </button>
+      <div className="space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">{t.reissueNote}</p>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <button
+            onClick={onBackToEdit}
+            className="inline-flex items-center justify-center gap-1.5 h-11 px-5 rounded-xl border border-border bg-white text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
+            {t.backToEditAfterIssue}
+          </button>
+          <button
+            onClick={onReset}
+            className="inline-flex items-center justify-center gap-1.5 h-11 px-5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" strokeWidth={1.5} />
+            {t.newBooking}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -2377,6 +2396,7 @@ function DocCard({
   downloadName,
   downloadLabel,
   previewLabel,
+  openFullLabel,
 }: {
   title: string
   subtitle: string
@@ -2384,6 +2404,7 @@ function DocCard({
   downloadName: string
   downloadLabel: string
   previewLabel: string
+  openFullLabel: string
 }) {
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden flex flex-col">
@@ -2397,13 +2418,26 @@ function DocCard({
         </div>
       </div>
 
-      {/* インラインプレビュー (iframe) */}
-      <div className="mx-6 mb-4 rounded-xl border border-border bg-slate-100 overflow-hidden">
+      {/* インラインプレビュー: A4 全面を目視できる高さを確保。
+          モバイルの PDF iframe は 1 ページ目しか描画されない環境があるため、
+          全画面 (新タブ) リンクを必ず併設する */}
+      <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-border bg-slate-100 overflow-hidden">
         <iframe
           src={href}
           title={previewLabel}
-          className="w-full h-72 border-0"
+          className="w-full h-[70vh] min-h-[420px] border-0"
         />
+      </div>
+      <div className="px-4 sm:px-6 pb-3">
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+        >
+          <ExternalLink className="w-3.5 h-3.5" strokeWidth={1.5} />
+          {openFullLabel}
+        </a>
       </div>
 
       <div className="px-6 pb-6">

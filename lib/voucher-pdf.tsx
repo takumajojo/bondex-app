@@ -603,6 +603,7 @@ const vs = StyleSheet.create({
     paddingHorizontal: mm(3),
     marginBottom: mm(2),
   },
+  flowColHeadNo: { letterSpacing: 0.6, color: "#f0c3cb" },
   flowStep: { flexDirection: "row", marginBottom: mm(1.5) },
   flowNum: {
     width: mm(5.2),
@@ -1234,7 +1235,8 @@ function HotelStaffPage({
       <View style={vs.flowCols}>
         <View style={vs.flowCol}>
           <Text style={[vs.flowColHead, { backgroundColor: RED }]}>
-            ① 発送元ホテル（ご出発ホテル）での対応
+            <Text style={vs.flowColHeadNo}>01  </Text>
+            {jb("発送元ホテル（ご出発ホテル）での対応")}
           </Text>
           <FlowStep color={RED} num="1" main="お客様がチェックアウト時に荷物をお持ち込み" sub="本バウチャーの内容をご確認ください" />
           <FlowStep color={RED} num="2" main="出荷する荷物としてお預かり" sub="フロント等で通常の出荷荷物と同様に保管" />
@@ -1243,7 +1245,8 @@ function HotelStaffPage({
         </View>
         <View style={[vs.flowCol, { marginLeft: mm(3.5) }]}>
           <Text style={[vs.flowColHead, { backgroundColor: INK }]}>
-            ② 到着先ホテル（次のご宿泊ホテル）での対応
+            <Text style={vs.flowColHeadNo}>02  </Text>
+            {jb("到着先ホテル（次のご宿泊ホテル）での対応")}
           </Text>
           <FlowStep color={INK} num="1" main="ドライバーが荷物をお届け" sub="ドライバーがバウチャー内容を確認します" />
           <FlowStep color={INK} num="2" main="到着荷物としてお預かり" sub="通常の荷物お預かりと同様に保管" />

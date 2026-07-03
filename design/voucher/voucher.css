@@ -374,6 +374,12 @@ html, body {
   font-size: 8pt; font-weight: 800; color: #fff;
   padding: 1.2mm 3mm; margin-bottom: 2mm;
 }
+.flow-col-head .fh-no {
+  font-family: var(--font-en);
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+  margin-right: 2mm;
+}
 .flow-col.depart .flow-col-head { background: var(--red); }
 .flow-col.arrive .flow-col-head { background: var(--ink); }
 

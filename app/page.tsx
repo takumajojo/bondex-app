@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
   ArrowRight,
@@ -75,6 +76,200 @@ function SectionH2({
 }
 
 
+// ─────────────────────────────────────────────────────────────
+// HeroDemo — 「15秒でわかる BondEx」自動再生ループ
+// 動画ファイルの代わりにコードで描く軽量プロダクトデモ (4シーン × 約3.8秒)。
+// 通信量ゼロ・自動再生・ループ。シーンの絵は LP のラインアート言語に揃える。
+// ─────────────────────────────────────────────────────────────
+const DEMO_SCENES = [
+  {
+    step: "STEP 1",
+    title: "旅程表を送るだけ",
+    body: "お客様の旅程 (PDF・Excel・画像) をそのまま送付",
+    art: (
+      <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
+        <rect x="52" y="24" width="88" height="120" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+        <line x1="68" y1="52" x2="124" y2="52" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <line x1="68" y1="70" x2="112" y2="70" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <line x1="68" y1="88" x2="124" y2="88" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <line x1="68" y1="106" x2="100" y2="106" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <g className="bdx-slide">
+          <path d="M 156 84 L 216 84 M 202 70 L 216 84 L 202 98" stroke="#C8102E" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+        <rect x="232" y="56" width="56" height="56" rx="10" fill="#C8102E" />
+        <text x="260" y="94" textAnchor="middle" fontSize="30" fontWeight="bold" fill="#FFFFFF" fontStyle="italic">
+          B
+        </text>
+      </svg>
+    ),
+  },
+  {
+    step: "STEP 2",
+    title: "BondEx が配送を手配",
+    body: "バウチャーとヤマト送り状を発行してお渡し",
+    art: (
+      <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
+        <g className="bdx-rise">
+          <rect x="64" y="34" width="86" height="112" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+          <rect x="64" y="34" width="86" height="20" rx="6" fill="#C8102E" />
+          <text x="107" y="48" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#FFFFFF">VOUCHER</text>
+          <line x1="78" y1="72" x2="136" y2="72" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+          <line x1="78" y1="88" x2="124" y2="88" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+          <rect x="78" y="104" width="26" height="26" fill="none" stroke="#0F172A" strokeWidth="2" opacity="0.5" />
+          <rect x="84" y="110" width="6" height="6" fill="#0F172A" opacity="0.5" />
+          <rect x="94" y="120" width="6" height="6" fill="#0F172A" opacity="0.5" />
+        </g>
+        <g className="bdx-rise-delay">
+          <rect x="176" y="46" width="86" height="100" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+          <text x="219" y="66" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0F172A">ヤマト送り状</text>
+          <line x1="190" y1="82" x2="248" y2="82" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+          <line x1="190" y1="98" x2="236" y2="98" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+          <g>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
+              <rect key={k} x={190 + k * 8} y={112} width={k % 3 === 0 ? 4 : 2.5} height="22" fill="#0F172A" opacity="0.7" />
+            ))}
+          </g>
+          <circle cx="256" cy="52" r="12" fill="#C8102E" />
+          <path d="M 250 52 L 254.5 56.5 L 262 48" stroke="#FFFFFF" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      </svg>
+    ),
+  },
+  {
+    step: "STEP 3",
+    title: "ゲストは手ぶらで移動",
+    body: "荷物はホテルからホテルへ、ヤマト運輸が配送",
+    art: (
+      <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
+        <rect x="24" y="52" width="56" height="76" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+        <rect x="38" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="56" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="38" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="56" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="44" y="106" width="16" height="22" fill="#0F172A" opacity="0.45" />
+        <text x="52" y="46" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#64748B">HOTEL A</text>
+        <rect x="240" y="52" width="56" height="76" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+        <rect x="254" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="272" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="254" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="272" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
+        <rect x="260" y="106" width="16" height="22" fill="#0F172A" opacity="0.45" />
+        <text x="268" y="46" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#64748B">HOTEL B</text>
+        <line x1="88" y1="128" x2="232" y2="128" stroke="#CBD5E1" strokeWidth="2" strokeDasharray="2 8" strokeLinecap="round" />
+        <g className="bdx-truck">
+          <rect x="0" y="96" width="34" height="22" rx="3" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" />
+          <path d="M 34 104 h 10 l 7 8 v 6 h -17 z" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" strokeLinejoin="round" />
+          <circle cx="10" cy="120" r="5" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" />
+          <circle cx="42" cy="120" r="5" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" />
+          <rect x="8" y="102" width="12" height="10" rx="1.5" fill="#C8102E" />
+        </g>
+      </svg>
+    ),
+  },
+  {
+    step: "STEP 4",
+    title: "追跡も請求もおまかせ",
+    body: "QR で配送状況を確認、料金は月次まとめ請求",
+    art: (
+      <svg viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
+        <rect x="70" y="20" width="76" height="132" rx="12" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+        <rect x="84" y="40" width="48" height="48" fill="none" stroke="#0F172A" strokeWidth="2" opacity="0.6" />
+        <rect x="92" y="48" width="10" height="10" fill="#0F172A" opacity="0.6" />
+        <rect x="114" y="48" width="10" height="10" fill="#0F172A" opacity="0.6" />
+        <rect x="92" y="70" width="10" height="10" fill="#0F172A" opacity="0.6" />
+        <rect x="110" y="66" width="6" height="6" fill="#0F172A" opacity="0.6" />
+        <g className="bdx-pulse">
+          <circle cx="108" cy="112" r="7" fill="#C8102E" />
+        </g>
+        <line x1="90" y1="112" x2="126" y2="112" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
+        <text x="108" y="136" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#64748B">配送中</text>
+        <rect x="180" y="36" width="86" height="100" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
+        <text x="223" y="58" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0F172A">月次請求書</text>
+        <line x1="194" y1="74" x2="252" y2="74" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <line x1="194" y1="90" x2="240" y2="90" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <line x1="194" y1="106" x2="252" y2="106" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
+        <circle cx="252" cy="120" r="11" fill="#C8102E" />
+        <text x="252" y="124.5" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#FFFFFF">¥</text>
+      </svg>
+    ),
+  },
+]
+
+const DEMO_INTERVAL_MS = 3800 // 4シーン × 3.8秒 ≒ 15秒ループ
+
+function HeroDemo() {
+  const [scene, setScene] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setScene((v) => (v + 1) % DEMO_SCENES.length)
+    }, DEMO_INTERVAL_MS)
+    return () => window.clearInterval(id)
+  }, [])
+  const s = DEMO_SCENES[scene]
+
+  return (
+    <div className="rounded-2xl border border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
+      <style>{`
+        /* 注: すべて transform のみで動かす (opacity を 0 から始めない)。
+           CSS アニメーションが無効・凍結された環境でも内容が読めるようにするため。 */
+        @keyframes bdx-truck { 0% { transform: translateX(78px); } 100% { transform: translateX(196px); } }
+        .bdx-truck { animation: bdx-truck ${DEMO_INTERVAL_MS}ms linear infinite; }
+        @keyframes bdx-slide { 0% { transform: translateX(-14px); } 30% { transform: translateX(0); } 100% { transform: translateX(0); } }
+        .bdx-slide { animation: bdx-slide 1.4s ease-out both; }
+        @keyframes bdx-rise { 0% { transform: translateY(8px); } 100% { transform: translateY(0); } }
+        .bdx-rise { animation: bdx-rise 0.6s ease-out both; }
+        .bdx-rise-delay { animation: bdx-rise 0.6s ease-out 0.3s both; }
+        @keyframes bdx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        .bdx-pulse { animation: bdx-pulse 1.2s ease-in-out infinite; }
+        @keyframes bdx-progress { from { width: 0%; } to { width: 100%; } }
+        .bdx-progress { animation: bdx-progress ${DEMO_INTERVAL_MS}ms linear both; }
+        @media (prefers-reduced-motion: reduce) {
+          .bdx-truck, .bdx-slide, .bdx-rise, .bdx-rise-delay, .bdx-pulse, .bdx-progress { animation: none; }
+        }
+      `}</style>
+
+      <div className="flex items-center justify-between px-5 pt-4">
+        <p className="text-[12px] font-bold tracking-[0.12em] text-[#0F172A]">
+          15秒でわかる <span className="text-[#C8102E]">BondEx</span>
+        </p>
+        <div className="flex items-center gap-1.5">
+          {DEMO_SCENES.map((_, i) => (
+            <button
+              key={i}
+              aria-label={`シーン ${i + 1}`}
+              onClick={() => setScene(i)}
+              className={`h-1.5 rounded-full transition-all ${
+                i === scene ? "w-6 bg-[#C8102E]" : "w-1.5 bg-[#E5E7EB]"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* シーン描画エリア */}
+      <div key={scene} className="relative h-48 sm:h-56 mx-5 mt-3 rounded-xl bg-[#F7F8FA]">
+        {s.art}
+      </div>
+
+      {/* キャプション */}
+      <div key={`cap-${scene}`} className="px-5 pt-4 pb-3 bdx-rise">
+        <p className="text-[11px] font-mono tracking-widest text-[#C8102E] font-bold">
+          {s.step}
+          <span className="text-[#CBD5E1] mx-2">/</span>
+          <span className="text-[#64748B] font-sans tracking-normal">4シーン自動再生</span>
+        </p>
+        <p className="text-[16px] font-bold text-[#0F172A] mt-1">{s.title}</p>
+        <p className="text-[13px] text-[#334155] mt-0.5 leading-relaxed">{s.body}</p>
+      </div>
+
+      {/* 進行バー */}
+      <div className="h-1 bg-[#F1F5F9]">
+        <div key={`bar-${scene}`} className="bdx-progress h-full bg-[#C8102E]/70" />
+      </div>
+    </div>
+  )
+}
+
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-white text-[#0F172A]">
@@ -122,9 +317,65 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* ═══════════════ Hero — Full-bleed family image ═══════════════ */}
+      {/* ═══════════════ Hero (mobile) — メッセージ先行 ═══════════════
+          スマホでは写真より先に「これは何か・何が楽になるか・次の一歩」を
+          1 スクロールで伝える。写真は下部に帯として残す。 */}
+      <section className="md:hidden px-5 pt-10 pb-4">
+        <p className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wide text-[#C8102E] border border-[#C8102E]/30 bg-[#C8102E]/5 rounded-full px-3 py-1.5 mb-5">
+          訪日旅行代理店・ランドオペレーター向け
+        </p>
+        <h1 className="text-[32px] font-bold leading-[1.35] text-[#0F172A] mb-4">
+          旅程を送るだけで、
+          <br />
+          荷物配送手配が完了。
+        </h1>
+        <p className="text-[14px] text-[#334155] leading-[1.9] mb-5">
+          ホテル間の荷物配送に必要な面倒ごとを、BondEx がまとめて代行します。
+        </p>
+        <ul className="space-y-2.5 mb-7">
+          {[
+            "バウチャー・ヤマト送り状の作成はすべて BondEx",
+            "運賃は立替、月末にまとめて一括請求",
+            "変更・問い合わせの窓口も BondEx に一本化",
+          ].map((b) => (
+            <li key={b} className="flex items-start gap-2.5 text-[14px] font-medium text-[#0F172A]">
+              <svg viewBox="0 0 20 20" className="w-5 h-5 shrink-0 mt-[1px]" aria-hidden="true">
+                <circle cx="10" cy="10" r="9" fill="none" stroke="#C8102E" strokeWidth="1.8" />
+                <path d="M 6 10.5 L 8.8 13.2 L 14 7.5" fill="none" stroke="#C8102E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {b}
+            </li>
+          ))}
+        </ul>
+        <a
+          href={CONTACT_FORM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full h-[52px] rounded-xl bg-[#C8102E] text-white text-[15px] font-bold hover:bg-[#A00D25]"
+        >
+          導入相談へ
+          <ArrowRight className="w-4 h-4" strokeWidth={2} />
+        </a>
+        <div className="flex items-center justify-between mt-3 mb-6">
+          <p className="text-[11px] text-[#64748B]">通常 1 営業日以内にご連絡します。</p>
+          <a href="#price" className="text-[12px] font-medium text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1]">
+            料金を見る
+          </a>
+        </div>
+        <div
+          className="h-44 rounded-2xl bg-cover bg-center"
+          style={{
+            backgroundImage:
+              "linear-gradient(180deg, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.45) 100%), url('/hero-family.png')",
+          }}
+          role="img"
+          aria-label="スーツケースを持たずに日本を旅行する家族"
+        />
+      </section>
+
+      {/* ═══════════════ Hero (desktop) — Full-bleed family image ═══════════════ */}
       <section
-        className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat flex items-end"
+        className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat hidden md:flex items-end"
         style={{
           backgroundImage:
             "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.0) 25%, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.78) 100%), url('/hero-family.png')",
@@ -158,6 +409,13 @@ export default function LandingPage() {
               通常 1 営業日以内にご連絡します。
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ 15秒でわかる BondEx (自動再生デモ) ═══════════════ */}
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-6 md:pt-20">
+        <div className="max-w-2xl mx-auto">
+          <HeroDemo />
         </div>
       </section>
 
