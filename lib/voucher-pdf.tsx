@@ -1470,32 +1470,32 @@ const HOWTO_L10N = {
     subtitle: "Hotel-to-hotel luggage forwarding — a 1-minute guide",
     needHead: "WHAT YOU NEED",
     needs: [
-      { title: "Voucher", body: "The BondEx paper with the red band. One sheet per delivery." },
-      { title: "Shipping label", body: "Printed label from your travel agency — one per bag." },
-      { title: "Your luggage", body: "Packed and closed. Up to 160 cm / 25 kg per piece." },
+      { title: "Voucher", body: "One per delivery" },
+      { title: "Shipping label", body: "One per bag" },
+      { title: "Your luggage", body: "Max 160 cm / 25 kg" },
     ],
     checkHead: "CHECK YOUR LABEL",
-    checkSub: "Take 10 seconds to confirm these three points:",
+    checkSub: "A 10-second check:",
     checks: [
-      "The sender name is your group representative's name — it may differ from your own.",
-      "The destination hotel is the right one.",
-      "The arrival date matches your travel plan.",
+      "Sender name = your group representative",
+      "Destination hotel is correct",
+      "Arrival date matches your plan",
     ],
     labelMockFrom: "FROM: Representative name",
     labelMockTo: "TO: Your next hotel",
     labelMockDate: "Arrival date",
     stepsHead: "3 EASY STEPS",
     steps: [
-      { title: "Pack smart", body: "Keep passports, rail tickets, medicine and valuables WITH YOU — never inside the suitcase." },
-      { title: "Hand over at reception", body: "At check-out, give the voucher and label(s) to the reception. Do not stick anything on your bag — the courier attaches the label with a tag holder." },
-      { title: "Pick up at your next hotel", body: "Your luggage arrives on the date shown on the voucher. Collect it at the reception when you check in." },
+      { title: "Pack smart", body: "Passport, tickets, medicine — keep them with you." },
+      { title: "Hand over at reception", body: "Voucher + labels to the front desk. No sticking — the courier attaches them." },
+      { title: "Pick up & go", body: "Collect your bags at your next hotel's reception." },
     ],
     trackHead: "TRACK ANYTIME",
-    trackBody: "Scan the QR code on your voucher to see the live delivery status of your luggage.",
+    trackBody: "Scan the QR code on your voucher.",
     noticeHead: "GOOD TO KNOW",
     notices: [
-      "Typhoons or severe weather may delay delivery to the next day. Avoid shipping bags you will need right before your departure flight.",
-      "Questions? BondEx support: support@bondex.express (9:00 - 18:00 JST)",
+      "Severe weather can delay delivery to the next day — avoid shipping right before your flight.",
+      "BondEx support: support@bondex.express (9:00 - 18:00 JST)",
     ],
   },
   zh: {
@@ -1504,32 +1504,32 @@ const HOWTO_L10N = {
     subtitle: "酒店到酒店行李配送 — 1 分钟读懂",
     needHead: "需要准备 WHAT YOU NEED",
     needs: [
-      { title: "凭证 Voucher", body: "带红色横幅的 BondEx 凭证，每个配送区间一张。" },
-      { title: "配送标签 Label", body: "旅行社提供的打印标签，每件行李一张。" },
-      { title: "您的行李", body: "收拾好并关闭。每件最大 160 cm / 25 kg。" },
+      { title: "凭证", body: "每个区间一张" },
+      { title: "配送标签", body: "每件行李一张" },
+      { title: "您的行李", body: "最大 160 cm / 25 kg" },
     ],
     checkHead: "确认标签 CHECK YOUR LABEL",
-    checkSub: "请花 10 秒确认以下三点：",
+    checkSub: "只需 10 秒确认：",
     checks: [
-      "寄件人姓名为团队代表的姓名，可能与您本人的姓名不同。",
-      "目的地酒店正确无误。",
-      "到达日期符合您的行程安排。",
+      "寄件人姓名＝团队代表姓名",
+      "目的地酒店正确",
+      "到达日期与行程一致",
     ],
     labelMockFrom: "FROM: 代表姓名",
     labelMockTo: "TO: 下一家酒店",
     labelMockDate: "到达日期",
     stepsHead: "简单三步 3 EASY STEPS",
     steps: [
-      { title: "聪明打包", body: "护照、车票、药品等贵重物品请随身携带，切勿放入托运行李箱。" },
-      { title: "在前台交付", body: "退房时，将凭证和标签交给酒店前台。无需粘贴 — 配送员会用标签夹将其固定在行李上。" },
-      { title: "在下一家酒店领取", body: "行李将于凭证上标注的日期送达。办理入住时在前台领取即可。" },
+      { title: "聪明打包", body: "护照、车票、药品请随身携带。" },
+      { title: "在前台交付", body: "将凭证和标签交给前台。无需粘贴，配送员会安装。" },
+      { title: "领取行李", body: "在下一家酒店的前台领取。" },
     ],
     trackHead: "随时追踪 TRACK ANYTIME",
-    trackBody: "扫描凭证上的二维码，即可查看行李的实时配送状态。",
+    trackBody: "扫描凭证上的二维码即可。",
     noticeHead: "温馨提示 GOOD TO KNOW",
     notices: [
-      "台风等恶劣天气可能导致配送延迟至次日。临近回国航班前，请避免托运随后立即需要的行李。",
-      "如有疑问请联系 BondEx: support@bondex.express (9:00 - 18:00 JST)",
+      "恶劣天气可能延迟至次日送达，临近回国航班请勿托运。",
+      "BondEx 客服: support@bondex.express (9:00 - 18:00 JST)",
     ],
   },
 } as const
@@ -1677,6 +1677,70 @@ function QrMiniIcon() {
   )
 }
 
+// ステップの情景イラスト (文字を減らし絵で伝える — 線画 + 赤アクセント)
+function ScenePack() {
+  return (
+    <Svg width="100%" height={mm(20)} viewBox="0 0 120 64">
+      {/* スーツケース */}
+      <Rect x={14} y={22} width={34} height={34} rx={4} stroke={INK} strokeWidth={2.4} fill="#ffffff" />
+      <Path d="M23 22v-5a8 8 0 0 1 16 0v5" stroke={INK} strokeWidth={2.4} fill="none" />
+      <Path d="M24 30v18M38 30v18" stroke={INK} strokeWidth={1.8} opacity={0.35} strokeLinecap="round" />
+      {/* 手荷物 (パスポート・薬・チケット) は赤丸で「箱に入れない」 */}
+      <Circle cx={84} cy={30} r={22} stroke={RED} strokeWidth={2.6} fill={RED_TINT} />
+      <Rect x={70} y={20} width={13} height={17} rx={1.5} stroke={INK} strokeWidth={1.8} fill="#ffffff" />
+      <Circle cx={76.5} cy={27} r={2.6} stroke={INK} strokeWidth={1.4} fill="none" />
+      <Rect x={87} y={23} width={11} height={7} rx={3.5} stroke={INK} strokeWidth={1.8} fill="#ffffff" />
+      <Path d="M87 33h11M87 37h8" stroke={INK} strokeWidth={1.8} strokeLinecap="round" opacity={0.6} />
+      {/* 禁止スラッシュ + スーツケースへの矢印を断つ */}
+      <Path d="M68 45 L100 15" stroke={RED} strokeWidth={2.8} strokeLinecap="round" />
+      <Path d="M60 40 L52 44" stroke={RED} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  )
+}
+function SceneDesk() {
+  return (
+    <Svg width="100%" height={mm(20)} viewBox="0 0 120 64">
+      {/* カウンター */}
+      <Rect x={16} y={38} width={88} height={8} fill={INK} />
+      <Rect x={22} y={46} width={76} height={12} stroke={INK} strokeWidth={2} fill="#ffffff" />
+      {/* ベル */}
+      <Path d="M88 38v-6a8 8 0 0 0-16 0v6" stroke={INK} strokeWidth={2.2} fill="#ffffff" />
+      <Circle cx={80} cy={29} r={1.8} fill={INK} />
+      {/* 手渡しする書類: バウチャー (赤帯) + ラベル (バーコード) */}
+      <Rect x={30} y={10} width={20} height={26} stroke={INK} strokeWidth={2} fill="#ffffff" />
+      <Rect x={30} y={10} width={20} height={6} fill={RED} />
+      <Path d="M34 22h12M34 27h9" stroke={INK} strokeWidth={1.6} strokeLinecap="round" opacity={0.5} />
+      <Rect x={54} y={13} width={17} height={23} stroke={INK} strokeWidth={2} fill="#ffffff" />
+      {[0, 1, 2, 3, 4].map((k) => (
+        <Rect key={k} x={57 + k * 2.6} y={26} width={k % 2 === 0 ? 1.7 : 1} height={7} fill={INK} opacity={0.75} />
+      ))}
+      <Path d="M57 18h11" stroke={INK} strokeWidth={1.6} strokeLinecap="round" opacity={0.5} />
+      {/* 手渡しの矢印 */}
+      <Path d="M60 40 L60 45" stroke={RED} strokeWidth={2.4} strokeLinecap="round" />
+      <Path d="M56 41.5 L60 45.5 L64 41.5" stroke={RED} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Svg>
+  )
+}
+function SceneHotel() {
+  return (
+    <Svg width="100%" height={mm(20)} viewBox="0 0 120 64">
+      {/* ホテル */}
+      <Rect x={24} y={12} width={40} height={46} stroke={INK} strokeWidth={2.4} fill="#ffffff" />
+      {[0, 1].map((r) =>
+        [0, 1].map((c) => (
+          <Rect key={`${r}-${c}`} x={31 + c * 14} y={19 + r * 13} width={8} height={8} fill={INK} opacity={0.25} />
+        )),
+      )}
+      <Rect x={38} y={45} width={12} height={13} fill={INK} opacity={0.45} />
+      {/* 受け取ったスーツケース + チェック */}
+      <Rect x={76} y={28} width={24} height={28} rx={3} stroke={INK} strokeWidth={2.4} fill="#ffffff" />
+      <Path d="M82 28v-4a6 6 0 0 1 12 0v4" stroke={INK} strokeWidth={2.2} fill="none" />
+      <Circle cx={100} cy={26} r={9} fill={RED} />
+      <Path d="M95.5 26 L98.8 29.2 L104.5 22.5" stroke="#ffffff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Svg>
+  )
+}
+
 export function HowToShipDocument({ language }: { language: GuestLanguage }) {
   const L = HOWTO_L10N[language]
   const zf = language === "zh" ? ht.zh : {}
@@ -1746,13 +1810,19 @@ export function HowToShipDocument({ language }: { language: GuestLanguage }) {
         {/* 3 ステップ */}
         <Text style={[ht.secHead, zf]}>{jb(L.stepsHead)}</Text>
         <View style={ht.stepsRow}>
-          {L.steps.map((s, i) => (
-            <View key={i} style={[ht.stepCol, ...(i > 0 ? [ht.stepGap] : [])]}>
-              <View style={ht.numDot}><Text style={ht.numDotText}>{i + 1}</Text></View>
-              <Text style={[ht.stepTitle, zf]}>{jb(s.title)}</Text>
-              <Text style={[ht.stepBody, zf]}>{jb(s.body)}</Text>
-            </View>
-          ))}
+          {L.steps.map((s, i) => {
+            const SCENES = [<ScenePack key="p" />, <SceneDesk key="d" />, <SceneHotel key="h" />]
+            return (
+              <View key={i} style={[ht.stepCol, ...(i > 0 ? [ht.stepGap] : [])]}>
+                {SCENES[i]}
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: mm(2) }}>
+                  <View style={ht.numDot}><Text style={ht.numDotText}>{i + 1}</Text></View>
+                  <Text style={[ht.stepTitle, zf, { marginTop: 0, flex: 1 }]}>{jb(s.title)}</Text>
+                </View>
+                <Text style={[ht.stepBody, zf]}>{jb(s.body)}</Text>
+              </View>
+            )
+          })}
         </View>
 
         {/* 追跡 + 注意 */}

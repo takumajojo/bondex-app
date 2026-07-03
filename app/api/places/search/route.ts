@@ -109,8 +109,15 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // 日本国内のホテルのみ (region=jp はバイアスに過ぎず海外もヒットするため、
+  // 住所文字列で確定フィルタする。日本の住所は言語に関わらず
+  // 「日本」「Japan」または 〒 郵便番号を含む)
+  const isJapan = (addr: string) =>
+    addr.includes("日本") || addr.includes("Japan") || /〒?\s*\d{3}-\d{4}/.test(addr)
+
   const candidates: SearchCandidate[] = (data.results ?? [])
     .filter((r) => r.place_id && r.name && r.formatted_address)
+    .filter((r) => isJapan(r.formatted_address!))
     .slice(0, 8)
     .map((r) => {
       const parsed = parseJpAddress(r.formatted_address!)

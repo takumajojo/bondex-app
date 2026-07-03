@@ -532,6 +532,17 @@ function addressKey(hotel: string, _address?: string): string {
   return hotel.trim().toLowerCase()
 }
 
+// 代表者名の決定: AI パースの travelers → 受取人名 (送り状) → ファミリー名 の順。
+// バウチャーの GUEST 欄・予約検索はこの名前が基準になるため、
+// 確認画面の表示と発行ペイロードは必ずこの同一ロジックを使うこと
+// (過去に確認画面だけ familyName に落ちて「団体名が代表者に見える」事故があった)。
+function computeRepresentativeLabel(itinerary: EditableItinerary): string {
+  const rep =
+    itinerary.guest.travelers.find((tr) => tr.type === "adult") || itinerary.guest.travelers[0]
+  if (rep) return `${rep.title ? rep.title + " " : ""}${rep.name}`
+  return itinerary.shipments[0]?.recipient?.trim() || itinerary.guest.familyName || ""
+}
+
 function emptyVerifications(legCount: number): Verifications {
   return {
     representative: false,
@@ -702,11 +713,7 @@ export default function OperatorPage() {
     setGenerationError("")
     setPhase("generating")
 
-    const representative =
-      itinerary.guest.travelers.find((tr) => tr.type === "adult") || itinerary.guest.travelers[0]
-    const representativeLabel = representative
-      ? `${representative.title ? representative.title + " " : ""}${representative.name}`
-      : itinerary.shipments[0]?.recipient?.trim() || itinerary.guest.familyName || ""
+    const representativeLabel = computeRepresentativeLabel(itinerary)
 
     // クライアント側で Booking ID を1回だけ生成し、voucher / Yamato 両方に同じ ID を渡して
     // トレーサビリティを担保する (旧コードでは voucher と Yamato refNumber が別 ID になっていた)
@@ -1901,10 +1908,7 @@ function ConfirmView({
   onGenerate: () => void
 }) {
   const { guest, shipments } = itinerary
-  const representative = guest.travelers.find((tr) => tr.type === "adult") || guest.travelers[0]
-  const representativeLabel = representative
-    ? `${representative.title ? representative.title + " " : ""}${representative.name}`
-    : guest.familyName
+  const representativeLabel = computeRepresentativeLabel(itinerary)
 
   const totalChecks = 1 + shipments.length * 3
   const passedChecks =
