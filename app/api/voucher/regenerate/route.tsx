@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await sb
       .from("shipments")
       .select(
-        "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes",
+        "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes, guest_language",
       )
       .eq("booking_id", bookingId)
       .order("leg_index", { ascending: true })
@@ -115,8 +115,8 @@ export async function GET(req: NextRequest) {
       partnerQrDataUri,
       supportQrDataUri,
       supportQrKind: waUrl ? "whatsapp" : "email",
-      // guestLanguage は shipments に保存していないため再発行は英語版になる。
-      // 中国語版の再発行が必要になったら shipments に guest_language 列を追加する。
+      // 発行時の言語で再発行する (sql/008 で保存。旧データは null = en)
+      guestLanguage: data[0].guest_language === "zh" ? "zh" : "en",
       // showContact / contactDisplayMode: 発行時の設定は operator のブラウザ localStorage に
       // のみ保存され Supabase 側の shipments には残らないため、再発行時点では判別不能。
       // 未指定 (undefined) にしておけば VoucherInput 側のデフォルト (bondex_support) が適用される。

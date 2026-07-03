@@ -56,6 +56,8 @@ export const config = {
     "/api/shipandco/create",
     "/api/places/search",
     "/api/shipments",
+    "/api/shipments/duplicate-check",
+    "/api/voucher/labels",
     "/api/invoices/generate",
     "/api/agencies",
     "/api/voucher/regenerate",

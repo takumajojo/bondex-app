@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 
 export const runtime = "nodejs"
@@ -425,7 +426,46 @@ export async function GET(req: NextRequest) {
     if (!statusAdvances && !anySuccess) skipped++
   }
 
+  // ------------------------------------------------------------------
+  // 集荷漏れアラート: 発送日を過ぎても picked_up にならない区間を検知。
+  //   - 発送日当日は 18 時 (JST) 以降にのみ発報 (集荷は日中に来るため)
+  //   - 前日以前の発送分は時刻に関わらず即発報
+  //   - pickup_alert_sent_at で二重通知を防止
+  // ------------------------------------------------------------------
+  let pickupAlertsSent = 0
+  try {
+    const nowJst = new Date(Date.now() + 9 * 3600 * 1000)
+    const todayJst = nowJst.toISOString().slice(0, 10)
+    const hourJst = nowJst.getUTCHours()
+    const misses = await listPickupMisses(todayJst)
+    const due = misses.filter(
+      (s) => s.shipment_date < todayJst || hourJst >= 18,
+    )
+    const alertedIds: string[] = []
+    for (const s of due) {
+      const agencyEmail = agencyEmailByName.get(s.agency) ?? null
+      await sendOpsAlert({
+        subject: `【集荷漏れの可能性】${s.booking_id}-L${s.leg_index + 1} ${s.from_hotel}`,
+        lines: [
+          `予約: ${s.booking_id} (区間 ${s.leg_index + 1})`,
+          `代表者: ${s.representative} / 受取人: ${s.recipient}`,
+          `発送日: ${s.shipment_date} を過ぎても集荷が確認できていません (現在: ${s.status})`,
+          `発送元: ${s.from_hotel} → ${s.to_hotel}`,
+          `追跡番号: ${(s.yamato_tracking ?? []).join(", ") || "未発行"}`,
+          `対応: 発送元ホテルへ荷物の有無を確認し、必要なら集荷を再手配してください。`,
+        ],
+        agencyEmail,
+      })
+      alertedIds.push(s.id)
+      pickupAlertsSent++
+    }
+    await markPickupAlerted(alertedIds)
+  } catch (err) {
+    console.error("[sync-tracking] pickup-miss check failed:", err instanceof Error ? err.message : err)
+  }
+
   return NextResponse.json({
+    pickupAlertsSent,
     checked: rows.length,
     tasksRun: tasks.length,
     updated,

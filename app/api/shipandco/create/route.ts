@@ -241,6 +241,8 @@ interface CreateBody {
   deliveryDate?: unknown
   /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon) がデフォルト。 */
   deliveryTime?: unknown
+  /** バウチャー言語 (en/zh) — 再発行時に同じ言語で出すため DB に保存する */
+  guestLanguage?: unknown
   suitcaseCount?: unknown
   from?: unknown
   to?: unknown
@@ -689,6 +691,7 @@ export async function POST(req: NextRequest) {
     }
     // 共通のメタ情報 (DB 保存用)
     const baseRecord = {
+    guest_language: body.guestLanguage === "zh" ? "zh" : "en",
       booking_id: bookingId || refNumber,
       leg_index: legIndex,
       agency,

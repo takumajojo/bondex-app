@@ -181,6 +181,10 @@ const messages = {
     howtoCardTitle: "How to ship guide",
     howtoCardSub: "A 1-page guest guide. Include it in the itinerary packet — no extra explanation needed.",
     howtoStandalone: "Download the \"How to ship\" guide:",
+    dupTitle: "Possible duplicate booking",
+    dupBody: "A booking with the same guest name and the same shipping date already exists. Issuing again may create a double shipment.",
+    dupProceed: "Issue anyway",
+    dupCancel: "Go back",
     guestLanguageEn: "English",
     guestLanguageZh: "Chinese (Simplified)",
     settingsContactMode: "CONTACT row on the guest voucher",
@@ -324,6 +328,10 @@ const messages = {
     howtoCardTitle: "How to ship ガイド",
     howtoCardSub: "ゲスト向けの 1 枚もの説明書。行程表に同梱すれば、旅行会社からの説明が不要になります。",
     howtoStandalone: "「How to ship」ガイド単体ダウンロード:",
+    dupTitle: "二重発行の可能性があります",
+    dupBody: "同じお名前・同じ発送日の予約が既に登録されています。このまま発行すると二重配送になる恐れがあります。内容をご確認ください。",
+    dupProceed: "それでも発行する",
+    dupCancel: "戻って確認する",
     guestLanguageEn: "英語",
     guestLanguageZh: "中国語 (簡体字)",
     settingsContactMode: "バウチャーの CONTACT 欄",
@@ -568,6 +576,16 @@ export default function OperatorPage() {
   const [addressChecks, setAddressChecks] = useState<Record<string, AddressCheck>>({})
   const [generatedDocs, setGeneratedDocs] = useState<GeneratedDocs | null>(null)
   const [generationError, setGenerationError] = useState<string>("")
+  // 二重発行警告: 同名同日の既存予約が見つかったときに確認モーダルを出す
+  const [dupMatches, setDupMatches] = useState<Array<{
+    booking_id: string
+    representative: string
+    recipient: string
+    shipment_date: string
+    from_hotel: string
+    to_hotel: string
+    status: string
+  }> | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -708,9 +726,55 @@ export default function OperatorPage() {
   }, [])
 
   // バウチャー + オペシートを並列生成。Blob URL を作成して generated phase へ。
-  const generateDocuments = useCallback(async () => {
+  const generateDocuments = useCallback(async (opts?: { force?: boolean }) => {
     if (!itinerary) return
     setGenerationError("")
+
+    // 二重発行の事前チェック (ベストエフォート — 失敗しても発行は止めない)。
+    // 同じ氏名 + 同じ発送日の既存予約があれば確認モーダルを出し、
+    // operator が「それでも発行する」を選んだときのみ force で再入する。
+    if (!opts?.force) {
+      try {
+        const names = Array.from(
+          new Set(
+            [
+              computeRepresentativeLabel(itinerary),
+              ...itinerary.shipments.map((s) => s.recipient),
+            ]
+              .map((n) => n.trim())
+              .filter(Boolean),
+          ),
+        )
+        const dates = Array.from(
+          new Set(itinerary.shipments.map((s) => s.shipmentDate).filter(Boolean)),
+        )
+        const res = await fetch("/api/shipments/duplicate-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ names, dates }),
+        })
+        if (res.ok) {
+          const data = (await res.json()) as {
+            matches?: Array<{
+              booking_id: string
+              representative: string
+              recipient: string
+              shipment_date: string
+              from_hotel: string
+              to_hotel: string
+              status: string
+            }>
+          }
+          if (Array.isArray(data.matches) && data.matches.length > 0) {
+            setDupMatches(data.matches)
+            return // モーダルで判断を仰ぐ (発行はまだしない)
+          }
+        }
+      } catch {
+        // チェック不能 (ローカル等) は黙って発行に進む
+      }
+    }
+    setDupMatches(null)
     setPhase("generating")
 
     const representativeLabel = computeRepresentativeLabel(itinerary)
@@ -804,6 +868,7 @@ export default function OperatorPage() {
             specialNote: s.specialNote || "",
             tourNumber: itinerary!.tourNumber || "",
             groupName: itinerary!.guest.showGroupName ? itinerary!.guest.familyName || "" : "",
+            guestLanguage: itinerary!.guestLanguage ?? "en",
           }),
         })
         const data = await res.json().catch(() => null)
@@ -1301,6 +1366,53 @@ export default function OperatorPage() {
 
         {phase === "generated" && generatedDocs && (
           <GeneratedView t={t} docs={generatedDocs} onReset={reset} onBackToEdit={backToReview} />
+        )}
+
+        {/* 二重発行の確認モーダル (同名・同日の既存予約あり) */}
+        {dupMatches && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5 text-amber-700" strokeWidth={1.5} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">{t.dupTitle}</h2>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.dupBody}</p>
+                </div>
+              </div>
+              <ul className="max-h-48 overflow-y-auto divide-y divide-border rounded-xl border border-border">
+                {dupMatches.map((m, i) => (
+                  <li key={i} className="p-3 text-xs">
+                    <p className="font-mono text-foreground/80">{m.booking_id}</p>
+                    <p className="text-foreground mt-0.5">
+                      {m.representative}
+                      {m.recipient && m.recipient !== m.representative ? ` / ${m.recipient}` : ""}
+                      <span className="text-muted-foreground"> ・ 発送日 {m.shipment_date}</span>
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">
+                      {m.from_hotel} → {m.to_hotel}
+                      <span className="ml-2">({m.status})</span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setDupMatches(null)} className="h-10 px-4">
+                  {t.dupCancel}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setDupMatches(null)
+                    void generateDocuments({ force: true })
+                  }}
+                  className="h-10 px-4 bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {t.dupProceed}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </main>

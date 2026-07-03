@@ -46,6 +46,10 @@ export interface ShipmentRecord {
   status: ShipmentStatus
   error_message: string | null
   notes: string | null
+  /** バウチャー言語 (en/zh)。null は en 扱い。 */
+  guest_language: string | null
+  /** 集荷漏れアラート送信日時 (cron が設定・二重通知防止)。 */
+  pickup_alert_sent_at: string | null
   created_at: string
   updated_at: string
 }
@@ -103,6 +107,7 @@ export async function saveShipment(input: Partial<ShipmentInsert>): Promise<void
     status: input.status ?? "issued",
     error_message: input.error_message ?? null,
     notes: input.notes ?? null,
+    guest_language: input.guest_language ?? null,
   }
   // booking_id + leg_index で同一区間を update (再発行対応)
   const { error } = await sb
@@ -121,6 +126,8 @@ export async function listShipments(filter?: {
   status?: ShipmentStatus
   fromDate?: string
   toDate?: string
+  /** 予約番号・代表者・受取人・ツアー番号の部分一致検索 */
+  search?: string
   limit?: number
 }): Promise<ShipmentRecord[]> {
   const sb = getSupabase()
@@ -130,6 +137,15 @@ export async function listShipments(filter?: {
   if (filter?.status) q = q.eq("status", filter.status)
   if (filter?.fromDate) q = q.gte("shipment_date", filter.fromDate)
   if (filter?.toDate) q = q.lte("shipment_date", filter.toDate)
+  if (filter?.search) {
+    // PostgREST の or() 構文に流すため、区切り文字になりうる記号を除去
+    const s = filter.search.replace(/[,%()]/g, "").trim()
+    if (s) {
+      q = q.or(
+        `booking_id.ilike.%${s}%,representative.ilike.%${s}%,recipient.ilike.%${s}%,tour_number.ilike.%${s}%`,
+      )
+    }
+  }
   q = q.limit(filter?.limit ?? 100)
   const { data, error } = await q
   if (error) {
@@ -151,6 +167,129 @@ export async function updateShipmentStatus(
   const { error } = await sb.from("shipments").update({ status }).eq("id", id)
   if (error) return { ok: false, error: error.message }
   return { ok: true }
+}
+
+/**
+ * 運用フィールドの編集 (ダッシュボードの編集モーダル用)。
+ * 変更できるのは配送の実務に関わる最小限のフィールドのみ。
+ * ホテル・氏名の変更は「削除して再発行」に誘導する (送り状と食い違う事故防止)。
+ */
+export async function updateShipmentFields(
+  id: string,
+  patch: {
+    shipment_date?: string
+    expected_arrival?: string | null
+    suitcase_count?: number
+    notes?: string | null
+    status?: ShipmentStatus
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: "Supabase not configured" }
+  const update: Record<string, unknown> = {}
+  if (patch.shipment_date !== undefined) update.shipment_date = patch.shipment_date
+  if (patch.expected_arrival !== undefined) update.expected_arrival = patch.expected_arrival
+  if (patch.suitcase_count !== undefined) update.suitcase_count = patch.suitcase_count
+  if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.status !== undefined) update.status = patch.status
+  if (Object.keys(update).length === 0) return { ok: true }
+  const { error } = await sb.from("shipments").update(update).eq("id", id)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+/**
+ * 予約単位の削除 (誤作成のクリーンアップ用)。全区間を物理削除する。
+ * 発行済み送り状の破棄は Ship&co 側の操作が必要 — UI で必ず注意を出すこと。
+ */
+export async function deleteBooking(
+  bookingId: string,
+): Promise<{ ok: boolean; deleted: number; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, deleted: 0, error: "Supabase not configured" }
+  const { data, error } = await sb
+    .from("shipments")
+    .delete()
+    .eq("booking_id", bookingId)
+    .select("id")
+  if (error) return { ok: false, deleted: 0, error: error.message }
+  return { ok: true, deleted: data?.length ?? 0 }
+}
+
+/**
+ * 二重発行チェック: 同じ氏名 (代表者 or 受取人) + 同じ発送日の
+ * 既存予約 (キャンセル除く) を探す。発行前の警告用。
+ */
+export async function findDuplicateBookings(params: {
+  names: string[]
+  dates: string[]
+}): Promise<
+  Array<
+    Pick<
+      ShipmentRecord,
+      "booking_id" | "representative" | "recipient" | "shipment_date" | "from_hotel" | "to_hotel" | "status"
+    >
+  >
+> {
+  const sb = getSupabase()
+  if (!sb) return []
+  const names = params.names
+    .map((n) => n.replace(/[,%()]/g, "").trim())
+    .filter((n) => n.length >= 2)
+  const dates = params.dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+  if (names.length === 0 || dates.length === 0) return []
+  const orExpr = names
+    .flatMap((n) => [`representative.ilike.%${n}%`, `recipient.ilike.%${n}%`])
+    .join(",")
+  const { data, error } = await sb
+    .from("shipments")
+    .select("booking_id, representative, recipient, shipment_date, from_hotel, to_hotel, status")
+    .in("shipment_date", dates)
+    .neq("status", "cancelled")
+    .or(orExpr)
+    .limit(20)
+  if (error) {
+    console.error("[shipments-db] findDuplicateBookings failed", error.message)
+    return []
+  }
+  return (data ?? []) as Array<
+    Pick<
+      ShipmentRecord,
+      "booking_id" | "representative" | "recipient" | "shipment_date" | "from_hotel" | "to_hotel" | "status"
+    >
+  >
+}
+
+/**
+ * 集荷漏れ候補: 発送日を過ぎても集荷が確認できていない区間。
+ * (status が pending/issued のまま = picked_up 以降に進んでいない)
+ */
+export async function listPickupMisses(
+  todayJstYmd: string,
+): Promise<ShipmentRecord[]> {
+  const sb = getSupabase()
+  if (!sb) return []
+  const { data, error } = await sb
+    .from("shipments")
+    .select("*")
+    .in("status", ["pending", "issued"])
+    .lte("shipment_date", todayJstYmd)
+    .is("pickup_alert_sent_at", null)
+  if (error) {
+    console.error("[shipments-db] listPickupMisses failed", error.message)
+    return []
+  }
+  return (data ?? []) as ShipmentRecord[]
+}
+
+export async function markPickupAlerted(ids: string[]): Promise<void> {
+  const sb = getSupabase()
+  if (!sb || ids.length === 0) return
+  const { error } = await sb
+    .from("shipments")
+    .update({ pickup_alert_sent_at: new Date().toISOString() })
+    .in("id", ids)
+  if (error) console.error("[shipments-db] markPickupAlerted failed", error.message)
 }
 
 /**
