@@ -64,6 +64,26 @@ function asString(v: unknown): string {
   return typeof v === "string" ? v : ""
 }
 
+/**
+ * 問い合わせ QR: BONDEX_WHATSAPP_URL (例: https://wa.me/81XXXXXXXXXX) が
+ * 設定されていれば WhatsApp、未設定なら mailto:support@ にフォールバック。
+ * WhatsApp 番号が決まったら Vercel の環境変数を設定するだけで切り替わる。
+ */
+async function buildSupportQr(): Promise<{ uri?: string; kind: "whatsapp" | "email" }> {
+  const wa = process.env.BONDEX_WHATSAPP_URL?.trim()
+  const target = wa || `mailto:${SUPPORT_DEFAULTS.email}`
+  try {
+    const uri = await QRCode.toDataURL(target, {
+      margin: 0,
+      width: 200,
+      color: { dark: "#16161a", light: "#FFFFFF" },
+    })
+    return { uri, kind: wa ? "whatsapp" : "email" }
+  } catch {
+    return { uri: undefined, kind: wa ? "whatsapp" : "email" }
+  }
+}
+
 function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   const from = (s.from as { hotel?: string; address?: string; city?: string }) ?? {}
   const to = (s.to as { hotel?: string; address?: string; city?: string }) ?? {}
@@ -110,7 +130,10 @@ export async function GET(req: NextRequest) {
   }
   const lang = req.nextUrl.searchParams.get("lang") === "zh" ? "zh" : "en"
   try {
-    const buf = await renderToBuffer(<HowToShipDocument language={lang} />)
+    const supportQr = await buildSupportQr()
+    const buf = await renderToBuffer(
+      <HowToShipDocument language={lang} supportQrDataUri={supportQr.uri} supportQrKind={supportQr.kind} />,
+    )
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {
@@ -148,7 +171,10 @@ export async function POST(req: NextRequest) {
   if (type === "howto") {
     const lang = body.guestLanguage === "zh" ? "zh" : "en"
     try {
-      const buf = await renderToBuffer(<HowToShipDocument language={lang} />)
+      const supportQr = await buildSupportQr()
+      const buf = await renderToBuffer(
+        <HowToShipDocument language={lang} supportQrDataUri={supportQr.uri} supportQrKind={supportQr.kind} />,
+      )
       return new NextResponse(new Uint8Array(buf), {
         status: 200,
         headers: {
@@ -200,7 +226,9 @@ export async function POST(req: NextRequest) {
   // react-pdf は canvas/JS を実行できないため、事前に画像化しておく。
   let trackingQrDataUri: string | undefined
   let partnerQrDataUri: string | undefined
+  let supportQr: { uri?: string; kind: "whatsapp" | "email" } = { kind: "email" }
   if (type === "voucher") {
+    supportQr = await buildSupportQr()
     try {
       trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
         margin: 0,
@@ -237,6 +265,8 @@ export async function POST(req: NextRequest) {
     companyAddress,
     trackingQrDataUri,
     partnerQrDataUri,
+    supportQrDataUri: supportQr.uri,
+    supportQrKind: supportQr.kind,
     showContact: body.showContact !== false,
     contactDisplayMode: asContactMode(body.contactDisplayMode),
     guestLanguage: body.guestLanguage === "zh" ? "zh" : "en",

@@ -74,7 +74,14 @@ export async function GET(req: NextRequest) {
     // react-pdf は canvas/JS を実行できないため、事前に画像化しておく (generate route と同様)。
     let trackingQrDataUri: string | undefined
     let partnerQrDataUri: string | undefined
+    let supportQrDataUri: string | undefined
+    const waUrl = process.env.BONDEX_WHATSAPP_URL?.trim()
     try {
+      supportQrDataUri = await QRCode.toDataURL(waUrl || `mailto:${SUPPORT_DEFAULTS.email}`, {
+        margin: 0,
+        width: 200,
+        color: { dark: "#16161a", light: "#FFFFFF" },
+      })
       trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
         margin: 0,
         width: 200,
@@ -106,6 +113,8 @@ export async function GET(req: NextRequest) {
       companyAddress: SUPPORT_DEFAULTS.companyAddress,
       trackingQrDataUri,
       partnerQrDataUri,
+      supportQrDataUri,
+      supportQrKind: waUrl ? "whatsapp" : "email",
       // guestLanguage は shipments に保存していないため再発行は英語版になる。
       // 中国語版の再発行が必要になったら shipments に guest_language 列を追加する。
       // showContact / contactDisplayMode: 発行時の設定は operator のブラウザ localStorage に

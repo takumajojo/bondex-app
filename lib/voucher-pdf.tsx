@@ -180,6 +180,10 @@ export interface VoucherInput {
   partnerQrDataUri?: string
   /** ゲスト向けページの言語 (既定: en)。zh = 簡体字。繁体字は同じ仕組みで追加可。 */
   guestLanguage?: GuestLanguage
+  /** 問い合わせ QR (data URI)。BONDEX_WHATSAPP_URL 設定時は WhatsApp、
+   *  未設定時は mailto:support@ のフォールバック。ルート側で生成。 */
+  supportQrDataUri?: string
+  supportQrKind?: "whatsapp" | "email"
 }
 
 function resolveContactMode(data: VoucherInput): ContactDisplayMode {
@@ -1067,10 +1071,20 @@ function GuestPage({
         </View>
         <View style={vs.detailRow}>
           {contactCell && (
-            <View style={[vs.detailCell, { width: "50%" }]}>
-              <Text style={vs.dk}>{contactCell.label}</Text>
-              <Text style={vs.dv}>{contactCell.value}</Text>
-              {contactCell.small !== "" && <Text style={vs.dvSmall}>{contactCell.small}</Text>}
+            <View style={[vs.detailCell, { width: "50%", flexDirection: "row", alignItems: "center" }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={vs.dk}>{contactCell.label}</Text>
+                <Text style={vs.dv}>{contactCell.value}</Text>
+                {contactCell.small !== "" && <Text style={vs.dvSmall}>{contactCell.small}</Text>}
+              </View>
+              {data.supportQrDataUri ? (
+                <View style={{ alignItems: "center", marginLeft: mm(2) }}>
+                  <Image style={{ width: mm(10), height: mm(10) }} src={data.supportQrDataUri} />
+                  <Text style={{ fontSize: 4.5, color: MUTED, marginTop: mm(0.5), letterSpacing: 0.3 }}>
+                    {data.supportQrKind === "whatsapp" ? "WhatsApp" : "Email"}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           )}
           <View style={[vs.detailCell, { width: contactCell ? "50%" : "100%" }]}>
@@ -1492,6 +1506,9 @@ const HOWTO_L10N = {
     ],
     trackHead: "TRACK ANYTIME",
     trackBody: "Scan the QR code on your voucher.",
+    contactHead: "NEED HELP?",
+    contactWhatsapp: "Scan to chat with BondEx on WhatsApp",
+    contactEmail: "Scan to email BondEx support",
     noticeHead: "GOOD TO KNOW",
     notices: [
       "Severe weather can delay delivery to the next day — avoid shipping right before your flight.",
@@ -1526,6 +1543,9 @@ const HOWTO_L10N = {
     ],
     trackHead: "随时追踪 TRACK ANYTIME",
     trackBody: "扫描凭证上的二维码即可。",
+    contactHead: "需要帮助？NEED HELP?",
+    contactWhatsapp: "扫码通过 WhatsApp 联系 BondEx",
+    contactEmail: "扫码给 BondEx 发送邮件",
     noticeHead: "温馨提示 GOOD TO KNOW",
     notices: [
       "恶劣天气可能延迟至次日送达，临近回国航班请勿托运。",
@@ -1610,7 +1630,7 @@ const ht = StyleSheet.create({
   stepBody: { fontSize: 7.2, color: INK_SOFT, lineHeight: 1.55, marginTop: mm(0.9) },
   bottomRow: { marginTop: mm(5), flexDirection: "row", alignItems: "stretch" },
   trackBox: {
-    width: mm(66),
+    width: mm(52),
     borderWidth: mm(0.5),
     borderColor: RED,
     backgroundColor: RED_TINT,
@@ -1619,7 +1639,21 @@ const ht = StyleSheet.create({
   },
   trackHead: { fontSize: 7.5, fontWeight: 700, letterSpacing: 0.8, color: RED_DARK },
   trackBody: { fontSize: 7.2, lineHeight: 1.55, marginTop: mm(1), color: INK },
-  noticeBox: { flex: 1, marginLeft: mm(3.5), borderTopWidth: mm(0.8), borderTopColor: INK, paddingTop: mm(1.8) },
+  contactBox: {
+    width: mm(48),
+    marginLeft: mm(3),
+    borderWidth: mm(0.5),
+    borderColor: INK,
+    paddingVertical: mm(2),
+    paddingHorizontal: mm(2.6),
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  contactQr: { width: mm(13), height: mm(13) },
+  contactWords: { flex: 1, marginLeft: mm(2.2) },
+  contactHead: { fontSize: 7, fontWeight: 700, letterSpacing: 0.5 },
+  contactBody: { fontSize: 6.2, color: INK_SOFT, lineHeight: 1.45, marginTop: mm(0.7) },
+  noticeBox: { flex: 1, marginLeft: mm(3), borderTopWidth: mm(0.8), borderTopColor: INK, paddingTop: mm(1.8) },
   noticeHead: { fontSize: 7.5, fontWeight: 700, letterSpacing: 0.8, color: INK },
   noticeRowHt: { flexDirection: "row", alignItems: "flex-start", marginTop: mm(1.4) },
   noticeMark: { width: mm(1.7), height: mm(1.7), backgroundColor: RED, marginTop: mm(1), marginRight: mm(2) },
@@ -1741,7 +1775,15 @@ function SceneHotel() {
   )
 }
 
-export function HowToShipDocument({ language }: { language: GuestLanguage }) {
+export function HowToShipDocument({
+  language,
+  supportQrDataUri,
+  supportQrKind,
+}: {
+  language: GuestLanguage
+  supportQrDataUri?: string
+  supportQrKind?: "whatsapp" | "email"
+}) {
   const L = HOWTO_L10N[language]
   const zf = language === "zh" ? ht.zh : {}
   const NEED_ICONS = [<VoucherMiniIcon key="v" />, <LabelMiniIcon key="l" />, <LuggageMiniIcon key="b" />]
@@ -1834,6 +1876,18 @@ export function HowToShipDocument({ language }: { language: GuestLanguage }) {
             </View>
             <Text style={[ht.trackBody, zf]}>{jb(L.trackBody)}</Text>
           </View>
+          {/* 問い合わせ QR (WhatsApp — 未設定時はメール QR にフォールバック) */}
+          {supportQrDataUri ? (
+            <View style={ht.contactBox}>
+              <Image style={ht.contactQr} src={supportQrDataUri} />
+              <View style={ht.contactWords}>
+                <Text style={[ht.contactHead, zf]}>{jb(L.contactHead)}</Text>
+                <Text style={[ht.contactBody, zf]}>
+                  {jb(supportQrKind === "whatsapp" ? L.contactWhatsapp : L.contactEmail)}
+                </Text>
+              </View>
+            </View>
+          ) : null}
           <View style={ht.noticeBox}>
             <Text style={[ht.noticeHead, zf]}>{jb(L.noticeHead)}</Text>
             {L.notices.map((n, i) => (
