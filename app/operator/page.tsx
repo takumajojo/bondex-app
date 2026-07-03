@@ -177,6 +177,10 @@ const messages = {
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
     settingsShowContactOnVoucher: "Show this contact number on the guest voucher",
     guestLanguageLabel: "Voucher language (guest pages)",
+    includeHowtoLabel: "Also issue the \"How to ship\" guide (1-page PDF for the itinerary packet)",
+    howtoCardTitle: "How to ship guide",
+    howtoCardSub: "A 1-page guest guide. Include it in the itinerary packet — no extra explanation needed.",
+    howtoStandalone: "Download the \"How to ship\" guide:",
     guestLanguageEn: "English",
     guestLanguageZh: "Chinese (Simplified)",
     settingsContactMode: "CONTACT row on the guest voucher",
@@ -316,6 +320,10 @@ const messages = {
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
     settingsShowContactOnVoucher: "この連絡先をお客様用バウチャーに表示する",
     guestLanguageLabel: "バウチャー言語 (ゲスト向けページ)",
+    includeHowtoLabel: "「How to ship」ガイドも同時発行する (行程表に同梱できる 1 枚もの)",
+    howtoCardTitle: "How to ship ガイド",
+    howtoCardSub: "ゲスト向けの 1 枚もの説明書。行程表に同梱すれば、旅行会社からの説明が不要になります。",
+    howtoStandalone: "「How to ship」ガイド単体ダウンロード:",
     guestLanguageEn: "英語",
     guestLanguageZh: "中国語 (簡体字)",
     settingsContactMode: "バウチャーの CONTACT 欄",
@@ -422,6 +430,8 @@ interface EditableItinerary {
   shipments: EditableShipment[]
   /** ゲスト用バウチャーの言語 (既定 en)。zh = 簡体字中国語。 */
   guestLanguage?: "en" | "zh"
+  /** How to ship ガイドをバウチャーと同時発行するか (既定 true)。 */
+  includeHowto?: boolean
   /** Travel agency's own tour/booking number (e.g. "JPT2607-045"). Optional —
    *  used for their invoice reconciliation, dashboard search, and file
    *  naming. Never printed on the guest-facing voucher. */
@@ -433,6 +443,9 @@ type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generat
 interface GeneratedDocs {
   bookingId: string
   voucherUrl: string
+  /** How to ship ガイド (同時発行を選んだ場合のみ) */
+  howtoUrl?: string
+  howtoLang: "en" | "zh"
   yamatoLabels: YamatoLabel[]
   representativeLabel: string
   tourNumber?: string
@@ -849,14 +862,33 @@ export default function OperatorPage() {
       }
     }
 
+    // How to ship ガイド (静的 1 枚もの) — 失敗しても発行全体は止めない
+    const guestLang = itinerary.guestLanguage ?? "en"
+    async function fetchHowto(): Promise<string | null> {
+      try {
+        const res = await fetch("/api/voucher/generate?type=howto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ guestLanguage: guestLang }),
+        })
+        if (!res.ok) return null
+        return URL.createObjectURL(await res.blob())
+      } catch {
+        return null
+      }
+    }
+
     try {
-      const [voucher, ...yamatoLabels] = await Promise.all([
+      const [voucher, howtoUrl, ...yamatoLabels] = await Promise.all([
         fetchPdf("voucher"),
+        itinerary.includeHowto !== false ? fetchHowto() : Promise.resolve(null),
         ...itinerary.shipments.map((_, i) => fetchYamatoLabel(i)),
       ])
       setGeneratedDocs({
         bookingId: voucher.bookingId,
         voucherUrl: voucher.url,
+        howtoUrl: (howtoUrl as string | null) ?? undefined,
+        howtoLang: guestLang,
         yamatoLabels,
         representativeLabel,
         tourNumber: itinerary.tourNumber?.trim() || undefined,
@@ -984,6 +1016,11 @@ export default function OperatorPage() {
   const updateGuestLanguage = (guestLanguage: "en" | "zh") => {
     if (!itinerary) return
     setItinerary({ ...itinerary, guestLanguage })
+  }
+
+  const updateIncludeHowto = (includeHowto: boolean) => {
+    if (!itinerary) return
+    setItinerary({ ...itinerary, includeHowto })
   }
 
   const addLeg = () => {
@@ -1160,6 +1197,28 @@ export default function OperatorPage() {
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
             </button>
+
+            {/* How to ship ガイドの単体ダウンロード (堀部さん提案: 予約と無関係にいつでも取得可) */}
+            <p className="text-xs text-muted-foreground text-center">
+              {t.howtoStandalone}{" "}
+              <a
+                href="/api/voucher/generate?type=howto&lang=en"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
+              >
+                English
+              </a>
+              {" ／ "}
+              <a
+                href="/api/voucher/generate?type=howto&lang=zh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
+              >
+                中文
+              </a>
+            </p>
           </section>
         )}
 
@@ -1201,6 +1260,7 @@ export default function OperatorPage() {
             onUpdateShipment={updateShipment}
             onUpdateGuest={updateGuest}
             onUpdateGuestLanguage={updateGuestLanguage}
+            onUpdateIncludeHowto={updateIncludeHowto}
             onUpdateTourNumber={updateTourNumber}
             onAddLeg={addLeg}
             onRemoveLeg={removeLeg}
@@ -1278,6 +1338,7 @@ function ReviewView({
   onUpdateShipment,
   onUpdateGuest,
   onUpdateGuestLanguage,
+  onUpdateIncludeHowto,
   onUpdateTourNumber,
   onAddLeg,
   onRemoveLeg,
@@ -1293,6 +1354,7 @@ function ReviewView({
   onUpdateShipment: (index: number, patch: Partial<EditableShipment>) => void
   onUpdateGuest: (patch: Partial<ParsedGuest>) => void
   onUpdateGuestLanguage: (lang: "en" | "zh") => void
+  onUpdateIncludeHowto: (v: boolean) => void
   onUpdateTourNumber: (tourNumber: string) => void
   onAddLeg: () => void
   onRemoveLeg: (index: number) => void
@@ -1388,6 +1450,17 @@ function ReviewView({
             <option value="zh">{t.guestLanguageZh}</option>
           </select>
         </div>
+
+        {/* How to ship ガイドの同時発行 (堀部さん提案) */}
+        <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={itinerary.includeHowto !== false}
+            onChange={(e) => onUpdateIncludeHowto(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-border"
+          />
+          {t.includeHowtoLabel}
+        </label>
 
         {guest.travelers.length > 0 && (
           <ul className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -2328,6 +2401,20 @@ function GeneratedView({
           openFullLabel={t.openFullPreview}
         />
       </section>
+
+      {docs.howtoUrl && (
+        <section>
+          <DocCard
+            title={t.howtoCardTitle}
+            subtitle={t.howtoCardSub}
+            href={docs.howtoUrl}
+            downloadName={`BondEx_HowToShip_${docs.howtoLang.toUpperCase()}.pdf`}
+            downloadLabel={t.download}
+            previewLabel={t.preview}
+            openFullLabel={t.openFullPreview}
+          />
+        </section>
+      )}
 
       {/* Yamato 送り状 (Ship&co API) */}
       {docs.yamatoLabels.length > 0 && (

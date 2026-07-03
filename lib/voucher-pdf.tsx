@@ -1456,6 +1456,335 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
 }
 
 // ---------------------------------------------------------------------------
+// How to ship PDF — 旅行会社が行程表に同梱できる 1 枚もののゲスト向けガイド。
+// 堀部さん提案 (2026-07-03) の内容: 必要なもの / ラベル確認ポイント /
+// 渡し方 (貼らずにレセプションへ — ドライバーがタグホルダーで取り付け) /
+// 追跡案内 / 天候遅延の注意 / 貴重品を入れない注意。
+// 完全に静的 (予約データ不要)。言語は en / zh。
+// ---------------------------------------------------------------------------
+
+const HOWTO_L10N = {
+  en: {
+    docTag: "TRAVELER GUIDE",
+    title: "HOW TO SHIP YOUR LUGGAGE",
+    subtitle: "Hotel-to-hotel luggage forwarding — a 1-minute guide",
+    needHead: "WHAT YOU NEED",
+    needs: [
+      { title: "Voucher", body: "The BondEx paper with the red band. One sheet per delivery." },
+      { title: "Shipping label", body: "Printed label from your travel agency — one per bag." },
+      { title: "Your luggage", body: "Packed and closed. Up to 160 cm / 25 kg per piece." },
+    ],
+    checkHead: "CHECK YOUR LABEL",
+    checkSub: "Take 10 seconds to confirm these three points:",
+    checks: [
+      "The sender name is your group representative's name — it may differ from your own.",
+      "The destination hotel is the right one.",
+      "The arrival date matches your travel plan.",
+    ],
+    labelMockFrom: "FROM: Representative name",
+    labelMockTo: "TO: Your next hotel",
+    labelMockDate: "Arrival date",
+    stepsHead: "3 EASY STEPS",
+    steps: [
+      { title: "Pack smart", body: "Keep passports, rail tickets, medicine and valuables WITH YOU — never inside the suitcase." },
+      { title: "Hand over at reception", body: "At check-out, give the voucher and label(s) to the reception. Do not stick anything on your bag — the courier attaches the label with a tag holder." },
+      { title: "Pick up at your next hotel", body: "Your luggage arrives on the date shown on the voucher. Collect it at the reception when you check in." },
+    ],
+    trackHead: "TRACK ANYTIME",
+    trackBody: "Scan the QR code on your voucher to see the live delivery status of your luggage.",
+    noticeHead: "GOOD TO KNOW",
+    notices: [
+      "Typhoons or severe weather may delay delivery to the next day. Avoid shipping bags you will need right before your departure flight.",
+      "Questions? BondEx support: support@bondex.express (9:00 - 18:00 JST)",
+    ],
+  },
+  zh: {
+    docTag: "旅客指南 TRAVELER GUIDE",
+    title: "行李托运指南",
+    subtitle: "酒店到酒店行李配送 — 1 分钟读懂",
+    needHead: "需要准备 WHAT YOU NEED",
+    needs: [
+      { title: "凭证 Voucher", body: "带红色横幅的 BondEx 凭证，每个配送区间一张。" },
+      { title: "配送标签 Label", body: "旅行社提供的打印标签，每件行李一张。" },
+      { title: "您的行李", body: "收拾好并关闭。每件最大 160 cm / 25 kg。" },
+    ],
+    checkHead: "确认标签 CHECK YOUR LABEL",
+    checkSub: "请花 10 秒确认以下三点：",
+    checks: [
+      "寄件人姓名为团队代表的姓名，可能与您本人的姓名不同。",
+      "目的地酒店正确无误。",
+      "到达日期符合您的行程安排。",
+    ],
+    labelMockFrom: "FROM: 代表姓名",
+    labelMockTo: "TO: 下一家酒店",
+    labelMockDate: "到达日期",
+    stepsHead: "简单三步 3 EASY STEPS",
+    steps: [
+      { title: "聪明打包", body: "护照、车票、药品等贵重物品请随身携带，切勿放入托运行李箱。" },
+      { title: "在前台交付", body: "退房时，将凭证和标签交给酒店前台。无需粘贴 — 配送员会用标签夹将其固定在行李上。" },
+      { title: "在下一家酒店领取", body: "行李将于凭证上标注的日期送达。办理入住时在前台领取即可。" },
+    ],
+    trackHead: "随时追踪 TRACK ANYTIME",
+    trackBody: "扫描凭证上的二维码，即可查看行李的实时配送状态。",
+    noticeHead: "温馨提示 GOOD TO KNOW",
+    notices: [
+      "台风等恶劣天气可能导致配送延迟至次日。临近回国航班前，请避免托运随后立即需要的行李。",
+      "如有疑问请联系 BondEx: support@bondex.express (9:00 - 18:00 JST)",
+    ],
+  },
+} as const
+
+const ht = StyleSheet.create({
+  page: {
+    paddingTop: mm(11),
+    paddingBottom: mm(9),
+    paddingHorizontal: mm(14),
+    fontFamily: "NotoSansJP",
+    fontSize: 9,
+    color: INK,
+    backgroundColor: "#ffffff",
+    flexDirection: "column",
+  },
+  zh: { fontFamily: "NotoSansSC" },
+  docTag: { marginTop: mm(1.8), fontSize: 7.5, fontWeight: 700, letterSpacing: 1.1, color: RED },
+  titleBand: { marginTop: mm(3.5) },
+  title: { fontSize: 22, fontWeight: 700, lineHeight: 1.1 },
+  subtitle: { fontSize: 9.5, color: INK_SOFT, marginTop: mm(1.4) },
+  secHead: {
+    marginTop: mm(5),
+    fontSize: 8.5,
+    fontWeight: 700,
+    letterSpacing: 1.2,
+    color: RED,
+    borderBottomWidth: mm(0.5),
+    borderBottomColor: INK,
+    paddingBottom: mm(1.2),
+  },
+  needsRow: { marginTop: mm(2.5), flexDirection: "row" },
+  needCard: {
+    flex: 1,
+    borderWidth: mm(0.4),
+    borderColor: INK,
+    paddingVertical: mm(2.4),
+    paddingHorizontal: mm(3),
+  },
+  needGap: { marginLeft: mm(3) },
+  needTitle: { fontSize: 9.5, fontWeight: 700, marginTop: mm(1.6) },
+  needBody: { fontSize: 7.2, color: INK_SOFT, lineHeight: 1.5, marginTop: mm(0.8) },
+  checkWrap: { marginTop: mm(2.5), flexDirection: "row" },
+  labelMock: {
+    width: mm(62),
+    borderWidth: mm(0.5),
+    borderColor: INK,
+  },
+  labelMockHead: {
+    backgroundColor: INK,
+    color: "#ffffff",
+    fontSize: 6.5,
+    fontWeight: 700,
+    letterSpacing: 1,
+    textAlign: "center",
+    paddingVertical: mm(1.2),
+  },
+  lmRow: { flexDirection: "row", alignItems: "center", paddingVertical: mm(1.7), paddingHorizontal: mm(2.4), borderBottomWidth: mm(0.3), borderBottomColor: GRAY_LINE },
+  lmText: { fontSize: 7, fontWeight: 700, flex: 1 },
+  lmBarcode: { flexDirection: "row", justifyContent: "center", paddingVertical: mm(2), gap: 1.5 },
+  checkList: { flex: 1, marginLeft: mm(4.5) },
+  checkSub: { fontSize: 7.8, color: INK_SOFT, marginBottom: mm(1.8) },
+  checkRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: mm(1.8) },
+  checkBody: { flex: 1, fontSize: 8.2, lineHeight: 1.55, fontWeight: 700 },
+  numDot: {
+    width: mm(5),
+    height: mm(5),
+    borderRadius: mm(2.5),
+    backgroundColor: RED,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: mm(2.2),
+  },
+  numDotText: { fontSize: 7.5, fontWeight: 700, color: "#ffffff", lineHeight: 1 },
+  stepsRow: { marginTop: mm(2.5), flexDirection: "row" },
+  stepCol: { flex: 1, backgroundColor: GRAY_BG, paddingVertical: mm(2.6), paddingHorizontal: mm(3) },
+  stepGap: { marginLeft: mm(3) },
+  stepTitle: { fontSize: 9.5, fontWeight: 700, marginTop: mm(1.6) },
+  stepBody: { fontSize: 7.2, color: INK_SOFT, lineHeight: 1.55, marginTop: mm(0.9) },
+  bottomRow: { marginTop: mm(5), flexDirection: "row", alignItems: "stretch" },
+  trackBox: {
+    width: mm(66),
+    borderWidth: mm(0.5),
+    borderColor: RED,
+    backgroundColor: RED_TINT,
+    paddingVertical: mm(2.4),
+    paddingHorizontal: mm(3),
+  },
+  trackHead: { fontSize: 7.5, fontWeight: 700, letterSpacing: 0.8, color: RED_DARK },
+  trackBody: { fontSize: 7.2, lineHeight: 1.55, marginTop: mm(1), color: INK },
+  noticeBox: { flex: 1, marginLeft: mm(3.5), borderTopWidth: mm(0.8), borderTopColor: INK, paddingTop: mm(1.8) },
+  noticeHead: { fontSize: 7.5, fontWeight: 700, letterSpacing: 0.8, color: INK },
+  noticeRowHt: { flexDirection: "row", alignItems: "flex-start", marginTop: mm(1.4) },
+  noticeMark: { width: mm(1.7), height: mm(1.7), backgroundColor: RED, marginTop: mm(1), marginRight: mm(2) },
+  noticeText: { flex: 1, fontSize: 7.2, color: INK_SOFT, lineHeight: 1.55 },
+  htFooter: {
+    marginTop: "auto",
+    paddingTop: mm(2),
+    borderTopWidth: mm(0.3),
+    borderTopColor: GRAY_LINE,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  htFooterText: { fontSize: 6.5, color: MUTED },
+})
+
+function VoucherMiniIcon() {
+  return (
+    <Svg width={mm(7)} height={mm(7)} viewBox="0 0 28 28">
+      <Rect x={3} y={4} width={22} height={20} stroke={INK} strokeWidth={1.6} fill="#ffffff" />
+      <Rect x={3} y={4} width={22} height={5} fill={RED} />
+      <Path d="M7 14h14M7 18h10" stroke={INK} strokeWidth={1.4} opacity={0.45} strokeLinecap="round" />
+    </Svg>
+  )
+}
+function LabelMiniIcon() {
+  return (
+    <Svg width={mm(7)} height={mm(7)} viewBox="0 0 28 28">
+      <Rect x={4} y={3} width={20} height={22} stroke={INK} strokeWidth={1.6} fill="#ffffff" />
+      <Path d="M8 8h12M8 12h9" stroke={INK} strokeWidth={1.4} opacity={0.45} strokeLinecap="round" />
+      {[0, 1, 2, 3, 4, 5].map((k) => (
+        <Rect key={k} x={8 + k * 2.4} y={16} width={k % 2 === 0 ? 1.6 : 1} height={6} fill={INK} opacity={0.7} />
+      ))}
+    </Svg>
+  )
+}
+function LuggageMiniIcon() {
+  return (
+    <Svg width={mm(7)} height={mm(7)} viewBox="0 0 28 28">
+      <Rect x={6} y={9} width={16} height={15} rx={2} stroke={INK} strokeWidth={1.6} fill="#ffffff" />
+      <Path d="M10 9V6.5a4 4 0 0 1 8 0V9" stroke={INK} strokeWidth={1.6} fill="none" />
+      <Path d="M11 13v7M17 13v7" stroke={RED} strokeWidth={1.4} strokeLinecap="round" />
+    </Svg>
+  )
+}
+function QrMiniIcon() {
+  return (
+    <Svg width={mm(8)} height={mm(8)} viewBox="0 0 28 28">
+      <Rect x={3} y={3} width={22} height={22} stroke={RED_DARK} strokeWidth={1.6} fill="#ffffff" />
+      <Rect x={7} y={7} width={5} height={5} fill={RED_DARK} />
+      <Rect x={16} y={7} width={5} height={5} fill={RED_DARK} />
+      <Rect x={7} y={16} width={5} height={5} fill={RED_DARK} />
+      <Rect x={16} y={16} width={2.4} height={2.4} fill={RED_DARK} />
+      <Rect x={19.5} y={19.5} width={2.4} height={2.4} fill={RED_DARK} />
+    </Svg>
+  )
+}
+
+export function HowToShipDocument({ language }: { language: GuestLanguage }) {
+  const L = HOWTO_L10N[language]
+  const zf = language === "zh" ? ht.zh : {}
+  const NEED_ICONS = [<VoucherMiniIcon key="v" />, <LabelMiniIcon key="l" />, <LuggageMiniIcon key="b" />]
+  return (
+    <Document title={`BondEx How to Ship (${language.toUpperCase()})`} author="BondEx" subject="How to ship guide">
+      <Page size="A4" style={[ht.page, zf]} wrap={false}>
+        {/* masthead */}
+        <View style={vs.masthead}>
+          <View>
+            <Image style={logoSize(10)} src={LOGO_PATH} />
+            <Text style={[ht.docTag, zf]}>{jb(L.docTag)}</Text>
+          </View>
+        </View>
+
+        <View style={ht.titleBand}>
+          <Text style={[ht.title, zf]}>{jb(L.title)}</Text>
+          <Text style={[ht.subtitle, zf]}>{jb(L.subtitle)}</Text>
+        </View>
+
+        {/* 必要なもの */}
+        <Text style={[ht.secHead, zf]}>{jb(L.needHead)}</Text>
+        <View style={ht.needsRow}>
+          {L.needs.map((n, i) => (
+            <View key={i} style={[ht.needCard, ...(i > 0 ? [ht.needGap] : [])]}>
+              {NEED_ICONS[i]}
+              <Text style={[ht.needTitle, zf]}>{jb(n.title)}</Text>
+              <Text style={[ht.needBody, zf]}>{jb(n.body)}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ラベル確認 */}
+        <Text style={[ht.secHead, zf]}>{jb(L.checkHead)}</Text>
+        <View style={ht.checkWrap}>
+          <View style={ht.labelMock}>
+            <Text style={ht.labelMockHead}>SHIPPING LABEL</Text>
+            <View style={ht.lmRow}>
+              <View style={ht.numDot}><Text style={ht.numDotText}>1</Text></View>
+              <Text style={[ht.lmText, zf]}>{jb(L.labelMockFrom)}</Text>
+            </View>
+            <View style={ht.lmRow}>
+              <View style={ht.numDot}><Text style={ht.numDotText}>2</Text></View>
+              <Text style={[ht.lmText, zf]}>{jb(L.labelMockTo)}</Text>
+            </View>
+            <View style={ht.lmRow}>
+              <View style={ht.numDot}><Text style={ht.numDotText}>3</Text></View>
+              <Text style={[ht.lmText, zf]}>{jb(L.labelMockDate)}</Text>
+            </View>
+            <View style={ht.lmBarcode}>
+              {[...Array(18)].map((_, k) => (
+                <View key={k} style={{ width: k % 3 === 0 ? 1.8 : 1, height: mm(6), backgroundColor: INK, opacity: 0.75 }} />
+              ))}
+            </View>
+          </View>
+          <View style={ht.checkList}>
+            <Text style={[ht.checkSub, zf]}>{jb(L.checkSub)}</Text>
+            {L.checks.map((c, i) => (
+              <View key={i} style={ht.checkRow}>
+                <View style={ht.numDot}><Text style={ht.numDotText}>{i + 1}</Text></View>
+                <Text style={[ht.checkBody, zf]}>{jb(c)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* 3 ステップ */}
+        <Text style={[ht.secHead, zf]}>{jb(L.stepsHead)}</Text>
+        <View style={ht.stepsRow}>
+          {L.steps.map((s, i) => (
+            <View key={i} style={[ht.stepCol, ...(i > 0 ? [ht.stepGap] : [])]}>
+              <View style={ht.numDot}><Text style={ht.numDotText}>{i + 1}</Text></View>
+              <Text style={[ht.stepTitle, zf]}>{jb(s.title)}</Text>
+              <Text style={[ht.stepBody, zf]}>{jb(s.body)}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* 追跡 + 注意 */}
+        <View style={ht.bottomRow}>
+          <View style={ht.trackBox}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <QrMiniIcon />
+              <Text style={[ht.trackHead, zf, { marginLeft: mm(2) }]}>{jb(L.trackHead)}</Text>
+            </View>
+            <Text style={[ht.trackBody, zf]}>{jb(L.trackBody)}</Text>
+          </View>
+          <View style={ht.noticeBox}>
+            <Text style={[ht.noticeHead, zf]}>{jb(L.noticeHead)}</Text>
+            {L.notices.map((n, i) => (
+              <View key={i} style={ht.noticeRowHt}>
+                <View style={ht.noticeMark} />
+                <Text style={[ht.noticeText, zf]}>{jb(n)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={ht.htFooter}>
+          <Text style={[ht.htFooterText, zf]}>{jb("株式会社JOJO ／ BondEx — bondex.express")}</Text>
+          <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
+        </View>
+      </Page>
+    </Document>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Operations PDF: 内部記録用、簡素版 (デザイン刷新の対象外)
 // ---------------------------------------------------------------------------
 

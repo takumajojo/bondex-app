@@ -6,6 +6,7 @@ import { buildVoucherFileName } from "@/lib/utils"
 import {
   VoucherDocument,
   OperationsDocument,
+  HowToShipDocument,
   SUPPORT_DEFAULTS,
   generateBookingId,
   formatIssuedDate,
@@ -97,14 +98,41 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   }
 }
 
+/**
+ * How to ship ガイドの単体ダウンロード (GET)。
+ * 予約データ不要の静的 1 枚ものなので、operator 画面のリンクから直接開ける。
+ *   GET /api/voucher/generate?type=howto&lang=en|zh
+ */
+export async function GET(req: NextRequest) {
+  const type = req.nextUrl.searchParams.get("type")
+  if (type !== "howto") {
+    return NextResponse.json({ error: "GET supports type=howto only" }, { status: 400 })
+  }
+  const lang = req.nextUrl.searchParams.get("lang") === "zh" ? "zh" : "en"
+  try {
+    const buf = await renderToBuffer(<HowToShipDocument language={lang} />)
+    return new NextResponse(new Uint8Array(buf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="BondEx_HowToShip_${lang.toUpperCase()}.pdf"`,
+        "Cache-Control": "no-store",
+      },
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "PDF render error"
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "voucher-generate")
   if (!limit.ok) return limit.response
 
   const type = req.nextUrl.searchParams.get("type")
-  if (type !== "voucher" && type !== "ops") {
+  if (type !== "voucher" && type !== "ops" && type !== "howto") {
     return NextResponse.json(
-      { error: "type must be 'voucher' or 'ops'" },
+      { error: "type must be 'voucher', 'ops' or 'howto'" },
       { status: 400 },
     )
   }
@@ -114,6 +142,25 @@ export async function POST(req: NextRequest) {
     body = (await req.json()) as RequestBody
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+
+  // How to ship ガイドは予約データ不要の静的 1 枚もの (言語のみ指定)
+  if (type === "howto") {
+    const lang = body.guestLanguage === "zh" ? "zh" : "en"
+    try {
+      const buf = await renderToBuffer(<HowToShipDocument language={lang} />)
+      return new NextResponse(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="BondEx_HowToShip_${lang.toUpperCase()}.pdf"`,
+          "Cache-Control": "no-store",
+        },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "PDF render error"
+      return NextResponse.json({ error: msg }, { status: 500 })
+    }
   }
 
   const representativeLabel = asString(body.representativeLabel).trim()
