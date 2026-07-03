@@ -49,6 +49,7 @@ interface RequestBody {
   companyAddress?: unknown
   showContact?: unknown
   contactDisplayMode?: unknown
+  guestLanguage?: unknown
 }
 
 const CONTACT_MODES = ["bondex_support", "travel_agency", "tour_operator", "hidden"] as const
@@ -191,6 +192,7 @@ export async function POST(req: NextRequest) {
     partnerQrDataUri,
     showContact: body.showContact !== false,
     contactDisplayMode: asContactMode(body.contactDisplayMode),
+    guestLanguage: body.guestLanguage === "zh" ? "zh" : "en",
   }
 
   try {

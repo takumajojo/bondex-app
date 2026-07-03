@@ -106,6 +106,8 @@ export async function GET(req: NextRequest) {
       companyAddress: SUPPORT_DEFAULTS.companyAddress,
       trackingQrDataUri,
       partnerQrDataUri,
+      // guestLanguage は shipments に保存していないため再発行は英語版になる。
+      // 中国語版の再発行が必要になったら shipments に guest_language 列を追加する。
       // showContact / contactDisplayMode: 発行時の設定は operator のブラウザ localStorage に
       // のみ保存され Supabase 側の shipments には残らないため、再発行時点では判別不能。
       // 未指定 (undefined) にしておけば VoucherInput 側のデフォルト (bondex_support) が適用される。

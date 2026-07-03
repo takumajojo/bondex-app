@@ -55,6 +55,15 @@ try {
       { src: path.join(FONT_DIR, "NotoSansJP-Bold.ttf"), fontWeight: 700 },
     ],
   })
+  // 中国語 (簡体字) — ゲスト言語切り替え用。NotoSansJP は簡体字グリフを
+  // 持たないため専用ファミリーが必要。U+2009 パッチ適用済み (scripts/ 参照)。
+  Font.register({
+    family: "NotoSansSC",
+    fonts: [
+      { src: path.join(FONT_DIR, "NotoSansSC-Regular.ttf"), fontWeight: 400 },
+      { src: path.join(FONT_DIR, "NotoSansSC-Bold.ttf"), fontWeight: 700 },
+    ],
+  })
   // 注: Font.registerHyphenationCallback はグローバル (最後の登録が全 PDF に効く)。
   // contract-pdf.tsx も同じ実装を登録している — 変更時は両方を揃えること。
   Font.registerHyphenationCallback((word: string) => {
@@ -135,6 +144,9 @@ export interface VoucherShipment {
   toCheckOut?: string
 }
 
+/** ゲスト向けページの言語。ホテルスタッフ用ページは常に日本語。 */
+export type GuestLanguage = "en" | "zh"
+
 export type ContactDisplayMode =
   | "bondex_support"
   | "travel_agency"
@@ -166,6 +178,8 @@ export interface VoucherInput {
   trackingQrDataUri?: string
   /** パートナー募集 QR (data URI)。ルート側で事前生成して渡す。 */
   partnerQrDataUri?: string
+  /** ゲスト向けページの言語 (既定: en)。zh = 簡体字。繁体字は同じ仕組みで追加可。 */
+  guestLanguage?: GuestLanguage
 }
 
 function resolveContactMode(data: VoucherInput): ContactDisplayMode {
@@ -807,7 +821,43 @@ function CheckboxIcon() {
 }
 
 // ---------------------------------------------------------------------------
-// Page 1 — GUEST COPY (EN primary / JP secondary)
+// ゲスト向け文言の言語辞書 (EN / 簡体字中国語)。
+// 構造ラベル (DROP-OFF / TRACKING 等の欧文) はデザイン言語として共通、
+// ゲストが読む「行動指示の文」を切り替える。
+// ---------------------------------------------------------------------------
+const GUEST_L10N = {
+  en: {
+    copyTag: "GUEST COPY / お客様控え",
+    kicker: "THIS VOUCHER IS FOR",
+    dropLabel: "Drop-off: ",
+    pickLabel: "Pick-up: ",
+    present: "Please present this voucher at the reception when checking in.",
+    dropWhen: (t?: string) => `At the hotel's reception ・ by ${t || "check-out"}`,
+    pickWhen: (t?: string) => `At the hotel's reception ・ ${t || "when check-in"}`,
+    giveTo: "PLEASE GIVE THIS VOUCHER TO:",
+    giveToDate: (ymd: string) => `on ${formatEnDate(ymd)}`,
+    scanCaption: "Scan for live delivery status",
+    routeHead: "YOUR LUGGAGE ROUTE ／ 旅程全体",
+    currentChip: "CURRENT ／ この用紙",
+  },
+  zh: {
+    copyTag: "GUEST COPY / 旅客联",
+    kicker: "本凭证适用区间",
+    dropLabel: "寄出 Drop-off: ",
+    pickLabel: "领取 Pick-up: ",
+    present: "办理入住时，请向酒店前台出示本凭证。",
+    dropWhen: (t?: string) => (t ? `请于 ${t} 前交至酒店前台` : "请在退房前交至酒店前台"),
+    pickWhen: (_t?: string) => "办理入住时向酒店前台领取",
+    giveTo: "请将本凭证交给以下酒店：",
+    giveToDate: (ymd: string) => `（${formatJpDate(ymd)} 交付）`,
+    scanCaption: "扫码查看行李配送状态",
+    routeHead: "YOUR LUGGAGE ROUTE ／ 行李路线",
+    currentChip: "CURRENT ／ 本张凭证",
+  },
+} as const
+
+// ---------------------------------------------------------------------------
+// Page 1 — GUEST COPY (guest language primary / JP secondary)
 // ---------------------------------------------------------------------------
 
 function GuestPage({
@@ -827,12 +877,12 @@ function GuestPage({
   const guestName = jb(shipment.bookingName) || jb(data.representativeLabel)
   const fromHotel = jb(shipment.from.hotel)
   const toHotel = jb(shipment.to.hotel)
-  const dropWhenEn = shipment.dropOffTime?.trim()
-    ? `At the hotel's reception ・ by ${safeText(shipment.dropOffTime)}`
-    : "At the hotel's reception ・ by check-out"
-  const pickWhenEn = shipment.pickUpNote?.trim()
-    ? `At the hotel's reception ・ ${safeText(shipment.pickUpNote)}`
-    : "At the hotel's reception ・ when check-in"
+  // ゲスト言語 (en / zh)。zh は NotoSansSC で描画する (JP フォントに簡体字が無い)。
+  const lang: GuestLanguage = data.guestLanguage === "zh" ? "zh" : "en"
+  const L = GUEST_L10N[lang]
+  const zf = lang === "zh" ? { fontFamily: "NotoSansSC" } : {}
+  const dropWhenEn = L.dropWhen(shipment.dropOffTime?.trim() ? safeText(shipment.dropOffTime) : undefined)
+  const pickWhenEn = L.pickWhen(shipment.pickUpNote?.trim() ? safeText(shipment.pickUpNote) : undefined)
 
   const contactCell = (() => {
     switch (contactMode) {
@@ -865,7 +915,7 @@ function GuestPage({
       <View style={vs.masthead}>
         <View>
           <Image style={logoSize(10)} src={LOGO_PATH} />
-          <Text style={vs.copyTag}>GUEST COPY / お客様控え</Text>
+          <Text style={[vs.copyTag, zf]}>{jb(L.copyTag)}</Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Text style={vs.refLabel}>REF</Text>
@@ -876,18 +926,18 @@ function GuestPage({
       {/* 区間バナー: どのホテルに渡す紙か一瞬で分かるようにする */}
       <View style={vs.legBanner}>
         <View>
-          <Text style={vs.lbKicker}>THIS VOUCHER IS FOR</Text>
+          <Text style={[vs.lbKicker, zf]}>{jb(L.kicker)}</Text>
           <Text style={vs.lbLeg}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
         </View>
         <View style={vs.lbMain}>
           <Text style={vs.lbRoute}>{`${fromHotel} → ${toHotel}`}</Text>
           <View style={vs.lbDates}>
-            <Text style={vs.lbDateText}>
-              Drop-off: <Text style={vs.lbDateStrong}>{formatEnDate(shipment.shipmentDate)}</Text>
+            <Text style={[vs.lbDateText, zf]}>
+              {L.dropLabel}<Text style={vs.lbDateStrong}>{formatEnDate(shipment.shipmentDate)}</Text>
             </Text>
             <View style={vs.lbSep} />
-            <Text style={vs.lbDateText}>
-              Pick-up: <Text style={vs.lbDateStrong}>{formatEnDate(shipment.expectedArrival)}</Text>
+            <Text style={[vs.lbDateText, zf]}>
+              {L.pickLabel}<Text style={vs.lbDateStrong}>{formatEnDate(shipment.expectedArrival)}</Text>
             </Text>
           </View>
         </View>
@@ -909,7 +959,7 @@ function GuestPage({
             </Text>
           )}
           <Text style={vs.tmCaption}>{jb("ここで荷物の配送状況がわかります")}</Text>
-          <Text style={vs.tmCaptionEn}>Scan for live delivery status</Text>
+          <Text style={[vs.tmCaptionEn, zf]}>{jb(L.scanCaption)}</Text>
           <Text style={vs.tmNote}>
             {jb("※配送員がお荷物を受付けてから反映までお時間をいただく場合があります")}
           </Text>
@@ -920,7 +970,7 @@ function GuestPage({
       <View style={vs.presentStrip}>
         <CheckCircleIcon />
         <View style={vs.psWords}>
-          <Text style={vs.psEn}>Please present this voucher at the reception when checking in.</Text>
+          <Text style={[vs.psEn, zf]}>{jb(L.present)}</Text>
           <Text style={vs.psJa}>{jb("チェックインの際に本バウチャーをホテルの受付にご提示ください")}</Text>
         </View>
       </View>
@@ -942,14 +992,14 @@ function GuestPage({
             </Text>
           )}
           <View style={vs.legWhen}>
-            <Text style={vs.legWhenEn}>{dropWhenEn}</Text>
+            <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
           </View>
           {/* この用紙のお渡し先 */}
           <View style={vs.giveTo}>
-            <Text style={vs.gtEn}>PLEASE GIVE THIS VOUCHER TO:</Text>
-            <Text style={vs.gtHotel}>
-              {fromHotel} <Text style={vs.gtDate}>on {formatEnDate(shipment.shipmentDate)}</Text>
+            <Text style={[vs.gtEn, zf]}>{jb(L.giveTo)}</Text>
+            <Text style={[vs.gtHotel, zf]}>
+              {fromHotel} <Text style={vs.gtDate}>{jb(L.giveToDate(shipment.shipmentDate))}</Text>
             </Text>
             <Text style={vs.gtJa}>
               {jb("このバウチャーは ")}
@@ -979,7 +1029,7 @@ function GuestPage({
             </Text>
           )}
           <View style={vs.legWhen}>
-            <Text style={vs.legWhenEn}>{pickWhenEn}</Text>
+            <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
           </View>
         </View>
@@ -1036,7 +1086,7 @@ function GuestPage({
       {/* 旅程全体ミニ一覧 (複数区間のときのみ・補助情報) */}
       {totalLegs > 1 && (
         <View style={vs.routeList}>
-          <Text style={vs.rlHead}>YOUR LUGGAGE ROUTE ／ 旅程全体</Text>
+          <Text style={[vs.rlHead, zf]}>{jb(L.routeHead)}</Text>
           {data.shipments.map((s, j) => {
             const current = j === legIndex
             const color = current ? RED_DARK : MUTED
@@ -1049,7 +1099,7 @@ function GuestPage({
                 >
                   {`${jb(s.from.hotel)} → ${jb(s.to.hotel)}`}
                 </Text>
-                {current && <Text style={vs.rlChip}>CURRENT ／ この用紙</Text>}
+                {current && <Text style={[vs.rlChip, zf]}>{jb(L.currentChip)}</Text>}
               </View>
             )
           })}

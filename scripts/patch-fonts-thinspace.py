@@ -30,6 +30,9 @@ FONTS = [
     "NotoSansJP-Regular.ttf",
     "NotoSansJP-Medium.ttf",
     "NotoSansJP-Bold.ttf",
+    # 中国語 (簡体字) — バウチャーのゲスト言語切り替え用
+    "NotoSansSC-Regular.ttf",
+    "NotoSansSC-Bold.ttf",
 ]
 
 for name in FONTS:

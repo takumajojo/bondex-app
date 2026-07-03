@@ -176,6 +176,9 @@ const messages = {
     settingsContactPhone: "Contact phone",
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
     settingsShowContactOnVoucher: "Show this contact number on the guest voucher",
+    guestLanguageLabel: "Voucher language (guest pages)",
+    guestLanguageEn: "English",
+    guestLanguageZh: "Chinese (Simplified)",
     settingsContactMode: "CONTACT row on the guest voucher",
     settingsContactModeBondex: "BondEx support desk (default)",
     settingsContactModeAgency: "Travel agency contact",
@@ -312,6 +315,9 @@ const messages = {
     settingsContactPhone: "連絡先",
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
     settingsShowContactOnVoucher: "この連絡先をお客様用バウチャーに表示する",
+    guestLanguageLabel: "バウチャー言語 (ゲスト向けページ)",
+    guestLanguageEn: "英語",
+    guestLanguageZh: "中国語 (簡体字)",
     settingsContactMode: "バウチャーの CONTACT 欄",
     settingsContactModeBondex: "BondEx サポートデスクを表示（標準）",
     settingsContactModeAgency: "旅行会社の連絡先を表示",
@@ -414,6 +420,8 @@ interface EditableShipment extends ParsedShipment {
 interface EditableItinerary {
   guest: ParsedGuest
   shipments: EditableShipment[]
+  /** ゲスト用バウチャーの言語 (既定 en)。zh = 簡体字中国語。 */
+  guestLanguage?: "en" | "zh"
   /** Travel agency's own tour/booking number (e.g. "JPT2607-045"). Optional —
    *  used for their invoice reconciliation, dashboard search, and file
    *  naming. Never printed on the guest-facing voucher. */
@@ -708,6 +716,7 @@ export default function OperatorPage() {
       contactPersonPhone: settings?.contactPhone || "",
       contactDisplayMode: settings?.contactDisplayMode ?? "bondex_support",
       showContact: settings?.contactDisplayMode !== "hidden",
+      guestLanguage: itinerary.guestLanguage ?? "en",
       shipments: itinerary.shipments.map((s) => ({
         shipmentDate: s.shipmentDate,
         expectedArrival: s.expectedArrival,
@@ -972,6 +981,11 @@ export default function OperatorPage() {
     setItinerary({ ...itinerary, tourNumber })
   }
 
+  const updateGuestLanguage = (guestLanguage: "en" | "zh") => {
+    if (!itinerary) return
+    setItinerary({ ...itinerary, guestLanguage })
+  }
+
   const addLeg = () => {
     if (!itinerary) return
     const repName = itinerary.shipments[0]?.recipient || ""
@@ -1186,6 +1200,7 @@ export default function OperatorPage() {
             onOpenSettings={() => setSettingsOpen(true)}
             onUpdateShipment={updateShipment}
             onUpdateGuest={updateGuest}
+            onUpdateGuestLanguage={updateGuestLanguage}
             onUpdateTourNumber={updateTourNumber}
             onAddLeg={addLeg}
             onRemoveLeg={removeLeg}
@@ -1262,6 +1277,7 @@ function ReviewView({
   onOpenSettings,
   onUpdateShipment,
   onUpdateGuest,
+  onUpdateGuestLanguage,
   onUpdateTourNumber,
   onAddLeg,
   onRemoveLeg,
@@ -1276,6 +1292,7 @@ function ReviewView({
   onOpenSettings: () => void
   onUpdateShipment: (index: number, patch: Partial<EditableShipment>) => void
   onUpdateGuest: (patch: Partial<ParsedGuest>) => void
+  onUpdateGuestLanguage: (lang: "en" | "zh") => void
   onUpdateTourNumber: (tourNumber: string) => void
   onAddLeg: () => void
   onRemoveLeg: (index: number) => void
@@ -1357,6 +1374,19 @@ function ReviewView({
             onChange={(e) => onUpdateTourNumber(e.target.value)}
             className="h-10 text-sm"
           />
+        </div>
+
+        {/* ゲスト用ページの言語 (ホテルスタッフ用ページは常に日本語) */}
+        <div className="mt-3 space-y-1">
+          <label className="text-[11px] text-muted-foreground">{t.guestLanguageLabel}</label>
+          <select
+            value={itinerary.guestLanguage ?? "en"}
+            onChange={(e) => onUpdateGuestLanguage(e.target.value as "en" | "zh")}
+            className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-foreground"
+          >
+            <option value="en">{t.guestLanguageEn}</option>
+            <option value="zh">{t.guestLanguageZh}</option>
+          </select>
         </div>
 
         {guest.travelers.length > 0 && (
