@@ -1233,7 +1233,16 @@ export default function LandingPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-8 w-auto object-contain" />
             <p className="text-[13px] font-medium text-[#64748B] leading-loose">
-              運営: 株式会社JOJO / 東京都世田谷区野毛1-9-12
+              運営:{" "}
+              <a
+                href="https://www.jojotokyo.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#334155] underline underline-offset-2 hover:text-[#C8102E]"
+              >
+                株式会社JOJO
+              </a>{" "}
+              / 東京都世田谷区野毛1-9-12
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-x-7 gap-y-3 text-[13px] font-medium text-[#334155]">
@@ -1251,7 +1260,16 @@ export default function LandingPage() {
             BondEx は運送人ではなく、旅程情報を受けて物流業者への発送を取り次ぐ取次サービスです。
             実運送・運送責任・補償は当社が利用する物流業者の運送約款に準じます。
             <br />
-            © {new Date().getFullYear()} 株式会社JOJO / BondEx
+            © {new Date().getFullYear()}{" "}
+            <a
+              href="https://www.jojotokyo.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-[#C8102E]"
+            >
+              株式会社JOJO
+            </a>{" "}
+            / BondEx
           </div>
         </div>
       </footer>
