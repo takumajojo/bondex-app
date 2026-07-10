@@ -13,6 +13,7 @@ import {
   Download,
   RefreshCw,
   AlertTriangle,
+  Building2,
   Search,
   Pencil,
   Trash2,
@@ -227,6 +228,13 @@ export default function DashboardPage() {
             >
               <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
               発行に戻る
+            </Link>
+            <Link
+              href="/operator/agencies"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Building2 className="w-4 h-4" strokeWidth={1.5} />
+              代理店管理
             </Link>
             <Link
               href="/operator/claims"

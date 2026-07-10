@@ -9,6 +9,7 @@ import {
   ExternalLink,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
+import { AgencyCardSetup } from "@/components/agency-card-setup"
 
 interface Shipment {
   id: string
@@ -47,6 +48,10 @@ export default function AgencyDashboard() {
   const [agencyName, setAgencyName] = useState("")
   const [userEmail, setUserEmail] = useState("")
   const [error, setError] = useState("")
+  const [agencyStatus, setAgencyStatus] = useState<string>("active")
+  const [paymentMethod, setPaymentMethod] = useState<string>("invoice")
+  const [cardOnFile, setCardOnFile] = useState<boolean>(false)
+  const [cardDismissed, setCardDismissed] = useState<boolean>(false)
 
   const load = useCallback(async () => {
     const sb = getBrowserSupabase()
@@ -63,10 +68,10 @@ export default function AgencyDashboard() {
     }
     setUserEmail(session.session.user.email || "")
 
-    // 2. 自分の agency を取得
+    // 2. 自分の agency を取得 (status / 決済方法 / カード有無も)
     const { data: agency, error: aErr } = await sb
       .from("agencies")
-      .select("name")
+      .select("name, status, payment_method, card_on_file")
       .maybeSingle()
     if (aErr) {
       setError(`アカウントに代理店が紐付いていません。BondEx 管理者にご連絡ください (${aErr.message})`)
@@ -79,6 +84,9 @@ export default function AgencyDashboard() {
       return
     }
     setAgencyName(agency.name)
+    setAgencyStatus((agency as { status?: string }).status || "active")
+    setPaymentMethod((agency as { payment_method?: string }).payment_method || "invoice")
+    setCardOnFile(Boolean((agency as { card_on_file?: boolean }).card_on_file))
 
     // 3. shipments を取得 (RLS で自社のみフィルタ済み)
     const { data, error: sErr } = await sb
@@ -148,6 +156,44 @@ export default function AgencyDashboard() {
         {error && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {error}
+          </div>
+        )}
+
+        {/* 承認待ち: BondEx が承認するまで発行不可 */}
+        {!error && agencyStatus === "pending" && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-900">アカウントは承認待ちです</p>
+            <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
+              ご登録ありがとうございます。BondEx による承認が完了するとバウチャー発行がご利用いただけます。
+              通常 1 営業日以内にご連絡します。
+            </p>
+          </div>
+        )}
+        {!error && agencyStatus === "suspended" && (
+          <div className="rounded-xl border border-red-300 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-red-900">アカウントは停止されています</p>
+            <p className="text-[13px] text-red-800 mt-1 leading-relaxed">
+              ご利用状況についてご確認事項があります。BondEx サポート（support@bondex.express）までご連絡ください。
+            </p>
+          </div>
+        )}
+
+        {/* カード払い かつ カード未登録 → 登録を推奨 (登録済み/請求書払いには出さない) */}
+        {!error && paymentMethod === "card" && !cardOnFile && !cardDismissed && (
+          <div className="rounded-xl border border-[#E5E7EB] bg-white p-5">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">お支払い用カードのご登録</p>
+                <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
+                  カード払いをご選択いただいています。事前にカードをご登録いただくと、
+                  発行のたびに入力する必要がなくなります（決済は集荷完了時に確定します）。
+                </p>
+              </div>
+            </div>
+            <AgencyCardSetup
+              onDone={() => setCardOnFile(true)}
+              onCancel={() => setCardDismissed(true)}
+            />
           </div>
         )}
 

@@ -40,6 +40,7 @@ import {
   isNextDayEarlySlotRisky,
 } from "@/lib/yamato-delivery"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
+import { OperatorCardReminder } from "@/components/operator-card-reminder"
 import { buildVoucherFileName } from "@/lib/utils"
 import type { GuestLanguage } from "@/lib/guest-language"
 
@@ -2149,6 +2150,9 @@ function ConfirmView({
           </span>
         </p>
       </div>
+
+      {/* カード払い・カード未登録の代理店なら注意 (非ブロッキング) */}
+      <OperatorCardReminder tourCompany={tourCompany} />
 
       {/* Representative */}
       <section className="rounded-2xl border border-border bg-white p-6 space-y-4">

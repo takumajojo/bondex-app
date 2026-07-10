@@ -107,8 +107,11 @@ function LoginForm() {
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> : "Continue"}
         </Button>
 
-        <p className="text-[11px] text-muted-foreground text-center">
-          アカウント発行は BondEx 担当者にご連絡ください
+        <p className="text-[12px] text-muted-foreground text-center">
+          アカウントをお持ちでない方は{" "}
+          <a href="/agency/signup" className="text-[#C8102E] font-medium underline underline-offset-2">
+            新規登録
+          </a>
         </p>
       </form>
     </main>
