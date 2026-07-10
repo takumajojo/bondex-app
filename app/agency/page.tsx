@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
+import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 
 interface Shipment {
   id: string
@@ -31,23 +32,103 @@ interface Shipment {
   created_at: string
 }
 
-const STATUS_JA: Record<string, { label: string; cls: string }> = {
-  pending:    { label: "保留",     cls: "bg-slate-100 text-slate-700" },
-  issued:     { label: "発行済",   cls: "bg-blue-100 text-blue-800" },
-  picked_up:  { label: "集荷済",   cls: "bg-amber-100 text-amber-800" },
-  in_transit: { label: "配達中",   cls: "bg-indigo-100 text-indigo-800" },
-  delivered:  { label: "配達完了", cls: "bg-emerald-100 text-emerald-800" },
-  failed:     { label: "失敗",     cls: "bg-red-100 text-red-800" },
-  cancelled:  { label: "キャンセル", cls: "bg-zinc-200 text-zinc-700" },
+const STATUS_META: Record<string, { cls: string }> = {
+  pending:    { cls: "bg-slate-100 text-slate-700" },
+  issued:     { cls: "bg-blue-100 text-blue-800" },
+  picked_up:  { cls: "bg-amber-100 text-amber-800" },
+  in_transit: { cls: "bg-indigo-100 text-indigo-800" },
+  delivered:  { cls: "bg-emerald-100 text-emerald-800" },
+  failed:     { cls: "bg-red-100 text-red-800" },
+  cancelled:  { cls: "bg-zinc-200 text-zinc-700" },
 }
+
+const messages = {
+  en: {
+    portal: "Agency Portal",
+    defaultTitle: "Shipment status",
+    signOut: "Sign out",
+    noAgencyLinked: "No agency is linked to this account. Please contact BondEx support",
+    pendingTitle: "Your account is awaiting approval",
+    pendingBody:
+      "Thank you for registering. Voucher issuance becomes available once BondEx approves your account — usually within one business day.",
+    suspendedTitle: "Your account is suspended",
+    suspendedBody:
+      "We have something to confirm about your account. Please contact BondEx support (support@bondex.express).",
+    cardTitle: "Register a payment card",
+    cardBody:
+      "You've selected card payment. Registering a card in advance saves you from entering it at each issuance (payment is finalized at pickup).",
+    emptyState: "No shipments yet",
+    waybill: "Waybill",
+    status: {
+      pending: "Pending",
+      issued: "Issued",
+      picked_up: "Picked up",
+      in_transit: "In transit",
+      delivered: "Delivered",
+      failed: "Failed",
+      cancelled: "Cancelled",
+    } as Record<string, string>,
+    th: {
+      issuedDate: "Issued",
+      bookingId: "Booking ID",
+      representative: "Representative",
+      leg: "Leg",
+      count: "Items",
+      tracking: "Tracking",
+      status: "Status",
+    },
+    dateLocale: "en-US",
+  },
+  ja: {
+    portal: "Agency Portal",
+    defaultTitle: "案件状況",
+    signOut: "サインアウト",
+    noAgencyLinked: "アカウントに代理店が紐付いていません。BondEx 管理者にご連絡ください",
+    pendingTitle: "アカウントは承認待ちです",
+    pendingBody:
+      "ご登録ありがとうございます。BondEx による承認が完了するとバウチャー発行がご利用いただけます。通常 1 営業日以内にご連絡します。",
+    suspendedTitle: "アカウントは停止されています",
+    suspendedBody:
+      "ご利用状況についてご確認事項があります。BondEx サポート（support@bondex.express）までご連絡ください。",
+    cardTitle: "お支払い用カードのご登録",
+    cardBody:
+      "カード払いをご選択いただいています。事前にカードをご登録いただくと、発行のたびに入力する必要がなくなります（決済は集荷完了時に確定します）。",
+    emptyState: "案件がまだありません",
+    waybill: "送り状",
+    status: {
+      pending: "保留",
+      issued: "発行済",
+      picked_up: "集荷済",
+      in_transit: "配達中",
+      delivered: "配達完了",
+      failed: "失敗",
+      cancelled: "キャンセル",
+    } as Record<string, string>,
+    th: {
+      issuedDate: "発行日",
+      bookingId: "予約番号",
+      representative: "代表者",
+      leg: "区間",
+      count: "点数",
+      tracking: "追跡",
+      status: "状況",
+    },
+    dateLocale: "ja-JP",
+  },
+} as const
 
 export default function AgencyDashboard() {
   const router = useRouter()
+  const { locale, setLocale } = useAgencyLocale()
+  const t = messages[locale]
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [loading, setLoading] = useState(true)
   const [agencyName, setAgencyName] = useState("")
   const [userEmail, setUserEmail] = useState("")
+  // error: Supabase 由来の生メッセージ (英語) / noAgency: 代理店未紐付けを識別子で保持し
+  // レンダー時に翻訳する (ロケール切替で文言も追従させるため)
   const [error, setError] = useState("")
+  const [noAgency, setNoAgency] = useState<{ detail?: string } | null>(null)
   const [agencyStatus, setAgencyStatus] = useState<string>("active")
   const [paymentMethod, setPaymentMethod] = useState<string>("invoice")
   const [cardOnFile, setCardOnFile] = useState<boolean>(false)
@@ -74,12 +155,12 @@ export default function AgencyDashboard() {
       .select("name, status, payment_method, card_on_file")
       .maybeSingle()
     if (aErr) {
-      setError(`アカウントに代理店が紐付いていません。BondEx 管理者にご連絡ください (${aErr.message})`)
+      setNoAgency({ detail: aErr.message })
       setLoading(false)
       return
     }
     if (!agency) {
-      setError("アカウントに代理店が紐付いていません。BondEx 管理者にご連絡ください")
+      setNoAgency({})
       setLoading(false)
       return
     }
@@ -130,64 +211,59 @@ export default function AgencyDashboard() {
             <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
             <div className="border-l border-border pl-4">
               <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                Agency Portal
+                {t.portal}
               </p>
               <h1 className="text-xl font-semibold text-foreground mt-0.5">
-                {agencyName || "案件状況"}
+                {agencyName || t.defaultTitle}
               </h1>
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <AgencyLocaleToggle locale={locale} onChange={setLocale} />
             {userEmail && (
-              <span className="text-xs text-muted-foreground">{userEmail}</span>
+              <span className="text-xs text-muted-foreground hidden sm:inline">{userEmail}</span>
             )}
             <button
               onClick={onLogout}
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             >
               <LogOut className="w-4 h-4" strokeWidth={1.5} />
-              サインアウト
+              {t.signOut}
             </button>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {error && (
+        {(error || noAgency) && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            {error}
+            {noAgency
+              ? `${t.noAgencyLinked}${noAgency.detail ? ` (${noAgency.detail})` : ""}`
+              : error}
           </div>
         )}
 
         {/* 承認待ち: BondEx が承認するまで発行不可 */}
-        {!error && agencyStatus === "pending" && (
+        {!error && !noAgency && agencyStatus === "pending" && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">アカウントは承認待ちです</p>
-            <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
-              ご登録ありがとうございます。BondEx による承認が完了するとバウチャー発行がご利用いただけます。
-              通常 1 営業日以内にご連絡します。
-            </p>
+            <p className="text-sm font-semibold text-amber-900">{t.pendingTitle}</p>
+            <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">{t.pendingBody}</p>
           </div>
         )}
-        {!error && agencyStatus === "suspended" && (
+        {!error && !noAgency && agencyStatus === "suspended" && (
           <div className="rounded-xl border border-red-300 bg-red-50 p-4">
-            <p className="text-sm font-semibold text-red-900">アカウントは停止されています</p>
-            <p className="text-[13px] text-red-800 mt-1 leading-relaxed">
-              ご利用状況についてご確認事項があります。BondEx サポート（support@bondex.express）までご連絡ください。
-            </p>
+            <p className="text-sm font-semibold text-red-900">{t.suspendedTitle}</p>
+            <p className="text-[13px] text-red-800 mt-1 leading-relaxed">{t.suspendedBody}</p>
           </div>
         )}
 
         {/* カード払い かつ カード未登録 → 登録を推奨 (登録済み/請求書払いには出さない) */}
-        {!error && paymentMethod === "card" && !cardOnFile && !cardDismissed && (
+        {!error && !noAgency && paymentMethod === "card" && !cardOnFile && !cardDismissed && (
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-5">
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
-                <p className="text-sm font-semibold text-foreground">お支払い用カードのご登録</p>
-                <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
-                  カード払いをご選択いただいています。事前にカードをご登録いただくと、
-                  発行のたびに入力する必要がなくなります（決済は集荷完了時に確定します）。
-                </p>
+                <p className="text-sm font-semibold text-foreground">{t.cardTitle}</p>
+                <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">{t.cardBody}</p>
               </div>
             </div>
             <AgencyCardSetup
@@ -202,7 +278,7 @@ export default function AgencyDashboard() {
           {(["issued","picked_up","in_transit","delivered"] as const).map((st) => (
             <div key={st} className="rounded-xl border border-border bg-white p-3">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
-                {STATUS_JA[st].label}
+                {t.status[st]}
               </p>
               <p className="text-2xl font-semibold tabular-nums">{counts[st]}</p>
             </div>
@@ -217,27 +293,27 @@ export default function AgencyDashboard() {
           ) : shipments.length === 0 ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
               <Package className="w-8 h-8" strokeWidth={1.5} />
-              <span className="text-sm">案件がまだありません</span>
+              <span className="text-sm">{t.emptyState}</span>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-xs uppercase tracking-widest text-muted-foreground">
                   <tr>
-                    <th className="text-left p-3 font-medium">発行日</th>
-                    <th className="text-left p-3 font-medium">予約番号</th>
-                    <th className="text-left p-3 font-medium">代表者</th>
-                    <th className="text-left p-3 font-medium">区間</th>
-                    <th className="text-right p-3 font-medium">点数</th>
-                    <th className="text-left p-3 font-medium">追跡</th>
-                    <th className="text-left p-3 font-medium">状況</th>
+                    <th className="text-left p-3 font-medium">{t.th.issuedDate}</th>
+                    <th className="text-left p-3 font-medium">{t.th.bookingId}</th>
+                    <th className="text-left p-3 font-medium">{t.th.representative}</th>
+                    <th className="text-left p-3 font-medium">{t.th.leg}</th>
+                    <th className="text-right p-3 font-medium">{t.th.count}</th>
+                    <th className="text-left p-3 font-medium">{t.th.tracking}</th>
+                    <th className="text-left p-3 font-medium">{t.th.status}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {shipments.map((it) => (
                     <tr key={it.id} className="border-t border-border hover:bg-muted/20">
                       <td className="p-3">
-                        {new Date(it.created_at).toLocaleDateString("ja-JP")}
+                        {new Date(it.created_at).toLocaleDateString(t.dateLocale)}
                       </td>
                       <td className="p-3 font-mono text-xs">
                         {it.booking_id}-L{it.leg_index + 1}
@@ -261,15 +337,15 @@ export default function AgencyDashboard() {
                             rel="noopener noreferrer"
                             className="text-xs underline inline-flex items-center gap-1"
                           >
-                            送り状 <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+                            {t.waybill} <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                           </a>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="p-3">
-                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${STATUS_JA[it.status]?.cls || "bg-zinc-100"}`}>
-                          {STATUS_JA[it.status]?.label || it.status}
+                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${STATUS_META[it.status]?.cls || "bg-zinc-100"}`}>
+                          {t.status[it.status] || it.status}
                         </span>
                       </td>
                     </tr>

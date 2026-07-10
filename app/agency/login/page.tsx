@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
+import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 
 /**
  * ログイン後の遷移先を検証する。オープンリダイレクト防止のため、
@@ -19,10 +20,35 @@ function safeNext(raw: string | null): string {
   return raw.startsWith("/agency") ? raw : "/agency"
 }
 
+const messages = {
+  en: {
+    subtitle: "Sign in to your agency account",
+    email: "Email",
+    password: "Password",
+    continue: "Continue",
+    noAccount: "Don't have an account?",
+    signUp: "Sign up",
+    notConfigured: "Supabase not configured. Contact BondEx support.",
+    signInFailed: "Sign-in failed",
+  },
+  ja: {
+    subtitle: "代理店アカウントでサインイン",
+    email: "メールアドレス",
+    password: "パスワード",
+    continue: "続ける",
+    noAccount: "アカウントをお持ちでない方は",
+    signUp: "新規登録",
+    notConfigured: "Supabase が未設定です。BondEx サポートにご連絡ください。",
+    signInFailed: "サインインに失敗しました",
+  },
+} as const
+
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get("next"))
+  const { locale, setLocale } = useAgencyLocale()
+  const t = messages[locale]
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -35,7 +61,7 @@ function LoginForm() {
     try {
       const sb = getBrowserSupabase()
       if (!sb) {
-        setError("Supabase not configured. Contact BondEx support.")
+        setError(t.notConfigured)
         setSubmitting(false)
         return
       }
@@ -44,76 +70,79 @@ function LoginForm() {
         password,
       })
       if (authErr) {
-        setError(authErr.message || "Sign-in failed")
+        setError(authErr.message || t.signInFailed)
         setSubmitting(false)
         return
       }
       router.replace(next)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed")
+      setError(err instanceof Error ? err.message : t.signInFailed)
       setSubmitting(false)
     }
   }
 
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <form
-        onSubmit={onSubmit}
-        method="post"
-        className="w-full max-w-sm bg-white rounded-2xl border border-border p-8 space-y-6"
-      >
-        <div className="space-y-3 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/bondex-logo.png"
-            alt="BondEx"
-            className="mx-auto h-20 w-auto object-contain"
-          />
-          <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
-            Agency Portal
-          </p>
-          <p className="text-sm text-muted-foreground">
-            代理店アカウントでサインイン
-          </p>
+      <div className="w-full max-w-sm space-y-3">
+        <div className="flex justify-end">
+          <AgencyLocaleToggle locale={locale} onChange={setLocale} />
         </div>
-
-        <div className="space-y-2">
-          <Input
-            type="email"
-            autoComplete="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="h-12"
-            required
-          />
-          <Input
-            type="password"
-            autoComplete="current-password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="h-12"
-            required
-          />
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </div>
-
-        <Button
-          type="submit"
-          disabled={submitting || !email || !password}
-          className="w-full h-12 rounded-2xl"
+        <form
+          onSubmit={onSubmit}
+          method="post"
+          className="w-full bg-white rounded-2xl border border-border p-8 space-y-6"
         >
-          {submitting ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> : "Continue"}
-        </Button>
+          <div className="space-y-3 text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/bondex-logo.png"
+              alt="BondEx"
+              className="mx-auto h-20 w-auto object-contain"
+            />
+            <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+              Agency Portal
+            </p>
+            <p className="text-sm text-muted-foreground">{t.subtitle}</p>
+          </div>
 
-        <p className="text-[12px] text-muted-foreground text-center">
-          アカウントをお持ちでない方は{" "}
-          <a href="/agency/signup" className="text-[#C8102E] font-medium underline underline-offset-2">
-            新規登録
-          </a>
-        </p>
-      </form>
+          <div className="space-y-2">
+            <Input
+              type="email"
+              autoComplete="email"
+              placeholder={t.email}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-12"
+              required
+            />
+            <Input
+              type="password"
+              autoComplete="current-password"
+              placeholder={t.password}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-12"
+              required
+            />
+            {error && <p className="text-xs text-red-600">{error}</p>}
+          </div>
+
+          <Button
+            type="submit"
+            disabled={submitting || !email || !password}
+            className="w-full h-12 rounded-2xl"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> : t.continue}
+          </Button>
+
+          <p className="text-[12px] text-muted-foreground text-center">
+            {t.noAccount}{" "}
+            <a href="/agency/signup" className="text-[#C8102E] font-medium underline underline-offset-2">
+              {t.signUp}
+            </a>
+          </p>
+        </form>
+      </div>
     </main>
   )
 }
