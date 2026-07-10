@@ -20,10 +20,22 @@ import {
   Plus,
   Minus,
   Ban,
+  Menu,
+  X,
 } from "lucide-react"
 
-const CONTACT_FORM_URL =
-  "https://docs.google.com/forms/d/e/1FAIpQLSfztfArRTfT4lgAdcNHeZFCDE23gwWivcjgzOUOkUSH9ah_Ew/viewform?usp=header"
+const NAV_ITEMS = [
+  { href: "#function", label: "流れ" },
+  { href: "#difference", label: "違い" },
+  { href: "#deliverables", label: "発行物" },
+  { href: "#trust", label: "安心の理由" },
+  { href: "#price", label: "料金" },
+  { href: "#faq", label: "FAQ" },
+]
+
+// 導入相談の遷移先。BondEx 専用のオンサイトフォーム (/contact) に統一。
+// (旧: JOJO 共通 Google フォーム。無関係な選択肢・内部向け説明文が公開されていたため差し替え)
+const CONTACT_FORM_URL = "/contact"
 
 // ─────────────────────────────────────────────────────────────
 // Design tokens (white-based palette, red brand accent)
@@ -267,6 +279,7 @@ function HeroDemo() {
 }
 
 export default function LandingPage() {
+  const [menuOpen, setMenuOpen] = useState(false)
   return (
     <main className="min-h-screen bg-white text-[#0F172A]">
       {/* ═══════════════ Header ═══════════════ */}
@@ -277,14 +290,7 @@ export default function LandingPage() {
             <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
           </Link>
           <nav className="hidden md:flex items-center gap-8">
-            {[
-              { href: "#function", label: "流れ" },
-              { href: "#difference", label: "違い" },
-              { href: "#deliverables", label: "発行物" },
-              { href: "#trust", label: "安心の理由" },
-              { href: "#price", label: "料金" },
-              { href: "#faq", label: "FAQ" },
-            ].map((item) => (
+            {NAV_ITEMS.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
@@ -294,7 +300,7 @@ export default function LandingPage() {
               </a>
             ))}
           </nav>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <a
               href={CONTACT_FORM_URL}
               target="_blank"
@@ -309,8 +315,50 @@ export default function LandingPage() {
             >
               代理店ログイン
             </Link>
+            {/* モバイル用ハンバーガー */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label={menuOpen ? "メニューを閉じる" : "メニューを開く"}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              className="md:hidden inline-flex items-center justify-center w-9 h-9 -mr-1 rounded-md text-[#334155] hover:bg-[#F1F5F9]"
+            >
+              {menuOpen ? <X className="w-5 h-5" strokeWidth={2} /> : <Menu className="w-5 h-5" strokeWidth={2} />}
+            </button>
           </div>
         </div>
+
+        {/* モバイルメニュー (ドロップダウン) */}
+        {menuOpen && (
+          <nav
+            id="mobile-menu"
+            className="md:hidden border-t border-[#E5E7EB] bg-white px-6 py-4"
+          >
+            <ul className="flex flex-col divide-y divide-[#F1F5F9]">
+              {NAV_ITEMS.map((item) => (
+                <li key={item.href}>
+                  <a
+                    href={item.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="block py-3 text-[15px] font-medium text-[#1F2937] hover:text-[#C8102E]"
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              ))}
+              <li>
+                <Link
+                  href="/agency/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-3 text-[15px] font-medium text-[#64748B] hover:text-[#0F172A]"
+                >
+                  代理店ログイン
+                </Link>
+              </li>
+            </ul>
+          </nav>
+        )}
       </header>
 
       {/* ═══════════════ Hero (mobile) — メッセージ先行 ═══════════════
@@ -320,13 +368,15 @@ export default function LandingPage() {
         <p className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wide text-[#C8102E] border border-[#C8102E]/30 bg-[#C8102E]/5 rounded-full px-3 py-1.5 mb-5">
           訪日旅行代理店・ランドオペレーター向け
         </p>
-        <h1 className="text-[30px] font-bold leading-[1.4] text-[#0F172A] mb-4">
+        {/* モバイルの見出し。DOM 内 h1 は desktop 側のみ (重複回避) のため、
+            ここは視覚上の見出しとして p で表現する */}
+        <p className="text-[30px] font-bold leading-[1.4] text-[#0F172A] mb-4">
           旅程と配送日を
           <br />
           送るだけで、
           <br />
           荷物配送手配が完了。
-        </h1>
+        </p>
         <p className="text-[14px] text-[#334155] leading-[1.9] mb-5">
           「いつ・どのホテルから送るか」をご指定いただければ、あとの面倒ごとは BondEx がまとめて代行します。
         </p>
@@ -389,7 +439,7 @@ export default function LandingPage() {
         {/* 写真は「ゲスト体験」を語るビジュアルとしてキャプション付きで使う */}
         <div
           className="relative h-52 rounded-2xl overflow-hidden bg-cover bg-center"
-          style={{ backgroundImage: "url('/hero-family.png')" }}
+          style={{ backgroundImage: "url('/hero-family.webp')" }}
           role="img"
           aria-label="スーツケースを持たずに日本を旅行する家族"
         >
@@ -410,7 +460,7 @@ export default function LandingPage() {
         className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat hidden md:flex items-end"
         style={{
           backgroundImage:
-            "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.0) 25%, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.78) 100%), url('/hero-family.png')",
+            "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.0) 25%, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.78) 100%), url('/hero-family.webp')",
         }}
       >
         <div className="w-full max-w-6xl mx-auto px-6 pb-16 md:pb-44 text-white">
@@ -489,8 +539,8 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-2 gap-3 md:gap-5">
             {[
-              { src: "/samples/voucher-page-1.png", label: "ゲスト用 (英語主体)" },
-              { src: "/samples/voucher-page-2.png", label: "ホテルスタッフ用 (日本語)" },
+              { src: "/samples/voucher-page-1.png", label: "区間1 — 1枚に集約済み" },
+              { src: "/samples/voucher-page-2.png", label: "区間2 — 1枚に集約済み" },
             ].map((pg) => (
               <figure key={pg.src}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1099,8 +1149,8 @@ export default function LandingPage() {
         </div>
 
         <p className="text-[13px] text-[#64748B] leading-[1.9] max-w-3xl">
-          宅配便の受託限度 (3辺合計 160cm・25kg 以内) を超える荷物・離島や一部地域宛・
-          冷蔵冷凍等の特殊配送は原則対象外となります。具体条件は個別にご相談ください。
+          宅配便の受託限度 (3辺合計 160cm 以内・重量は配送業者の規定による) を超える荷物・
+          離島や一部地域宛・冷蔵冷凍等の特殊配送は原則対象外となります。具体条件は個別にご相談ください。
         </p>
       </section>
 
@@ -1128,7 +1178,7 @@ export default function LandingPage() {
               {
                 icon: Ban,
                 label: "キャンセル",
-                text: "集荷前日 17 時までのご連絡で無償キャンセル可。",
+                text: "集荷完了前のご連絡なら無償。集荷後は配送手続き開始のため不可。",
               },
             ].map((c) => {
               const Icon = c.icon

@@ -7,10 +7,22 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 
+/**
+ * ログイン後の遷移先を検証する。オープンリダイレクト防止のため、
+ * 自サイト内の /agency 配下パスのみ許可し、それ以外は /agency に丸める。
+ * ("//evil.com" のようなプロトコル相対 URL や外部 URL を弾く)
+ */
+function safeNext(raw: string | null): string {
+  if (!raw) return "/agency"
+  // 単一スラッシュ始まり かつ "//" ("/\") でない = 自サイト内の絶対パス
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return "/agency"
+  return raw.startsWith("/agency") ? raw : "/agency"
+}
+
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get("next") || "/agency"
+  const next = safeNext(searchParams.get("next"))
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -47,6 +59,7 @@ function LoginForm() {
     <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <form
         onSubmit={onSubmit}
+        method="post"
         className="w-full max-w-sm bg-white rounded-2xl border border-border p-8 space-y-6"
       >
         <div className="space-y-3 text-center">

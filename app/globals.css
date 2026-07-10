@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* アンカー (#price / #faq 等) 移動時に固定ヘッダー (h-16 = 4rem) の下へ
+   見出しが隠れないよう、スクロール停止位置を下げる */
+html {
+  scroll-padding-top: 5rem;
+}
+
 :root {
   --background: oklch(0.98 0 0);
   --foreground: oklch(0.15 0 0);
