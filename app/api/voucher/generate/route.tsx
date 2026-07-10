@@ -10,6 +10,7 @@ import {
   SUPPORT_DEFAULTS,
   generateBookingId,
   formatIssuedDate,
+  normalizeGuestLanguage,
   type VoucherInput,
   type VoucherShipment,
 } from "@/lib/voucher-pdf"
@@ -128,7 +129,7 @@ export async function GET(req: NextRequest) {
   if (type !== "howto") {
     return NextResponse.json({ error: "GET supports type=howto only" }, { status: 400 })
   }
-  const lang = req.nextUrl.searchParams.get("lang") === "zh" ? "zh" : "en"
+  const lang = normalizeGuestLanguage(req.nextUrl.searchParams.get("lang"))
   try {
     const supportQr = await buildSupportQr()
     const buf = await renderToBuffer(
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
 
   // How to ship ガイドは予約データ不要の静的 1 枚もの (言語のみ指定)
   if (type === "howto") {
-    const lang = body.guestLanguage === "zh" ? "zh" : "en"
+    const lang = normalizeGuestLanguage(body.guestLanguage)
     try {
       const supportQr = await buildSupportQr()
       const buf = await renderToBuffer(
@@ -225,7 +226,6 @@ export async function POST(req: NextRequest) {
   // Voucher のみ QR を埋め込む — ops シートは内部用途で不要。
   // react-pdf は canvas/JS を実行できないため、事前に画像化しておく。
   let trackingQrDataUri: string | undefined
-  let partnerQrDataUri: string | undefined
   let supportQr: { uri?: string; kind: "whatsapp" | "email" } = { kind: "email" }
   if (type === "voucher") {
     supportQr = await buildSupportQr()
@@ -234,12 +234,6 @@ export async function POST(req: NextRequest) {
         margin: 0,
         width: 200,
         color: { dark: "#1A1A1A", light: "#FFFFFF" },
-      })
-      // ページ2 営業バナー用のパートナー募集 QR
-      partnerQrDataUri = await QRCode.toDataURL("https://bondex.express/partner", {
-        margin: 0,
-        width: 200,
-        color: { dark: "#16161a", light: "#FFFFFF" },
       })
     } catch (err) {
       // QR 生成失敗は致命的ではない — voucher 自体は URL テキストで代替可能なので握り潰す
@@ -264,12 +258,11 @@ export async function POST(req: NextRequest) {
     companyName,
     companyAddress,
     trackingQrDataUri,
-    partnerQrDataUri,
     supportQrDataUri: supportQr.uri,
     supportQrKind: supportQr.kind,
     showContact: body.showContact !== false,
     contactDisplayMode: asContactMode(body.contactDisplayMode),
-    guestLanguage: body.guestLanguage === "zh" ? "zh" : "en",
+    guestLanguage: normalizeGuestLanguage(body.guestLanguage),
   }
 
   try {

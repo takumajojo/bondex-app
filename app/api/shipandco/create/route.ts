@@ -3,8 +3,10 @@ import { rateLimit } from "@/lib/rate-limit"
 import {
   deliveryDateErrorCode,
   getDeliverableRange,
+  DELIVERY_TIME_SLOTS,
 } from "@/lib/yamato-delivery"
 import { saveShipment } from "@/lib/shipments-db"
+import { normalizeGuestLanguage } from "@/lib/guest-language"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -468,12 +470,8 @@ export async function POST(req: NextRequest) {
   // 配達時間帯: 旅行会社の要望により AM (午前中) 指定を標準とする。
   // 明示指定があれば許可リスト内でそれを採用。エリア・サービスによる可否は
   // ヤマト側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
-  const YAMATO_TIME_SLOTS = [
-    "not-specified", "before-noon", "before-ten", "before-five",
-    "14-16", "16-18", "18-20", "19-21",
-  ] as const
   const rawDeliveryTime = typeof body.deliveryTime === "string" ? body.deliveryTime.trim() : ""
-  const deliveryTime = (YAMATO_TIME_SLOTS as readonly string[]).includes(rawDeliveryTime)
+  const deliveryTime = (DELIVERY_TIME_SLOTS as readonly string[]).includes(rawDeliveryTime)
     ? rawDeliveryTime
     : "before-noon"
 
@@ -691,7 +689,7 @@ export async function POST(req: NextRequest) {
     }
     // 共通のメタ情報 (DB 保存用)
     const baseRecord = {
-    guest_language: body.guestLanguage === "zh" ? "zh" : "en",
+    guest_language: normalizeGuestLanguage(body.guestLanguage),
       booking_id: bookingId || refNumber,
       leg_index: legIndex,
       agency,

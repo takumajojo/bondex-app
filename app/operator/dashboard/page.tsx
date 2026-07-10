@@ -444,6 +444,7 @@ export default function DashboardPage() {
                 <thead className="bg-muted/50 text-xs uppercase tracking-widest text-muted-foreground">
                   <tr>
                     <th className="text-left p-3 font-medium">発行日</th>
+                    <th className="text-left p-3 font-medium">発送日 / 到着日</th>
                     <th className="text-left p-3 font-medium">代理店</th>
                     <th className="text-left p-3 font-medium">予約番号</th>
                     <th className="text-left p-3 font-medium">代表者</th>
@@ -464,8 +465,14 @@ export default function DashboardPage() {
                             day: "2-digit",
                           })}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          発送: {it.shipment_date}
+                      </td>
+                      <td className="p-3 align-top">
+                        <p className="text-xs text-foreground">
+                          <span className="text-muted-foreground">発送</span> {it.shipment_date}
+                        </p>
+                        <p className="text-xs text-foreground mt-0.5">
+                          <span className="text-muted-foreground">到着</span>{" "}
+                          {it.expected_arrival || "—"}
                         </p>
                       </td>
                       <td className="p-3 align-top">

@@ -55,7 +55,7 @@ html, body {
   height: 296mm;
   background: var(--paper);
   margin: 8mm auto;
-  padding: 12mm 14mm 10mm;
+  padding: 8mm 14mm 6mm;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -91,7 +91,7 @@ html, body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding-bottom: 2.6mm;
+  padding-bottom: 1.6mm;
   border-bottom: 0.8mm solid var(--rule);
 }
 .brand {
@@ -103,7 +103,7 @@ html, body {
   color: var(--red);
   line-height: 1;
 }
-.brand-img { height: 10mm; width: auto; display: block; }
+.brand-img { height: 8.5mm; width: auto; display: block; }
 .page-hotel .brand-img { height: 8.6mm; }
 
 .masthead-right { text-align: right; }
@@ -113,11 +113,11 @@ html, body {
   color: var(--muted);
   text-transform: uppercase;
 }
-.ref-value { font-size: 13pt; font-weight: 700; margin-top: 1mm; }
+.ref-value { font-size: 11pt; font-weight: 700; margin-top: 0.6mm; }
 .copy-tag {
   display: inline-block;
-  margin-top: 2mm;
-  font-size: 7.5pt;
+  margin-top: 1.4mm;
+  font-size: 7pt;
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--red);
@@ -159,42 +159,42 @@ html, body {
 .doc-title .sub { font-size: 9pt; color: var(--ink-soft); margin-top: 1.5mm; }
 
 .tracking-module {
-  flex-shrink: 0; width: 42mm;
+  flex-shrink: 0; width: 40mm;
   border: 0.5mm solid var(--ink);
   text-align: center;
-  padding-bottom: 2mm;
+  padding-bottom: 1.4mm;
 }
 .tracking-module .tm-head {
   background: var(--red); color: #fff;
-  font-size: 7pt; font-weight: 800; letter-spacing: 0.2em;
-  padding: 1.2mm 0; margin-bottom: 1.6mm;
+  font-size: 6.5pt; font-weight: 800; letter-spacing: 0.2em;
+  padding: 1mm 0; margin-bottom: 1.2mm;
 }
 .tracking-module .tm-head .jp { letter-spacing: 0.05em; }
-.tracking-module svg { width: 15mm; height: 15mm; display: block; margin: 0 auto; }
-.tm-caption { font-size: 7pt; font-weight: 700; margin-top: 1.2mm; }
-.tm-caption-en { font-size: 6pt; color: var(--ink-soft); margin-top: 0.3mm; }
-.tm-note { font-size: 5pt; color: var(--muted); margin-top: 0.9mm; line-height: 1.4; }
+.tracking-module svg { width: 10mm; height: 10mm; display: block; margin: 0 auto; }
+.tm-caption { font-size: 6.5pt; font-weight: 700; margin-top: 1mm; }
+.tm-caption-en { font-size: 5.5pt; color: var(--ink-soft); margin-top: 0.3mm; }
+.tm-note { font-size: 4.6pt; color: var(--muted); margin-top: 0.7mm; line-height: 1.3; }
 
 .present-strip {
-  margin-top: 3mm;
+  margin-top: 1.4mm;
   border: 0.5mm solid var(--ink);
-  padding: 2.2mm 5mm;
+  padding: 1.3mm 5mm;
   display: flex; align-items: center; gap: 4mm;
 }
 .present-strip .icon { flex-shrink: 0; }
-.present-strip .en { font-size: 9.5pt; font-weight: 700; }
-.present-strip .ja { font-size: 8pt; color: var(--ink-soft); margin-top: 0.6mm; }
+.present-strip .en { font-size: 8.5pt; font-weight: 700; }
+.present-strip .ja { font-size: 7pt; color: var(--ink-soft); margin-top: 0.4mm; }
 
 /* journey hero */
 .journey {
-  margin-top: 3.5mm;
+  margin-top: 2.2mm;
   display: grid;
   grid-template-columns: 1fr 12mm 1fr;
   align-items: stretch;
 }
 .leg-card {
   border: 0.5mm solid var(--ink);
-  padding: 4.5mm 5mm 3.5mm;
+  padding: 3.5mm 5mm 2mm;
   display: flex; flex-direction: column;
 }
 .leg-card .leg-tab {
@@ -209,32 +209,31 @@ html, body {
 .leg-date {
   display: flex; align-items: baseline; gap: 2.5mm;
   border-bottom: 0.3mm solid var(--gray-line);
-  padding-bottom: 2.2mm;
+  padding-bottom: 1.6mm;
 }
-.leg-date .day { font-size: 23pt; font-weight: 800; line-height: 0.9; }
-.leg-date .my { font-size: 9pt; font-weight: 700; letter-spacing: 0.06em; }
-.leg-date .dow { font-size: 8pt; color: var(--red); font-weight: 700; }
+.leg-date .day { font-size: 15pt; font-weight: 800; line-height: 0.9; }
+.leg-date .my { font-size: 8pt; font-weight: 700; letter-spacing: 0.06em; }
+.leg-date .dow { font-size: 7.5pt; color: var(--red); font-weight: 700; }
 
-.leg-hotel { margin-top: 2mm; }
-.leg-hotel .en { font-size: 12pt; font-weight: 700; line-height: 1.2; }
-.leg-hotel .ja { font-size: 9pt; color: var(--ink-soft); margin-top: 0.6mm; }
-.leg-hotel .addr { font-size: 7pt; color: var(--muted); margin-top: 1mm; line-height: 1.4; }
+.leg-hotel { margin-top: 1.4mm; }
+.leg-hotel .en { font-size: 11pt; font-weight: 700; line-height: 1.15; }
+.leg-hotel .ja { font-size: 8.5pt; color: var(--ink-soft); margin-top: 0.4mm; }
 
-.leg-when { margin-top: auto; padding-top: 1.6mm; font-size: 7.5pt; line-height: 1.45; }
+.leg-when { margin-top: auto; padding-top: 1.2mm; font-size: 7pt; line-height: 1.35; }
 .leg-when .en { font-weight: 700; }
 .leg-when .ja { color: var(--ink-soft); }
 
 /* 複数配送: この用紙のお渡し先 (DROP-OFF カード内で明示) */
 .give-to {
-  margin-top: 1.8mm;
+  margin-top: 1.4mm;
   background: var(--red-tint);
   border-left: 1mm solid var(--red);
-  padding: 1.5mm 2.2mm;
+  padding: 1.2mm 2.2mm;
 }
-.give-to .gt-en { font-size: 6.2pt; font-weight: 800; letter-spacing: 0.12em; color: var(--red-dark); }
-.give-to .gt-hotel { font-size: 9pt; font-weight: 800; margin-top: 0.5mm; }
-.give-to .gt-hotel .gt-date { font-size: 7.5pt; font-weight: 700; color: var(--ink-soft); }
-.give-to .gt-ja { font-size: 6.2pt; color: var(--ink-soft); margin-top: 0.5mm; line-height: 1.45; }
+.give-to .gt-en { font-size: 5.8pt; font-weight: 800; letter-spacing: 0.1em; color: var(--red-dark); }
+.give-to .gt-hotel { font-size: 8.5pt; font-weight: 800; margin-top: 0.4mm; }
+.give-to .gt-hotel .gt-date { font-size: 7pt; font-weight: 700; color: var(--ink-soft); }
+.give-to .gt-ja { font-size: 5.8pt; color: var(--ink-soft); margin-top: 0.4mm; line-height: 1.35; }
 .give-to .gt-ja strong { color: var(--ink); }
 
 .journey-arrow { display: flex; align-items: center; justify-content: center; }
@@ -242,7 +241,7 @@ html, body {
 
 /* details grid */
 .detail-grid {
-  margin-top: 3.5mm;
+  margin-top: 2.2mm;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-top: 0.5mm solid var(--ink);
@@ -251,29 +250,29 @@ html, body {
 .detail-cell {
   border-right: 0.5mm solid var(--ink);
   border-bottom: 0.5mm solid var(--ink);
-  padding: 2.4mm 3.5mm;
-  min-height: 13.5mm;
+  padding: 0.9mm 3.5mm;
+  min-height: 7mm;
 }
 .detail-cell .k {
   font-size: 6pt; letter-spacing: 0.16em;
   color: var(--muted); text-transform: uppercase;
 }
 .detail-cell .k .jp { letter-spacing: 0.05em; }
-.detail-cell .v { font-size: 10pt; font-weight: 700; margin-top: 1.2mm; line-height: 1.25; }
-.detail-cell .v small { display: block; font-size: 7pt; font-weight: 400; color: var(--ink-soft); margin-top: 0.6mm; }
+.detail-cell .v { font-size: 9.5pt; font-weight: 700; margin-top: 0.9mm; line-height: 1.2; }
+.detail-cell .v small { display: block; font-size: 6.6pt; font-weight: 400; color: var(--ink-soft); margin-top: 0.4mm; }
 
 /* 複数配送: 旅程全体のミニ一覧 (補助情報なので控えめに) */
 .route-list {
-  margin-top: 3mm;
+  margin-top: 1.6mm;
   border: 0.4mm solid var(--gray-line);
-  padding: 1.8mm 3mm 1.6mm;
+  padding: 1mm 3mm 0.8mm;
 }
-.rl-head { font-size: 6.2pt; font-weight: 800; letter-spacing: 0.16em; color: var(--muted); }
+.rl-head { font-size: 6pt; font-weight: 800; letter-spacing: 0.16em; color: var(--muted); }
 .rl-row {
   display: grid; grid-template-columns: 15mm 11mm 1fr auto;
   gap: 3mm; align-items: baseline;
-  padding: 0.7mm 0 0.5mm;
-  font-size: 7pt; color: var(--muted);
+  padding: 0.4mm 0 0.3mm;
+  font-size: 6.5pt; color: var(--muted);
 }
 .rl-row + .rl-row { border-top: 0.3mm dotted var(--gray-line); }
 .rl-row .rl-leg { font-weight: 800; letter-spacing: 0.04em; }
@@ -296,83 +295,32 @@ html, body {
 .tag-band .art { flex-shrink: 0; }
 .tag-band .art svg { display: block; width: 38mm; height: 9mm; }
 
-/* -------- requirement 1: hotel-staff redirect card (page 1) -------- */
-.staff-alert {
-  margin-top: auto; /* occupies the free zone above the footer */
-  border: 0.8mm solid var(--red);
-  background: var(--red-tint);
-  padding: 3mm 5mm;
-  display: flex; gap: 4.5mm; align-items: center;
-}
-.staff-alert .sa-icon { flex-shrink: 0; }
-.staff-alert .sa-head {
-  font-size: 11pt; font-weight: 800; color: var(--red-dark);
-  line-height: 1.3;
-}
-.staff-alert .sa-head .en { font-size: 8pt; letter-spacing: 0.12em; }
-.staff-alert .sa-body { font-size: 8.5pt; margin-top: 1.2mm; line-height: 1.55; font-weight: 700; }
-.staff-alert .sa-body-en { font-size: 7.5pt; color: var(--ink-soft); margin-top: 0.8mm; line-height: 1.5; }
-
-.p1-footer {
-  margin-top: 2.5mm;
-  padding-top: 2.4mm;
-  border-top: 0.3mm solid var(--gray-line);
-  display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm;
-}
-.p1-footer .co { font-size: 7pt; color: var(--muted); line-height: 1.6; }
-.p1-footer .co strong { color: var(--ink-soft); }
-.next-page-note { text-align: right; font-size: 8pt; font-weight: 700; line-height: 1.5; }
-.next-page-note .ja { display: block; font-size: 7pt; font-weight: 400; color: var(--ink-soft); }
-.next-page-note .arrow { color: var(--red); }
-
-/* ============================================================
-   Page 2 — hotel staff
-   ============================================================ */
-.p2-head-tag { font-size: 11pt; font-weight: 800; color: var(--red); }
-.p2-head-tag .ja { font-size: 9pt; color: var(--ink); font-weight: 700; }
-
-.lead-statement { margin-top: 2.2mm; font-size: 11pt; font-weight: 800; line-height: 1.4; }
-
-/* 複数配送: 対象区間ストリップ (墨ベタ + 赤バッジ — 見た瞬間に区間が分かる) */
-.leg-strip {
-  margin-top: 2.2mm;
+/* -------- 1枚化: guest→hotel-staff の区切りバー (薄型・staff-alert の後継) -------- */
+.staff-divider {
+  margin-top: 1.8mm;
   background: var(--ink);
-  color: #fff;
-  padding: 2.2mm 3.2mm;
-  display: flex; align-items: center; gap: 5mm;
+  padding: 1.2mm 4mm;
 }
-.ls-left { flex-shrink: 0; }
-.ls-cap { font-size: 5.6pt; letter-spacing: 0.14em; color: #9c9ca4; font-weight: 700; }
-.ls-badge {
-  margin-top: 0.8mm;
-  background: var(--red); color: #fff;
-  font-size: 10.5pt; font-weight: 800; letter-spacing: 0.04em;
-  padding: 0.8mm 2.6mm; display: inline-block;
-}
-.ls-grid { flex: 1; display: grid; grid-template-columns: 1.4fr 1fr 1.4fr 1fr; gap: 3mm; }
-.ls-k { font-size: 5.8pt; letter-spacing: 0.12em; color: #9c9ca4; }
-.ls-v { font-size: 9pt; font-weight: 800; margin-top: 0.5mm; white-space: nowrap; }
+.staff-divider .sd-label { font-size: 8pt; font-weight: 800; color: #fff; letter-spacing: 0.06em; }
+.staff-divider .sd-label .en { font-weight: 700; color: #c4c4cb; letter-spacing: 0.1em; }
 
-.notice-row {
-  margin-top: 2.4mm;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3mm;
+.final-footer {
+  margin-top: 1mm;
+  padding-top: 1.2mm;
+  border-top: 0.3mm solid var(--gray-line);
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 6.5pt; color: var(--muted);
 }
-.notice-card { border: 0.6mm solid var(--ink); padding: 2.3mm 3.2mm; }
-.notice-card.accent { border-color: var(--red); background: var(--red-tint); }
-.notice-card .n-icon { margin-bottom: 1.6mm; }
-.notice-card .n-title { font-size: 9pt; font-weight: 800; line-height: 1.35; }
-.notice-card.accent .n-title { color: var(--red-dark); }
-.notice-card .n-sub { font-size: 6.8pt; color: var(--ink-soft); margin-top: 1mm; line-height: 1.5; }
 
-.flow-title { margin-top: 2.6mm; font-size: 8pt; font-weight: 800; letter-spacing: 0.18em; color: var(--muted); }
-.flow-cols { margin-top: 2mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
-.flow-col { border: 0.4mm solid var(--gray-line); padding: 2.5mm 3mm; }
+.lead-statement { margin-top: 1.8mm; font-size: 9pt; font-weight: 800; line-height: 1.3; }
+
+.flow-title { margin-top: 2mm; font-size: 7.5pt; font-weight: 800; letter-spacing: 0.18em; color: var(--muted); }
+.flow-cols { margin-top: 1.6mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+.flow-col { border: 0.4mm solid var(--gray-line); padding: 1.5mm 3mm; }
 .flow-col-head {
   display: inline-block;
-  font-size: 8pt; font-weight: 800; color: #fff;
-  padding: 1.2mm 3mm; margin-bottom: 2mm;
+  font-size: 7.5pt; font-weight: 800; color: #fff;
+  padding: 0.9mm 3mm; margin-bottom: 1.4mm;
 }
 .flow-col-head .fh-no {
   font-family: var(--font-en);
@@ -387,8 +335,8 @@ html, body {
 .flow-steps li {
   counter-increment: step;
   position: relative;
-  padding: 0 0 1.8mm 8.5mm;
-  font-size: 8pt; line-height: 1.45;
+  padding: 0 0 1mm 8.5mm;
+  font-size: 7.2pt; line-height: 1.3;
 }
 .flow-steps li:last-child { padding-bottom: 0; }
 .flow-steps li::before {
@@ -406,22 +354,22 @@ html, body {
 
 /* requirement 4: soft room-delivery note in arrive flow */
 .room-note {
-  margin-top: 1.8mm;
+  margin-top: 1.2mm;
   background: var(--gray-bg);
   border-left: 0.8mm solid var(--ink);
-  padding: 1.5mm 2.5mm;
-  font-size: 7pt; line-height: 1.5;
+  padding: 1mm 2.5mm;
+  font-size: 6.5pt; line-height: 1.35;
 }
 .room-note .rn-ja { font-weight: 700; }
-.room-note .rn-en { color: var(--ink-soft); margin-top: 0.3mm; font-size: 6.5pt; }
+.room-note .rn-en { color: var(--ink-soft); font-weight: 400; font-size: 6pt; }
 
 /* -------- requirement 2: reservation lookup panels -------- */
-.hotel-detail { margin-top: 2.4mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
-.hd-block { background: var(--gray-bg); padding: 2.6mm 3.2mm; }
+.hotel-detail { margin-top: 1.2mm; display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+.hd-block { background: var(--gray-bg); padding: 1.6mm 3.2mm; }
 .hd-block .hd-no { font-size: 7pt; font-weight: 800; letter-spacing: 0.12em; }
 .hd-block.depart .hd-no { color: var(--red); }
 .hd-block.arrive .hd-no { color: var(--ink); }
-.hd-block .hd-hotel { font-size: 10pt; font-weight: 800; margin-top: 0.8mm; }
+.hd-block .hd-hotel { font-size: 9pt; font-weight: 800; margin-top: 0.5mm; }
 
 .lookup-grid {
   margin-top: 2mm;
@@ -430,9 +378,13 @@ html, body {
   display: grid;
   grid-template-columns: 1.15fr 1fr; /* 2×2 — 値が1行に収まる幅を確保 */
 }
-.lookup-cell { padding: 1.6mm 2.2mm; }
+/* 1枚化: Guests (宿泊人数) セルを撤去し、1行3列 (氏名・チェックイン・部屋番号) に圧縮 */
+.lookup-grid-3 { grid-template-columns: 1.35fr 1fr 0.55fr; }
+.lookup-grid-3 .lk { white-space: nowrap; }
+.lookup-cell { padding: 0.9mm 2.2mm; }
 .lookup-cell:nth-child(even) { border-left: 0.3mm solid var(--gray-line); }
 .lookup-cell:nth-child(n+3) { border-top: 0.3mm solid var(--gray-line); }
+.lookup-grid-3 .lookup-cell:nth-child(n+2) { border-left: 0.3mm solid var(--gray-line); border-top: 0; }
 /* 日付・人数は絶対に折り返さない (氏名のみ長い場合の折返しを許容) */
 .lookup-cell .lv.nowrap { white-space: nowrap; }
 .lookup-cell .lk {
@@ -450,23 +402,25 @@ html, body {
   min-height: 4mm;
 }
 
-.hd-note { margin-top: 1.8mm; font-size: 7.2pt; line-height: 1.6; color: var(--ink-soft); }
+.hd-note { margin-top: 1mm; font-size: 6.4pt; line-height: 1.4; color: var(--ink-soft); }
 .hd-note strong { color: var(--ink); }
 
 /* contact strip */
 .contact-strip {
-  margin-top: 2.4mm;
+  margin-top: 1.6mm;
   border: 0.5mm solid var(--ink);
   display: grid; grid-template-columns: 1fr 1fr;
 }
-.contact-cell { padding: 2mm 3.5mm; }
+.contact-cell { padding: 0.9mm 3.5mm; display: flex; align-items: baseline; gap: 2mm; flex-wrap: wrap; }
 .contact-cell + .contact-cell { border-left: 0.5mm solid var(--ink); }
 .contact-cell .c-k {
-  font-size: 6.5pt; letter-spacing: 0.14em;
+  font-size: 6pt; letter-spacing: 0.1em;
   color: var(--muted); text-transform: uppercase;
+  flex-shrink: 0;
 }
-.contact-cell .c-v { font-size: 8pt; font-weight: 700; margin-top: 0.8mm; line-height: 1.5; }
-.contact-cell .c-v small { font-weight: 400; color: var(--ink-soft); }
+.contact-cell .c-v { font-size: 7.2pt; font-weight: 700; line-height: 1.4; }
+.contact-cell .c-v br { display: none; }
+.contact-cell .c-v small { font-weight: 400; color: var(--ink-soft); margin-left: 1.5mm; }
 
 /* about + partner — 営業バナー (広告枠): 墨ベタ地 + 白 CTA カードの誌面広告調 */
 .ad-banner {

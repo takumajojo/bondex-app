@@ -36,9 +36,12 @@ import {
   getDeliverableRange,
   isValidDeliveryDate,
   formatRangeHint,
+  DELIVERY_TIME_SLOTS,
+  isNextDayEarlySlotRisky,
 } from "@/lib/yamato-delivery"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 import { buildVoucherFileName } from "@/lib/utils"
+import type { GuestLanguage } from "@/lib/guest-language"
 
 const FLAT_RATE_YEN = 5000
 
@@ -147,6 +150,17 @@ const messages = {
     checkOutBeforeArrivalWarning: "This should be after the arrival date — it won't be printed on the voucher.",
     dropOffDateLabel: "Drop-off date",
     arrivalDateLabel: "Arrival date",
+    deliveryTimeLabel: "Delivery time slot",
+    deliveryTimeNotSpecified: "Not specified",
+    deliveryTimeBeforeNoon: "Before noon (recommended)",
+    deliveryTimeBeforeTen: "Before 10:00",
+    deliveryTimeBeforeFive: "Before 17:00",
+    deliveryTime1416: "14:00 – 16:00",
+    deliveryTime1618: "16:00 – 18:00",
+    deliveryTime1820: "18:00 – 20:00",
+    deliveryTime1921: "19:00 – 21:00",
+    deliveryTimeNextDayRisk:
+      "This is a next-day delivery — morning slots may not be reliably honored for this route. Consider a later time slot or a later arrival date.",
     optional: "(optional)",
     addLegBtn: "Add another leg",
     removeLeg: "Remove",
@@ -187,6 +201,9 @@ const messages = {
     dupCancel: "Go back",
     guestLanguageEn: "English",
     guestLanguageZh: "Chinese (Simplified)",
+    guestLanguageIt: "Italian",
+    guestLanguageFr: "French",
+    guestLanguageEs: "Spanish",
     settingsContactMode: "CONTACT row on the guest voucher",
     settingsContactModeBondex: "BondEx support desk (default)",
     settingsContactModeAgency: "Travel agency contact",
@@ -294,6 +311,17 @@ const messages = {
     checkOutBeforeArrivalWarning: "到着日より後の日付にしてください（この値はバウチャーに印字されません）",
     dropOffDateLabel: "発送日 (集荷)",
     arrivalDateLabel: "到着日",
+    deliveryTimeLabel: "配達時間帯",
+    deliveryTimeNotSpecified: "指定なし",
+    deliveryTimeBeforeNoon: "午前中 (推奨)",
+    deliveryTimeBeforeTen: "10時まで",
+    deliveryTimeBeforeFive: "17時まで",
+    deliveryTime1416: "14時〜16時",
+    deliveryTime1618: "16時〜18時",
+    deliveryTime1820: "18時〜20時",
+    deliveryTime1921: "19時〜21時",
+    deliveryTimeNextDayRisk:
+      "発送日の翌日到着のご指定です。エリアによっては午前中のお届けが難しい場合があります。時間帯を後ろにずらすか、到着日を後ろに変更することもご検討ください。",
     optional: "(任意)",
     addLegBtn: "区間を追加",
     removeLeg: "削除",
@@ -334,6 +362,9 @@ const messages = {
     dupCancel: "戻って確認する",
     guestLanguageEn: "英語",
     guestLanguageZh: "中国語 (簡体字)",
+    guestLanguageIt: "イタリア語",
+    guestLanguageFr: "フランス語",
+    guestLanguageEs: "スペイン語",
     settingsContactMode: "バウチャーの CONTACT 欄",
     settingsContactModeBondex: "BondEx サポートデスクを表示（標準）",
     settingsContactModeAgency: "旅行会社の連絡先を表示",
@@ -427,6 +458,8 @@ interface ParsedItinerary {
 interface EditableShipment extends ParsedShipment {
   suitcaseCount: number
   specialNote: string
+  /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon)。 */
+  deliveryTime?: string
   // ホテル連絡時用の追加情報 (任意)
   bookingName?: string    // 予約者名 (空なら recipient を使用)
   fromCheckIn?: string    // 発送元ホテルへのチェックイン日 (YYYY-MM-DD)
@@ -437,7 +470,7 @@ interface EditableItinerary {
   guest: ParsedGuest
   shipments: EditableShipment[]
   /** ゲスト用バウチャーの言語 (既定 en)。zh = 簡体字中国語。 */
-  guestLanguage?: "en" | "zh"
+  guestLanguage?: GuestLanguage
   /** How to ship ガイドをバウチャーと同時発行するか (既定 true)。 */
   includeHowto?: boolean
   /** Travel agency's own tour/booking number (e.g. "JPT2607-045"). Optional —
@@ -453,7 +486,7 @@ interface GeneratedDocs {
   voucherUrl: string
   /** How to ship ガイド (同時発行を選んだ場合のみ) */
   howtoUrl?: string
-  howtoLang: "en" | "zh"
+  howtoLang: GuestLanguage
   yamatoLabels: YamatoLabel[]
   representativeLabel: string
   tourNumber?: string
@@ -845,6 +878,7 @@ export default function OperatorPage() {
             legIndex,
             shipmentDate: s.shipmentDate,
             deliveryDate: s.expectedArrival,
+            deliveryTime: s.deliveryTime || "before-noon",
             suitcaseCount: s.suitcaseCount,
             from: {
               hotel: s.from.hotel,
@@ -1085,7 +1119,7 @@ export default function OperatorPage() {
     setItinerary({ ...itinerary, tourNumber })
   }
 
-  const updateGuestLanguage = (guestLanguage: "en" | "zh") => {
+  const updateGuestLanguage = (guestLanguage: GuestLanguage) => {
     if (!itinerary) return
     setItinerary({ ...itinerary, guestLanguage })
   }
@@ -1290,6 +1324,33 @@ export default function OperatorPage() {
               >
                 中文
               </a>
+              {" ／ "}
+              <a
+                href="/api/voucher/generate?type=howto&lang=it"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
+              >
+                Italiano
+              </a>
+              {" ／ "}
+              <a
+                href="/api/voucher/generate?type=howto&lang=fr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
+              >
+                Français
+              </a>
+              {" ／ "}
+              <a
+                href="/api/voucher/generate?type=howto&lang=es"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
+              >
+                Español
+              </a>
             </p>
           </section>
         )}
@@ -1472,7 +1533,7 @@ function ReviewView({
   onOpenSettings: () => void
   onUpdateShipment: (index: number, patch: Partial<EditableShipment>) => void
   onUpdateGuest: (patch: Partial<ParsedGuest>) => void
-  onUpdateGuestLanguage: (lang: "en" | "zh") => void
+  onUpdateGuestLanguage: (lang: GuestLanguage) => void
   onUpdateIncludeHowto: (v: boolean) => void
   onUpdateTourNumber: (tourNumber: string) => void
   onAddLeg: () => void
@@ -1562,11 +1623,14 @@ function ReviewView({
           <label className="text-[11px] text-muted-foreground">{t.guestLanguageLabel}</label>
           <select
             value={itinerary.guestLanguage ?? "en"}
-            onChange={(e) => onUpdateGuestLanguage(e.target.value as "en" | "zh")}
+            onChange={(e) => onUpdateGuestLanguage(e.target.value as GuestLanguage)}
             className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-foreground"
           >
             <option value="en">{t.guestLanguageEn}</option>
             <option value="zh">{t.guestLanguageZh}</option>
+            <option value="it">{t.guestLanguageIt}</option>
+            <option value="fr">{t.guestLanguageFr}</option>
+            <option value="es">{t.guestLanguageEs}</option>
           </select>
         </div>
 
@@ -1732,6 +1796,21 @@ function ShipmentRow({
     shipment.shipmentDate &&
     shipment.expectedArrival &&
     !isValidDeliveryDate(shipment.expectedArrival, shipment.shipmentDate, "standard")
+  const deliveryTime = shipment.deliveryTime || "before-noon"
+  const nextDayRisk =
+    !!shipment.shipmentDate &&
+    !!shipment.expectedArrival &&
+    isNextDayEarlySlotRisky(shipment.shipmentDate, shipment.expectedArrival, deliveryTime)
+  const deliveryTimeLabels: Record<(typeof DELIVERY_TIME_SLOTS)[number], string> = {
+    "not-specified": t.deliveryTimeNotSpecified,
+    "before-noon": t.deliveryTimeBeforeNoon,
+    "before-ten": t.deliveryTimeBeforeTen,
+    "before-five": t.deliveryTimeBeforeFive,
+    "14-16": t.deliveryTime1416,
+    "16-18": t.deliveryTime1618,
+    "18-20": t.deliveryTime1820,
+    "19-21": t.deliveryTime1921,
+  }
   return (
     <li className="rounded-2xl border border-border bg-white p-5">
       {/* Header: leg # + remove */}
@@ -1881,6 +1960,28 @@ function ShipmentRow({
           </p>
         ) : (
           <p className="text-[11px] text-muted-foreground">{t.setShipDateFirst}</p>
+        )}
+        <div className="space-y-1 max-w-xs">
+          <label className="text-[11px] text-muted-foreground font-medium">{t.deliveryTimeLabel}</label>
+          <select
+            value={deliveryTime}
+            onChange={(e) => onUpdate(index, { deliveryTime: e.target.value })}
+            className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-foreground ${
+              nextDayRisk ? "border-amber-400" : "border-border"
+            }`}
+            aria-label={t.deliveryTimeLabel}
+          >
+            {DELIVERY_TIME_SLOTS.map((slot) => (
+              <option key={slot} value={slot}>
+                {deliveryTimeLabels[slot]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {nextDayRisk && (
+          <p className="text-[11px] text-amber-700 font-medium" role="alert">
+            ⚠ {t.deliveryTimeNextDayRisk}
+          </p>
         )}
       </div>
 

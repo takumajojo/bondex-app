@@ -8,6 +8,7 @@ import {
   VoucherDocument,
   SUPPORT_DEFAULTS,
   formatIssuedDate,
+  normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
 
@@ -73,7 +74,6 @@ export async function GET(req: NextRequest) {
 
     // react-pdf は canvas/JS を実行できないため、事前に画像化しておく (generate route と同様)。
     let trackingQrDataUri: string | undefined
-    let partnerQrDataUri: string | undefined
     let supportQrDataUri: string | undefined
     const waUrl = process.env.BONDEX_WHATSAPP_URL?.trim()
     try {
@@ -86,11 +86,6 @@ export async function GET(req: NextRequest) {
         margin: 0,
         width: 200,
         color: { dark: "#1A1A1A", light: "#FFFFFF" },
-      })
-      partnerQrDataUri = await QRCode.toDataURL("https://bondex.express/partner", {
-        margin: 0,
-        width: 200,
-        color: { dark: "#16161a", light: "#FFFFFF" },
       })
     } catch (err) {
       console.error("[voucher/regenerate] QR generation failed:", err)
@@ -112,11 +107,10 @@ export async function GET(req: NextRequest) {
       companyName: SUPPORT_DEFAULTS.companyName,
       companyAddress: SUPPORT_DEFAULTS.companyAddress,
       trackingQrDataUri,
-      partnerQrDataUri,
       supportQrDataUri,
       supportQrKind: waUrl ? "whatsapp" : "email",
       // 発行時の言語で再発行する (sql/008 で保存。旧データは null = en)
-      guestLanguage: data[0].guest_language === "zh" ? "zh" : "en",
+      guestLanguage: normalizeGuestLanguage(data[0].guest_language),
       // showContact / contactDisplayMode: 発行時の設定は operator のブラウザ localStorage に
       // のみ保存され Supabase 側の shipments には残らないため、再発行時点では判別不能。
       // 未指定 (undefined) にしておけば VoucherInput 側のデフォルト (bondex_support) が適用される。

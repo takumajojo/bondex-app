@@ -14,6 +14,12 @@ import {
   Rect,
   Circle,
 } from "@react-pdf/renderer"
+import type { GuestLanguage } from "./guest-language"
+import { normalizeGuestLanguage } from "./guest-language"
+
+// 外部モジュール向けの再エクスポート (これまで通り "@/lib/voucher-pdf" から import 可能)。
+export type { GuestLanguage } from "./guest-language"
+export { normalizeGuestLanguage } from "./guest-language"
 
 // ---------------------------------------------------------------------------
 // BondEx Luggage Forwarding Voucher — react-pdf 実装
@@ -32,7 +38,6 @@ const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
 const BONDEX_SUPPORT_EMAIL = "support@bondex.express"
 // 配送業者 (ヤマト) の連絡先 — 実番号確定までプレースホルダ (テンプレートと同じ)
 const SUPPLIER_TEL_PLACEHOLDER = "+81-XX-XXXX-XXXX"
-const PARTNER_URL = "https://bondex.express/partner"
 
 // 日本語のハイフンなし改行:
 // textkit は単語内の改行点 (penalty node) で必ず "-" を挿入するため、
@@ -76,12 +81,17 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Text safety: ラテン拡張 (Ō など) の合成ダイアクリティカルを除去。
-// フル版 NotoSansJP に置き換え済みだがマクロン合成は依然非対応のため維持。
+// Text safety: マクロン (長音記号 Ō/Ū 等・ローマ字表記の日本語地名/人名で使用)
+// のみを除去する。NotoSansJP はマクロン合成 (基底文字 + 結合マクロン) の描画に
+// 依然対応していないため、Ōsaka → Osaka のように基底文字へ落とす。
+// 除去対象を U+0304 (combining macron) のみに絞り、NFC で再合成することで、
+// 仏・伊・西語などの通常のアクセント文字 (é, à, ñ, ç 等) は保持する。
+// (旧実装は結合ダイアクリティカルマーク全域 [U+0300-U+036F] を除去しており、
+//  多言語対応時にフランス語等のアクセントまで消える不具合があった)
 // ---------------------------------------------------------------------------
 function safeText(input?: string | null): string {
   if (!input) return ""
-  return input.normalize("NFD").replace(/[̀-ͯ]/g, "")
+  return input.normalize("NFD").replace(/\u0304/g, "").normalize("NFC")
 }
 
 // ---------------------------------------------------------------------------
@@ -144,9 +154,6 @@ export interface VoucherShipment {
   toCheckOut?: string
 }
 
-/** ゲスト向けページの言語。ホテルスタッフ用ページは常に日本語。 */
-export type GuestLanguage = "en" | "zh"
-
 export type ContactDisplayMode =
   | "bondex_support"
   | "travel_agency"
@@ -176,8 +183,6 @@ export interface VoucherInput {
   contactDisplayMode?: ContactDisplayMode
   /** 追跡ページ QR (data URI)。ルート側で事前生成して渡す。 */
   trackingQrDataUri?: string
-  /** パートナー募集 QR (data URI)。ルート側で事前生成して渡す。 */
-  partnerQrDataUri?: string
   /** ゲスト向けページの言語 (既定: en)。zh = 簡体字。繁体字は同じ仕組みで追加可。 */
   guestLanguage?: GuestLanguage
   /** 問い合わせ QR (data URI)。BONDEX_WHATSAPP_URL 設定時は WhatsApp、
@@ -291,8 +296,8 @@ const logoSize = (heightMm: number) => ({
 
 const vs = StyleSheet.create({
   page: {
-    paddingTop: mm(11),
-    paddingBottom: mm(9),
+    paddingTop: mm(8),
+    paddingBottom: mm(5.5),
     paddingHorizontal: mm(14),
     fontFamily: "NotoSansJP",
     fontSize: 9,
@@ -306,19 +311,19 @@ const vs = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingBottom: mm(2.4),
+    paddingBottom: mm(1.6),
     borderBottomWidth: mm(0.8),
     borderBottomColor: INK,
   },
   copyTag: {
-    marginTop: mm(1.8),
-    fontSize: 7.5,
+    marginTop: mm(1.4),
+    fontSize: 7,
     fontWeight: 700,
     letterSpacing: 1.1,
     color: RED,
   },
   refLabel: { fontSize: 6.5, letterSpacing: 1.8, color: MUTED },
-  refValue: { fontSize: 13, fontWeight: 700, marginTop: mm(0.8) },
+  refValue: { fontSize: 11, fontWeight: 700, marginTop: mm(0.6) },
 
   // ---------------- 区間バナー (page 1) ----------------
   legBanner: {
@@ -368,57 +373,58 @@ const vs = StyleSheet.create({
   h1: { fontSize: 17, fontWeight: 700, lineHeight: 1.12 },
   h1Sub: { fontSize: 9, color: INK_SOFT, marginTop: mm(1.2) },
   trackingModule: {
-    width: mm(42),
+    width: mm(40),
     borderWidth: mm(0.5),
     borderColor: INK,
-    paddingBottom: mm(1.8),
+    paddingBottom: mm(1.4),
     alignItems: "center",
   },
   tmHead: {
     alignSelf: "stretch",
     backgroundColor: RED,
     color: "#ffffff",
-    fontSize: 7,
+    fontSize: 6.5,
     fontWeight: 700,
     letterSpacing: 1.4,
-    paddingVertical: mm(1.2),
+    paddingVertical: mm(1),
     textAlign: "center",
-    marginBottom: mm(1.6),
+    marginBottom: mm(1.2),
   },
-  tmQr: { width: mm(15), height: mm(15) },
-  tmCaption: { fontSize: 7, fontWeight: 700, marginTop: mm(1.2), textAlign: "center" },
-  tmCaptionEn: { fontSize: 6, color: INK_SOFT, marginTop: mm(0.3), textAlign: "center" },
+  tmQr: { width: mm(10), height: mm(10) },
+  tmCaption: { fontSize: 6.5, fontWeight: 700, marginTop: mm(1), textAlign: "center" },
+  tmCaptionEn: { fontSize: 5.5, color: INK_SOFT, marginTop: mm(0.3), textAlign: "center" },
   tmNote: {
-    fontSize: 5,
+    fontSize: 4.4,
     color: MUTED,
-    marginTop: mm(0.9),
-    lineHeight: 1.4,
+    marginTop: mm(0.7),
+    lineHeight: 1.3,
     textAlign: "center",
     paddingHorizontal: mm(1.5),
   },
 
   // ---------------- present strip ----------------
   presentStrip: {
-    marginTop: mm(3),
+    marginTop: mm(1.4),
     borderWidth: mm(0.5),
     borderColor: INK,
-    paddingVertical: mm(2.2),
+    paddingVertical: mm(1.3),
     paddingHorizontal: mm(5),
     flexDirection: "row",
     alignItems: "center",
   },
   psWords: { marginLeft: mm(4), flex: 1 },
-  psEn: { fontSize: 9.5, fontWeight: 700 },
-  psJa: { fontSize: 8, color: INK_SOFT, marginTop: mm(0.6) },
+  psEn: { fontSize: 8.5, fontWeight: 700 },
+  psJa: { fontSize: 7, color: INK_SOFT, marginTop: mm(0.4) },
 
   // ---------------- journey ----------------
-  journey: { marginTop: mm(3.5), flexDirection: "row", alignItems: "stretch" },
+  journey: { marginTop: mm(2.2), flexDirection: "row", alignItems: "stretch" },
   legCard: {
     flex: 1,
     borderWidth: mm(0.5),
     borderColor: INK,
     paddingHorizontal: mm(5),
-    paddingBottom: mm(3.5),
+    paddingTop: mm(3.5),
+    paddingBottom: mm(2),
     flexDirection: "column",
   },
   legTab: {
@@ -437,39 +443,24 @@ const vs = StyleSheet.create({
     alignItems: "flex-end",
     borderBottomWidth: mm(0.3),
     borderBottomColor: GRAY_LINE,
-    paddingBottom: mm(2),
+    paddingBottom: mm(1.6),
   },
-  legDay: { fontSize: 23, fontWeight: 700, lineHeight: 1 },
-  legMy: { fontSize: 9, fontWeight: 700, letterSpacing: 0.5, marginLeft: mm(2.5), marginBottom: 2 },
-  legDow: { fontSize: 8, color: RED, fontWeight: 700, marginLeft: mm(2.5), marginBottom: 2 },
-  legHotelEn: { fontSize: 12, fontWeight: 700, lineHeight: 1.2, marginTop: mm(2) },
-  legHotelAddr: { fontSize: 7, color: MUTED, marginTop: mm(1), lineHeight: 1.4 },
-  legWhen: { marginTop: "auto", paddingTop: mm(1.6) },
-  legWhenEn: { fontSize: 7.5, fontWeight: 700, lineHeight: 1.45 },
-  legWhenJa: { fontSize: 7.5, color: INK_SOFT, lineHeight: 1.45 },
+  legDay: { fontSize: 15, fontWeight: 700, lineHeight: 1 },
+  legMy: { fontSize: 8, fontWeight: 700, letterSpacing: 0.5, marginLeft: mm(2.5), marginBottom: 2 },
+  legDow: { fontSize: 7.5, color: RED, fontWeight: 700, marginLeft: mm(2.5), marginBottom: 2 },
+  legHotelEn: { fontSize: 11, fontWeight: 700, lineHeight: 1.15, marginTop: mm(1.4) },
+  legWhen: { marginTop: "auto", paddingTop: mm(1.2) },
+  legWhenEn: { fontSize: 7, fontWeight: 700, lineHeight: 1.35 },
+  legWhenJa: { fontSize: 7, color: INK_SOFT, lineHeight: 1.35 },
   journeyArrow: {
     width: mm(12),
     alignItems: "center",
     justifyContent: "center",
   },
 
-  giveTo: {
-    marginTop: mm(1.8),
-    backgroundColor: RED_TINT,
-    borderLeftWidth: mm(1),
-    borderLeftColor: RED,
-    paddingVertical: mm(1.5),
-    paddingHorizontal: mm(2.2),
-  },
-  gtEn: { fontSize: 6.2, fontWeight: 700, letterSpacing: 0.8, color: RED_DARK },
-  gtHotel: { fontSize: 9, fontWeight: 700, marginTop: mm(0.5) },
-  gtDate: { fontSize: 7.5, fontWeight: 700, color: INK_SOFT },
-  gtJa: { fontSize: 6.2, color: INK_SOFT, marginTop: mm(0.5), lineHeight: 1.45 },
-  gtJaStrong: { color: INK, fontWeight: 700 },
-
   // ---------------- detail grid ----------------
   detailGrid: {
-    marginTop: mm(3.5),
+    marginTop: mm(2.2),
     borderTopWidth: mm(0.5),
     borderTopColor: INK,
     borderLeftWidth: mm(0.5),
@@ -481,33 +472,33 @@ const vs = StyleSheet.create({
     borderRightColor: INK,
     borderBottomWidth: mm(0.5),
     borderBottomColor: INK,
-    paddingVertical: mm(2.2),
+    paddingVertical: mm(0.9),
     paddingHorizontal: mm(3.5),
-    minHeight: mm(13),
+    minHeight: mm(7),
   },
   dk: { fontSize: 6, letterSpacing: 0.9, color: MUTED },
-  dv: { fontSize: 10, fontWeight: 700, marginTop: mm(1), lineHeight: 1.25 },
-  dvSmall: { fontSize: 7, fontWeight: 400, color: INK_SOFT, marginTop: mm(0.6) },
+  dv: { fontSize: 9.5, fontWeight: 700, marginTop: mm(0.9), lineHeight: 1.2 },
+  dvSmall: { fontSize: 6.6, fontWeight: 400, color: INK_SOFT, marginTop: mm(0.4) },
 
   // ---------------- route list ----------------
   routeList: {
-    marginTop: mm(3),
+    marginTop: mm(1.6),
     borderWidth: mm(0.4),
     borderColor: GRAY_LINE,
-    paddingVertical: mm(1.7),
+    paddingVertical: mm(1),
     paddingHorizontal: mm(3),
   },
-  rlHead: { fontSize: 6.2, fontWeight: 700, letterSpacing: 1.1, color: MUTED },
+  rlHead: { fontSize: 6, fontWeight: 700, letterSpacing: 1.1, color: MUTED },
   rlRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: mm(0.7),
-    paddingBottom: mm(0.5),
+    paddingTop: mm(0.4),
+    paddingBottom: mm(0.3),
   },
   rlRowBorder: { borderTopWidth: mm(0.3), borderTopColor: GRAY_LINE },
-  rlLeg: { width: mm(15), fontSize: 7, fontWeight: 700, color: MUTED },
-  rlDate: { width: mm(11), fontSize: 7, fontWeight: 700, color: MUTED, marginLeft: mm(3) },
-  rlRoute: { flex: 1, fontSize: 7, color: MUTED, marginLeft: mm(3) },
+  rlLeg: { width: mm(15), fontSize: 6.5, fontWeight: 700, color: MUTED },
+  rlDate: { width: mm(11), fontSize: 6.5, fontWeight: 700, color: MUTED, marginLeft: mm(3) },
+  rlRoute: { flex: 1, fontSize: 6.5, color: MUTED, marginLeft: mm(3) },
   rlChip: {
     backgroundColor: RED,
     color: "#ffffff",
@@ -518,111 +509,43 @@ const vs = StyleSheet.create({
     paddingHorizontal: mm(1.8),
   },
 
-  // ---------------- staff alert ----------------
-  staffAlert: {
-    marginTop: "auto",
-    borderWidth: mm(0.8),
-    borderColor: RED,
-    backgroundColor: RED_TINT,
-    paddingVertical: mm(3),
-    paddingHorizontal: mm(5),
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  saBody: { marginLeft: mm(4.5), flex: 1 },
-  saHead: { fontSize: 11, fontWeight: 700, color: RED_DARK, lineHeight: 1.3 },
-  saHeadEn: { fontSize: 8, letterSpacing: 0.9 },
-  saText: { fontSize: 8.5, fontWeight: 700, marginTop: mm(1.2), lineHeight: 1.55 },
-  saTextEn: { fontSize: 7.5, color: INK_SOFT, marginTop: mm(0.8), lineHeight: 1.5 },
-
-  // ---------------- p1 footer ----------------
-  p1Footer: {
-    marginTop: mm(2.5),
-    paddingTop: mm(2.4),
-    borderTopWidth: mm(0.3),
-    borderTopColor: GRAY_LINE,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  p1Co: { fontSize: 7, color: MUTED, lineHeight: 1.6 },
-  p1CoStrong: { color: INK_SOFT, fontWeight: 700 },
-  nextPageNote: { fontSize: 8, fontWeight: 700, textAlign: "right", lineHeight: 1.5 },
-  nextPageNoteJa: { fontSize: 7, fontWeight: 400, color: INK_SOFT, textAlign: "right" },
-  nextPageArrow: { color: RED },
-
-  // ================= page 2 =================
-  p2HeadTag: { fontSize: 11, fontWeight: 700, color: RED, textAlign: "right" },
-  p2HeadTagJa: { fontSize: 9, color: INK, fontWeight: 700 },
-  p2Ref: { fontSize: 6.5, letterSpacing: 1.2, color: MUTED, marginTop: mm(1.5), textAlign: "right" },
-
-  leadStatement: { marginTop: mm(2.2), fontSize: 11, fontWeight: 700, lineHeight: 1.4 },
-
-  // ---------------- leg strip ----------------
-  legStrip: {
-    marginTop: mm(2),
+  // ---------------- guest→hotel-staff 区切りバー (1枚化) ----------------
+  staffDivider: {
+    marginTop: mm(1.8),
     backgroundColor: INK,
-    paddingVertical: mm(2),
-    paddingHorizontal: mm(3.2),
-    flexDirection: "row",
-    alignItems: "center",
+    paddingVertical: mm(1.2),
+    paddingHorizontal: mm(4),
   },
-  lsCap: { fontSize: 5.6, letterSpacing: 0.8, color: "#9c9ca4", fontWeight: 700 },
-  lsBadge: {
-    marginTop: mm(0.8),
-    alignSelf: "flex-start",
-    backgroundColor: RED,
-    color: "#ffffff",
-    fontSize: 10.5,
-    fontWeight: 700,
-    paddingVertical: mm(0.8),
-    paddingHorizontal: mm(2.6),
-  },
-  lsGrid: { flex: 1, flexDirection: "row", marginLeft: mm(5) },
-  lsK: { fontSize: 5.8, letterSpacing: 0.7, color: "#9c9ca4" },
-  lsV: { fontSize: 9, fontWeight: 700, color: "#ffffff", marginTop: mm(0.5) },
-
-  // ---------------- notice row ----------------
-  noticeRow: { marginTop: mm(2), flexDirection: "row" },
-  noticeCard: {
-    flex: 1,
-    borderWidth: mm(0.6),
-    borderColor: INK,
-    paddingVertical: mm(2.2),
-    paddingHorizontal: mm(3.2),
-  },
-  noticeCardAccent: { borderColor: RED, backgroundColor: RED_TINT },
-  nTitle: { fontSize: 9, fontWeight: 700, lineHeight: 1.35, marginTop: mm(1.4) },
-  nTitleAccent: { color: RED_DARK },
-  nSub: { fontSize: 6.8, color: INK_SOFT, marginTop: mm(1), lineHeight: 1.5 },
+  sdLabel: { fontSize: 8, fontWeight: 700, color: "#ffffff", letterSpacing: 0.5 },
+  sdLabelEn: { fontWeight: 700, color: "#c4c4cb", letterSpacing: 0.8 },
 
   // ---------------- flow ----------------
   flowTitle: {
-    marginTop: mm(2.2),
-    fontSize: 8,
+    marginTop: mm(2),
+    fontSize: 7.5,
     fontWeight: 700,
     letterSpacing: 1.3,
     color: MUTED,
   },
-  flowCols: { marginTop: mm(1.8), flexDirection: "row" },
+  flowCols: { marginTop: mm(1.6), flexDirection: "row" },
   flowCol: {
     flex: 1,
     borderWidth: mm(0.4),
     borderColor: GRAY_LINE,
-    paddingVertical: mm(2.2),
+    paddingVertical: mm(1.5),
     paddingHorizontal: mm(3),
   },
   flowColHead: {
     alignSelf: "flex-start",
-    fontSize: 8,
+    fontSize: 7.5,
     fontWeight: 700,
     color: "#ffffff",
-    paddingVertical: mm(1.2),
+    paddingVertical: mm(0.9),
     paddingHorizontal: mm(3),
-    marginBottom: mm(2),
+    marginBottom: mm(1.4),
   },
   flowColHeadNo: { letterSpacing: 0.6, color: "#f0c3cb" },
-  flowStep: { flexDirection: "row", marginBottom: mm(1.5) },
+  flowStep: { flexDirection: "row", marginBottom: mm(1) },
   flowNum: {
     width: mm(5.2),
     height: mm(5.2),
@@ -633,129 +556,90 @@ const vs = StyleSheet.create({
   },
   flowNumText: { fontSize: 7.5, fontWeight: 700, color: "#ffffff", lineHeight: 1 },
   flowStepBody: { flex: 1 },
-  flowStepMain: { fontSize: 8, fontWeight: 700, lineHeight: 1.45 },
-  flowStepSub: { fontSize: 7, color: INK_SOFT, lineHeight: 1.45 },
+  flowStepMain: { fontSize: 7.2, fontWeight: 700, lineHeight: 1.3 },
+  flowStepSub: { fontSize: 6.5, color: INK_SOFT, lineHeight: 1.3 },
 
   roomNote: {
-    marginTop: mm(1.5),
+    marginTop: mm(1.2),
     backgroundColor: GRAY_BG,
     borderLeftWidth: mm(0.8),
     borderLeftColor: INK,
-    paddingVertical: mm(1.5),
+    paddingVertical: mm(1),
     paddingHorizontal: mm(2.5),
   },
-  rnJa: { fontSize: 7, fontWeight: 700, lineHeight: 1.5 },
-  rnEn: { fontSize: 6.5, color: INK_SOFT, marginTop: mm(0.3), lineHeight: 1.5 },
+  rnJa: { fontSize: 6.5, fontWeight: 700, lineHeight: 1.35 },
+  rnEn: { fontSize: 6, color: INK_SOFT, fontWeight: 400 },
 
   // ---------------- hotel detail (予約検索パネル) ----------------
-  hotelDetail: { marginTop: mm(2.2), flexDirection: "row" },
+  hotelDetail: { marginTop: mm(1.2), flexDirection: "row" },
   hdBlock: {
     flex: 1,
     backgroundColor: GRAY_BG,
-    paddingVertical: mm(2.3),
+    paddingVertical: mm(1.6),
     paddingHorizontal: mm(3.2),
   },
   hdNo: { fontSize: 7, fontWeight: 700, letterSpacing: 0.8 },
-  hdHotel: { fontSize: 10, fontWeight: 700, marginTop: mm(0.8) },
+  hdHotel: { fontSize: 9, fontWeight: 700, marginTop: mm(0.5) },
   lookupGrid: {
     marginTop: mm(2),
     backgroundColor: "#ffffff",
     borderWidth: mm(0.4),
     borderColor: INK,
+    flexDirection: "row",
   },
-  lookupRow: { flexDirection: "row" },
   lookupCell: {
-    paddingVertical: mm(1.6),
+    paddingVertical: mm(0.8),
     paddingHorizontal: mm(2.2),
   },
-  lookupCellL: { width: "53%" },
-  lookupCellR: { width: "47%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
-  lookupRow2: { borderTopWidth: mm(0.3), borderTopColor: GRAY_LINE },
-  lk: { fontSize: 5.5, letterSpacing: 0.4, color: MUTED, lineHeight: 1.3 },
+  lookupCellName: { width: "42%" },
+  lookupCellCheckin: { width: "36%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
+  lookupCellRoom: { width: "22%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
+  lk: { fontSize: 5.3, letterSpacing: 0.4, color: MUTED, lineHeight: 1.3 },
   lkPrimary: { color: RED_DARK, fontWeight: 700 },
-  lv: { fontSize: 8.5, fontWeight: 700, marginTop: mm(0.7), lineHeight: 1.25 },
-  lvPrimary: { fontSize: 9.5, fontWeight: 700, marginTop: mm(0.7), lineHeight: 1.25 },
+  lv: { fontSize: 8.5, fontWeight: 700, marginTop: mm(0.5), lineHeight: 1.2 },
+  lvPrimary: { fontSize: 9, fontWeight: 700, marginTop: mm(0.5), lineHeight: 1.2 },
   lvNights: { fontSize: 7, color: INK_SOFT, fontWeight: 700 },
   lvBlank: {
-    marginTop: mm(0.7),
-    minHeight: mm(4),
+    marginTop: mm(0.5),
+    minHeight: mm(3.5),
     borderBottomWidth: mm(0.3),
     borderBottomColor: MUTED,
   },
-  hdNote: { marginTop: mm(1.8), fontSize: 7.2, lineHeight: 1.6, color: INK_SOFT },
+  hdNote: { marginTop: mm(1), fontSize: 6.3, lineHeight: 1.35, color: INK_SOFT },
   hdNoteStrong: { color: INK, fontWeight: 700 },
   hdSpecial: { marginTop: mm(1), fontSize: 7, color: RED_DARK, fontWeight: 700, lineHeight: 1.5 },
 
   // ---------------- contact strip ----------------
   contactStrip: {
-    marginTop: mm(2.2),
+    marginTop: mm(1.6),
     borderWidth: mm(0.5),
     borderColor: INK,
     flexDirection: "row",
   },
-  contactCell: { flex: 1, paddingVertical: mm(1.8), paddingHorizontal: mm(3.5) },
-  contactCellR: { borderLeftWidth: mm(0.5), borderLeftColor: INK },
-  cK: { fontSize: 6.5, letterSpacing: 0.9, color: MUTED },
-  cV: { fontSize: 8, fontWeight: 700, marginTop: mm(0.8), lineHeight: 1.5 },
-  cVSmall: { fontSize: 7, fontWeight: 400, color: INK_SOFT, lineHeight: 1.5 },
-
-  // ---------------- ad banner (営業バナー) ----------------
-  adBanner: {
-    marginTop: mm(2.4),
-    backgroundColor: INK,
-    borderTopWidth: mm(1.4),
-    borderTopColor: RED,
-    paddingVertical: mm(2.8),
-    paddingHorizontal: mm(4.5),
+  contactCell: {
+    flex: 1,
+    paddingVertical: mm(0.9),
+    paddingHorizontal: mm(3.5),
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
+    flexWrap: "wrap",
   },
-  adMain: { flex: 1 },
-  adKicker: { fontSize: 7, fontWeight: 700, letterSpacing: 1.1, color: RED_SOFT },
-  adKickerSub: { letterSpacing: 0.4, color: "#9c9ca4" },
-  adHeadline: { fontSize: 12.5, fontWeight: 700, color: "#ffffff", marginTop: mm(1.8) },
-  adAccent: { color: RED_SOFT },
-  adLead: { fontSize: 7, color: "#c4c4cb", lineHeight: 1.55, marginTop: mm(1.2) },
-  adPoints: {
-    marginTop: mm(1.8),
-    borderTopWidth: mm(0.3),
-    borderTopColor: "#3a3a41",
-    paddingTop: mm(1.8),
-  },
-  adPoint: { flexDirection: "row", alignItems: "flex-start" },
-  adPointGap: { marginTop: mm(1.1) },
-  ptMark: {
-    width: mm(1.7),
-    height: mm(1.7),
-    backgroundColor: RED_SOFT,
-    marginTop: mm(0.9),
-    marginRight: mm(1.8),
-  },
-  ptBody: { flex: 1, fontSize: 7.2, color: "#c4c4cb", lineHeight: 1.5 },
-  ptStrong: { color: "#ffffff", fontWeight: 700 },
-  adCta: {
-    width: mm(42),
-    backgroundColor: "#ffffff",
-    marginLeft: mm(5),
-    paddingVertical: mm(2.8),
-    paddingHorizontal: mm(2.5),
-    alignItems: "center",
-  },
-  ctaQr: { width: mm(16), height: mm(16) },
-  ctaTitle: { fontSize: 7.5, fontWeight: 700, color: RED_DARK, marginTop: mm(1.4), textAlign: "center" },
-  ctaNote: { fontSize: 5.8, color: INK_SOFT, marginTop: mm(0.5), textAlign: "center" },
-  ctaUrl: { fontSize: 5.8, fontWeight: 700, marginTop: mm(0.8), textAlign: "center" },
+  contactCellR: { borderLeftWidth: mm(0.5), borderLeftColor: INK },
+  cK: { fontSize: 6, letterSpacing: 0.7, color: MUTED },
+  cV: { fontSize: 7.2, fontWeight: 700, lineHeight: 1.3, marginLeft: mm(2) },
+  cVSmall: { fontSize: 6.4, fontWeight: 400, color: INK_SOFT, marginLeft: mm(1.5) },
 
-  // ---------------- p2 footer ----------------
-  p2Footer: {
-    marginTop: "auto",
-    paddingTop: mm(1.8),
+  // ---------------- footer (1枚化: guest/hotel 共通) ----------------
+  finalFooter: {
+    marginTop: mm(1),
+    paddingTop: mm(1.2),
     borderTopWidth: mm(0.3),
     borderTopColor: GRAY_LINE,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "baseline",
   },
-  p2FooterText: { fontSize: 6.5, color: MUTED },
+  footerText: { fontSize: 6.2, color: MUTED },
 })
 
 // ---------------------------------------------------------------------------
@@ -779,51 +663,6 @@ function JourneyArrowIcon() {
   )
 }
 
-function AlertIcon() {
-  return (
-    <Svg width={mm(8.5)} height={mm(8.5)} viewBox="0 0 34 34">
-      <Rect x={1.5} y={1.5} width={31} height={31} rx={15.5} stroke={RED_DARK} strokeWidth={2} fill="none" />
-      <Path d="M17 9v11" stroke={RED_DARK} strokeWidth={3} strokeLinecap="round" fill="none" />
-      <Circle cx={17} cy={25} r={1.9} fill={RED_DARK} />
-    </Svg>
-  )
-}
-
-function TruckIcon() {
-  return (
-    <Svg width={mm(5)} height={mm(5)} viewBox="0 0 22 22">
-      <Rect x={2} y={6} width={12} height={11} rx={1.5} stroke={RED_DARK} strokeWidth={1.6} fill="none" />
-      <Path d="M14 9h3.5l2.5 3.5V17h-6" stroke={RED_DARK} strokeWidth={1.6} strokeLinejoin="round" fill="none" />
-      <Circle cx={6.5} cy={17} r={1.8} fill="#ffffff" stroke={RED_DARK} strokeWidth={1.4} />
-      <Circle cx={16.5} cy={17} r={1.8} fill="#ffffff" stroke={RED_DARK} strokeWidth={1.4} />
-    </Svg>
-  )
-}
-
-function YenIcon() {
-  return (
-    <Svg width={mm(5)} height={mm(5)} viewBox="0 0 22 22">
-      <Circle cx={11} cy={11} r={9} stroke={RED_DARK} strokeWidth={1.6} fill="none" />
-      <Path
-        d="M11 6.5v9M8 9.2c0-1.2 1.3-2 3-2s3 .8 3 2-1.3 1.8-3 2-3 .8-3 2 1.3 2 3 2 3-.8 3-2"
-        stroke={RED_DARK}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        fill="none"
-      />
-    </Svg>
-  )
-}
-
-function CheckboxIcon() {
-  return (
-    <Svg width={mm(5)} height={mm(5)} viewBox="0 0 22 22">
-      <Rect x={3} y={3} width={16} height={16} rx={2} stroke={INK} strokeWidth={1.6} fill="none" />
-      <Path d="M7 11.5l3 3 5.5-6" stroke={INK} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </Svg>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // ゲスト向け文言の言語辞書 (EN / 簡体字中国語)。
 // 構造ラベル (DROP-OFF / TRACKING 等の欧文) はデザイン言語として共通、
@@ -838,10 +677,8 @@ const GUEST_L10N = {
     present: "Please present this voucher at the reception when dropping off and picking up your luggage.",
     dropWhen: (t?: string) => `At the hotel's reception ・ by ${t || "check-out"}`,
     pickWhen: (t?: string) => `At the hotel's reception ・ ${t || "when check-in"}`,
-    giveTo: "PLEASE GIVE THIS VOUCHER TO:",
-    giveToDate: (ymd: string) => `on ${formatEnDate(ymd)}`,
-    scanCaption: "Scan for live delivery status",
-    tmNote: "* Tracking may take a few hours to update after the courier receives your luggage.",
+    scanCaption: "Live status",
+    tmNote: "* May take a few hours to update.",
     routeHead: "YOUR LUGGAGE ROUTE ／ 旅程全体",
     currentChip: "CURRENT ／ この用紙",
   },
@@ -853,12 +690,49 @@ const GUEST_L10N = {
     present: "寄存行李及领取行李时，请向酒店前台出示本凭证。",
     dropWhen: (t?: string) => (t ? `请于 ${t} 前交至酒店前台` : "请在退房前交至酒店前台"),
     pickWhen: (_t?: string) => "办理入住时向酒店前台领取",
-    giveTo: "请将本凭证交给以下酒店：",
-    giveToDate: (ymd: string) => `（${formatJpDate(ymd)} 交付）`,
-    scanCaption: "扫码查看行李配送状态",
-    tmNote: "* 行李由配送员揽收后，追踪信息可能需要数小时更新。",
+    scanCaption: "实时状态",
+    tmNote: "* 更新可能需数小时。",
     routeHead: "YOUR LUGGAGE ROUTE ／ 行李路线",
     currentChip: "CURRENT ／ 本张凭证",
+  },
+  it: {
+    copyTag: "GUEST COPY / Copia ospite",
+    kicker: "QUESTO VOUCHER È PER",
+    dropLabel: "Consegna: ",
+    pickLabel: "Ritiro: ",
+    present: "Si prega di mostrare questo voucher alla reception al momento della consegna e del ritiro del bagaglio.",
+    dropWhen: (t?: string) => `Alla reception dell'hotel ・ entro ${t || "il check-out"}`,
+    pickWhen: (t?: string) => `Alla reception dell'hotel ・ ${t || "al check-in"}`,
+    scanCaption: "Stato in tempo reale",
+    tmNote: "* Aggiornamento entro alcune ore.",
+    routeHead: "IL TUO PERCORSO BAGAGLI ／ 旅程全体",
+    currentChip: "ATTUALE ／ この用紙",
+  },
+  fr: {
+    copyTag: "GUEST COPY / Copie client",
+    kicker: "CE BON EST POUR",
+    dropLabel: "Dépôt : ",
+    pickLabel: "Retrait : ",
+    present: "Veuillez présenter ce bon à la réception lors du dépôt et du retrait de vos bagages.",
+    dropWhen: (t?: string) => `À la réception de l'hôtel ・ avant ${t || "le départ"}`,
+    pickWhen: (t?: string) => `À la réception de l'hôtel ・ ${t || "à l'arrivée"}`,
+    scanCaption: "État en direct",
+    tmNote: "* Mise à jour sous quelques heures.",
+    routeHead: "VOTRE ITINÉRAIRE BAGAGES ／ 旅程全体",
+    currentChip: "ACTUEL ／ この用紙",
+  },
+  es: {
+    copyTag: "GUEST COPY / Copia del huésped",
+    kicker: "ESTE COMPROBANTE ES PARA",
+    dropLabel: "Entrega: ",
+    pickLabel: "Recogida: ",
+    present: "Por favor, presente este comprobante en la recepción al entregar y recoger su equipaje.",
+    dropWhen: (t?: string) => `En la recepción del hotel ・ antes de ${t || "la salida"}`,
+    pickWhen: (t?: string) => `En la recepción del hotel ・ ${t || "al registrarse"}`,
+    scanCaption: "Estado en vivo",
+    tmNote: "* Actualización en algunas horas.",
+    routeHead: "SU RUTA DE EQUIPAJE ／ 旅程全体",
+    currentChip: "ACTUAL ／ この用紙",
   },
 } as const
 
@@ -866,7 +740,58 @@ const GUEST_L10N = {
 // Page 1 — GUEST COPY (guest language primary / JP secondary)
 // ---------------------------------------------------------------------------
 
-function GuestPage({
+function FlowStep({ num, main, sub, color }: { num: string; main: string; sub?: string; color: string }) {
+  return (
+    <View style={vs.flowStep}>
+      <View style={[vs.flowNum, { backgroundColor: color }]}>
+        <Text style={vs.flowNumText}>{num}</Text>
+      </View>
+      <View style={vs.flowStepBody}>
+        <Text style={vs.flowStepMain}>{jb(main)}</Text>
+        {sub ? <Text style={vs.flowStepSub}>{jb(sub)}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
+function LookupGrid({
+  guestName,
+  checkIn,
+  nights,
+}: {
+  guestName: string
+  checkIn?: string
+  nights: number | null
+}) {
+  return (
+    <View style={vs.lookupGrid}>
+      <View style={[vs.lookupCell, vs.lookupCellName]}>
+        <Text style={[vs.lk, vs.lkPrimary]}>GUEST NAME / ご予約者名</Text>
+        <Text style={vs.lvPrimary}>{guestName}</Text>
+      </View>
+      <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
+        <Text style={[vs.lk, vs.lkPrimary]}>CHECK-IN / チェックイン日</Text>
+        <Text style={vs.lvPrimary}>
+          {checkIn ? formatJpDate(checkIn) : "—"}
+          {nights !== null ? <Text style={vs.lvNights}> ～{nights}泊</Text> : null}
+        </Text>
+      </View>
+      <View style={[vs.lookupCell, vs.lookupCellRoom]}>
+        <Text style={vs.lk}>ROOM NO. / お部屋番号</Text>
+        <View style={vs.lvBlank} />
+      </View>
+    </View>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Voucher page — 1 区間 = 1 バウチャー = 1 ページ (1枚化, 2026-07)
+// 上半分: GUEST COPY (ゲスト言語 primary / JP secondary)
+// 下半分: FOR HOTEL STAFF (JP primary)
+// デザインは design/voucher/voucher.html の移植 — 変更時は必ず先にそちらを更新すること。
+// ---------------------------------------------------------------------------
+
+function VoucherPage({
   data,
   shipment,
   legIndex,
@@ -883,8 +808,13 @@ function GuestPage({
   const guestName = jb(shipment.bookingName) || jb(data.representativeLabel)
   const fromHotel = jb(shipment.from.hotel)
   const toHotel = jb(shipment.to.hotel)
-  // ゲスト言語 (en / zh)。zh は NotoSansSC で描画する (JP フォントに簡体字が無い)。
-  const lang: GuestLanguage = data.guestLanguage === "zh" ? "zh" : "en"
+  const fromHotelJa = safeText(shipment.from.hotel)
+  const toHotelJa = safeText(shipment.to.hotel)
+  const nightsFrom = nightsBetween(shipment.fromCheckIn, shipment.shipmentDate)
+  const nightsTo = nightsBetween(shipment.expectedArrival, shipment.toCheckOut)
+  // ゲスト言語 (en / zh / it / fr / es)。zh のみ NotoSansSC で描画 (JP フォントに簡体字が無い)。
+  // it/fr/es はラテン文字のためNotoSansJPのフォールバックで描画可能 (アクセント付き文字も含めて確認済み)。
+  const lang: GuestLanguage = normalizeGuestLanguage(data.guestLanguage)
   const L = GUEST_L10N[lang]
   const zf = lang === "zh" ? { fontFamily: "NotoSansSC" } : {}
   const dropWhenEn = L.dropWhen(shipment.dropOffTime?.trim() ? safeText(shipment.dropOffTime) : undefined)
@@ -920,7 +850,7 @@ function GuestPage({
       {/* masthead */}
       <View style={vs.masthead}>
         <View>
-          <Image style={logoSize(10)} src={LOGO_PATH} />
+          <Image style={logoSize(8.5)} src={LOGO_PATH} />
           <Text style={[vs.copyTag, zf]}>{jb(L.copyTag)}</Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
@@ -960,12 +890,12 @@ function GuestPage({
           {data.trackingQrDataUri ? (
             <Image style={vs.tmQr} src={data.trackingQrDataUri} />
           ) : (
-            <Text style={{ fontSize: 6, color: INK_SOFT }}>
+            <Text style={{ fontSize: 5.5, color: INK_SOFT }}>
               bondex.express/track/{data.bookingId}
             </Text>
           )}
-          <Text style={vs.tmCaption}>{jb("ここで荷物の配送状況がわかります")}</Text>
-          <Text style={[vs.tmCaptionEn, zf]}>{jb(L.scanCaption)}</Text>
+          <Text style={vs.tmCaption}>{jb("配送状況を確認")}</Text>
+          <Text style={[vs.tmCaptionEn, zf]}>/ {jb(L.scanCaption)}</Text>
           <Text style={[vs.tmNote, zf]}>{jb(L.tmNote)}</Text>
         </View>
       </View>
@@ -990,27 +920,9 @@ function GuestPage({
             <Text style={vs.legDow}>{dowLabel(shipment.shipmentDate)}</Text>
           </View>
           <Text style={vs.legHotelEn}>{fromHotel}</Text>
-          {(shipment.from.address || shipment.from.city) !== "" && (
-            <Text style={vs.legHotelAddr}>
-              {jb(shipment.from.address) || jb(shipment.from.city)}
-            </Text>
-          )}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
-          </View>
-          {/* この用紙のお渡し先 */}
-          <View style={vs.giveTo}>
-            <Text style={[vs.gtEn, zf]}>{jb(L.giveTo)}</Text>
-            <Text style={[vs.gtHotel, zf]}>
-              {fromHotel} <Text style={vs.gtDate}>{jb(L.giveToDate(shipment.shipmentDate))}</Text>
-            </Text>
-            <Text style={vs.gtJa}>
-              {jb("このバウチャーは ")}
-              <Text style={vs.gtJaStrong}>{formatJpDate(shipment.shipmentDate)}</Text> に
-              <Text style={vs.gtJaStrong}>{fromHotel}</Text>
-              {jb("へお渡しください")}
-            </Text>
           </View>
         </View>
 
@@ -1027,11 +939,6 @@ function GuestPage({
             <Text style={vs.legDow}>{dowLabel(shipment.expectedArrival)}</Text>
           </View>
           <Text style={vs.legHotelEn}>{toHotel}</Text>
-          {(shipment.to.address || shipment.to.city) !== "" && (
-            <Text style={vs.legHotelAddr}>
-              {jb(shipment.to.address) || jb(shipment.to.city)}
-            </Text>
-          )}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
@@ -1120,178 +1027,11 @@ function GuestPage({
         </View>
       )}
 
-      {/* staff alert (残余スペースを吸収して下部に寄せる) */}
-      <View style={vs.staffAlert}>
-        <AlertIcon />
-        <View style={vs.saBody}>
-          <Text style={vs.saHead}>
-            ホテルご担当者様へ <Text style={vs.saHeadEn}>/ FOR HOTEL STAFF</Text>
-          </Text>
-          <Text style={vs.saText}>
-            {jb("このお荷物は BondEx にて集荷依頼済みです。必ず 2 ページ目の「FOR HOTEL STAFF」をご確認ください。")}
-          </Text>
-          <Text style={vs.saTextEn}>Hotel staff: Please see page 2 before handling this luggage.</Text>
-        </View>
-      </View>
-
-      {/* footer */}
-      <View style={vs.p1Footer}>
-        <View>
-          <Text style={[vs.p1Co, vs.p1CoStrong]}>{data.companyName}</Text>
-          <Text style={vs.p1Co}>{jb(data.companyAddress)}</Text>
-          <Text style={vs.p1Co}>TEL: {data.supportPhone}</Text>
-        </View>
-        <View>
-          <Text style={vs.nextPageNote}>
-            PLEASE SEE PAGE 2 FOR HOTEL STAFF GUIDE <Text style={vs.nextPageArrow}>→</Text>
-          </Text>
-          <Text style={vs.nextPageNoteJa}>
-            {jb("ホテル担当者様・次ページ「FOR HOTEL STAFF」をご確認ください")}
-          </Text>
-        </View>
-      </View>
-    </Page>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Page 2 — FOR HOTEL STAFF (JP primary)
-// ---------------------------------------------------------------------------
-
-function FlowStep({ num, main, sub, color }: { num: string; main: string; sub?: string; color: string }) {
-  return (
-    <View style={vs.flowStep}>
-      <View style={[vs.flowNum, { backgroundColor: color }]}>
-        <Text style={vs.flowNumText}>{num}</Text>
-      </View>
-      <View style={vs.flowStepBody}>
-        <Text style={vs.flowStepMain}>{jb(main)}</Text>
-        {sub ? <Text style={vs.flowStepSub}>{jb(sub)}</Text> : null}
-      </View>
-    </View>
-  )
-}
-
-function LookupGrid({
-  guestName,
-  checkIn,
-  nights,
-  travelerCount,
-}: {
-  guestName: string
-  checkIn?: string
-  nights: number | null
-  travelerCount: number
-}) {
-  return (
-    <View style={vs.lookupGrid}>
-      <View style={vs.lookupRow}>
-        <View style={[vs.lookupCell, vs.lookupCellL]}>
-          <Text style={[vs.lk, vs.lkPrimary]}>GUEST NAME / ご予約者名</Text>
-          <Text style={vs.lvPrimary}>{guestName}</Text>
-        </View>
-        <View style={[vs.lookupCell, vs.lookupCellR]}>
-          <Text style={[vs.lk, vs.lkPrimary]}>CHECK-IN / チェックイン日</Text>
-          <Text style={vs.lvPrimary}>
-            {checkIn ? formatJpDate(checkIn) : "—"}
-            {nights !== null ? <Text style={vs.lvNights}> ～{nights}泊</Text> : null}
-          </Text>
-        </View>
-      </View>
-      <View style={[vs.lookupRow, vs.lookupRow2]}>
-        <View style={[vs.lookupCell, vs.lookupCellL]}>
-          <Text style={vs.lk}>GUESTS / ご宿泊人数</Text>
-          <Text style={vs.lv}>
-            {travelerCount} guest{travelerCount === 1 ? "" : "s"}
-          </Text>
-        </View>
-        <View style={[vs.lookupCell, vs.lookupCellR]}>
-          <Text style={vs.lk}>ROOM NO. / お部屋番号</Text>
-          <View style={vs.lvBlank} />
-        </View>
-      </View>
-    </View>
-  )
-}
-
-function HotelStaffPage({
-  data,
-  shipment,
-  legIndex,
-  totalLegs,
-}: {
-  data: VoucherInput
-  shipment: VoucherShipment
-  legIndex: number
-  totalLegs: number
-}) {
-  const ref = voucherRefFor(data.bookingId, legIndex, totalLegs)
-  const guestName = jb(shipment.bookingName) || jb(data.representativeLabel)
-  const fromHotel = safeText(shipment.from.hotel)
-  const toHotel = safeText(shipment.to.hotel)
-  const nightsFrom = nightsBetween(shipment.fromCheckIn, shipment.shipmentDate)
-  const nightsTo = nightsBetween(shipment.expectedArrival, shipment.toCheckOut)
-
-  return (
-    <Page size="A4" style={vs.page} wrap={false}>
-      {/* masthead */}
-      <View style={vs.masthead}>
-        <View>
-          <Image style={logoSize(8.6)} src={LOGO_PATH} />
-        </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={vs.p2HeadTag}>
-            FOR HOTEL STAFF <Text style={vs.p2HeadTagJa}>/ ホテルご担当者様へ</Text>
-          </Text>
-          <Text style={vs.p2Ref}>REFERENCE: {ref}</Text>
-        </View>
-      </View>
-
-      <Text style={vs.leadStatement}>{jb("本バウチャーは、弊社にて集荷依頼済みの荷物配送サービスです。")}</Text>
-
-      {/* 配送区間ストリップ: 見た瞬間に「この紙はこの区間の配送用」と分かる */}
-      <View style={vs.legStrip}>
-        <View>
-          <Text style={vs.lsCap}>配送区間 / SEGMENT</Text>
-          <Text style={vs.lsBadge}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
-        </View>
-        <View style={vs.lsGrid}>
-          <View style={{ flex: 1.4 }}>
-            <Text style={vs.lsK}>発送元</Text>
-            <Text style={vs.lsV}>{fromHotel}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={vs.lsK}>発送日</Text>
-            <Text style={vs.lsV}>{formatJpDate(shipment.shipmentDate)}</Text>
-          </View>
-          <View style={{ flex: 1.4 }}>
-            <Text style={vs.lsK}>到着先</Text>
-            <Text style={vs.lsV}>{toHotel}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={vs.lsK}>到着日</Text>
-            <Text style={vs.lsV}>{formatJpDate(shipment.expectedArrival)}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* notice cards */}
-      <View style={vs.noticeRow}>
-        <View style={[vs.noticeCard, vs.noticeCardAccent]}>
-          <TruckIcon />
-          <Text style={[vs.nTitle, vs.nTitleAccent]}>{jb("荷物は「出荷する荷物」としてお預かりください。")}</Text>
-          <Text style={vs.nSub}>{jb("通常の出荷荷物と同じお取り扱いで結構です。")}</Text>
-        </View>
-        <View style={[vs.noticeCard, vs.noticeCardAccent, { marginLeft: mm(3) }]}>
-          <YenIcon />
-          <Text style={[vs.nTitle, vs.nTitleAccent]}>{jb("配送料は弊社が立て替え済みです。")}</Text>
-          <Text style={vs.nSub}>{jb("宿泊者様からの料金徴収は不要です。")}</Text>
-        </View>
-        <View style={[vs.noticeCard, { marginLeft: mm(3) }]}>
-          <CheckboxIcon />
-          <Text style={vs.nTitle}>{jb("集荷は手配済みです。")}</Text>
-          <Text style={vs.nSub}>{jb("配送業者のドライバーが集荷に伺います。お手続きは不要です。")}</Text>
-        </View>
+      {/* guest → hotel-staff 区切りバー (1枚化) */}
+      <View style={vs.staffDivider}>
+        <Text style={vs.sdLabel}>
+          ここからホテルご担当者様へ <Text style={vs.sdLabelEn}>/ FOR HOTEL STAFF</Text>
+        </Text>
       </View>
 
       {/* flow */}
@@ -1302,26 +1042,22 @@ function HotelStaffPage({
             <Text style={vs.flowColHeadNo}>01  </Text>
             {jb("発送元ホテル（ご出発ホテル）での対応")}
           </Text>
-          <FlowStep color={RED} num="1" main="お客様がチェックアウト時に荷物をお持ち込み" sub="本バウチャーの内容をご確認ください" />
-          <FlowStep color={RED} num="2" main="出荷する荷物としてお預かり" sub="フロント等で通常の出荷荷物と同様に保管" />
-          <FlowStep color={RED} num="3" main="ドライバーが集荷に伺います" sub="バウチャー内容を確認します" />
-          <FlowStep color={RED} num="4" main="荷物をドライバーへお渡し" sub="確認後、お渡しください" />
+          <FlowStep color={RED} num="1" main="お客様がチェックアウト時に荷物をお持ち込み" sub="出荷する荷物として通常どおりお預かりください" />
+          <FlowStep color={RED} num="2" main="ドライバーが集荷に伺います" sub="バウチャー内容を確認します" />
+          <FlowStep color={RED} num="3" main="荷物をドライバーへお渡し" sub="確認後、お渡しください" />
         </View>
         <View style={[vs.flowCol, { marginLeft: mm(3.5) }]}>
           <Text style={[vs.flowColHead, { backgroundColor: INK }]}>
             <Text style={vs.flowColHeadNo}>02  </Text>
             {jb("到着先ホテル（次のご宿泊ホテル）での対応")}
           </Text>
-          <FlowStep color={INK} num="1" main="ドライバーが荷物をお届け" sub="ドライバーがバウチャー内容を確認します" />
-          <FlowStep color={INK} num="2" main="到着荷物としてお預かり" sub="通常の荷物お預かりと同様に保管" />
-          <FlowStep color={INK} num="3" main="お客様がチェックイン" />
-          <FlowStep color={INK} num="4" main="荷物をお客様へお渡し" sub="バウチャー記載のご予約名でお渡しください" />
+          <FlowStep color={INK} num="1" main="ドライバーが荷物をお届け" sub="到着荷物として通常どおりお預かりください" />
+          <FlowStep color={INK} num="2" main="お客様がチェックイン" />
+          <FlowStep color={INK} num="3" main="荷物をお客様へお渡し" sub="バウチャー記載のご予約名でお渡しください" />
           <View style={vs.roomNote}>
             <Text style={vs.rnJa}>
-              {jb("お部屋番号が確定している場合：お客様のチェックイン前に、可能であればお部屋までお運びいただけると幸いです。")}
-            </Text>
-            <Text style={vs.rnEn}>
-              If the room number has already been assigned, please deliver the luggage to the guest room when possible.
+              {jb("お部屋番号が確定している場合：可能であればお部屋までお運びください ")}
+              <Text style={vs.rnEn}>/ Room delivery when possible</Text>
             </Text>
           </View>
         </View>
@@ -1331,12 +1067,11 @@ function HotelStaffPage({
       <View style={vs.hotelDetail}>
         <View style={vs.hdBlock}>
           <Text style={[vs.hdNo, { color: RED }]}>01 発送元</Text>
-          <Text style={vs.hdHotel}>{fromHotel}{jb(" 様")}</Text>
+          <Text style={vs.hdHotel}>{fromHotelJa}{jb(" 様")}</Text>
           <LookupGrid
             guestName={guestName}
             checkIn={shipment.fromCheckIn}
             nights={nightsFrom}
-            travelerCount={data.travelerCount}
           />
           <Text style={vs.hdNote}>
             {jb("チェックアウト時にお客様が、本バウチャーと")}
@@ -1351,12 +1086,11 @@ function HotelStaffPage({
         </View>
         <View style={[vs.hdBlock, { marginLeft: mm(3.5) }]}>
           <Text style={[vs.hdNo, { color: INK }]}>02 発送先</Text>
-          <Text style={vs.hdHotel}>{toHotel}{jb(" 様")}</Text>
+          <Text style={vs.hdHotel}>{toHotelJa}{jb(" 様")}</Text>
           <LookupGrid
             guestName={guestName}
             checkIn={shipment.expectedArrival}
             nights={nightsTo}
-            travelerCount={data.travelerCount}
           />
           <Text style={vs.hdNote}>
             <Text style={vs.hdNoteStrong}>{formatJpDate(shipment.expectedArrival)}</Text>
@@ -1373,71 +1107,25 @@ function HotelStaffPage({
           <Text style={vs.cK}>荷物配送手配業者 / FORWARDING OPERATOR</Text>
           <Text style={vs.cV}>{jb("BondEx サポートデスク")}</Text>
           <Text style={vs.cVSmall}>
-            Email: {data.supportEmail} ／ TEL: {data.supportPhone}（9:00 – 18:00 JST）
+            {data.supportEmail} ／ {data.supportPhone}
           </Text>
         </View>
         <View style={[vs.contactCell, vs.contactCellR]}>
           <Text style={vs.cK}>ランドオペレーター / LAND OPERATOR</Text>
           <Text style={vs.cV}>{jb(data.tourCompany) || "—"}</Text>
           <Text style={vs.cVSmall}>
-            TEL: {data.contactPersonPhone || "—"}
+            {data.contactPersonPhone || "—"}
             {data.contactPersonName ? jb(`（担当：${data.contactPersonName}）`) : ""}
           </Text>
         </View>
       </View>
 
-      {/* 営業バナー (広告枠) */}
-      <View style={vs.adBanner}>
-        <View style={vs.adMain}>
-          <Text style={vs.adKicker}>
-            ABOUT BONDEX <Text style={vs.adKickerSub}>／ ホテル様へのご案内</Text>
-          </Text>
-          <Text style={vs.adHeadline}>
-            {jb("フロント業務はそのままに、")}
-            <Text style={vs.adAccent}>{jb("ゲスト体験")}</Text>
-            {jb("を一段上へ。")}
-          </Text>
-          <Text style={vs.adLead}>
-            {jb("BondEx（ボンデックス）は、訪日旅行者のホテル間荷物配送を手配するサービスです。ゲストは大きなスーツケースを持たずに身軽に移動でき、その体験が貴館の滞在満足度につながります。")}
-          </Text>
-          <View style={vs.adPoints}>
-            <View style={vs.adPoint}>
-              <View style={vs.ptMark} />
-              <Text style={vs.ptBody}>
-                <Text style={vs.ptStrong}>{jb("伝票（送り状）の記入は不要")}</Text>
-                {jb(" — 送り状は BondEx がすべて手配します。")}
-              </Text>
-            </View>
-            <View style={[vs.adPoint, vs.adPointGap]}>
-              <View style={vs.ptMark} />
-              <Text style={vs.ptBody}>
-                <Text style={vs.ptStrong}>{jb("決済はお客様ご自身でキャッシュレス")}</Text>
-                {jb(" — 貴館での集金・立て替えはありません。")}
-              </Text>
-            </View>
-            <View style={[vs.adPoint, vs.adPointGap]}>
-              <View style={vs.ptMark} />
-              <Text style={vs.ptBody}>
-                <Text style={vs.ptStrong}>{jb("出荷方法は柔軟")}</Text>
-                {jb(" — BondEx 手配の集荷でも、貴館の通常の出荷に載せていただいても構いません。")}
-              </Text>
-            </View>
-          </View>
-        </View>
-        <View style={vs.adCta}>
-          {data.partnerQrDataUri ? <Image style={vs.ctaQr} src={data.partnerQrDataUri} /> : null}
-          <Text style={vs.ctaTitle}>{jb("パートナーホテル募集中")}</Text>
-          <Text style={vs.ctaNote}>{jb("導入のご相談・詳細はこちらから")}</Text>
-          <Text style={vs.ctaUrl}>{PARTNER_URL}</Text>
-        </View>
-      </View>
-
       {/* footer */}
-      <View style={vs.p2Footer}>
-        <Text style={vs.p2FooterText}>
+      <View style={vs.finalFooter}>
+        <Text style={vs.footerText}>
           {jb(`${data.companyName} ／ ${data.companyAddress}`)}
         </Text>
-        <Text style={vs.p2FooterText}>REFERENCE: {ref} ・ FOR HOTEL STAFF</Text>
+        <Text style={vs.footerText}>REFERENCE: {ref}</Text>
       </View>
     </Page>
   )
@@ -1456,15 +1144,14 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
       subject="Luggage Forwarding Voucher"
     >
       {/*
-       * 1 区間 = 1 バウチャー (2 ページ):
-       *   Page 1 (GUEST COPY)      — 旅行者向け。ホテルに渡す紙
-       *   Page 2 (FOR HOTEL STAFF) — ホテル担当者様向け詳細案内
+       * 1 区間 = 1 バウチャー = 1 ページ (1枚化, 2026-07):
+       *   上半分: GUEST COPY — 旅行者向け。ホテルに渡す紙
+       *   下半分: FOR HOTEL STAFF — ホテル担当者様向け詳細案内
        * バウチャー番号は bookingId + 区間サフィックス (-A / -B / ...)
        */}
-      {data.shipments.flatMap((shipment, i) => [
-        <GuestPage key={`g-${i}`} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />,
-        <HotelStaffPage key={`h-${i}`} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />,
-      ])}
+      {data.shipments.map((shipment, i) => (
+        <VoucherPage key={i} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />
+      ))}
     </Document>
   )
 }
@@ -1501,7 +1188,7 @@ const HOWTO_L10N = {
     stepsHead: "3 EASY STEPS",
     steps: [
       { title: "Pack smart", body: "Passport, tickets, medicine — keep them with you." },
-      { title: "Hand over at reception", body: "Voucher + labels to the front desk. No sticking — the courier attaches them." },
+      { title: "Hand over at reception", body: "Voucher + labels to the front desk — the courier will attach them for you." },
       { title: "Pick up & go", body: "Collect your bags at your next hotel's reception." },
     ],
     trackHead: "TRACK ANYTIME",
@@ -1550,6 +1237,117 @@ const HOWTO_L10N = {
     notices: [
       "恶劣天气可能延迟至次日送达，临近回国航班请勿托运。",
       "BondEx 客服: support@bondex.express (9:00 - 18:00 JST)",
+    ],
+  },
+  it: {
+    docTag: "GUIDA VIAGGIATORE / TRAVELER GUIDE",
+    title: "COME SPEDIRE IL BAGAGLIO",
+    subtitle: "Trasporto bagagli da hotel a hotel — una guida di 1 minuto",
+    needHead: "COSA SERVE / WHAT YOU NEED",
+    needs: [
+      { title: "Voucher", body: "Uno per ogni consegna" },
+      { title: "Etichetta di spedizione", body: "Una per ogni valigia" },
+      { title: "Il tuo bagaglio", body: "Max 160 cm / 25 kg" },
+    ],
+    checkHead: "CONTROLLA L'ETICHETTA / CHECK YOUR LABEL",
+    checkSub: "Un controllo di 10 secondi:",
+    checks: [
+      "Nome mittente = rappresentante del gruppo",
+      "L'hotel di destinazione è corretto",
+      "La data di arrivo corrisponde al programma",
+    ],
+    labelMockFrom: "FROM: Nome rappresentante",
+    labelMockTo: "TO: Il tuo prossimo hotel",
+    labelMockDate: "Data di arrivo",
+    stepsHead: "3 PASSI SEMPLICI / 3 EASY STEPS",
+    steps: [
+      { title: "Fai i bagagli con criterio", body: "Passaporto, biglietti, medicine — tienili con te." },
+      { title: "Consegna alla reception", body: "Voucher + etichette alla reception — sarà il corriere ad applicarle." },
+      { title: "Ritira e riparti", body: "Ritira i bagagli alla reception del tuo prossimo hotel." },
+    ],
+    trackHead: "TRACCIA IN OGNI MOMENTO / TRACK ANYTIME",
+    trackBody: "Scansiona il codice QR sul tuo voucher.",
+    contactHead: "HAI BISOGNO DI AIUTO? / NEED HELP?",
+    contactWhatsapp: "Scansiona per chattare con BondEx su WhatsApp",
+    contactEmail: "Scansiona per scrivere all'assistenza BondEx",
+    noticeHead: "BUONO A SAPERSI / GOOD TO KNOW",
+    notices: [
+      "Il maltempo può ritardare la consegna al giorno successivo — evita di spedire poco prima del tuo volo.",
+      "Assistenza BondEx: support@bondex.express (9:00 - 18:00 JST)",
+    ],
+  },
+  fr: {
+    docTag: "GUIDE DU VOYAGEUR / TRAVELER GUIDE",
+    title: "COMMENT EXPÉDIER VOS BAGAGES",
+    subtitle: "Transport de bagages d'hôtel à hôtel — un guide d'1 minute",
+    needHead: "CE DONT VOUS AVEZ BESOIN / WHAT YOU NEED",
+    needs: [
+      { title: "Bon (voucher)", body: "Un par livraison" },
+      { title: "Étiquette d'expédition", body: "Une par bagage" },
+      { title: "Votre bagage", body: "Max 160 cm / 25 kg" },
+    ],
+    checkHead: "VÉRIFIEZ VOTRE ÉTIQUETTE / CHECK YOUR LABEL",
+    checkSub: "Une vérification de 10 secondes :",
+    checks: [
+      "Nom de l'expéditeur = représentant du groupe",
+      "L'hôtel de destination est correct",
+      "La date d'arrivée correspond à votre programme",
+    ],
+    labelMockFrom: "FROM : Nom du représentant",
+    labelMockTo: "TO : Votre prochain hôtel",
+    labelMockDate: "Date d'arrivée",
+    stepsHead: "3 ÉTAPES SIMPLES / 3 EASY STEPS",
+    steps: [
+      { title: "Faites vos bagages intelligemment", body: "Passeport, billets, médicaments — gardez-les avec vous." },
+      { title: "Remettez à la réception", body: "Bon + étiquettes à la réception — le transporteur les fixera lui-même." },
+      { title: "Récupérez et partez", body: "Récupérez vos bagages à la réception de votre prochain hôtel." },
+    ],
+    trackHead: "SUIVEZ À TOUT MOMENT / TRACK ANYTIME",
+    trackBody: "Scannez le code QR sur votre bon.",
+    contactHead: "BESOIN D'AIDE ? / NEED HELP?",
+    contactWhatsapp: "Scannez pour discuter avec BondEx sur WhatsApp",
+    contactEmail: "Scannez pour envoyer un e-mail au support BondEx",
+    noticeHead: "BON À SAVOIR / GOOD TO KNOW",
+    notices: [
+      "Les intempéries peuvent retarder la livraison au lendemain — évitez d'expédier juste avant votre vol.",
+      "Support BondEx : support@bondex.express (9:00 - 18:00 JST)",
+    ],
+  },
+  es: {
+    docTag: "GUÍA DEL VIAJERO / TRAVELER GUIDE",
+    title: "CÓMO ENVIAR SU EQUIPAJE",
+    subtitle: "Transporte de equipaje de hotel a hotel — una guía de 1 minuto",
+    needHead: "LO QUE NECESITA / WHAT YOU NEED",
+    needs: [
+      { title: "Comprobante (voucher)", body: "Uno por cada envío" },
+      { title: "Etiqueta de envío", body: "Una por maleta" },
+      { title: "Su equipaje", body: "Máx. 160 cm / 25 kg" },
+    ],
+    checkHead: "REVISE SU ETIQUETA / CHECK YOUR LABEL",
+    checkSub: "Una revisión de 10 segundos:",
+    checks: [
+      "Nombre del remitente = representante del grupo",
+      "El hotel de destino es correcto",
+      "La fecha de llegada coincide con su itinerario",
+    ],
+    labelMockFrom: "FROM: Nombre del representante",
+    labelMockTo: "TO: Su próximo hotel",
+    labelMockDate: "Fecha de llegada",
+    stepsHead: "3 PASOS SENCILLOS / 3 EASY STEPS",
+    steps: [
+      { title: "Empaque con inteligencia", body: "Pasaporte, billetes, medicinas — llévelos con usted." },
+      { title: "Entregue en recepción", body: "Comprobante + etiquetas en recepción — el transportista las colocará." },
+      { title: "Recoja y continúe", body: "Recoja su equipaje en la recepción de su próximo hotel." },
+    ],
+    trackHead: "SIGA SU ENVÍO EN TODO MOMENTO / TRACK ANYTIME",
+    trackBody: "Escanee el código QR de su comprobante.",
+    contactHead: "¿NECESITA AYUDA? / NEED HELP?",
+    contactWhatsapp: "Escanee para chatear con BondEx por WhatsApp",
+    contactEmail: "Escanee para enviar un correo al soporte de BondEx",
+    noticeHead: "ES BUENO SABERLO / GOOD TO KNOW",
+    notices: [
+      "El mal tiempo puede retrasar la entrega al día siguiente — evite enviar justo antes de su vuelo.",
+      "Soporte BondEx: support@bondex.express (9:00 - 18:00 JST)",
     ],
   },
 } as const

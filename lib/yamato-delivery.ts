@@ -33,6 +33,36 @@ export const YAMATO_RULES = {
 
 export type ServiceType = keyof typeof YAMATO_RULES
 
+/**
+ * ヤマト宅急便の配達時間帯指定 (Ship&co `setup.time` の許容値)。
+ * operator UI のセレクトと app/api/shipandco/create の許可リストで共用する。
+ */
+export const DELIVERY_TIME_SLOTS = [
+  "not-specified",
+  "before-noon",
+  "before-ten",
+  "before-five",
+  "14-16",
+  "16-18",
+  "18-20",
+  "19-21",
+] as const
+
+export type DeliveryTimeSlot = (typeof DELIVERY_TIME_SLOTS)[number]
+
+/** 発送日の翌日 (最短) 到着で、午前系スロットを選んでいるかどうか。
+ *  ヤマトのシステム上は選択自体は可能だが、翌日到着では午前中の到着を
+ *  確約できないことが実運用で多いため、operator UI で警告を出す判定に使う。 */
+export function isNextDayEarlySlotRisky(
+  shipmentDate: string,
+  deliveryDate: string,
+  timeSlot: string,
+): boolean {
+  if (!isValidYmd(shipmentDate) || !isValidYmd(deliveryDate)) return false
+  const offset = dayDiff(shipmentDate, deliveryDate)
+  return offset === YAMATO_RULES.standard.minOffsetDays && (timeSlot === "before-noon" || timeSlot === "before-ten")
+}
+
 export type DeliveryDateErrorCode =
   | "SHIPMENT_INVALID"      // shipmentDate が不正/未指定
   | "DELIVERY_INVALID"      // deliveryDate がフォーマット不正
