@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, Fragment, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, useCallback, Fragment, type FormEvent, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 import {
   Loader2, Check, Plus, Trash2, ArrowLeft, Info,
   ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
@@ -13,7 +14,11 @@ import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 
 type Leg = {
   fromHotel: string
+  fromPlaceId: string
+  fromCity: string
   toHotel: string
+  toPlaceId: string
+  toCity: string
   shipmentDate: string
   expectedArrival: string
   recipient: string
@@ -23,7 +28,11 @@ type Leg = {
 
 const emptyLeg = (): Leg => ({
   fromHotel: "",
+  fromPlaceId: "",
+  fromCity: "",
   toHotel: "",
+  toPlaceId: "",
+  toCity: "",
   shipmentDate: "",
   expectedArrival: "",
   recipient: "",
@@ -60,6 +69,7 @@ const messages = {
     legHeading: "Leg",
     fromHotel: "From (hotel / pickup)",
     toHotel: "To (hotel / delivery)",
+    hotelSearchPlaceholder: "Type a hotel name (Google Maps)",
     shipmentDate: "Ship date",
     expectedArrival: "Arrival date",
     recipient: "Recipient (optional)",
@@ -111,6 +121,7 @@ const messages = {
     legHeading: "区間",
     fromHotel: "発送元（ホテル・集荷）",
     toHotel: "お届け先（ホテル・配達）",
+    hotelSearchPlaceholder: "ホテル名を入力（Google マップ検索）",
     shipmentDate: "発送日",
     expectedArrival: "到着日",
     recipient: "受取人（任意）",
@@ -181,6 +192,13 @@ export default function AgencyNewBookingPage() {
   const addLeg = () => setLegs((prev) => [...prev, emptyLeg()])
   const removeLeg = (i: number) => setLegs((prev) => prev.filter((_, idx) => idx !== i))
 
+  // ホテル検索 (Google Places) を代理店ルートに Bearer 付きで叩かせる
+  const placesAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const sb = getBrowserSupabase()
+    const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }, [])
+
   // 旅程表 (PDF/画像) を AI 解析してフォームに反映。発行はしないので課金なし。
   const onParseFile = async (file: File) => {
     setParseError("")
@@ -206,8 +224,8 @@ export default function AgencyNewBookingPage() {
         shipments?: Array<{
           shipmentDate?: string
           expectedArrival?: string
-          from?: { hotel?: string }
-          to?: { hotel?: string }
+          from?: { hotel?: string; city?: string }
+          to?: { hotel?: string; city?: string }
           recipient?: string
         }>
       }
@@ -231,7 +249,11 @@ export default function AgencyNewBookingPage() {
       setLegs(
         ships.map((s) => ({
           fromHotel: s.from?.hotel || "",
+          fromPlaceId: "", // AI 解析では placeId は付かない → 必要なら候補から選び直す
+          fromCity: s.from?.city || "",
           toHotel: s.to?.hotel || "",
+          toPlaceId: "",
+          toCity: s.to?.city || "",
           shipmentDate: ymd(s.shipmentDate),
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
           recipient: s.recipient || "",
@@ -436,12 +458,38 @@ export default function AgencyNewBookingPage() {
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label={t.fromHotel} htmlFor={`from${i}`} required>
-                  <input id={`from${i}`} className={inputCls} value={leg.fromHotel}
-                    onChange={(e) => updateLeg(i, { fromHotel: e.target.value })} required />
+                  <HotelSearchInput
+                    inputId={`from${i}`}
+                    value={leg.fromHotel}
+                    placeholder={t.hotelSearchPlaceholder}
+                    lang={locale}
+                    selectedPlaceId={leg.fromPlaceId || undefined}
+                    endpoint="/api/agency/places/search"
+                    getAuthHeaders={placesAuthHeaders}
+                    className="h-11 text-[15px]"
+                    ariaLabel={t.fromHotel}
+                    onChange={(v) => updateLeg(i, { fromHotel: v, fromPlaceId: "" })}
+                    onSelect={(c: PlaceCandidate) =>
+                      updateLeg(i, { fromHotel: c.name, fromPlaceId: c.placeId, fromCity: c.city })
+                    }
+                  />
                 </Field>
                 <Field label={t.toHotel} htmlFor={`to${i}`} required>
-                  <input id={`to${i}`} className={inputCls} value={leg.toHotel}
-                    onChange={(e) => updateLeg(i, { toHotel: e.target.value })} required />
+                  <HotelSearchInput
+                    inputId={`to${i}`}
+                    value={leg.toHotel}
+                    placeholder={t.hotelSearchPlaceholder}
+                    lang={locale}
+                    selectedPlaceId={leg.toPlaceId || undefined}
+                    endpoint="/api/agency/places/search"
+                    getAuthHeaders={placesAuthHeaders}
+                    className="h-11 text-[15px]"
+                    ariaLabel={t.toHotel}
+                    onChange={(v) => updateLeg(i, { toHotel: v, toPlaceId: "" })}
+                    onSelect={(c: PlaceCandidate) =>
+                      updateLeg(i, { toHotel: c.name, toPlaceId: c.placeId, toCity: c.city })
+                    }
+                  />
                 </Field>
                 <Field label={t.shipmentDate} htmlFor={`sd${i}`} required>
                   <input id={`sd${i}`} type="date" className={inputCls} value={leg.shipmentDate}

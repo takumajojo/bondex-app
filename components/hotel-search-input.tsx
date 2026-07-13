@@ -36,6 +36,10 @@ interface HotelSearchInputProps {
   className?: string
   inputId?: string
   ariaLabel?: string
+  /** Search endpoint. Default = operator (cookie-auth). Agencies pass the agency route. */
+  endpoint?: string
+  /** Extra headers (e.g. Bearer token) for agency-authenticated calls. */
+  getAuthHeaders?: () => Promise<Record<string, string>>
 }
 
 const DEBOUNCE_MS = 400
@@ -51,9 +55,17 @@ export function HotelSearchInput({
   className = "h-9 text-sm",
   inputId,
   ariaLabel,
+  endpoint = "/api/places/search",
+  getAuthHeaders,
 }: HotelSearchInputProps) {
   const reactId = useId()
   const listboxId = inputId ? `${inputId}-listbox` : `hotel-listbox-${reactId}`
+
+  // endpoint / getAuthHeaders は検索 deps に入れず、常に最新を ref 経由で参照 (再検索の暴発防止)
+  const endpointRef = useRef(endpoint)
+  endpointRef.current = endpoint
+  const getAuthRef = useRef(getAuthHeaders)
+  getAuthRef.current = getAuthHeaders
 
   const [candidates, setCandidates] = useState<PlaceCandidate[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -83,9 +95,10 @@ export function HotelSearchInput({
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true)
       try {
-        const res = await fetch("/api/places/search", {
+        const extra = getAuthRef.current ? await getAuthRef.current() : {}
+        const res = await fetch(endpointRef.current, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...extra },
           body: JSON.stringify({ query: trimmed, lang }),
         })
         const data = (await res.json().catch(() => null)) as {

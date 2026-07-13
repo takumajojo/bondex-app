@@ -28,7 +28,11 @@ function s(v: unknown): string {
 
 interface LegInput {
   fromHotel: string
+  fromPlaceId: string
+  fromCity: string
   toHotel: string
+  toPlaceId: string
+  toCity: string
   shipmentDate: string
   expectedArrival: string
   recipient: string
@@ -53,7 +57,19 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   if (!Number.isFinite(suitcaseCount) || suitcaseCount < 1 || suitcaseCount > 50) {
     return { error: "個数は 1〜50 でご入力ください。" }
   }
-  return { fromHotel, toHotel, shipmentDate, expectedArrival, recipient, suitcaseCount, notes }
+  return {
+    fromHotel,
+    fromPlaceId: s(o.fromPlaceId),
+    fromCity: s(o.fromCity),
+    toHotel,
+    toPlaceId: s(o.toPlaceId),
+    toCity: s(o.toCity),
+    shipmentDate,
+    expectedArrival,
+    recipient,
+    suitcaseCount,
+    notes,
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -117,7 +133,11 @@ export async function POST(req: NextRequest) {
       shipment_date: leg.shipmentDate,
       expected_arrival: leg.expectedArrival,
       from_hotel: leg.fromHotel,
+      from_city: leg.fromCity || null,
+      from_place_id: leg.fromPlaceId || null,
       to_hotel: leg.toHotel,
+      to_city: leg.toCity || null,
+      to_place_id: leg.toPlaceId || null,
       recipient: leg.recipient || leg.toHotel,
       suitcase_count: leg.suitcaseCount,
       amount_yen: 0, // 依頼段階では未確定

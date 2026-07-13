@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
+import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { searchPlaces } from "@/lib/places-search"
 
 export const runtime = "nodejs"
 
 /**
- * Google Places ベースのホテル候補検索 (運営用)。
- * 認証は middleware の OPERATOR_PASSWORD ゲート。
- * 検索ロジック本体は lib/places-search.ts に共通化 (代理店ルートと共有)。
+ * Google Places ベースのホテル候補検索 (代理店用)。
+ *
+ *   POST /api/agency/places/search   { query, lang? }
+ *   Authorization: Bearer <Supabase access token>
+ *
+ * /api/agency/* は middleware の OPERATOR_PASSWORD 対象外なので、ここで代理店 JWT を検証する。
+ * 検索ロジックは運営と共通 (lib/places-search.ts)。
  */
 export async function POST(req: NextRequest) {
-  const limit = rateLimit(req, "places-search")
+  const limit = rateLimit(req, "agency-places-search")
   if (!limit.ok) return limit.response
+
+  const auth = await resolveAgencyFromRequest(req)
+  if (!auth) return NextResponse.json({ error: "Unauthorized", candidates: [] }, { status: 401 })
 
   let body: { query?: unknown; lang?: unknown }
   try {
