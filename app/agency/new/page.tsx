@@ -6,6 +6,7 @@ import Link from "next/link"
 import {
   Loader2, Check, Plus, Trash2, ArrowLeft, Info,
   ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
+  UploadCloud, Sparkles,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
@@ -44,6 +45,12 @@ const messages = {
     badge: "New issuance request",
     title: "Register a booking",
     lead: "Enter the trip details. BondEx will prepare the voucher and Yamato labels and share a Google Drive folder link here — no label is issued (or charged) at this step.",
+    autoHeading: "Auto-fill from an itinerary",
+    autoBody: "Upload the itinerary (PDF or image) and we'll read the hotels, dates and lead traveler into the form below. You can edit anything afterward.",
+    autoButton: "Upload itinerary",
+    autoParsing: "Reading the itinerary…",
+    autoDone: "Loaded — please review the fields below.",
+    autoErr: "Couldn't read the itinerary. Please fill in the form manually.",
     representative: "Lead traveler name",
     representativePlaceholder: "e.g. John Smith",
     tourNumber: "Your booking number",
@@ -89,6 +96,12 @@ const messages = {
     badge: "新規発行依頼",
     title: "発行依頼を登録",
     lead: "旅程をご入力ください。BondEx がバウチャーとヤマト伝票を用意し、Google Drive フォルダのリンクをこちらでご案内します。この段階では送り状は発行されません（課金もありません）。",
+    autoHeading: "旅程表から自動入力",
+    autoBody: "旅程表（PDF・画像）をアップロードすると、ホテル・日付・代表者を読み取って下のフォームに反映します。読み取り後は自由に修正できます。",
+    autoButton: "旅程表を読み込む",
+    autoParsing: "旅程表を読み取り中…",
+    autoDone: "読み込みました。下の内容をご確認ください。",
+    autoErr: "旅程表を読み取れませんでした。お手数ですが手入力でお願いします。",
     representative: "代表者名",
     representativePlaceholder: "例: 山田 太郎 / John Smith",
     tourNumber: "貴社の予約番号",
@@ -147,6 +160,9 @@ export default function AgencyNewBookingPage() {
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [error, setError] = useState("")
   const [result, setResult] = useState<{ bookingId: string; needsLabelWait: boolean } | null>(null)
+  const [parsing, setParsing] = useState(false)
+  const [parseNote, setParseNote] = useState("")
+  const [parseError, setParseError] = useState("")
 
   useEffect(() => {
     const sb = getBrowserSupabase()
@@ -164,6 +180,72 @@ export default function AgencyNewBookingPage() {
     setLegs((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const addLeg = () => setLegs((prev) => [...prev, emptyLeg()])
   const removeLeg = (i: number) => setLegs((prev) => prev.filter((_, idx) => idx !== i))
+
+  // 旅程表 (PDF/画像) を AI 解析してフォームに反映。発行はしないので課金なし。
+  const onParseFile = async (file: File) => {
+    setParseError("")
+    setParseNote("")
+    setParsing(true)
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (!token) {
+        setParseError(t.notLoggedIn)
+        return
+      }
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/agency/itinerary/parse", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        guest?: { travelerCount?: number; travelers?: Array<{ name?: string; title?: string }> }
+        shipments?: Array<{
+          shipmentDate?: string
+          expectedArrival?: string
+          from?: { hotel?: string }
+          to?: { hotel?: string }
+          recipient?: string
+        }>
+      }
+      if (!res.ok) {
+        setParseError(data.error || t.autoErr)
+        return
+      }
+      const ships = Array.isArray(data.shipments) ? data.shipments : []
+      if (ships.length === 0) {
+        setParseError(t.autoErr)
+        return
+      }
+      const ymd = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "")
+      const firstTraveler = data.guest?.travelers?.[0]
+      const rep =
+        ships[0]?.recipient ||
+        (firstTraveler ? [firstTraveler.title, firstTraveler.name].filter(Boolean).join(" ").trim() : "")
+      if (rep) setRepresentative(rep)
+      const tc = Number(data.guest?.travelerCount) || (data.guest?.travelers?.length ?? 0)
+      if (tc >= 1) setTravelerCount(tc)
+      setLegs(
+        ships.map((s) => ({
+          fromHotel: s.from?.hotel || "",
+          toHotel: s.to?.hotel || "",
+          shipmentDate: ymd(s.shipmentDate),
+          expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
+          recipient: s.recipient || "",
+          suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
+          notes: "",
+        })),
+      )
+      setParseNote(t.autoDone)
+    } catch {
+      setParseError(t.autoErr)
+    } finally {
+      setParsing(false)
+    }
+  }
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -268,6 +350,49 @@ export default function AgencyNewBookingPage() {
         </div>
 
         <form onSubmit={onSubmit} className="space-y-5">
+          {/* 旅程表の AI 自動読み込み (任意) */}
+          <div className="rounded-2xl border border-dashed border-[#C8102E]/40 bg-[#FFF5F6] p-5">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 w-9 h-9 rounded-full bg-[#C8102E]/10 flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-[#C8102E]" strokeWidth={1.9} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-[#0F172A]">{t.autoHeading}</p>
+                <p className="text-[12px] text-[#64748B] mt-1 leading-relaxed">{t.autoBody}</p>
+                <label
+                  className={`inline-flex items-center gap-2 mt-3 h-10 px-4 rounded-xl text-[13px] font-bold text-white ${
+                    parsing ? "bg-[#94A3B8] cursor-wait" : "bg-[#0F172A] hover:bg-[#1E293B] cursor-pointer"
+                  }`}
+                >
+                  {parsing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                  ) : (
+                    <UploadCloud className="w-4 h-4" strokeWidth={2} />
+                  )}
+                  {parsing ? t.autoParsing : t.autoButton}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    disabled={parsing}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) void onParseFile(f)
+                      e.target.value = ""
+                    }}
+                  />
+                </label>
+                {parseNote && (
+                  <p className="text-[12px] text-emerald-700 mt-2 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" strokeWidth={2} />
+                    {parseNote}
+                  </p>
+                )}
+                {parseError && <p className="text-[12px] text-red-600 mt-2">{parseError}</p>}
+              </div>
+            </div>
+          </div>
+
           {/* 予約全体の情報 */}
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6 grid md:grid-cols-2 gap-4">
             <Field label={t.representative} htmlFor="rep" required>
