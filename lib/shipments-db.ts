@@ -49,6 +49,8 @@ export interface ShipmentRecord {
   notes: string | null
   /** 書類一式を格納した Google Drive フォルダの共有 URL (BondEx が発行後に登録)。 */
   drive_url: string | null
+  /** ヤマトお届け時間帯 (DELIVERY_TIME_SLOTS の値)。代理店の希望。 */
+  delivery_time: string | null
   /** バウチャー言語 (en/zh)。null は en 扱い。 */
   guest_language: string | null
   /** 集荷漏れアラート送信日時 (cron が設定・二重通知防止)。 */
@@ -114,6 +116,7 @@ export async function saveShipment(
     error_message: input.error_message ?? null,
     notes: input.notes ?? null,
     drive_url: input.drive_url ?? null,
+    delivery_time: input.delivery_time ?? null,
     guest_language: input.guest_language ?? null,
   }
   // booking_id + leg_index で同一区間を update (再発行対応)
@@ -254,6 +257,8 @@ export async function deleteBooking(
 export async function findDuplicateBookings(params: {
   names: string[]
   dates: string[]
+  /** 指定時はこの代理店の予約のみ対象 (代理店ポータルの自社内チェック用)。 */
+  agency?: string
 }): Promise<
   Array<
     Pick<
@@ -272,13 +277,14 @@ export async function findDuplicateBookings(params: {
   const orExpr = names
     .flatMap((n) => [`representative.ilike.%${n}%`, `recipient.ilike.%${n}%`])
     .join(",")
-  const { data, error } = await sb
+  let q = sb
     .from("shipments")
     .select("booking_id, representative, recipient, shipment_date, from_hotel, to_hotel, status")
     .in("shipment_date", dates)
     .neq("status", "cancelled")
     .or(orExpr)
-    .limit(20)
+  if (params.agency) q = q.eq("agency", params.agency)
+  const { data, error } = await q.limit(20)
   if (error) {
     console.error("[shipments-db] findDuplicateBookings failed", error.message)
     return []

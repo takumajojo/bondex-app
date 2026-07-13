@@ -5,6 +5,7 @@ import { saveShipment, deleteBooking } from "@/lib/shipments-db"
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
+import { DELIVERY_TIME_SLOTS } from "@/lib/yamato-delivery"
 
 export const runtime = "nodejs"
 
@@ -26,6 +27,8 @@ function s(v: unknown): string {
   return typeof v === "string" ? v.trim() : ""
 }
 
+const DELIVERY_SLOT_SET = new Set<string>(DELIVERY_TIME_SLOTS as readonly string[])
+
 interface LegInput {
   fromHotel: string
   fromPlaceId: string
@@ -35,6 +38,9 @@ interface LegInput {
   toCity: string
   shipmentDate: string
   expectedArrival: string
+  fromCheckIn: string
+  toCheckOut: string
+  deliveryTime: string
   recipient: string
   suitcaseCount: number
   notes: string
@@ -57,6 +63,10 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   if (!Number.isFinite(suitcaseCount) || suitcaseCount < 1 || suitcaseCount > 50) {
     return { error: "個数は 1〜50 でご入力ください。" }
   }
+  const rawDelivery = s(o.deliveryTime)
+  const deliveryTime = DELIVERY_SLOT_SET.has(rawDelivery) ? rawDelivery : ""
+  const fromCheckIn = DATE_RE.test(s(o.fromCheckIn)) ? s(o.fromCheckIn) : ""
+  const toCheckOut = DATE_RE.test(s(o.toCheckOut)) ? s(o.toCheckOut) : ""
   return {
     fromHotel,
     fromPlaceId: s(o.fromPlaceId),
@@ -66,6 +76,9 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     toCity: s(o.toCity),
     shipmentDate,
     expectedArrival,
+    fromCheckIn,
+    toCheckOut,
+    deliveryTime,
     recipient,
     suitcaseCount,
     notes,
@@ -97,6 +110,7 @@ export async function POST(req: NextRequest) {
   const representative = s(body.representative)
   const tourNumber = s(body.tourNumber)
   const bookingName = s(body.bookingName)
+  const groupName = s(body.groupName)
   const guestLanguage = normalizeGuestLanguage(body.guestLanguage)
   const travelerCount = Math.max(1, Math.floor(Number(body.travelerCount) || 1))
   if (!representative) {
@@ -129,9 +143,13 @@ export async function POST(req: NextRequest) {
       representative,
       traveler_count: travelerCount,
       booking_name: bookingName || null,
+      group_name: groupName || null,
       tour_number: tourNumber || null,
       shipment_date: leg.shipmentDate,
       expected_arrival: leg.expectedArrival,
+      from_check_in: leg.fromCheckIn || null,
+      to_check_out: leg.toCheckOut || null,
+      delivery_time: leg.deliveryTime || null,
       from_hotel: leg.fromHotel,
       from_city: leg.fromCity || null,
       from_place_id: leg.fromPlaceId || null,

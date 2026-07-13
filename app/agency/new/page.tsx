@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
+import { DELIVERY_TIME_SLOTS, isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
 
 type Leg = {
   fromHotel: string
@@ -21,6 +22,9 @@ type Leg = {
   toCity: string
   shipmentDate: string
   expectedArrival: string
+  fromCheckIn: string
+  toCheckOut: string
+  deliveryTime: string
   recipient: string
   suitcaseCount: number
   notes: string
@@ -35,6 +39,9 @@ const emptyLeg = (): Leg => ({
   toCity: "",
   shipmentDate: "",
   expectedArrival: "",
+  fromCheckIn: "",
+  toCheckOut: "",
+  deliveryTime: "before-noon", // 既定は午前中
   recipient: "",
   suitcaseCount: 1,
   notes: "",
@@ -70,6 +77,27 @@ const messages = {
     fromHotel: "From (hotel / pickup)",
     toHotel: "To (hotel / delivery)",
     hotelSearchPlaceholder: "Type a hotel name (Google Maps)",
+    bookingName: "Booking name (on voucher)",
+    bookingNamePlaceholder: "Same as representative if blank",
+    groupName: "Group name (optional)",
+    groupNamePlaceholder: "e.g. Johnson Family",
+    fromCheckIn: "Check-in at pickup hotel (optional)",
+    toCheckOut: "Check-out at delivery hotel (optional)",
+    deliveryTime: "Delivery time slot",
+    nextDayRisk: "For next-day arrival, morning slots may not be guaranteed.",
+    deliverySlots: {
+      "not-specified": "Not specified",
+      "before-noon": "Before noon (recommended)",
+      "before-ten": "Before 10:00",
+      "before-five": "Before 17:00",
+      "14-16": "14:00 – 16:00",
+      "16-18": "16:00 – 18:00",
+      "18-20": "18:00 – 20:00",
+      "19-21": "19:00 – 21:00",
+    } as Record<string, string>,
+    dupTitle: "Possible duplicate request",
+    dupBody: "A request with the same traveler and ship date already exists:",
+    dupProceed: "Register anyway",
     shipmentDate: "Ship date",
     expectedArrival: "Arrival date",
     recipient: "Recipient (optional)",
@@ -122,6 +150,27 @@ const messages = {
     fromHotel: "発送元（ホテル・集荷）",
     toHotel: "お届け先（ホテル・配達）",
     hotelSearchPlaceholder: "ホテル名を入力（Google マップ検索）",
+    bookingName: "予約者名（バウチャー表示）",
+    bookingNamePlaceholder: "空欄なら代表者と同じ",
+    groupName: "団体名（任意）",
+    groupNamePlaceholder: "例: 山田ご一行",
+    fromCheckIn: "発送元ホテルのチェックイン日（任意）",
+    toCheckOut: "お届け先ホテルのチェックアウト日（任意）",
+    deliveryTime: "配達時間帯",
+    nextDayRisk: "翌日到着では午前中の指定が難しい場合があります。",
+    deliverySlots: {
+      "not-specified": "指定なし",
+      "before-noon": "午前中（推奨）",
+      "before-ten": "10時まで",
+      "before-five": "17時まで",
+      "14-16": "14時〜16時",
+      "16-18": "16時〜18時",
+      "18-20": "18時〜20時",
+      "19-21": "19時〜21時",
+    } as Record<string, string>,
+    dupTitle: "重複の可能性があります",
+    dupBody: "同じ代表者・同じ発送日の依頼が既にあります：",
+    dupProceed: "このまま登録する",
     shipmentDate: "発送日",
     expectedArrival: "到着日",
     recipient: "受取人（任意）",
@@ -165,9 +214,14 @@ export default function AgencyNewBookingPage() {
   const [authChecked, setAuthChecked] = useState(false)
   const [representative, setRepresentative] = useState("")
   const [tourNumber, setTourNumber] = useState("")
+  const [bookingName, setBookingName] = useState("")
+  const [groupName, setGroupName] = useState("")
   const [travelerCount, setTravelerCount] = useState(1)
   const [guestLanguage, setGuestLanguage] = useState("en")
   const [legs, setLegs] = useState<Leg[]>([emptyLeg()])
+  const [dupMatches, setDupMatches] = useState<
+    Array<{ booking_id: string; representative: string; shipment_date: string }>
+  >([])
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [error, setError] = useState("")
   const [result, setResult] = useState<{ bookingId: string; needsLabelWait: boolean } | null>(null)
@@ -256,6 +310,9 @@ export default function AgencyNewBookingPage() {
           toCity: s.to?.city || "",
           shipmentDate: ymd(s.shipmentDate),
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
+          fromCheckIn: "",
+          toCheckOut: "",
+          deliveryTime: "before-noon",
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
           notes: "",
@@ -269,9 +326,10 @@ export default function AgencyNewBookingPage() {
     }
   }
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  // 実際の登録 (重複チェックを通過 or「このまま登録」後に呼ぶ)
+  const submitBooking = async () => {
     setError("")
+    setDupMatches([])
     setStatus("submitting")
     try {
       const sb = getBrowserSupabase()
@@ -284,7 +342,15 @@ export default function AgencyNewBookingPage() {
       const res = await fetch("/api/agency/booking", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ representative, tourNumber, travelerCount, guestLanguage, legs }),
+        body: JSON.stringify({
+          representative,
+          tourNumber,
+          bookingName,
+          groupName,
+          travelerCount,
+          guestLanguage,
+          legs,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -298,6 +364,38 @@ export default function AgencyNewBookingPage() {
       setError(t.errNetwork)
       setStatus("error")
     }
+  }
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setDupMatches([])
+    // 二重依頼チェック (自社内・警告のみ)。マッチしたら止めて確認を促す。
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (token) {
+        const dates = Array.from(new Set(legs.map((l) => l.shipmentDate).filter(Boolean)))
+        if (representative && dates.length > 0) {
+          const res = await fetch("/api/agency/duplicate-check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ names: [representative], dates }),
+          })
+          const data = (await res.json().catch(() => ({ matches: [] }))) as {
+            matches?: Array<{ booking_id: string; representative: string; shipment_date: string }>
+          }
+          const matches = Array.isArray(data.matches) ? data.matches : []
+          if (matches.length > 0) {
+            setDupMatches(matches)
+            return // 警告を出して止める (「このまま登録」で submitBooking)
+          }
+        }
+      }
+    } catch {
+      /* 重複チェック失敗は無視して登録に進む (ベストエフォート) */
+    }
+    await submitBooking()
   }
 
   if (!authChecked) {
@@ -427,6 +525,16 @@ export default function AgencyNewBookingPage() {
                 onChange={(e) => setTourNumber(e.target.value)}
                 placeholder={t.tourNumberPlaceholder} autoComplete="off" />
             </Field>
+            <Field label={t.bookingName} htmlFor="bookingName">
+              <input id="bookingName" className={inputCls} value={bookingName}
+                onChange={(e) => setBookingName(e.target.value)}
+                placeholder={t.bookingNamePlaceholder} autoComplete="off" />
+            </Field>
+            <Field label={t.groupName} htmlFor="groupName">
+              <input id="groupName" className={inputCls} value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder={t.groupNamePlaceholder} autoComplete="off" />
+            </Field>
             <Field label={t.travelerCount} htmlFor="tc">
               <input id="tc" type="number" min={1} max={99} className={inputCls} value={travelerCount}
                 onChange={(e) => setTravelerCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
@@ -511,6 +619,32 @@ export default function AgencyNewBookingPage() {
                     onChange={(e) => updateLeg(i, { suitcaseCount: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
                     required />
                 </Field>
+                <Field label={t.fromCheckIn} htmlFor={`ci${i}`}>
+                  <input id={`ci${i}`} type="date" className={inputCls} value={leg.fromCheckIn}
+                    onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} />
+                </Field>
+                <Field label={t.toCheckOut} htmlFor={`co${i}`}>
+                  <input id={`co${i}`} type="date" className={inputCls} value={leg.toCheckOut}
+                    min={leg.expectedArrival || undefined}
+                    onChange={(e) => updateLeg(i, { toCheckOut: e.target.value })} />
+                </Field>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={`dt${i}`} className="text-[12px] font-medium text-[#334155]">
+                  {t.deliveryTime}
+                </label>
+                <select id={`dt${i}`} className={inputCls} value={leg.deliveryTime}
+                  onChange={(e) => updateLeg(i, { deliveryTime: e.target.value })}>
+                  {DELIVERY_TIME_SLOTS.map((slot) => (
+                    <option key={slot} value={slot}>{t.deliverySlots[slot]}</option>
+                  ))}
+                </select>
+                {isNextDayEarlySlotRisky(leg.shipmentDate, leg.expectedArrival, leg.deliveryTime) && (
+                  <p className="text-[11px] text-amber-600 flex items-start gap-1">
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={1.6} />
+                    {t.nextDayRisk}
+                  </p>
+                )}
               </div>
               <Field label={t.notes} htmlFor={`nt${i}`}>
                 <input id={`nt${i}`} className={inputCls} value={leg.notes}
@@ -531,6 +665,34 @@ export default function AgencyNewBookingPage() {
           </div>
 
           {error && <p className="text-[13px] text-red-600" role="alert">{error}</p>}
+
+          {/* 二重依頼の警告 (自社内・止めるだけ・そのまま登録可) */}
+          {dupMatches.length > 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" strokeWidth={1.7} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-amber-900">{t.dupTitle}</p>
+                  <p className="text-[12px] text-amber-800 mt-1">{t.dupBody}</p>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {dupMatches.slice(0, 5).map((m) => (
+                      <li key={m.booking_id} className="text-[12px] text-amber-900 font-mono">
+                        {m.booking_id} ・ {m.representative} ・ {m.shipment_date}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => void submitBooking()}
+                    disabled={status === "submitting"}
+                    className="mt-3 h-9 px-4 rounded-lg bg-amber-600 text-white text-[13px] font-bold hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {t.dupProceed}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <button type="submit" disabled={status === "submitting" || !representative}
             className="w-full h-12 rounded-xl bg-[#C8102E] text-white text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#A00D25] disabled:opacity-50 disabled:cursor-not-allowed">
