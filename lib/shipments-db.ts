@@ -70,16 +70,19 @@ export type ShipmentInsert = {
  * 重要: この関数は **絶対に throw しない**. DB 保存失敗が Yamato 発行成功を
  *       覆い隠さないよう、内部で全エラーを握り潰してログに残す.
  */
-export async function saveShipment(input: Partial<ShipmentInsert>): Promise<void> {
+export async function saveShipment(
+  input: Partial<ShipmentInsert>,
+): Promise<{ ok: boolean; error?: string }> {
   let sb: ReturnType<typeof getSupabase>
   try {
     sb = getSupabase()
   } catch (err) {
-    console.error("[shipments-db] getSupabase failed:", err instanceof Error ? err.message : err)
-    return
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[shipments-db] getSupabase failed:", msg)
+    return { ok: false, error: msg }
   }
-  if (!sb) return
-  if (!input.booking_id) return
+  if (!sb) return { ok: false, error: "Supabase not configured" }
+  if (!input.booking_id) return { ok: false, error: "booking_id required" }
   // 必須フィールドのデフォルト
   const row = {
     booking_id: input.booking_id,
@@ -119,7 +122,9 @@ export async function saveShipment(input: Partial<ShipmentInsert>): Promise<void
     .upsert(row, { onConflict: "booking_id,leg_index", ignoreDuplicates: false })
   if (error) {
     console.error("[shipments-db] saveShipment failed", error.message)
+    return { ok: false, error: error.message }
   }
+  return { ok: true }
 }
 
 /**

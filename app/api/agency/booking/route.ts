@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
-import { saveShipment } from "@/lib/shipments-db"
+import { saveShipment, deleteBooking } from "@/lib/shipments-db"
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
@@ -103,10 +103,10 @@ export async function POST(req: NextRequest) {
   const bookingId = generateBookingId()
   const agencyName = auth.agency.name // 自社名に強制固定
 
-  // 全区間を requested で保存(発行はしない)
+  // 全区間を requested で保存(発行はしない)。保存失敗は握り潰さず、掃除して 500 を返す。
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i]
-    await saveShipment({
+    const saved = await saveShipment({
       booking_id: bookingId,
       leg_index: i,
       agency: agencyName,
@@ -125,6 +125,18 @@ export async function POST(req: NextRequest) {
       notes: leg.notes || null,
       guest_language: guestLanguage,
     })
+    if (!saved.ok) {
+      // 途中失敗 → この予約の保存済み区間を掃除して失敗を返す (中途半端な予約を残さない)
+      try {
+        await deleteBooking(bookingId)
+      } catch {
+        /* best-effort */
+      }
+      return NextResponse.json(
+        { error: `発行依頼の登録に失敗しました (${saved.error ?? "unknown"})` },
+        { status: 500 },
+      )
+    }
   }
 
   // 最短の出荷予定日で 1ヶ月案内の要否を判定(ヤマトは出荷1ヶ月前から送り状発行可)

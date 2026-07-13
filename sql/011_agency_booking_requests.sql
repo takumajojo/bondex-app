@@ -17,5 +17,9 @@ alter table shipments
 
 comment on column shipments.drive_url is '書類一式(バウチャー+ヤマト伝票)を格納した Google Drive フォルダの共有URL。代理店ポータルに表示。';
 
--- status には既存の pending/issued/... に加えて 'requested' (代理店の発行依頼・未発行) を
--- 使う。status は text 列で CHECK 制約が無いため、スキーマ変更は不要。
+-- status には既存の pending/issued/... に加えて 'requested' (代理店の発行依頼・未発行) を使う。
+-- shipments.status には CHECK 制約 (shipments_status_check) があり、そのままだと 'requested'
+-- の INSERT が拒否される (saveShipment はエラーを握り潰すため無言で保存されない)。制約を作り直す。
+alter table shipments drop constraint if exists shipments_status_check;
+alter table shipments add constraint shipments_status_check
+  check (status in ('requested','pending','issued','picked_up','in_transit','delivered','failed','cancelled'));
