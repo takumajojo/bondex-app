@@ -254,7 +254,7 @@ export function HotelSearchInput({
           ))}
           <li className="px-3 py-1.5 text-[10px] text-muted-foreground bg-muted/30 flex items-center gap-1.5">
             <X className="w-3 h-3" strokeWidth={1.5} />
-            Esc キーで閉じる · ↑↓ で選択 · Enter で確定
+            {lang === "en" ? "Esc to close · ↑↓ to navigate · Enter to select" : "Esc キーで閉じる · ↑↓ で選択 · Enter で確定"}
           </li>
         </ul>
       )}

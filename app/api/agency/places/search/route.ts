@@ -20,6 +20,10 @@ export async function POST(req: NextRequest) {
 
   const auth = await resolveAgencyFromRequest(req)
   if (!auth) return NextResponse.json({ error: "Unauthorized", candidates: [] }, { status: 401 })
+  // 承認待ち・停止中は外部課金APIを叩かせない (未承認アカウントによる quota 濫用の防止)
+  if (auth.agency.status === "pending" || auth.agency.status === "suspended") {
+    return NextResponse.json({ error: "Account not active", candidates: [] }, { status: 403 })
+  }
 
   let body: { query?: unknown; lang?: unknown }
   try {

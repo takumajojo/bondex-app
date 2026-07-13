@@ -819,7 +819,8 @@ export default function OperatorPage() {
     const yy = String(now.getFullYear() % 100).padStart(2, "0")
     const mm = String(now.getMonth() + 1).padStart(2, "0")
     const dd = String(now.getDate()).padStart(2, "0")
-    const rand = Math.floor(100 + Math.random() * 900)
+    // 十分なエントロピー (衝突→他社予約の上書き / track 列挙を防ぐ)。lib の generateBookingId と同方式。
+    const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()
     const sharedBookingId = `BDX-${yy}${mm}${dd}-${rand}`
 
     const tourCompanyFromSettings = settings?.tourCompany || ""

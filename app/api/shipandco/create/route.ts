@@ -541,7 +541,8 @@ export async function POST(req: NextRequest) {
       tour_number: tourNumber || null,
       group_name: groupName || null,
       shipment_date: shipmentDate,
-      expected_arrival: deliveryDate || null,
+      expected_arrival: deliveryDate || shipmentDate, // NOT NULL のためフォールバック
+      delivery_time: deliveryTime || null,
       from_hotel: fromHotel,
       from_place_id: fromPlaceId ?? null,
       from_check_in: fromCheckIn || null,
@@ -699,7 +700,10 @@ export async function POST(req: NextRequest) {
       tour_number: tourNumber || null,
       group_name: groupName || null,
       shipment_date: shipmentDate,
-      expected_arrival: deliveryDate || null,
+      // expected_arrival は NOT NULL。配達希望日が無ければ発送日にフォールバック
+      // (null を入れると保存が拒否され、発行済みなのに DB 無記録になるため)。
+      expected_arrival: deliveryDate || shipmentDate,
+      delivery_time: deliveryTime || null,
       from_hotel: fromHotel,
       from_city: fromAddr?.city || (fromInput.city ?? "") || null,
       from_place_id: fromPlaceId ?? null,
@@ -741,13 +745,20 @@ export async function POST(req: NextRequest) {
         estimated_delivery_date?: string
       }
     }
-    // 成功 — Yamato 送り状情報も保存
-    await saveShipment({
+    // 成功 — Yamato 送り状情報も保存。ヤマトは発行済み (取り消せない) なので、
+    // DB 保存が失敗しても issued は返すが、savedToDb:false を明示して発行者が気づけるようにする
+    // (握り潰して "issued" だけ返すと、課金済みなのに DB 無記録の孤児が無言で発生する)。
+    const saved = await saveShipment({
       ...baseRecord,
       status: "issued",
       yamato_tracking: d.delivery?.tracking_numbers ?? null,
       yamato_label_url: d.delivery?.label ?? null,
     })
+    if (!saved.ok) {
+      console.error(
+        `[shipandco/create] Yamato issued but DB save FAILED for ${baseRecord.booking_id}-L${legIndex}: ${saved.error}`,
+      )
+    }
     return NextResponse.json({
       status: "issued",
       id: d.id ?? "",
@@ -756,6 +767,8 @@ export async function POST(req: NextRequest) {
       carrier: d.delivery?.carrier ?? "",
       method: d.delivery?.method ?? "",
       estimatedDeliveryDate: d.delivery?.estimated_delivery_date ?? "",
+      savedToDb: saved.ok,
+      ...(saved.ok ? {} : { saveError: saved.error }),
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Ship&co network error"

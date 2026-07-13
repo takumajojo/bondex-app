@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
 
   const auth = await resolveAgencyFromRequest(req)
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // 承認待ち・停止中は AI 解析 (課金) を叩かせない
+  if (auth.agency.status === "pending" || auth.agency.status === "suspended") {
+    return NextResponse.json({ error: "Account not active" }, { status: 403 })
+  }
 
   let form: FormData
   try {

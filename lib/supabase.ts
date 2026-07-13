@@ -4,10 +4,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
  * Supabase クライアント (server-side only).
  *
  * service_role キーを使うので **絶対にクライアント側で import しないこと**.
- * API route (Node runtime) 内でのみ使用する.
+ * API route (Node runtime) 内でのみ使用する. service_role は RLS を bypass する。
  *
- * RLS は当面 OFF にしているため (middleware 認証で守られている), service_role で全権限.
- * Phase B (代理店別ログイン) で RLS 有効化したら anon key + JWT に切り替える.
+ * 重要: 代理店ポータル (shipments/agencies/user_agencies) の RLS は **本番で有効** に
+ * なっている (sql/002_agencies_auth.sql)。代理店の分離はこの RLS + 各 API の所有権チェックで
+ * 担保している。ブラウザ側は anon key + JWT でアクセスし RLS が効く (lib/supabase-browser)。
+ * → shipments/agencies/user_agencies の RLS を無効化しないこと (無効化=全代理店データ漏洩)。
  */
 
 let _client: SupabaseClient | null = null

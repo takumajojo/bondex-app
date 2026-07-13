@@ -1881,7 +1881,10 @@ export function generateBookingId(): string {
   const yy = String(now.getFullYear() % 100).padStart(2, "0")
   const mm2 = String(now.getMonth() + 1).padStart(2, "0")
   const dd = String(now.getDate()).padStart(2, "0")
-  const rand = Math.floor(100 + Math.random() * 900)
+  // 予約番号は (1) upsert のキー (衝突すると他社の予約を上書きしうる) かつ
+  // (2) /track の bearer capability (知っていれば追跡情報が見える) なので、
+  // 3桁 (900通り/日) では衝突・総当り列挙のリスクがある。暗号乱数の 8 桁英数字にする。
+  const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()
   return `BDX-${yy}${mm2}${dd}-${rand}`
 }
 
