@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 
 type ShipmentStatus =
+  | "requested"
   | "pending"
   | "issued"
   | "picked_up"
@@ -51,10 +52,12 @@ interface Shipment {
   error_message: string | null
   tour_number: string | null
   notes: string | null
+  drive_url: string | null
   created_at: string
 }
 
 const STATUS_LABELS: Record<ShipmentStatus, { ja: string; cls: string }> = {
+  requested: { ja: "依頼中 (代理店)", cls: "bg-violet-100 text-violet-800" },
   pending: { ja: "保留 (発行待ち)", cls: "bg-slate-100 text-slate-700" },
   issued: { ja: "発行済", cls: "bg-blue-100 text-blue-800" },
   picked_up: { ja: "集荷済", cls: "bg-amber-100 text-amber-800" },
@@ -65,6 +68,7 @@ const STATUS_LABELS: Record<ShipmentStatus, { ja: string; cls: string }> = {
 }
 
 const STATUS_OPTIONS: ShipmentStatus[] = [
+  "requested",
   "pending",
   "issued",
   "picked_up",
@@ -193,6 +197,7 @@ export default function DashboardPage() {
 
   const counts = useMemo(() => {
     const c: Record<ShipmentStatus, number> = {
+      requested: 0,
       pending: 0,
       issued: 0,
       picked_up: 0,
@@ -649,8 +654,12 @@ function EditShipmentModal({
   const [expectedArrival, setExpectedArrival] = useState(shipment.expected_arrival || "")
   const [suitcaseCount, setSuitcaseCount] = useState(shipment.suitcase_count)
   const [notes, setNotes] = useState(shipment.notes || "")
+  const [driveUrl, setDriveUrl] = useState(shipment.drive_url || "")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
+
+  const driveChanged = driveUrl.trim() !== (shipment.drive_url || "")
+  const driveInvalid = Boolean(driveUrl.trim()) && !/^https:\/\/(drive|docs)\.google\.com\//.test(driveUrl.trim())
 
   const dateChanged =
     shipmentDate !== shipment.shipment_date ||
@@ -658,7 +667,7 @@ function EditShipmentModal({
   const invalidRange = Boolean(shipmentDate && expectedArrival && shipmentDate > expectedArrival)
 
   const onSave = async () => {
-    if (invalidRange) return
+    if (invalidRange || driveInvalid) return
     setBusy(true)
     setErr("")
     try {
@@ -675,6 +684,16 @@ function EditShipmentModal({
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || `保存失敗 (${res.status})`)
+      // Drive URL は予約単位 (booking_id で全区間に反映) — 変更時のみ別 PATCH
+      if (driveChanged) {
+        const r2 = await fetch("/api/shipments", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookingId: shipment.booking_id, driveUrl: driveUrl.trim() || null }),
+        })
+        const d2 = await r2.json().catch(() => null)
+        if (!r2.ok) throw new Error(d2?.error || `Drive 保存失敗 (${r2.status})`)
+      }
       onSaved()
     } catch (e) {
       setErr(e instanceof Error ? e.message : "保存失敗")
@@ -738,10 +757,29 @@ function EditShipmentModal({
               className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
             />
           </div>
+          <div className="space-y-1 col-span-2">
+            <label className="text-[11px] text-muted-foreground">
+              Drive フォルダ URL (予約単位・代理店に表示)
+            </label>
+            <input
+              type="url"
+              value={driveUrl}
+              onChange={(e) => setDriveUrl(e.target.value)}
+              placeholder="https://drive.google.com/drive/folders/…"
+              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              予約番号フォルダ（バウチャー・ヤマト伝票を格納）の共有リンク。全区間に反映します。
+              共有設定（閲覧可）は Google 側でご設定ください。
+            </p>
+          </div>
         </div>
 
         {invalidRange && (
           <p className="text-xs text-red-700">到着日は発送日以降にしてください。</p>
+        )}
+        {driveInvalid && (
+          <p className="text-xs text-red-700">Drive の URL は https://drive.google.com/… 形式でご入力ください。</p>
         )}
 
         {/* 事故防止の注意 — 何が自動で変わり、何が変わらないかを明示する */}
@@ -765,7 +803,7 @@ function EditShipmentModal({
           </button>
           <button
             onClick={() => void onSave()}
-            disabled={busy || invalidRange}
+            disabled={busy || invalidRange || driveInvalid}
             className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}

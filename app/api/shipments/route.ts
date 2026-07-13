@@ -4,6 +4,7 @@ import {
   listShipments,
   updateShipmentStatus,
   updateShipmentFields,
+  setBookingDriveUrl,
   deleteBooking,
   type ShipmentStatus,
 } from "@/lib/shipments-db"
@@ -13,6 +14,7 @@ export const runtime = "nodejs"
 export const maxDuration = 30
 
 const VALID_STATUSES: ShipmentStatus[] = [
+  "requested",
   "pending",
   "issued",
   "picked_up",
@@ -80,12 +82,35 @@ export async function PATCH(req: NextRequest) {
     expectedArrival?: unknown
     suitcaseCount?: unknown
     notes?: unknown
+    bookingId?: unknown
+    driveUrl?: unknown
   }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
+
+  // 予約単位の Drive URL 登録 (id 不要・booking_id で全区間更新)
+  if (body.driveUrl !== undefined) {
+    const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : ""
+    if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+      return NextResponse.json({ error: "invalid bookingId" }, { status: 400 })
+    }
+    const raw = body.driveUrl
+    let driveUrl: string | null
+    if (raw === null || raw === "") {
+      driveUrl = null
+    } else if (typeof raw === "string" && /^https:\/\/(drive|docs)\.google\.com\//.test(raw.trim())) {
+      driveUrl = raw.trim()
+    } else {
+      return NextResponse.json({ error: "driveUrl must be a Google Drive https URL" }, { status: 400 })
+    }
+    const r = await setBookingDriveUrl(bookingId, driveUrl)
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+    return NextResponse.json({ ok: true, updated: r.updated })
+  }
+
   const id = typeof body.id === "string" ? body.id : ""
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   Loader2,
   Package,
@@ -9,6 +10,9 @@ import {
   ExternalLink,
   FileDown,
   Receipt,
+  Plus,
+  FolderOpen,
+  Info,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
@@ -18,6 +22,7 @@ interface Shipment {
   id: string
   booking_id: string
   tour_number: string | null
+  drive_url: string | null
   leg_index: number
   agency: string
   representative: string
@@ -36,6 +41,7 @@ interface Shipment {
 }
 
 const STATUS_META: Record<string, { cls: string }> = {
+  requested:  { cls: "bg-violet-100 text-violet-800" },
   pending:    { cls: "bg-slate-100 text-slate-700" },
   issued:     { cls: "bg-blue-100 text-blue-800" },
   picked_up:  { cls: "bg-amber-100 text-amber-800" },
@@ -63,11 +69,17 @@ const messages = {
     emptyState: "No shipments yet",
     waybill: "Waybill",
     voucher: "Voucher",
+    driveFolder: "Folder",
+    preparing: "Preparing",
+    newBooking: "New request",
+    farNote:
+      "Requests with a ship date more than a month away: Yamato labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
     downloading: "Preparing…",
     dlError: "Download failed. Please try again.",
     shipPrefix: "Ship",
     arrivePrefix: "Arrive",
     status: {
+      requested: "Requested",
       pending: "Pending",
       issued: "Issued",
       picked_up: "Picked up",
@@ -106,11 +118,17 @@ const messages = {
     emptyState: "案件がまだありません",
     waybill: "送り状",
     voucher: "バウチャー",
+    driveFolder: "フォルダ",
+    preparing: "準備中",
+    newBooking: "新規発行",
+    farNote:
+      "発送日が1ヶ月以上先の依頼は、ヤマトの送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
     downloading: "準備中…",
     dlError: "ダウンロードに失敗しました。もう一度お試しください。",
     shipPrefix: "発送",
     arrivePrefix: "到着",
     status: {
+      requested: "依頼中",
       pending: "保留",
       issued: "発行済",
       picked_up: "集荷済",
@@ -260,6 +278,17 @@ export default function AgencyDashboard() {
     return c
   }, [shipments])
 
+  // 発送日が 1ヶ月以上先の「依頼中」がある = 送り状はまだ作れない → まとめ連絡の案内を出す
+  const hasFarRequested = useMemo(() => {
+    const cutoff = Date.now() + 30 * 86_400_000
+    return shipments.some(
+      (it) =>
+        it.status === "requested" &&
+        it.shipment_date &&
+        new Date(`${it.shipment_date}T00:00:00`).getTime() > cutoff,
+    )
+  }, [shipments])
+
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
@@ -276,7 +305,16 @@ export default function AgencyDashboard() {
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {!error && !noAgency && agencyStatus === "active" && (
+              <Link
+                href="/agency/new"
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-[#C8102E] text-white text-sm font-semibold hover:bg-[#A00D25]"
+              >
+                <Plus className="w-4 h-4" strokeWidth={2.2} />
+                {t.newBooking}
+              </Link>
+            )}
             <AgencyLocaleToggle locale={locale} onChange={setLocale} />
             {userEmail && (
               <span className="text-xs text-muted-foreground hidden sm:inline">{userEmail}</span>
@@ -328,6 +366,14 @@ export default function AgencyDashboard() {
               onDone={() => setCardOnFile(true)}
               onCancel={() => setCardDismissed(true)}
             />
+          </div>
+        )}
+
+        {/* 発送1ヶ月以上先の依頼がある: まとめ連絡の案内 */}
+        {!error && !noAgency && hasFarRequested && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" strokeWidth={1.6} />
+            <p className="text-[12px] text-amber-900 leading-relaxed">{t.farNote}</p>
           </div>
         )}
 
@@ -426,20 +472,35 @@ export default function AgencyDashboard() {
                       </td>
                       <td className="p-3">
                         <div className="flex flex-col items-start gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => downloadVoucher(it.booking_id)}
-                            disabled={voucherBusy === it.booking_id}
-                            className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
-                            title={`${t.voucher} (${it.booking_id})`}
-                          >
-                            {voucherBusy === it.booking_id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
-                            ) : (
-                              <FileDown className="w-3.5 h-3.5" strokeWidth={1.5} />
-                            )}
-                            {voucherBusy === it.booking_id ? t.downloading : t.voucher}
-                          </button>
+                          {it.drive_url && (
+                            <a
+                              href={it.drive_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-[#C8102E] font-medium hover:underline"
+                              title={t.driveFolder}
+                            >
+                              <FolderOpen className="w-3.5 h-3.5" strokeWidth={1.6} />
+                              {t.driveFolder}
+                              <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+                            </a>
+                          )}
+                          {it.status !== "requested" && (
+                            <button
+                              type="button"
+                              onClick={() => downloadVoucher(it.booking_id)}
+                              disabled={voucherBusy === it.booking_id}
+                              className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
+                              title={`${t.voucher} (${it.booking_id})`}
+                            >
+                              {voucherBusy === it.booking_id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                              ) : (
+                                <FileDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+                              )}
+                              {voucherBusy === it.booking_id ? t.downloading : t.voucher}
+                            </button>
+                          )}
                           {it.yamato_label_url && (
                             <a
                               href={it.yamato_label_url}
@@ -451,6 +512,9 @@ export default function AgencyDashboard() {
                               {t.waybill}
                               <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                             </a>
+                          )}
+                          {it.status === "requested" && !it.drive_url && (
+                            <span className="text-xs text-muted-foreground">{t.preparing}</span>
                           )}
                         </div>
                       </td>

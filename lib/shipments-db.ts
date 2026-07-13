@@ -8,6 +8,7 @@ import { getSupabase } from "@/lib/supabase"
  */
 
 export type ShipmentStatus =
+  | "requested"   // 代理店の発行依頼 (登録のみ・BondEx 未発行)
   | "pending"     // voucher 発行のみ、ヤマト未発行 (deferred)
   | "issued"      // ヤマト送り状発行済
   | "picked_up"   // 集荷済 (operator 手動更新)
@@ -46,6 +47,8 @@ export interface ShipmentRecord {
   status: ShipmentStatus
   error_message: string | null
   notes: string | null
+  /** 書類一式を格納した Google Drive フォルダの共有 URL (BondEx が発行後に登録)。 */
+  drive_url: string | null
   /** バウチャー言語 (en/zh)。null は en 扱い。 */
   guest_language: string | null
   /** 集荷漏れアラート送信日時 (cron が設定・二重通知防止)。 */
@@ -107,6 +110,7 @@ export async function saveShipment(input: Partial<ShipmentInsert>): Promise<void
     status: input.status ?? "issued",
     error_message: input.error_message ?? null,
     notes: input.notes ?? null,
+    drive_url: input.drive_url ?? null,
     guest_language: input.guest_language ?? null,
   }
   // booking_id + leg_index で同一区間を update (再発行対応)
@@ -182,6 +186,8 @@ export async function updateShipmentFields(
     suitcase_count?: number
     notes?: string | null
     status?: ShipmentStatus
+    /** 予約単位の Drive フォルダ URL。update 時は同一 booking_id の全区間に反映する。 */
+    drive_url?: string | null
   },
 ): Promise<{ ok: boolean; error?: string }> {
   const sb = getSupabase()
@@ -192,10 +198,30 @@ export async function updateShipmentFields(
   if (patch.suitcase_count !== undefined) update.suitcase_count = patch.suitcase_count
   if (patch.notes !== undefined) update.notes = patch.notes
   if (patch.status !== undefined) update.status = patch.status
+  if (patch.drive_url !== undefined) update.drive_url = patch.drive_url
   if (Object.keys(update).length === 0) return { ok: true }
   const { error } = await sb.from("shipments").update(update).eq("id", id)
   if (error) return { ok: false, error: error.message }
   return { ok: true }
+}
+
+/**
+ * 予約単位で Drive フォルダ URL を設定する。全区間 (同一 booking_id) に反映。
+ * BondEx が発行後、書類を格納した Google Drive フォルダのリンクを登録する用途。
+ */
+export async function setBookingDriveUrl(
+  bookingId: string,
+  driveUrl: string | null,
+): Promise<{ ok: boolean; updated: number; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, updated: 0, error: "Supabase not configured" }
+  const { data, error } = await sb
+    .from("shipments")
+    .update({ drive_url: driveUrl })
+    .eq("booking_id", bookingId)
+    .select("id")
+  if (error) return { ok: false, updated: 0, error: error.message }
+  return { ok: true, updated: data?.length ?? 0 }
 }
 
 /**
