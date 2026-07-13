@@ -1,9 +1,12 @@
 "use client"
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, Fragment, type FormEvent, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Loader2, Check, Plus, Trash2, ArrowLeft, Info } from "lucide-react"
+import {
+  Loader2, Check, Plus, Trash2, ArrowLeft, Info,
+  ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
+} from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 
@@ -60,14 +63,22 @@ const messages = {
     removeLeg: "Remove",
     submit: "Submit request",
     submitting: "Submitting…",
+    flowHeading: "How it works",
+    flow: [
+      { title: "Register request", sub: "Enter the itinerary (you are here)", key: false },
+      { title: "Until 1 month before shipping", sub: "Yamato labels can't be created earlier", key: true },
+      { title: "BondEx issues the documents", sub: "Voucher + Yamato labels", key: false },
+      { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
+    ],
     monthNote:
-      "Yamato labels can only be created within one month of the ship date. If your ship date is further out, we'll prepare everything and contact you once it's within a month.",
+      "Yamato labels can only be created from one month before the ship date. Once it's within a month we'll prepare everything and share a Google Drive folder with your registered email — the voucher and labels will be inside.",
     doneTitle: "Request received",
     doneBooking: "Booking number",
+    doneShareHeading: "How you'll receive the documents",
     doneWait:
-      "Your ship date is more than a month away. Yamato labels can only be created within one month, so we'll prepare all documents and share the Drive folder link here once it's within a month. We've emailed you a confirmation.",
+      "Yamato labels can only be created from one month before shipping. Once your ship date is within a month, we'll prepare everything and share a Google Drive folder with your registered email. The voucher and Yamato labels will be inside.",
     doneSoon:
-      "We'll prepare the voucher and Yamato labels and share the Google Drive folder link here shortly. We've emailed you a confirmation.",
+      "We'll prepare everything and share a Google Drive folder with your registered email. The voucher and Yamato labels will be inside.",
     doneBack: "Back to portal",
     errGeneric: "Could not register the request. Please try again.",
     errNetwork: "Network error. Please check your connection.",
@@ -97,14 +108,22 @@ const messages = {
     removeLeg: "削除",
     submit: "発行依頼を送信",
     submitting: "送信中…",
+    flowHeading: "この後の流れ",
+    flow: [
+      { title: "発行依頼を登録", sub: "旅程を入力（今ここ）", key: false },
+      { title: "出荷1ヶ月前まで", sub: "ヤマト伝票は1ヶ月前から発行", key: true },
+      { title: "BondExが書類を発行", sub: "バウチャー＋ヤマト伝票", key: false },
+      { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
+    ],
     monthNote:
-      "ヤマトの送り状は出荷日の1ヶ月前から発行可能です。発送日が1ヶ月以上先の場合は、1ヶ月前になりましたら書類一式をご用意しご連絡します。",
+      "ヤマトの伝票（送り状）は出荷日の1ヶ月前からしか発行できません。1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します（中にバウチャー・ヤマト伝票が入ります）。",
     doneTitle: "発行依頼を受け付けました",
     doneBooking: "予約番号",
+    doneShareHeading: "書類の受け取り方法",
     doneWait:
-      "発送日が1ヶ月以上先です。ヤマトの送り状は1ヶ月前からしか発行できないため、1ヶ月前になりましたら書類一式をご用意し、Drive フォルダのリンクをこちらでご案内します。確認メールをお送りしました。",
+      "ヤマトの伝票（送り状）は出荷の1ヶ月前からしか発行できません。出荷日の1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・ヤマト伝票が入っています。",
     doneSoon:
-      "バウチャーとヤマト伝票を用意し、Google Drive フォルダのリンクをこちらでまもなくご案内します。確認メールをお送りしました。",
+      "書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・ヤマト伝票が入っています。",
     doneBack: "ポータルに戻る",
     errGeneric: "発行依頼の登録に失敗しました。もう一度お試しください。",
     errNetwork: "通信エラーです。接続をご確認ください。",
@@ -187,23 +206,38 @@ export default function AgencyNewBookingPage() {
 
   if (status === "done" && result) {
     return (
-      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
-        <div className="w-full max-w-md rounded-2xl border border-[#E5E7EB] bg-white p-8 text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-            <Check className="w-6 h-6 text-emerald-700" strokeWidth={2.5} />
+      <main className="min-h-screen bg-slate-50 px-6 py-10">
+        <div className="w-full max-w-2xl mx-auto space-y-5">
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+              <Check className="w-6 h-6 text-emerald-700" strokeWidth={2.5} />
+            </div>
+            <h1 className="text-[18px] font-bold text-[#0F172A]">{t.doneTitle}</h1>
+            <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
+            <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
           </div>
-          <h1 className="text-[18px] font-bold text-[#0F172A]">{t.doneTitle}</h1>
-          <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
-          <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
-          <p className="text-[13px] text-[#475569] mt-3 leading-[1.9]">
-            {result.needsLabelWait ? t.doneWait : t.doneSoon}
-          </p>
-          <Link
-            href="/agency"
-            className="inline-flex items-center justify-center gap-1.5 mt-6 h-11 px-5 rounded-xl bg-[#0F172A] text-white text-[14px] font-bold hover:bg-[#1E293B]"
-          >
-            {t.doneBack}
-          </Link>
+
+          {/* 書類の受け取り方法 — 大きく強調 */}
+          <div className="rounded-2xl border-2 border-[#FED7AA] bg-[#FFF7ED] p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <FolderOpen className="w-5 h-5 text-[#C8102E]" strokeWidth={2} />
+              <p className="text-[15px] font-bold text-[#9A3412]">{t.doneShareHeading}</p>
+            </div>
+            <p className="text-[14px] text-[#7C2D12] leading-[2]">
+              {result.needsLabelWait ? t.doneWait : t.doneSoon}
+            </p>
+          </div>
+
+          <FlowDiagram heading={t.flowHeading} steps={t.flow} />
+
+          <div className="text-center">
+            <Link
+              href="/agency"
+              className="inline-flex items-center justify-center gap-1.5 h-11 px-5 rounded-xl bg-[#0F172A] text-white text-[14px] font-bold hover:bg-[#1E293B]"
+            >
+              {t.doneBack}
+            </Link>
+          </div>
         </div>
       </main>
     )
@@ -227,6 +261,10 @@ export default function AgencyNewBookingPage() {
           <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">{t.badge}</p>
           <h1 className="text-[22px] font-bold text-[#0F172A] mt-1">{t.title}</h1>
           <p className="text-[13px] text-[#64748B] mt-2 leading-relaxed">{t.lead}</p>
+        </div>
+
+        <div className="mb-6">
+          <FlowDiagram heading={t.flowHeading} steps={t.flow} />
         </div>
 
         <form onSubmit={onSubmit} className="space-y-5">
@@ -328,6 +366,56 @@ export default function AgencyNewBookingPage() {
         </form>
       </div>
     </main>
+  )
+}
+
+const FLOW_ICONS = [ClipboardList, CalendarClock, PackageCheck, MailCheck]
+
+function FlowDiagram({
+  heading,
+  steps,
+}: {
+  heading: string
+  steps: ReadonlyArray<{ title: string; sub: string; key: boolean }>
+}) {
+  return (
+    <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5">
+      <p className="text-[12px] font-semibold text-[#334155] mb-4">{heading}</p>
+      <div className="flex flex-col md:flex-row md:items-stretch gap-2">
+        {steps.map((s, i) => {
+          const Icon = FLOW_ICONS[i] ?? ClipboardList
+          return (
+            <Fragment key={i}>
+              <div
+                className={`flex-1 rounded-xl p-3 flex md:flex-col items-center md:text-center gap-3 md:gap-2 ${
+                  s.key ? "bg-[#FFF7ED] border border-[#FED7AA]" : "bg-[#F8FAFC] border border-[#E5E7EB]"
+                }`}
+              >
+                <div
+                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
+                    s.key ? "bg-[#C8102E] text-white" : "bg-white border border-[#CBD5E1] text-[#475569]"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" strokeWidth={1.9} />
+                </div>
+                <div className="min-w-0">
+                  <p className={`text-[12px] font-bold ${s.key ? "text-[#9A3412]" : "text-[#0F172A]"}`}>
+                    <span className="mr-1 text-[10px] font-mono opacity-60">{i + 1}</span>
+                    {s.title}
+                  </p>
+                  <p className="text-[11px] text-[#64748B] mt-0.5 leading-snug">{s.sub}</p>
+                </div>
+              </div>
+              {i < steps.length - 1 && (
+                <div className="flex items-center justify-center text-[#CBD5E1]" aria-hidden>
+                  <ChevronRight className="w-4 h-4 rotate-90 md:rotate-0" strokeWidth={2.2} />
+                </div>
+              )}
+            </Fragment>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
