@@ -15,6 +15,7 @@ import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 interface Shipment {
   id: string
   booking_id: string
+  tour_number: string | null
   leg_index: number
   agency: string
   representative: string
@@ -70,7 +71,7 @@ const messages = {
     } as Record<string, string>,
     th: {
       issuedDate: "Issued",
-      bookingId: "Booking ID",
+      bookingId: "Booking no.",
       representative: "Representative",
       leg: "Leg",
       count: "Items",
@@ -315,8 +316,19 @@ export default function AgencyDashboard() {
                       <td className="p-3">
                         {new Date(it.created_at).toLocaleDateString(t.dateLocale)}
                       </td>
-                      <td className="p-3 font-mono text-xs">
-                        {it.booking_id}-L{it.leg_index + 1}
+                      <td className="p-3">
+                        {it.tour_number ? (
+                          <div className="leading-tight">
+                            <span className="text-sm text-foreground">{it.tour_number}</span>
+                            <span className="block font-mono text-[10px] text-muted-foreground mt-0.5">
+                              {it.booking_id}-L{it.leg_index + 1}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {it.booking_id}-L{it.leg_index + 1}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3">{it.representative}</td>
                       <td className="p-3 text-xs">
