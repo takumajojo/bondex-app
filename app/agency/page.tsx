@@ -7,6 +7,8 @@ import {
   Package,
   LogOut,
   ExternalLink,
+  FileDown,
+  Receipt,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
@@ -60,6 +62,11 @@ const messages = {
       "You've selected card payment. Registering a card in advance saves you from entering it at each issuance (payment is finalized at pickup).",
     emptyState: "No shipments yet",
     waybill: "Waybill",
+    voucher: "Voucher",
+    downloading: "Preparing…",
+    dlError: "Download failed. Please try again.",
+    shipPrefix: "Ship",
+    arrivePrefix: "Arrive",
     status: {
       pending: "Pending",
       issued: "Issued",
@@ -74,9 +81,11 @@ const messages = {
       bookingId: "Booking no.",
       representative: "Representative",
       leg: "Leg",
+      schedule: "Ship / Arrive",
       count: "Items",
       tracking: "Tracking",
       status: "Status",
+      documents: "Documents",
     },
     dateLocale: "en-US",
   },
@@ -96,6 +105,11 @@ const messages = {
       "カード払いをご選択いただいています。事前にカードをご登録いただくと、発行のたびに入力する必要がなくなります（決済は集荷完了時に確定します）。",
     emptyState: "案件がまだありません",
     waybill: "送り状",
+    voucher: "バウチャー",
+    downloading: "準備中…",
+    dlError: "ダウンロードに失敗しました。もう一度お試しください。",
+    shipPrefix: "発送",
+    arrivePrefix: "到着",
     status: {
       pending: "保留",
       issued: "発行済",
@@ -110,9 +124,11 @@ const messages = {
       bookingId: "予約番号",
       representative: "代表者",
       leg: "区間",
+      schedule: "発送日 / 到着日",
       count: "点数",
       tracking: "追跡",
       status: "状況",
+      documents: "書類",
     },
     dateLocale: "ja-JP",
   },
@@ -134,6 +150,8 @@ export default function AgencyDashboard() {
   const [paymentMethod, setPaymentMethod] = useState<string>("invoice")
   const [cardOnFile, setCardOnFile] = useState<boolean>(false)
   const [cardDismissed, setCardDismissed] = useState<boolean>(false)
+  const [voucherBusy, setVoucherBusy] = useState<string | null>(null) // booking_id being fetched
+  const [dlError, setDlError] = useState("")
 
   const load = useCallback(async () => {
     const sb = getBrowserSupabase()
@@ -194,6 +212,45 @@ export default function AgencyDashboard() {
     if (sb) await sb.auth.signOut()
     router.replace("/agency/login")
   }
+
+  // バウチャー再発行: 代理店 JWT を Authorization ヘッダに載せて自社限定エンドポイントを叩く。
+  // <a href> ではヘッダを付けられない (Supabase セッションは Cookie でなく localStorage)
+  // ため、fetch → blob → クライアント側でダウンロードを発火させる。
+  const downloadVoucher = useCallback(async (bookingId: string) => {
+    setDlError("")
+    setVoucherBusy(bookingId)
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (!token) {
+        setDlError(messages[locale].dlError)
+        return
+      }
+      const res = await fetch(`/api/agency/voucher?booking_id=${encodeURIComponent(bookingId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        setDlError(messages[locale].dlError)
+        return
+      }
+      const blob = await res.blob()
+      const cd = res.headers.get("Content-Disposition") || ""
+      const m = cd.match(/filename="?([^"]+)"?/)
+      const fileName = m?.[1] || `${bookingId}_voucher.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setDlError(messages[locale].dlError)
+    } finally {
+      setVoucherBusy(null)
+    }
+  }, [locale])
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {
@@ -286,6 +343,12 @@ export default function AgencyDashboard() {
           ))}
         </section>
 
+        {dlError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+            {dlError}
+          </div>
+        )}
+
         <section className="rounded-2xl border border-border bg-white overflow-hidden">
           {loading ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
@@ -305,9 +368,11 @@ export default function AgencyDashboard() {
                     <th className="text-left p-3 font-medium">{t.th.bookingId}</th>
                     <th className="text-left p-3 font-medium">{t.th.representative}</th>
                     <th className="text-left p-3 font-medium">{t.th.leg}</th>
+                    <th className="text-left p-3 font-medium">{t.th.schedule}</th>
                     <th className="text-right p-3 font-medium">{t.th.count}</th>
                     <th className="text-left p-3 font-medium">{t.th.tracking}</th>
                     <th className="text-left p-3 font-medium">{t.th.status}</th>
+                    <th className="text-left p-3 font-medium">{t.th.documents}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -338,19 +403,18 @@ export default function AgencyDashboard() {
                         <br />
                         {it.to_hotel}
                       </td>
+                      <td className="p-3 text-xs whitespace-nowrap">
+                        <div>
+                          <span className="text-muted-foreground">{t.shipPrefix}</span> {it.shipment_date || "—"}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">{t.arrivePrefix}</span> {it.expected_arrival || "—"}
+                        </div>
+                      </td>
                       <td className="p-3 text-right tabular-nums">{it.suitcase_count}</td>
                       <td className="p-3">
                         {it.yamato_tracking && it.yamato_tracking.length > 0 ? (
                           <span className="text-[11px] font-mono">{it.yamato_tracking[0]}</span>
-                        ) : it.yamato_label_url ? (
-                          <a
-                            href={it.yamato_label_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs underline inline-flex items-center gap-1"
-                          >
-                            {t.waybill} <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
-                          </a>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -359,6 +423,36 @@ export default function AgencyDashboard() {
                         <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${STATUS_META[it.status]?.cls || "bg-zinc-100"}`}>
                           {t.status[it.status] || it.status}
                         </span>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-col items-start gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => downloadVoucher(it.booking_id)}
+                            disabled={voucherBusy === it.booking_id}
+                            className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
+                            title={`${t.voucher} (${it.booking_id})`}
+                          >
+                            {voucherBusy === it.booking_id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                            ) : (
+                              <FileDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+                            )}
+                            {voucherBusy === it.booking_id ? t.downloading : t.voucher}
+                          </button>
+                          {it.yamato_label_url && (
+                            <a
+                              href={it.yamato_label_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              <Receipt className="w-3.5 h-3.5" strokeWidth={1.5} />
+                              {t.waybill}
+                              <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+                            </a>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

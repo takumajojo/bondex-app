@@ -1,29 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
+import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { regenerateVoucherPdf } from "@/lib/voucher-regen"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
 
 /**
- * 既存の発行済データから Voucher PDF を再生成する (運営用).
+ * 代理店による自社バウチャーの再発行 (再ダウンロード)。
  *
- * GET /api/voucher/regenerate?booking_id=BDX-260630-428
+ *   GET /api/agency/voucher?booking_id=BDX-260630-428
+ *   Authorization: Bearer <Supabase access token>
  *
- * 用途:
- *   - 旅行者が voucher PDF を紛失した
- *   - ホテル側に再送付したい
- *   - 印刷ミス
- *
- * 認証: middleware で OPERATOR_PASSWORD ゲート済み (全予約アクセス可)。
- * 代理店向けの自社限定再発行は /api/agency/voucher を参照。
- * 注: Yamato 送り状の再発行はこちらでは行わない (Ship&co 側で取得).
+ * middleware の OPERATOR_PASSWORD ゲート対象外 (/api/agency/* は public) なので、
+ * ここで Supabase JWT を検証し、かつ「その予約が自社のものか」を必ず確認する。
+ * 他社の booking_id を渡されても forbidden で弾く (漏洩防止)。
  */
 export async function GET(req: NextRequest) {
   try {
-    const limit = rateLimit(req, "voucher-regenerate")
+    const limit = rateLimit(req, "agency-voucher")
     if (!limit.ok) return limit.response
+
+    const auth = await resolveAgencyFromRequest(req)
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const bookingId = req.nextUrl.searchParams.get("booking_id")?.trim() || ""
+    if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+      return NextResponse.json({ error: "Invalid booking_id" }, { status: 400 })
+    }
 
     if (!isSupabaseConfigured()) {
       return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
@@ -33,13 +40,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Supabase client unavailable" }, { status: 500 })
     }
 
-    const bookingId = req.nextUrl.searchParams.get("booking_id")?.trim() || ""
-    if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
-      return NextResponse.json({ error: "Invalid booking_id" }, { status: 400 })
-    }
-
-    const outcome = await regenerateVoucherPdf(sb, bookingId)
+    const outcome = await regenerateVoucherPdf(sb, bookingId, {
+      expectedAgency: auth.agency.name,
+    })
     if (!outcome.ok) {
+      // 他社の予約 or 存在しない → どちらも 404 相当で存在を秘匿
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
 
