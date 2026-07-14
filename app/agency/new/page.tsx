@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useState, useCallback, Fragment, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, useCallback, useMemo, Fragment, type FormEvent, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 import {
   Loader2, Check, Plus, Trash2, ArrowLeft, Info,
   ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
-  UploadCloud, Sparkles,
+  UploadCloud, Sparkles, type LucideIcon,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
@@ -115,6 +115,12 @@ const messages = {
       { title: "BondEx issues the documents", sub: "Voucher + Yamato labels", key: false },
       { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
     ],
+    // 出荷が1ヶ月以内 → 待ち無しですぐ発行
+    flowSoon: [
+      { title: "Register request", sub: "Enter the itinerary (you are here)", key: false },
+      { title: "BondEx issues right away", sub: "Within a month — voucher + Yamato labels", key: true },
+      { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
+    ],
     monthNote:
       "Yamato labels can only be created from one month before the ship date. Once it's within a month we'll prepare everything and share a Google Drive folder with your registered email — the voucher and labels will be inside.",
     doneTitle: "Request received",
@@ -123,7 +129,7 @@ const messages = {
     doneWait:
       "Yamato labels can only be created from one month before shipping. Once your ship date is within a month, we'll prepare everything and share a Google Drive folder with your registered email. The voucher and Yamato labels will be inside.",
     doneSoon:
-      "We'll prepare everything and share a Google Drive folder with your registered email. The voucher and Yamato labels will be inside.",
+      "Your shipment is within a month, so we'll prepare the documents (voucher and Yamato labels) right away and share a Google Drive folder with your registered email.",
     doneBack: "Back to portal",
     errGeneric: "Could not register the request. Please try again.",
     errNetwork: "Network error. Please check your connection.",
@@ -188,6 +194,12 @@ const messages = {
       { title: "BondExが書類を発行", sub: "バウチャー＋ヤマト伝票", key: false },
       { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
     ],
+    // 出荷が1ヶ月以内 → 待ち無しですぐ発行
+    flowSoon: [
+      { title: "発行依頼を登録", sub: "旅程を入力（今ここ）", key: false },
+      { title: "BondExがすぐ発行", sub: "1ヶ月以内なので即発行（バウチャー＋伝票）", key: true },
+      { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
+    ],
     monthNote:
       "ヤマトの伝票（送り状）は出荷日の1ヶ月前からしか発行できません。1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します（中にバウチャー・ヤマト伝票が入ります）。",
     doneTitle: "発行依頼を受け付けました",
@@ -196,7 +208,7 @@ const messages = {
     doneWait:
       "ヤマトの伝票（送り状）は出荷の1ヶ月前からしか発行できません。出荷日の1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・ヤマト伝票が入っています。",
     doneSoon:
-      "書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・ヤマト伝票が入っています。",
+      "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・ヤマト伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
     doneBack: "ポータルに戻る",
     errGeneric: "発行依頼の登録に失敗しました。もう一度お試しください。",
     errNetwork: "通信エラーです。接続をご確認ください。",
@@ -252,6 +264,16 @@ export default function AgencyNewBookingPage() {
     const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
     return token ? { Authorization: `Bearer ${token}` } : {}
   }, [])
+
+  // フロー図の出し分け: 入力中の最短発送日が1ヶ月以内なら「すぐ発行」版を表示。
+  // 日付未入力なら1ヶ月ルールを説明する待機版をデフォルト表示。
+  const previewNeedsWait = useMemo(() => {
+    const dates = legs.map((l) => l.shipmentDate).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    if (dates.length === 0) return true
+    const earliest = [...dates].sort()[0]
+    const days = Math.round((new Date(`${earliest}T00:00:00`).getTime() - Date.now()) / 86_400_000)
+    return days > 30
+  }, [legs])
 
   // 旅程表 (PDF/画像) を AI 解析してフォームに反映。発行はしないので課金なし。
   const onParseFile = async (file: File) => {
@@ -430,7 +452,11 @@ export default function AgencyNewBookingPage() {
             </p>
           </div>
 
-          <FlowDiagram heading={t.flowHeading} steps={t.flow} />
+          <FlowDiagram
+            heading={t.flowHeading}
+            steps={result.needsLabelWait ? t.flow : t.flowSoon}
+            icons={result.needsLabelWait ? FLOW_ICONS : FLOW_ICONS_SOON}
+          />
 
           <div className="text-center">
             <Link
@@ -466,7 +492,11 @@ export default function AgencyNewBookingPage() {
         </div>
 
         <div className="mb-6">
-          <FlowDiagram heading={t.flowHeading} steps={t.flow} />
+          <FlowDiagram
+            heading={t.flowHeading}
+            steps={previewNeedsWait ? t.flow : t.flowSoon}
+            icons={previewNeedsWait ? FLOW_ICONS : FLOW_ICONS_SOON}
+          />
         </div>
 
         <form onSubmit={onSubmit} className="space-y-5">
@@ -704,21 +734,25 @@ export default function AgencyNewBookingPage() {
   )
 }
 
-const FLOW_ICONS = [ClipboardList, CalendarClock, PackageCheck, MailCheck]
+const FLOW_ICONS: LucideIcon[] = [ClipboardList, CalendarClock, PackageCheck, MailCheck]
+// 1ヶ月以内 (待ち無し) 版: 待機ステップが無いのでカレンダー時計を使わない
+const FLOW_ICONS_SOON: LucideIcon[] = [ClipboardList, PackageCheck, MailCheck]
 
 function FlowDiagram({
   heading,
   steps,
+  icons = FLOW_ICONS,
 }: {
   heading: string
   steps: ReadonlyArray<{ title: string; sub: string; key: boolean }>
+  icons?: LucideIcon[]
 }) {
   return (
     <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5">
       <p className="text-[12px] font-semibold text-[#334155] mb-4">{heading}</p>
       <div className="flex flex-col md:flex-row md:items-stretch gap-2">
         {steps.map((s, i) => {
-          const Icon = FLOW_ICONS[i] ?? ClipboardList
+          const Icon = icons[i] ?? ClipboardList
           return (
             <Fragment key={i}>
               <div
