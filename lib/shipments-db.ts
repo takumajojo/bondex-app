@@ -51,6 +51,8 @@ export interface ShipmentRecord {
   drive_url: string | null
   /** ヤマトお届け時間帯 (DELIVERY_TIME_SLOTS の値)。代理店の希望。 */
   delivery_time: string | null
+  /** 配送キャリア (sagawa=佐川 / yamato=ヤマト)。既定=佐川。 */
+  carrier: string
   /** バウチャー言語 (en/zh)。null は en 扱い。 */
   guest_language: string | null
   /** 集荷漏れアラート送信日時 (cron が設定・二重通知防止)。 */
@@ -117,6 +119,7 @@ export async function saveShipment(
     notes: input.notes ?? null,
     drive_url: input.drive_url ?? null,
     delivery_time: input.delivery_time ?? null,
+    carrier: input.carrier ?? "sagawa",
     guest_language: input.guest_language ?? null,
   }
   // booking_id + leg_index で同一区間を update (再発行対応)

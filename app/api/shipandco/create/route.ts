@@ -3,10 +3,10 @@ import { rateLimit } from "@/lib/rate-limit"
 import {
   deliveryDateErrorCode,
   getDeliverableRange,
-  DELIVERY_TIME_SLOTS,
 } from "@/lib/yamato-delivery"
 import { saveShipment } from "@/lib/shipments-db"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
+import { carrierConfig } from "@/lib/carrier"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -67,9 +67,10 @@ function dayDiff(fromYmd: string, toYmd: string): number {
   return Math.round((b - a) / MS_PER_DAY)
 }
 
-// shipmentDate − MAX_LEAD_DAYS の YYYY-MM-DD (deferred 区間の発行解禁日)
-function issuableFromYmd(shipmentDate: string): string {
-  const t = Date.parse(`${shipmentDate}T00:00:00Z`) - MAX_LEAD_DAYS * MS_PER_DAY
+// shipmentDate − leadDays の YYYY-MM-DD (deferred 区間の発行解禁日)。
+// leadDays はキャリア別 (ヤマト30 / 佐川50)。
+function issuableFromYmd(shipmentDate: string, leadDays: number = MAX_LEAD_DAYS): string {
+  const t = Date.parse(`${shipmentDate}T00:00:00Z`) - leadDays * MS_PER_DAY
   return new Date(t).toISOString().slice(0, 10)
 }
 
@@ -239,6 +240,8 @@ interface AddressComponent {
 
 interface CreateBody {
   refNumber?: unknown
+  /** 配送キャリア (sagawa/yamato)。未指定は既定 (佐川)。 */
+  carrier?: unknown
   shipmentDate?: unknown
   deliveryDate?: unknown
   /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon) がデフォルト。 */
@@ -263,27 +266,30 @@ interface CreateBody {
   groupName?: unknown
 }
 
-// in-memory cache for carrier_id
-let cachedCarrierId: string | null = null
-let cachedAt = 0
+// in-memory cache for carrier_id (キャリア種別ごと)
+const carrierIdCache = new Map<string, { id: string; at: number }>()
 const CARRIER_CACHE_MS = 10 * 60 * 1000
 
-async function getYamatoCarrierId(token: string): Promise<string | null> {
+// Ship&co の /carriers から、指定キャリア種別の有効な carrier_id を取得。
+// ヤマトは type が "yamato" または "yamato_takkyubin"、佐川は "sagawa"。
+async function getCarrierId(token: string, carrierType: string): Promise<string | null> {
   const now = Date.now()
-  if (cachedCarrierId && now - cachedAt < CARRIER_CACHE_MS) return cachedCarrierId
+  const cached = carrierIdCache.get(carrierType)
+  if (cached && now - cached.at < CARRIER_CACHE_MS) return cached.id
   const res = await fetch(`${SHIPANDCO_BASE}/carriers`, {
     headers: { "x-access-token": token, "Content-Type": "application/json" },
   })
   if (!res.ok) return null
   const data = (await res.json()) as Array<{ id?: string; type?: string; state?: string }>
   if (!Array.isArray(data)) return null
-  const yamato = data.find(
-    (c) => (c.type === "yamato" || c.type === "yamato_takkyubin") && c.state !== "disabled",
-  )
-  if (!yamato?.id) return null
-  cachedCarrierId = yamato.id
-  cachedAt = now
-  return cachedCarrierId
+  const match = data.find((c) => {
+    if (c.state === "disabled") return false
+    if (carrierType === "yamato") return c.type === "yamato" || c.type === "yamato_takkyubin"
+    return c.type === carrierType
+  })
+  if (!match?.id) return null
+  carrierIdCache.set(carrierType, { id: match.id, at: now })
+  return match.id
 }
 
 function pickComponent(components: AddressComponent[], type: string): string {
@@ -467,13 +473,13 @@ export async function POST(req: NextRequest) {
 
   const refNumber = typeof body.refNumber === "string" ? body.refNumber.trim() : ""
   const shipmentDate = typeof body.shipmentDate === "string" ? body.shipmentDate.trim() : ""
-  // 配達時間帯: 旅行会社の要望により AM (午前中) 指定を標準とする。
-  // 明示指定があれば許可リスト内でそれを採用。エリア・サービスによる可否は
-  // ヤマト側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
+  // 配送キャリア (既定=佐川)。carrier_id / service / 時間帯 / リードタイムをこれで切替。
+  const carrier = carrierConfig(typeof body.carrier === "string" ? body.carrier : undefined)
+  // 配達時間帯: 標準は午前中。明示指定があればキャリアの許可リスト内でそれを採用。
+  // 佐川とヤマトで時間帯コード体系が異なる (lib/carrier)。エリア/サービス可否は
+  // キャリア側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
   const rawDeliveryTime = typeof body.deliveryTime === "string" ? body.deliveryTime.trim() : ""
-  const deliveryTime = (DELIVERY_TIME_SLOTS as readonly string[]).includes(rawDeliveryTime)
-    ? rawDeliveryTime
-    : "before-noon"
+  const deliveryTime = carrier.timeSlots.includes(rawDeliveryTime) ? rawDeliveryTime : "before-noon"
 
   const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
   // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
@@ -527,9 +533,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
-  if (gap > MAX_LEAD_DAYS) {
-    // 30日超 — 今は発行できない。Ship&co を呼ばず deferred を返す。
-    const issuableFrom = issuableFromYmd(shipmentDate)
+  if (gap > carrier.maxLeadDays) {
+    // リードタイム超 (ヤマト30 / 佐川50) — 今は発行できない。Ship&co を呼ばず deferred。
+    const issuableFrom = issuableFromYmd(shipmentDate, carrier.maxLeadDays)
     // 管理ダッシュボードに pending として登録 (issuableFrom 以降に自動発行する想定)
     await saveShipment({
       booking_id: bookingId || refNumber,
@@ -554,6 +560,7 @@ export async function POST(req: NextRequest) {
       amount_yen: suitcaseCount * 5000,
       ship_ref_number: refNumber,
       yamato_issuable_from: issuableFrom,
+      carrier: carrier.id,
       status: "pending",
       notes: specialNote || null,
     })
@@ -561,7 +568,8 @@ export async function POST(req: NextRequest) {
       status: "deferred",
       shipmentDate,
       issuableFrom,
-      daysUntilIssuable: gap - MAX_LEAD_DAYS,
+      daysUntilIssuable: gap - carrier.maxLeadDays,
+      carrier: carrier.id,
     })
   }
 
@@ -616,10 +624,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const carrierId = await getYamatoCarrierId(token)
+  const carrierId = await getCarrierId(token, carrier.shipandcoType)
   if (!carrierId) {
     return NextResponse.json(
-      { error: "Yamato carrier not registered in Ship&co dashboard" },
+      { error: `${carrier.labelEn} carrier not registered in Ship&co dashboard` },
       { status: 502 },
     )
   }
@@ -644,7 +652,7 @@ export async function POST(req: NextRequest) {
     to_address: toAddr,
     setup: {
       carrier_id: carrierId,
-      service: "yamato_regular",
+      service: carrier.shipandcoService, // 佐川=sagawa_regular / ヤマト=yamato_regular
       ref_number: refNumberWithDate,  // BDX-XXX-LN + " 7/11着"
       shipment_date: shipmentDate,
       // 配達希望日 (チェックイン日) — 指定すると Yamato は当日まで荷物を保持して配達.
@@ -704,6 +712,7 @@ export async function POST(req: NextRequest) {
       // (null を入れると保存が拒否され、発行済みなのに DB 無記録になるため)。
       expected_arrival: deliveryDate || shipmentDate,
       delivery_time: deliveryTime || null,
+      carrier: carrier.id,
       from_hotel: fromHotel,
       from_city: fromAddr?.city || (fromInput.city ?? "") || null,
       from_place_id: fromPlaceId ?? null,

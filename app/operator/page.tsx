@@ -478,6 +478,8 @@ interface EditableItinerary {
    *  used for their invoice reconciliation, dashboard search, and file
    *  naming. Never printed on the guest-facing voucher. */
   tourNumber?: string
+  /** 配送キャリア (sagawa=佐川 / yamato=ヤマト)。既定=佐川 (スーツケースは佐川が安い)。 */
+  carrier?: string
 }
 
 type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generated" | "error"
@@ -878,6 +880,7 @@ export default function OperatorPage() {
             refNumber: `${sharedBookingId}-L${legIndex + 1}`,
             bookingId: sharedBookingId,
             legIndex,
+            carrier: itinerary!.carrier ?? "sagawa", // 既定=佐川
             shipmentDate: s.shipmentDate,
             deliveryDate: s.expectedArrival,
             deliveryTime: s.deliveryTime || "before-noon",
@@ -1119,6 +1122,11 @@ export default function OperatorPage() {
   const updateTourNumber = (tourNumber: string) => {
     if (!itinerary) return
     setItinerary({ ...itinerary, tourNumber })
+  }
+
+  const updateCarrier = (carrier: string) => {
+    if (!itinerary) return
+    setItinerary({ ...itinerary, carrier })
   }
 
   const updateGuestLanguage = (guestLanguage: GuestLanguage) => {
@@ -1397,6 +1405,7 @@ export default function OperatorPage() {
             onUpdateGuestLanguage={updateGuestLanguage}
             onUpdateIncludeHowto={updateIncludeHowto}
             onUpdateTourNumber={updateTourNumber}
+            onUpdateCarrier={updateCarrier}
             onAddLeg={addLeg}
             onRemoveLeg={removeLeg}
             onContinue={goToConfirm}
@@ -1522,6 +1531,7 @@ function ReviewView({
   onUpdateGuestLanguage,
   onUpdateIncludeHowto,
   onUpdateTourNumber,
+  onUpdateCarrier,
   onAddLeg,
   onRemoveLeg,
   onContinue,
@@ -1538,6 +1548,7 @@ function ReviewView({
   onUpdateGuestLanguage: (lang: GuestLanguage) => void
   onUpdateIncludeHowto: (v: boolean) => void
   onUpdateTourNumber: (tourNumber: string) => void
+  onUpdateCarrier: (carrier: string) => void
   onAddLeg: () => void
   onRemoveLeg: (index: number) => void
   onContinue: () => void
@@ -1618,6 +1629,40 @@ function ReviewView({
             onChange={(e) => onUpdateTourNumber(e.target.value)}
             className="h-10 text-sm"
           />
+        </div>
+
+        {/* 配送キャリア (既定=佐川、料金/ルートでヤマトに切替) */}
+        <div className="mt-3 space-y-1">
+          <label className="text-[11px] text-muted-foreground">
+            {locale === "ja" ? "配送キャリア" : "Carrier"}
+          </label>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            {(
+              [
+                ["sagawa", locale === "ja" ? "佐川急便" : "Sagawa"],
+                ["yamato", locale === "ja" ? "ヤマト運輸" : "Yamato"],
+              ] as const
+            ).map(([val, lbl]) => {
+              const active = (itinerary.carrier ?? "sagawa") === val
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => onUpdateCarrier(val)}
+                  className={`h-9 px-4 text-sm font-medium transition-colors ${
+                    active ? "bg-foreground text-background" : "bg-white text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {lbl}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {locale === "ja"
+              ? "スーツケースは佐川が安め。ルート/料金でヤマトに切替可（発行可能: 佐川50日前・ヤマト30日前）。"
+              : "Sagawa is usually cheaper for suitcases; switch to Yamato per route/price (issuable window: Sagawa 50d / Yamato 30d)."}
+          </p>
         </div>
 
         {/* ゲスト用ページの言語 (ホテルスタッフ用ページは常に日本語) */}
