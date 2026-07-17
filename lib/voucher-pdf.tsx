@@ -16,6 +16,7 @@ import {
 } from "@react-pdf/renderer"
 import type { GuestLanguage } from "./guest-language"
 import { normalizeGuestLanguage } from "./guest-language"
+import { carrierConfig } from "./carrier"
 
 // 外部モジュール向けの再エクスポート (これまで通り "@/lib/voucher-pdf" から import 可能)。
 export type { GuestLanguage } from "./guest-language"
@@ -165,6 +166,8 @@ export interface VoucherInput {
   issuedDate: string
   representativeLabel: string
   tourCompany: string
+  /** 配送キャリア (sagawa/yamato)。SUPPLIER 欄に印字。未指定は既定 (佐川)。 */
+  carrier?: string
   travelerCount: number
   shipments: VoucherShipment[]
   totalAmount: number
@@ -996,7 +999,7 @@ function VoucherPage({
           )}
           <View style={[vs.detailCell, { width: contactCell ? "50%" : "100%" }]}>
             <Text style={vs.dk}>SUPPLIER / 配送業者</Text>
-            <Text style={vs.dv}>{jb("Yamato Transport ヤマト運輸")}</Text>
+            <Text style={vs.dv}>{jb(carrierConfig(data.carrier).voucherLabel)}</Text>
             <Text style={vs.dvSmall}>
               Tel: {SUPPLIER_TEL_PLACEHOLDER}　*Japanese speaking only
             </Text>

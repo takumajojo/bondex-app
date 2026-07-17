@@ -18,6 +18,8 @@ export interface CarrierConfig {
   id: Carrier
   labelJa: string
   labelEn: string
+  /** バウチャー等の書類に印字する正式名 (英+和)。 */
+  voucherLabel: string
   /** Ship&co /carriers の type (アカウント照合用) */
   shipandcoType: string
   /** Ship&co create 時の service 名 */
@@ -33,6 +35,7 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     id: "sagawa",
     labelJa: "佐川急便",
     labelEn: "Sagawa",
+    voucherLabel: "Sagawa Express 佐川急便",
     shipandcoType: "sagawa",
     shipandcoService: "sagawa_regular",
     maxLeadDays: 50,
@@ -42,6 +45,7 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     id: "yamato",
     labelJa: "ヤマト運輸",
     labelEn: "Yamato",
+    voucherLabel: "Yamato Transport ヤマト運輸",
     // Ship&co /carriers 上は "yamato" または "yamato_takkyubin"
     shipandcoType: "yamato",
     shipandcoService: "yamato_regular",

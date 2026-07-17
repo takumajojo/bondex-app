@@ -60,7 +60,7 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-base font-semibold text-foreground mb-2">4. Sharing &amp; International Transfers</h2>
           <p className="mb-2">We share information only as needed with:</p>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Courier partners (e.g. Yamato Transport, Sagawa Express) to carry out delivery</li>
+            <li>Courier partners (e.g. Sagawa Express, Yamato Transport) to carry out delivery</li>
             <li>Hotels / accommodations that receive or hand over the luggage</li>
             <li>Our payment and infrastructure providers (e.g. Stripe, Supabase, Vercel)</li>
           </ul>

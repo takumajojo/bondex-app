@@ -28,7 +28,7 @@ export default function TermsOfServicePage() {
           </p>
           <p className="mt-2">
             Transportation itself is carried out by licensed courier partners such as
-            Yamato Transport and Sagawa Express. BondEx acts as a coordinator (取次), not as
+            Sagawa Express and Yamato Transport. BondEx acts as a coordinator (取次), not as
             the carrier.
           </p>
         </section>
@@ -67,7 +67,7 @@ export default function TermsOfServicePage() {
           <h2 className="text-base font-semibold text-foreground mb-2">4. Luggage Guidelines</h2>
           <p>
             Size and weight limits follow the courier&apos;s standard parcel terms
-            (Yamato Transport / Sagawa Express):
+            (Sagawa Express / Yamato Transport):
           </p>
           <ul className="list-disc pl-5 space-y-1 mt-1">
             <li>Maximum size: 160 cm total (length + width + height)</li>
@@ -98,7 +98,7 @@ export default function TermsOfServicePage() {
           <p>
             If loss or damage occurs, compensation is handled in accordance with the
             transporting courier&apos;s terms (for example, coverage up to 300,000 JPY per
-            item under standard Yamato / Sagawa policies).
+            item under standard Sagawa / Yamato policies).
           </p>
           <p className="mt-2">Please report any issues within 7 days of delivery so we can assist promptly.</p>
           <p className="mt-2">

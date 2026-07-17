@@ -46,7 +46,7 @@ const rows: Array<{ k: string; v: React.ReactNode }> = [
   },
   {
     k: '役務の提供時期',
-    v: 'ご指定の配送日に合わせ、ヤマト運輸・佐川急便等の宅配便にて配送を手配します。天候・交通事情等により前後する場合があります。',
+    v: 'ご指定の配送日に合わせ、佐川急便・ヤマト運輸等の宅配便にて配送を手配します。天候・交通事情等により前後する場合があります。',
   },
   {
     k: 'キャンセル',
@@ -85,7 +85,7 @@ export default function CommercialTransactionsPage() {
 
       <p className="mt-8 text-xs text-muted-foreground leading-relaxed">
         BondEx（ボンデックス）は、株式会社JOJO が提供する、訪日旅行代理店・ランドオペレーターさま向けの荷物配送手配（取次）サービスです。
-        配送そのものはヤマト運輸・佐川急便等の宅配事業者が行います。
+        配送そのものは佐川急便・ヤマト運輸等の宅配事業者が行います。
       </p>
 
       <div className="mt-12 pt-6 border-t border-border">

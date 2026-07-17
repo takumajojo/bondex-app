@@ -769,7 +769,7 @@ function EditShipmentModal({
               className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
             />
             <p className="text-[10px] text-muted-foreground">
-              予約番号フォルダ（バウチャー・ヤマト伝票を格納）の共有リンク。全区間に反映します。
+              予約番号フォルダ（バウチャー・配送伝票を格納）の共有リンク。全区間に反映します。
               共有設定（閲覧可）は Google 側でご設定ください。
             </p>
           </div>
@@ -786,7 +786,7 @@ function EditShipmentModal({
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1">
           <p className="text-[11px] font-medium text-amber-900">保存しても自動では変わらないもの</p>
           <p className="text-[11px] text-amber-800 leading-relaxed">
-            発行済みのバウチャー PDF とヤマト送り状は自動更新されません。
+            発行済みのバウチャー PDF と配送伝票（送り状）は自動更新されません。
             {dateChanged ? "日付を変更した場合は、Voucher を再発行して差し替え、送り状は Ship&co で作り直してください。" : ""}
             ホテル・氏名を変更したい場合は、この予約を削除して新規発行してください (送り状との食い違い防止)。
           </p>
@@ -873,7 +873,7 @@ function DeleteBookingModal({
         {hasLabel && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-3">
             <p className="text-[11px] font-medium text-red-900 mb-1">
-              この予約には発行済みのヤマト送り状があります
+              この予約には発行済みの配送伝票（送り状）があります
             </p>
             <p className="text-[11px] text-red-800 leading-relaxed">
               削除しても送り状は無効になりません。集荷される事故を防ぐため、

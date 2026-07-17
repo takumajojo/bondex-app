@@ -268,7 +268,7 @@ export default function ClaimsPage() {
                 <Input type="number" min={0} value={form.claim_amount_yen} onChange={(e) => setForm({ ...form, claim_amount_yen: Number(e.target.value) })} />
               </label>
               <label className="space-y-1">
-                <span className="text-xs text-muted-foreground">ヤマトクレーム番号 (任意)</span>
+                <span className="text-xs text-muted-foreground">配送業者クレーム番号 (任意)</span>
                 <Input value={form.yamato_case_number} onChange={(e) => setForm({ ...form, yamato_case_number: e.target.value })} />
               </label>
             </div>
@@ -324,7 +324,7 @@ export default function ClaimsPage() {
                     <p className="text-xs text-muted-foreground font-mono">
                       {c.booking_id || "(予約番号未指定)"}
                       {c.leg_index !== null ? ` -L${c.leg_index + 1}` : ""}
-                      {c.yamato_case_number ? ` · ヤマト# ${c.yamato_case_number}` : ""}
+                      {c.yamato_case_number ? ` · 伝票# ${c.yamato_case_number}` : ""}
                     </p>
                   </div>
                   <select

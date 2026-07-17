@@ -116,7 +116,7 @@ const messages = {
     voucherCardTitle: "Hotel Voucher",
     voucherCardSub: "Preview, then send a printed copy in the welcome packet to the traveler's first hotel.",
     opsCardTitle: "Operations Sheet",
-    opsCardSub: "Internal record; fill in Yamato tracking numbers after labels are issued.",
+    opsCardSub: "Internal record; fill in the carrier tracking numbers after labels are issued.",
     download: "Download",
     preview: "Preview",
     newBooking: "Start a new booking",
@@ -127,11 +127,11 @@ const messages = {
     yamatoLabelFailed: "Label issuance failed",
     yamatoDeferred: (d: string) => `Scheduled — label will be issued on ${d}`,
     yamatoDeferredNote:
-      "Yamato accepts labels only within 30 days of the shipment date. This leg is registered and will be issued automatically when it enters the window.",
+      "The carrier accepts labels only close to the shipment date. This leg is registered and will be issued automatically when it enters the window.",
     yamatoDatePast:
       "The shipment date is in the past — a label can't be issued. Please check the itinerary date.",
     yamatoDateWindow:
-      "The shipment date is more than 30 days away, beyond Yamato's issuance window. The label will be issued automatically closer to the date.",
+      "The shipment date is more than 30 days away, beyond the carrier's issuance window. The label will be issued automatically closer to the date.",
     yamatoDateInvalid: "The shipment date is invalid. Please check the itinerary date.",
     notesLabel: "Notes (optional)",
     notesPlaceholder: "Anything to tell the hotel — e.g. drop-off by 8:00, fragile, senior guest…",
@@ -173,10 +173,10 @@ const messages = {
     tourNumberLabel: "Tour / booking number (your reference)",
     tourNumberPlaceholder: "e.g. JPT2607-045 — for your dashboard search & invoice, not shown to guest",
     missingFieldsTitle: "Please fill in these fields to continue:",
-    deliveryOutOfRange: "Outside Yamato's deliverable window — pick a date in the range below.",
+    deliveryOutOfRange: "Outside the carrier's deliverable window — pick a date in the range below.",
     setShipDateFirst: "Set the drop-off date first to enable arrival-date selection.",
     yamatoDateRange:
-      "Yamato allows delivery 1–7 days after the drop-off date.",
+      "The carrier allows delivery a few days after drop-off.",
     addressResolutionFailed:
       "Couldn't find this hotel in Google Maps. Please check the hotel name spelling (official name, no abbreviations) and try again.",
     shippingScheduleHeading: "Shipping schedule",
@@ -277,7 +277,7 @@ const messages = {
     voucherCardTitle: "ホテル向けバウチャー",
     voucherCardSub: "プレビューで内容を確認し、印刷して旅行者の初日ホテルに送付します。",
     opsCardTitle: "オペレーションシート",
-    opsCardSub: "社内記録用。後でヤマトの追跡番号を記入します。",
+    opsCardSub: "社内記録用。後で配送業者の追跡番号を記入します。",
     download: "ダウンロード",
     preview: "プレビュー",
     newBooking: "新しい予約を開始",
@@ -288,11 +288,11 @@ const messages = {
     yamatoLabelFailed: "送り状発行に失敗",
     yamatoDeferred: (d: string) => `発行予約済み — ${d} から発行可能`,
     yamatoDeferredNote:
-      "ヤマトの送り状は出荷予定日の30日前から発行可能です。この区間は登録済みで、発行可能期間に入り次第、自動で発行されます。",
+      "配送伝票は出荷予定日が近づくと発行可能です。この区間は登録済みで、発行可能期間に入り次第、自動で発行されます。",
     yamatoDatePast:
       "出荷予定日が過去のため送り状を発行できません。旅程の日付をご確認ください。",
     yamatoDateWindow:
-      "出荷予定日が30日以上先のため、ヤマトの発行可能期間を超えています。出荷予定日が近づき次第、自動で発行されます。",
+      "出荷予定日が30日以上先のため、配送業者の発行可能期間を超えています。出荷予定日が近づき次第、自動で発行されます。",
     yamatoDateInvalid: "出荷予定日が不正です。旅程の日付をご確認ください。",
     notesLabel: "備考 (任意)",
     notesPlaceholder: "ホテルに伝えたいことがあれば — 例: 8時までに発送、割れ物注意、高齢のお客様…",
@@ -334,10 +334,10 @@ const messages = {
     tourNumberLabel: "ツアー番号（貴社管理用）",
     tourNumberPlaceholder: "例: JPT2607-045 — ダッシュボード検索・請求書用。お客様向けバウチャーには表示されません",
     missingFieldsTitle: "以下の項目を入力してください:",
-    deliveryOutOfRange: "ヤマトの配達指定可能期間外です — 下のレンジ内から選んでください。",
+    deliveryOutOfRange: "配送業者の配達指定可能期間外です — 下のレンジ内から選んでください。",
     setShipDateFirst: "発送日を先に入力すると、到着日が選べるようになります。",
     yamatoDateRange:
-      "ヤマト宅急便は発送日の翌日から7日以内まで配達指定可能です。",
+      "配達日は発送日の翌日以降で指定できます（配送業者の規定によります）。",
     addressResolutionFailed:
       "Google マップでホテルを特定できませんでした。ホテル名の表記 (正式名称、略さない) を見直してください。",
     shippingScheduleHeading: "配送日程",
@@ -831,6 +831,7 @@ export default function OperatorPage() {
       representativeLabel,
       groupName: itinerary.guest.showGroupName ? itinerary.guest.familyName.trim() || undefined : undefined,
       tourCompany: tourCompanyFromSettings,
+      carrier: itinerary.carrier ?? "sagawa",
       tourNumber: itinerary.tourNumber?.trim() || undefined,
       travelerCount: itinerary.guest.travelerCount,
       contactPersonName: settings?.contactName || "",

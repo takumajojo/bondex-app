@@ -41,6 +41,7 @@ interface RequestBody {
   representativeLabel?: unknown
   groupName?: unknown
   tourCompany?: unknown
+  carrier?: unknown
   tourNumber?: unknown
   travelerCount?: unknown
   bookingId?: unknown
@@ -192,6 +193,7 @@ export async function POST(req: NextRequest) {
 
   const representativeLabel = asString(body.representativeLabel).trim()
   const tourCompany = asString(body.tourCompany).trim()
+  const carrier = asString(body.carrier).trim() || "sagawa"
   const travelerCount = Math.max(1, Math.floor(Number(body.travelerCount) || 1))
   const rawShipments = Array.isArray(body.shipments) ? body.shipments : []
   const shipments = rawShipments
@@ -247,6 +249,7 @@ export async function POST(req: NextRequest) {
     representativeLabel,
     groupName,
     tourCompany,
+    carrier,
     tourNumber,
     travelerCount,
     shipments,
