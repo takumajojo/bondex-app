@@ -2,7 +2,7 @@
  * 代理店への発行依頼(登録)受付メール。
  *
  * 代理店が /agency/new で発行依頼を登録した時に送る。出荷が 1ヶ月以上先の場合は
- * 「ヤマトの送り状は出荷1ヶ月前から発行可能なので、1ヶ月前になったらまとめてご連絡します」
+ * 「送り状は出荷1ヶ月前から発行可能なので、1ヶ月前になったらまとめてご連絡します」
  * という案内を本文に含める(needsLabelWait=true)。
  *
  * 送信は Resend。RESEND_API_KEY 未設定なら送らず { sent:false } を返す(登録自体は成功させる)。
@@ -38,11 +38,11 @@ function buildEmail(
     ]
     // 大きく強調するポイント (メールの色付きボックスに表示)
     const callout = [
-      `【重要】ヤマトの伝票（送り状）は、出荷予定日の1ヶ月前からしか発行できません。`,
+      `【重要】配送伝票（送り状）は、出荷予定日の1ヶ月前からしか発行できません。`,
       input.needsLabelWait
-        ? `最短の出荷予定日は ${input.earliestShipDate} です。1ヶ月前になりましたら書類一式（バウチャー・ヤマト伝票）をご用意し、このメールアドレス（${emailShown}）宛に Google Drive フォルダを共有します。`
-        : `書類一式（バウチャー・ヤマト伝票）をご用意し、このメールアドレス（${emailShown}）宛に Google Drive フォルダを共有します。`,
-      `Drive フォルダが共有されたら、その中のバウチャー・ヤマト伝票をご利用ください。`,
+        ? `最短の出荷予定日は ${input.earliestShipDate} です。1ヶ月前になりましたら書類一式（バウチャー・配送伝票）をご用意し、このメールアドレス（${emailShown}）宛に Google Drive フォルダを共有します。`
+        : `書類一式（バウチャー・配送伝票）をご用意し、このメールアドレス（${emailShown}）宛に Google Drive フォルダを共有します。`,
+      `Drive フォルダが共有されたら、その中のバウチャー・配送伝票をご利用ください。`,
     ]
     return {
       subject: `【BondEx】発行依頼を受け付けました（${input.bookingId}）｜書類は Google Drive で共有します`,
@@ -55,11 +55,11 @@ function buildEmail(
     `We have received your issuance request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
   ]
   const callout = [
-    `IMPORTANT: Yamato shipping labels can only be created from one month before the shipment date.`,
+    `IMPORTANT: shipping labels can only be created from one month before the shipment date.`,
     input.needsLabelWait
-      ? `Your earliest shipment date is ${input.earliestShipDate}. Once it is within a month, we will prepare all documents (voucher and Yamato labels) and share a Google Drive folder with your registered email (${emailShown}).`
-      : `We will prepare all documents (voucher and Yamato labels) and share a Google Drive folder with your registered email (${emailShown}).`,
-    `Once the Drive folder is shared, use the voucher and Yamato labels inside it.`,
+      ? `Your earliest shipment date is ${input.earliestShipDate}. Once it is within a month, we will prepare all documents (voucher and shipping labels) and share a Google Drive folder with your registered email (${emailShown}).`
+      : `We will prepare all documents (voucher and shipping labels) and share a Google Drive folder with your registered email (${emailShown}).`,
+    `Once the Drive folder is shared, use the voucher and shipping labels inside it.`,
   ]
   return {
     subject: `[BondEx] Issuance request received (${input.bookingId}) — documents shared via Google Drive`,

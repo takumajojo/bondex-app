@@ -11,7 +11,8 @@ import {
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
-import { DELIVERY_TIME_SLOTS, isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
+import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
+import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
 
 type Leg = {
   fromHotel: string
@@ -60,7 +61,7 @@ const messages = {
     back: "Back to portal",
     badge: "New issuance request",
     title: "Register a booking",
-    lead: "Enter the trip details. BondEx will prepare the voucher and Yamato labels and share a Google Drive folder link here — no label is issued (or charged) at this step.",
+    lead: "Enter the trip details. BondEx will prepare the voucher and shipping labels and share a Google Drive folder link here — no label is issued (or charged) at this step.",
     autoHeading: "Auto-fill from an itinerary",
     autoBody: "Upload the itinerary (PDF or image) and we'll read the hotels, dates and lead traveler into the form below. You can edit anything afterward.",
     autoButton: "Upload itinerary",
@@ -111,25 +112,25 @@ const messages = {
     flowHeading: "How it works",
     flow: [
       { title: "Register request", sub: "Enter the itinerary (you are here)", key: false },
-      { title: "Until 1 month before shipping", sub: "Yamato labels can't be created earlier", key: true },
-      { title: "BondEx issues the documents", sub: "Voucher + Yamato labels", key: false },
+      { title: "Until 1 month before shipping", sub: "shipping labels can't be created earlier", key: true },
+      { title: "BondEx issues the documents", sub: "Voucher + shipping labels", key: false },
       { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
     ],
     // 出荷が1ヶ月以内 → 待ち無しですぐ発行
     flowSoon: [
       { title: "Register request", sub: "Enter the itinerary (you are here)", key: false },
-      { title: "BondEx issues right away", sub: "Within a month — voucher + Yamato labels", key: true },
+      { title: "BondEx issues right away", sub: "Within a month — voucher + shipping labels", key: true },
       { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
     ],
     monthNote:
-      "Yamato labels can only be created from one month before the ship date. Once it's within a month we'll prepare everything and share a Google Drive folder with your registered email — the voucher and labels will be inside.",
+      "shipping labels can only be created from one month before the ship date. Once it's within a month we'll prepare everything and share a Google Drive folder with your registered email — the voucher and labels will be inside.",
     doneTitle: "Request received",
     doneBooking: "Booking number",
     doneShareHeading: "How you'll receive the documents",
     doneWait:
-      "Yamato labels can only be created from one month before shipping. Once your ship date is within a month, we'll prepare everything and share a Google Drive folder with your registered email. The voucher and Yamato labels will be inside.",
+      "shipping labels can only be created from one month before shipping. Once your ship date is within a month, we'll prepare everything and share a Google Drive folder with your registered email. The voucher and shipping labels will be inside.",
     doneSoon:
-      "Your shipment is within a month, so we'll prepare the documents (voucher and Yamato labels) right away and share a Google Drive folder with your registered email.",
+      "Your shipment is within a month, so we'll prepare the documents (voucher and shipping labels) right away and share a Google Drive folder with your registered email.",
     doneBack: "Back to portal",
     errGeneric: "Could not register the request. Please try again.",
     errNetwork: "Network error. Please check your connection.",
@@ -139,7 +140,7 @@ const messages = {
     back: "ポータルに戻る",
     badge: "新規発行依頼",
     title: "発行依頼を登録",
-    lead: "旅程をご入力ください。BondEx がバウチャーとヤマト伝票を用意し、Google Drive フォルダのリンクをこちらでご案内します。この段階では送り状は発行されません（課金もありません）。",
+    lead: "旅程をご入力ください。BondEx がバウチャーと配送伝票を用意し、Google Drive フォルダのリンクをこちらでご案内します。この段階では送り状は発行されません（課金もありません）。",
     autoHeading: "旅程表から自動入力",
     autoBody: "旅程表（PDF・画像）をアップロードすると、ホテル・日付・代表者を読み取って下のフォームに反映します。読み取り後は自由に修正できます。",
     autoButton: "旅程表を読み込む",
@@ -190,8 +191,8 @@ const messages = {
     flowHeading: "この後の流れ",
     flow: [
       { title: "発行依頼を登録", sub: "旅程を入力（今ここ）", key: false },
-      { title: "出荷1ヶ月前まで", sub: "ヤマト伝票は1ヶ月前から発行", key: true },
-      { title: "BondExが書類を発行", sub: "バウチャー＋ヤマト伝票", key: false },
+      { title: "出荷1ヶ月前まで", sub: "配送伝票は1ヶ月前から発行", key: true },
+      { title: "BondExが書類を発行", sub: "バウチャー＋配送伝票", key: false },
       { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
     ],
     // 出荷が1ヶ月以内 → 待ち無しですぐ発行
@@ -201,14 +202,14 @@ const messages = {
       { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
     ],
     monthNote:
-      "ヤマトの伝票（送り状）は出荷日の1ヶ月前からしか発行できません。1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します（中にバウチャー・ヤマト伝票が入ります）。",
+      "配送伝票（送り状）は出荷日の1ヶ月前からしか発行できません。1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します（中にバウチャー・配送伝票が入ります）。",
     doneTitle: "発行依頼を受け付けました",
     doneBooking: "予約番号",
     doneShareHeading: "書類の受け取り方法",
     doneWait:
-      "ヤマトの伝票（送り状）は出荷の1ヶ月前からしか発行できません。出荷日の1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・ヤマト伝票が入っています。",
+      "配送伝票（送り状）は出荷の1ヶ月前からしか発行できません。出荷日の1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・配送伝票が入っています。",
     doneSoon:
-      "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・ヤマト伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
+      "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・配送伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
     doneBack: "ポータルに戻る",
     errGeneric: "発行依頼の登録に失敗しました。もう一度お試しください。",
     errNetwork: "通信エラーです。接続をご確認ください。",
@@ -665,8 +666,8 @@ export default function AgencyNewBookingPage() {
                 </label>
                 <select id={`dt${i}`} className={inputCls} value={leg.deliveryTime}
                   onChange={(e) => updateLeg(i, { deliveryTime: e.target.value })}>
-                  {DELIVERY_TIME_SLOTS.map((slot) => (
-                    <option key={slot} value={slot}>{t.deliverySlots[slot]}</option>
+                  {carrierConfig(DEFAULT_CARRIER).timeSlots.map((slot) => (
+                    <option key={slot} value={slot}>{slotLabel(slot, locale)}</option>
                   ))}
                 </select>
                 {isNextDayEarlySlotRisky(leg.shipmentDate, leg.expectedArrival, leg.deliveryTime) && (

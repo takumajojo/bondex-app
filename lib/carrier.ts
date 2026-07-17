@@ -67,3 +67,21 @@ export function isCarrier(c: unknown): c is Carrier {
 export const ALL_TIME_SLOTS: readonly string[] = Array.from(
   new Set<string>([...CARRIERS.sagawa.timeSlots, ...CARRIERS.yamato.timeSlots]),
 )
+
+/** 配達時間帯コードの表示ラベル (両キャリア分を一元管理)。 */
+export const TIME_SLOT_LABELS: Record<string, { ja: string; en: string }> = {
+  "not-specified": { ja: "指定なし", en: "Not specified" },
+  "before-noon": { ja: "午前中（推奨）", en: "Before noon (recommended)" },
+  "before-ten": { ja: "10時まで", en: "Before 10:00" },
+  "before-five": { ja: "17時まで", en: "Before 17:00" },
+  "12-14": { ja: "12時〜14時", en: "12:00–14:00" },
+  "14-16": { ja: "14時〜16時", en: "14:00–16:00" },
+  "16-18": { ja: "16時〜18時", en: "16:00–18:00" },
+  "18-20": { ja: "18時〜20時", en: "18:00–20:00" },
+  "18-21": { ja: "18時〜21時", en: "18:00–21:00" },
+  "19-21": { ja: "19時〜21時", en: "19:00–21:00" },
+}
+
+export function slotLabel(slot: string, locale: "ja" | "en"): string {
+  return TIME_SLOT_LABELS[slot]?.[locale] ?? slot
+}

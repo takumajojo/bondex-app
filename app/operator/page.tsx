@@ -36,9 +36,9 @@ import {
   getDeliverableRange,
   isValidDeliveryDate,
   formatRangeHint,
-  DELIVERY_TIME_SLOTS,
   isNextDayEarlySlotRisky,
 } from "@/lib/yamato-delivery"
+import { carrierConfig, slotLabel } from "@/lib/carrier"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 import { OperatorCardReminder } from "@/components/operator-card-reminder"
 import { buildVoucherFileName } from "@/lib/utils"
@@ -1761,6 +1761,7 @@ function ReviewView({
                 locale={locale}
                 index={i}
                 shipment={s}
+                carrier={itinerary.carrier ?? "sagawa"}
                 canRemove={shipments.length > 1}
                 onUpdate={onUpdateShipment}
                 onRemove={onRemoveLeg}
@@ -1820,6 +1821,7 @@ function ShipmentRow({
   locale,
   index,
   shipment,
+  carrier,
   canRemove,
   onUpdate,
   onRemove,
@@ -1828,6 +1830,7 @@ function ShipmentRow({
   locale: Locale
   index: number
   shipment: EditableShipment
+  carrier: string
   canRemove: boolean
   onUpdate: (index: number, patch: Partial<EditableShipment>) => void
   onRemove: (index: number) => void
@@ -1848,16 +1851,8 @@ function ShipmentRow({
     !!shipment.shipmentDate &&
     !!shipment.expectedArrival &&
     isNextDayEarlySlotRisky(shipment.shipmentDate, shipment.expectedArrival, deliveryTime)
-  const deliveryTimeLabels: Record<(typeof DELIVERY_TIME_SLOTS)[number], string> = {
-    "not-specified": t.deliveryTimeNotSpecified,
-    "before-noon": t.deliveryTimeBeforeNoon,
-    "before-ten": t.deliveryTimeBeforeTen,
-    "before-five": t.deliveryTimeBeforeFive,
-    "14-16": t.deliveryTime1416,
-    "16-18": t.deliveryTime1618,
-    "18-20": t.deliveryTime1820,
-    "19-21": t.deliveryTime1921,
-  }
+  // 配達時間帯は選択キャリアの区分に追従 (佐川と大和で体系が異なる)
+  const slots = carrierConfig(carrier).timeSlots
   return (
     <li className="rounded-2xl border border-border bg-white p-5">
       {/* Header: leg # + remove */}
@@ -2018,9 +2013,9 @@ function ShipmentRow({
             }`}
             aria-label={t.deliveryTimeLabel}
           >
-            {DELIVERY_TIME_SLOTS.map((slot) => (
+            {slots.map((slot) => (
               <option key={slot} value={slot}>
-                {deliveryTimeLabels[slot]}
+                {slotLabel(slot, locale === "ja" ? "ja" : "en")}
               </option>
             ))}
           </select>

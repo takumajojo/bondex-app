@@ -73,7 +73,7 @@ const messages = {
     preparing: "Preparing",
     newBooking: "New request",
     farNote:
-      "Requests with a ship date more than a month away: Yamato labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
+      "Requests with a ship date more than a month away: shipping labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
     downloading: "Preparing…",
     dlError: "Download failed. Please try again.",
     shipPrefix: "Ship",
@@ -122,7 +122,7 @@ const messages = {
     preparing: "準備中",
     newBooking: "新規発行",
     farNote:
-      "発送日が1ヶ月以上先の依頼は、ヤマトの送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
+      "発送日が1ヶ月以上先の依頼は、送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
     downloading: "準備中…",
     dlError: "ダウンロードに失敗しました。もう一度お試しください。",
     shipPrefix: "発送",

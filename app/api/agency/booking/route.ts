@@ -5,7 +5,7 @@ import { saveShipment, deleteBooking } from "@/lib/shipments-db"
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
-import { DELIVERY_TIME_SLOTS } from "@/lib/yamato-delivery"
+import { ALL_TIME_SLOTS } from "@/lib/carrier"
 
 export const runtime = "nodejs"
 
@@ -27,7 +27,7 @@ function s(v: unknown): string {
   return typeof v === "string" ? v.trim() : ""
 }
 
-const DELIVERY_SLOT_SET = new Set<string>(DELIVERY_TIME_SLOTS as readonly string[])
+const DELIVERY_SLOT_SET = new Set<string>(ALL_TIME_SLOTS)
 
 interface LegInput {
   fromHotel: string
