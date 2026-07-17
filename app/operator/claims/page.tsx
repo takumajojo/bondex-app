@@ -58,7 +58,7 @@ const REPORTER_LABEL: Record<ReportedBy, string> = {
   traveler: "旅行者",
   hotel: "ホテル",
   bondex: "BondEx",
-  yamato: "ヤマト",
+  yamato: "配送業者",
 }
 
 export default function ClaimsPage() {

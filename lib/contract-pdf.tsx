@@ -265,7 +265,7 @@ export function ContractDocument({ data }: { data: ContractInput }) {
         <Article num={2} title="業務範囲">
           <Para>1. 甲は乙の依頼に基づき、以下の業務（以下「本業務」という）を行う。</Para>
           <Item num="(1)">旅行者の手荷物配送に関する集荷依頼の取次ぎ</Item>
-          <Item num="(2)">ヤマト運輸株式会社（以下「実運送人」という）宛の送り状の発行</Item>
+          <Item num="(2)">佐川急便株式会社・ヤマト運輸株式会社等（以下「実運送人」という）宛の送り状の発行</Item>
           <Item num="(3)">旅行者向けのバウチャー（引換証）の発行</Item>
           <Item num="(4)">配送状況の確認窓口</Item>
           <Para>
