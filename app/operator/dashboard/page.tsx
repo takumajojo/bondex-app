@@ -504,13 +504,17 @@ export default function DashboardPage() {
                           </p>
                         )}
                         <div className="mt-1 flex flex-col gap-0.5">
-                          {it.status === "requested" ? (
+                          {it.status === "requested" || it.status === "failed" ? (
                             <a
                               href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
-                              title="代理店の発行依頼を発行画面に読み込み、レビューして発行します"
+                              title={
+                                it.status === "failed"
+                                  ? "前回の送り状発行が失敗しています。内容を確認して再発行します"
+                                  : "代理店の発行依頼を発行画面に読み込み、レビューして発行します"
+                              }
                             >
-                              この依頼を発行 →
+                              {it.status === "failed" ? "再発行を試す →" : "この依頼を発行 →"}
                             </a>
                           ) : (
                             <>
