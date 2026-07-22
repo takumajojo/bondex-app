@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
+import { ensureAgencyFolder } from "@/lib/google-drive"
 
 export const runtime = "nodejs"
 
@@ -143,6 +144,13 @@ export async function POST(req: NextRequest) {
       { error: `アカウントの紐付けに失敗しました (${linkErr.message})` },
       { status: 500 },
     )
+  }
+
+  // 4) 共有ドライブに代理店フォルダを用意 (best-effort・失敗しても登録は成功させる)
+  try {
+    await ensureAgencyFolder(agencyName)
+  } catch {
+    /* Drive 未設定・失敗は無視 */
   }
 
   return NextResponse.json({ ok: true, paymentMethod, status: "pending" })

@@ -59,6 +59,7 @@ export const config = {
     "/api/shipments/duplicate-check",
     "/api/operator/request",
     "/api/operator/drive-sync",
+    "/api/operator/agency-folder",
     "/api/voucher/labels",
     "/api/invoices/generate",
     "/api/agencies",

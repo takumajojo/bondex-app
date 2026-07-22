@@ -75,8 +75,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) 共有ドライブへ格納
-  const result = await putBookingDocuments(bookingId, files)
+  // 3) 共有ドライブへ格納 (代理店フォルダ → 予約番号フォルダ)
+  const result = await putBookingDocuments(bookingId, files, voucher.agencyName)
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 })
   }

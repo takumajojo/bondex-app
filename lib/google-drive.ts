@@ -102,16 +102,18 @@ function q(value: string): string {
 }
 
 /**
- * 共有ドライブ直下に name のフォルダを find-or-create し、{id, webViewLink} を返す。
+ * parentId 直下に name のフォルダを find-or-create し、{id, webViewLink} を返す。
+ * parentId は共有ドライブ ID (直下) か、その中のフォルダ ID (入れ子) を渡す。
  */
 async function ensureFolder(
   token: string,
   name: string,
+  parentId: string,
 ): Promise<{ id: string; webViewLink: string }> {
   const query = [
     `name='${q(name)}'`,
     "mimeType='application/vnd.google-apps.folder'",
-    `'${ROOT_ID}' in parents`,
+    `'${parentId}' in parents`,
     "trashed=false",
   ].join(" and ")
   const listUrl = new URL(DRIVE_FILES)
@@ -141,7 +143,7 @@ async function ensureFolder(
     body: JSON.stringify({
       name,
       mimeType: "application/vnd.google-apps.folder",
-      parents: [ROOT_ID],
+      parents: [parentId],
     }),
   })
   const created = (await createRes.json().catch(() => ({}))) as {
@@ -230,22 +232,48 @@ async function uploadPdf(
 export type DriveFile = { name: string; buffer: Buffer }
 
 /**
- * 予約番号フォルダ (共有ドライブ直下) を用意し、渡された PDF 群を保存。
- * フォルダの webViewLink を返す。未設定・失敗は { ok:false }。
+ * 予約の書類を「共有ドライブ → 代理店フォルダ → 予約番号フォルダ」に保存する。
+ * agencyName を渡すと代理店ごとに整理される (未指定なら共有ドライブ直下)。
+ * 予約番号フォルダの webViewLink を返す。未設定・失敗は { ok:false }。
  */
 export async function putBookingDocuments(
   bookingId: string,
   files: DriveFile[],
+  agencyName?: string,
 ): Promise<{ ok: true; folderUrl: string } | { ok: false; error: string }> {
   const creds = loadCredentials()
   if (!creds || !ROOT_ID) return { ok: false, error: "Google Drive not configured" }
   try {
     const token = await getAccessToken(creds)
-    const folder = await ensureFolder(token, bookingId)
+    // 代理店フォルダ (find-or-create) → 予約番号フォルダ (find-or-create)
+    const parentId = agencyName?.trim()
+      ? (await ensureFolder(token, agencyName.trim(), ROOT_ID)).id
+      : ROOT_ID
+    const folder = await ensureFolder(token, bookingId, parentId)
     for (const f of files) {
       await uploadPdf(token, folder.id, f.name, f.buffer)
     }
     return { ok: true, folderUrl: folder.webViewLink }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Drive error" }
+  }
+}
+
+/**
+ * 代理店フォルダ (共有ドライブ直下) を find-or-create する。
+ * 新規代理店の追加時に呼び、予約が無くても代理店フォルダを先に用意しておく。
+ */
+export async function ensureAgencyFolder(
+  agencyName: string,
+): Promise<{ ok: true; folderUrl: string } | { ok: false; error: string }> {
+  const creds = loadCredentials()
+  if (!creds || !ROOT_ID || !agencyName.trim()) {
+    return { ok: false, error: "Google Drive not configured" }
+  }
+  try {
+    const token = await getAccessToken(creds)
+    const f = await ensureFolder(token, agencyName.trim(), ROOT_ID)
+    return { ok: true, folderUrl: f.webViewLink }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Drive error" }
   }
