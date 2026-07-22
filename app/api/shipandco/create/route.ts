@@ -313,6 +313,7 @@ async function resolveYamatoAddress(
   apiKey: string,
   isSender: boolean = false,
   placeId?: string,
+  carrierType: string = "sagawa",
 ): Promise<YamatoAddress | null> {
   // place_id がフロントから渡されている場合は text search をスキップして直接 details へ.
   // (operator が autocomplete から選択したホテル — 確定済み)
@@ -437,6 +438,13 @@ async function resolveYamatoAddress(
   //   - ES001014 (consignee_address3 too long): address1 を短く (cityWard のみ) することで解消
   //   - 推測で逆マッピングを試して再発させていたため、過去動作実績のある d345ef9 の構造に確定回帰
   const fullPath = fullAddress || cityWard
+  // キャリア別の住所フィールド構成:
+  //   佐川 (Ship&co 標準セマンティクス): city=市区町村 / address1=町名+番地 (市区を含めない) / address2=建物名(空)。
+  //     ヤマト用に address1・address2 へ市区を重複させると、佐川は E2-0004
+  //     「郵便番号と住所が一致していません」で弾く (city+address1 が "京都市南区京都市南区…" になるため)。
+  //   ヤマト (過去実績のあるマッピング d345ef9): address1=市区 / address2=市区+町名+番地
+  //     (Yamato parser が address2 から 市区郡町村 を抽出)。既存動作を壊さないため据え置き。
+  const isYamato = carrierType === "yamato"
   return {
     full_name: fullName,
     company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
@@ -445,8 +453,8 @@ async function resolveYamatoAddress(
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
     city: cityWard,
-    address1: cityWard,
-    address2: fullPath,
+    address1: isYamato ? cityWard : streetOnly || cityWard,
+    address2: isYamato ? fullPath : "",
     extra: "",
   }
 }
@@ -595,8 +603,8 @@ export async function POST(req: NextRequest) {
 
   // Google Places で構造化住所を取得
   const [fromAddr, toAddr] = await Promise.all([
-    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId),  // sender = BondEx
-    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false, toPlaceId),     // recipient = hotel
+    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId, carrier.id),  // sender = BondEx
+    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false, toPlaceId, carrier.id),     // recipient = hotel
   ])
 
   // 解決結果を Vercel ログに残す (再発時の根本特定用) — 全フィールドを出力する
