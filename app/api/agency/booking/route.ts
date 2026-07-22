@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
           carrier: "sagawa",
           shipmentDate: leg.shipmentDate,
           deliveryDate: leg.expectedArrival,
-          deliveryTime: leg.deliveryTime || "before-noon",
+          deliveryTime: leg.deliveryTime || "not-specified",
           suitcaseCount: leg.suitcaseCount,
           from: { hotel: leg.fromHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.fromPlaceId, city: leg.fromCity },
           to: { hotel: leg.toHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.toPlaceId, city: leg.toCity },

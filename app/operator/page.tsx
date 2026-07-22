@@ -996,7 +996,7 @@ export default function OperatorPage() {
             carrier: itinerary!.carrier ?? "sagawa", // 既定=佐川
             shipmentDate: s.shipmentDate,
             deliveryDate: s.expectedArrival,
-            deliveryTime: s.deliveryTime || "before-noon",
+            deliveryTime: s.deliveryTime || "not-specified",
             suitcaseCount: s.suitcaseCount,
             from: {
               hotel: s.from.hotel,
@@ -1967,7 +1967,7 @@ function ShipmentRow({
     shipment.shipmentDate &&
     shipment.expectedArrival &&
     !isValidDeliveryDate(shipment.expectedArrival, shipment.shipmentDate, "standard")
-  const deliveryTime = shipment.deliveryTime || "before-noon"
+  const deliveryTime = shipment.deliveryTime || "not-specified"
   const nextDayRisk =
     !!shipment.shipmentDate &&
     !!shipment.expectedArrival &&

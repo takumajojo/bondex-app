@@ -33,6 +33,12 @@ export const YAMATO_RULES = {
 
 export type ServiceType = keyof typeof YAMATO_RULES
 
+/** 配達日レンジのルール。ServiceType 名 か、キャリア別の {min,max} を直接渡せる。 */
+export type DeliveryRule = { minOffsetDays: number; maxOffsetDays: number }
+function resolveRule(r: ServiceType | DeliveryRule): DeliveryRule {
+  return typeof r === "string" ? YAMATO_RULES[r] : r
+}
+
 /**
  * ヤマト宅急便の配達時間帯指定 (Ship&co `setup.time` の許容値)。
  * operator UI のセレクトと app/api/shipandco/create の許可リストで共用する。
@@ -152,10 +158,10 @@ export function jstTodayYmd(): string {
  */
 export function getDeliverableRange(
   shipDate: string,
-  serviceType: ServiceType = "standard",
+  serviceType: ServiceType | DeliveryRule = "standard",
 ): { min: string; max: string } | null {
   if (!isValidYmd(shipDate)) return null
-  const rule = YAMATO_RULES[serviceType]
+  const rule = resolveRule(serviceType)
   return {
     min: addDays(shipDate, rule.minOffsetDays),
     max: addDays(shipDate, rule.maxOffsetDays),
@@ -194,11 +200,11 @@ export function isValidDeliveryDate(
 export function deliveryDateErrorCode(
   deliveryDate: string,
   shipDate: string,
-  serviceType: ServiceType = "standard",
+  serviceType: ServiceType | DeliveryRule = "standard",
 ): DeliveryDateErrorCode | null {
   if (!isValidYmd(shipDate)) return "SHIPMENT_INVALID"
   if (!isValidYmd(deliveryDate)) return "DELIVERY_INVALID"
-  const rule = YAMATO_RULES[serviceType]
+  const rule = resolveRule(serviceType)
   const offset = dayDiff(shipDate, deliveryDate)
   if (offset < rule.minOffsetDays) return "DELIVERY_BEFORE_MIN"
   if (offset > rule.maxOffsetDays) return "DELIVERY_AFTER_MAX"

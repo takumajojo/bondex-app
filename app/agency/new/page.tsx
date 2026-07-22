@@ -42,7 +42,7 @@ const emptyLeg = (): Leg => ({
   expectedArrival: "",
   fromCheckIn: "",
   toCheckOut: "",
-  deliveryTime: "before-noon", // 既定は午前中
+  deliveryTime: "not-specified", // 既定は「時間指定なし」(翌日午前必着は業者保証外のため安全側)
   recipient: "",
   suitcaseCount: 1,
   notes: "",
@@ -353,7 +353,7 @@ export default function AgencyNewBookingPage() {
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
           fromCheckIn: "",
           toCheckOut: "",
-          deliveryTime: "before-noon",
+          deliveryTime: "not-specified",
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
           notes: "",

@@ -542,7 +542,7 @@ export async function POST(req: NextRequest) {
   // 佐川とヤマトで時間帯コード体系が異なる (lib/carrier)。エリア/サービス可否は
   // キャリア側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
   const rawDeliveryTime = typeof body.deliveryTime === "string" ? body.deliveryTime.trim() : ""
-  const deliveryTime = carrier.timeSlots.includes(rawDeliveryTime) ? rawDeliveryTime : "before-noon"
+  const deliveryTime = carrier.timeSlots.includes(rawDeliveryTime) ? rawDeliveryTime : "not-specified"
 
   const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
   // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
@@ -636,16 +636,16 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // 配達希望日 (deliveryDate) のヤマト配達ルール検証
-  // 宅急便 (常温): shipmentDate + 1日 〜 +7日 のみ指定可能
-  // 範囲外を Ship&co に送るとエラーになるので事前に弾く
+  // 配達希望日 (deliveryDate) の配達ルール検証 (キャリア別・佐川/ヤマトとも 発送翌日〜7日)。
+  // 範囲外を Ship&co に送るとエラーになるので事前に弾く。長距離の翌日不可など、実際の
+  // 到達可否は Ship&co が発行時に検証する (その 400 はそのまま呼び出し側へ返る)。
   if (deliveryDate) {
-    const delivErr = deliveryDateErrorCode(deliveryDate, shipmentDate, "standard")
+    const delivErr = deliveryDateErrorCode(deliveryDate, shipmentDate, carrier.deliveryRule)
     if (delivErr) {
-      const range = getDeliverableRange(shipmentDate, "standard")
+      const range = getDeliverableRange(shipmentDate, carrier.deliveryRule)
       return NextResponse.json(
         {
-          error: "deliveryDate is outside the Yamato deliverable window",
+          error: "deliveryDate is outside the carrier's deliverable window",
           code: delivErr,
           shipmentDate,
           deliveryDate,

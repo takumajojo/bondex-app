@@ -28,6 +28,10 @@ export interface CarrierConfig {
   maxLeadDays: number
   /** Ship&co の配達時間帯コード (キャリアで体系が異なる) */
   timeSlots: readonly string[]
+  /** 配達希望日の指定可能範囲 (発送日からのオフセット日数)。
+   *  佐川/ヤマトとも常温便は「発送翌日〜7日」。実際の到達可否 (長距離の翌日不可等) は
+   *  Ship&co が発行時に検証するため、ここは粗いレンジガード。 */
+  deliveryRule: { minOffsetDays: number; maxOffsetDays: number }
 }
 
 export const CARRIERS: Record<Carrier, CarrierConfig> = {
@@ -40,6 +44,7 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     shipandcoService: "sagawa_regular",
     maxLeadDays: 50,
     timeSlots: ["not-specified", "before-noon", "12-14", "14-16", "16-18", "18-20", "18-21", "19-21"],
+    deliveryRule: { minOffsetDays: 1, maxOffsetDays: 7 },
   },
   yamato: {
     id: "yamato",
@@ -51,6 +56,7 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     shipandcoService: "yamato_regular",
     maxLeadDays: 30,
     timeSlots: ["not-specified", "before-noon", "before-ten", "before-five", "14-16", "16-18", "18-20", "19-21"],
+    deliveryRule: { minOffsetDays: 1, maxOffsetDays: 7 },
   },
 }
 
@@ -74,8 +80,8 @@ export const ALL_TIME_SLOTS: readonly string[] = Array.from(
 
 /** 配達時間帯コードの表示ラベル (両キャリア分を一元管理)。 */
 export const TIME_SLOT_LABELS: Record<string, { ja: string; en: string }> = {
-  "not-specified": { ja: "指定なし", en: "Not specified" },
-  "before-noon": { ja: "午前中（推奨）", en: "Before noon (recommended)" },
+  "not-specified": { ja: "指定なし（推奨）", en: "Not specified (recommended)" },
+  "before-noon": { ja: "午前中", en: "Before noon" },
   "before-ten": { ja: "10時まで", en: "Before 10:00" },
   "before-five": { ja: "17時まで", en: "Before 17:00" },
   "12-14": { ja: "12時〜14時", en: "12:00–14:00" },
