@@ -8,6 +8,7 @@ import { sendBookingRequestEmail } from "@/lib/agency-notify"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
 
 export const runtime = "nodejs"
+export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
 
 /**
  * 代理店の「発行依頼(登録)」。
@@ -177,34 +178,104 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 最短の出荷予定日で 1ヶ月案内の要否を判定(ヤマトは出荷1ヶ月前から送り状発行可)
-  const earliestShipDate = legs.reduce(
-    (min, l) => (l.shipmentDate < min ? l.shipmentDate : min),
-    legs[0].shipmentDate,
-  )
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const shipMs = new Date(`${earliestShipDate}T00:00:00`).getTime()
-  const daysUntil = Math.round((shipMs - today.getTime()) / 86_400_000)
-  const needsLabelWait = daysUntil > 30
+  const daysUntilShip = (d: string) =>
+    Math.round((new Date(`${d}T00:00:00`).getTime() - today.getTime()) / 86_400_000)
 
-  const locale: "ja" | "en" = auth.agency.is_domestic === false ? "en" : "ja"
-  const mail = await sendBookingRequestEmail({
-    agencyEmail: auth.agency.contact_email,
-    agencyName,
-    bookingId,
-    tourNumber: tourNumber || null,
-    earliestShipDate,
-    needsLabelWait,
-    legCount: legs.length,
-    locale,
-  })
+  // ── 1ヶ月以内(≤30日)の区間は即発行して即DL。直ランオペ=1ヶ月超は 'requested' のまま
+  //    (発行窓の外なので発行しない)。発行は運営と同じ /api/shipandco/create を
+  //    サーバー内から OPERATOR_PASSWORD で呼び、検証済みの発行ロジックを再利用する。
+  const origin = req.nextUrl.origin
+  const opPw = process.env.OPERATOR_PASSWORD
+  const legOut: Array<{ legIndex: number; issued: boolean; labelUrl?: string }> = []
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]
+    if (daysUntilShip(leg.shipmentDate) > 30 || !opPw) {
+      legOut.push({ legIndex: i, issued: false })
+      continue
+    }
+    try {
+      const res = await fetch(`${origin}/api/shipandco/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${opPw}` },
+        body: JSON.stringify({
+          refNumber: `${bookingId}-L${i + 1}`,
+          bookingId,
+          legIndex: i,
+          carrier: "sagawa",
+          shipmentDate: leg.shipmentDate,
+          deliveryDate: leg.expectedArrival,
+          deliveryTime: leg.deliveryTime || "before-noon",
+          suitcaseCount: leg.suitcaseCount,
+          from: { hotel: leg.fromHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.fromPlaceId, city: leg.fromCity },
+          to: { hotel: leg.toHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.toPlaceId, city: leg.toCity },
+          agency: agencyName,
+          representative,
+          travelerCount,
+          bookingName,
+          fromCheckIn: leg.fromCheckIn,
+          toCheckOut: leg.toCheckOut,
+          specialNote: leg.notes,
+          tourNumber,
+          groupName,
+          guestLanguage,
+        }),
+      })
+      const d = (await res.json().catch(() => ({}))) as { label?: string }
+      legOut.push({ legIndex: i, issued: Boolean(res.ok && d.label), labelUrl: d.label })
+    } catch {
+      legOut.push({ legIndex: i, issued: false })
+    }
+  }
+  const allIssued = legOut.length > 0 && legOut.every((r) => r.issued)
+  const anyIssued = legOut.some((r) => r.issued)
+  const needsLabelWait = !allIssued // 未発行(1ヶ月超 or 発行不可)の区間がある
+
+  // 発行できた予約は書類を共有ドライブにも保管 (best-effort・失敗しても DL は可能)。
+  if (anyIssued && opPw) {
+    try {
+      await fetch(`${origin}/api/operator/drive-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${opPw}` },
+        body: JSON.stringify({ bookingId }),
+      })
+    } catch {
+      /* Drive 格納失敗は無視 */
+    }
+  }
+
+  // 待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。全発行済みなら不要。
+  let noticeEmailSent = false
+  if (needsLabelWait) {
+    const earliestShipDate = legs.reduce(
+      (min, l) => (l.shipmentDate < min ? l.shipmentDate : min),
+      legs[0].shipmentDate,
+    )
+    const locale: "ja" | "en" = auth.agency.is_domestic === false ? "en" : "ja"
+    const mail = await sendBookingRequestEmail({
+      agencyEmail: auth.agency.contact_email,
+      agencyName,
+      bookingId,
+      tourNumber: tourNumber || null,
+      earliestShipDate,
+      needsLabelWait: true,
+      legCount: legs.length,
+      locale,
+    })
+    noticeEmailSent = mail.sent
+  }
 
   return NextResponse.json({
     ok: true,
     bookingId,
     legCount: legs.length,
     needsLabelWait,
-    noticeEmailSent: mail.sent,
+    allIssued,
+    anyIssued,
+    labels: legOut
+      .filter((r) => r.issued && r.labelUrl)
+      .map((r) => ({ legIndex: r.legIndex, url: r.labelUrl })),
+    noticeEmailSent,
   })
 }

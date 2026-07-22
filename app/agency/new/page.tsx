@@ -7,7 +7,7 @@ import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search
 import {
   Loader2, Check, Plus, Trash2, ArrowLeft, Info,
   ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
-  UploadCloud, Sparkles, type LucideIcon,
+  UploadCloud, Sparkles, Download, type LucideIcon,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
@@ -116,11 +116,11 @@ const messages = {
       { title: "BondEx issues the documents", sub: "Voucher + shipping labels", key: false },
       { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
     ],
-    // 出荷が1ヶ月以内 → 待ち無しですぐ発行
+    // 出荷が1ヶ月以内 → その場で発行してすぐDL
     flowSoon: [
       { title: "Register request", sub: "Enter the itinerary (you are here)", key: false },
-      { title: "BondEx issues right away", sub: "Within a month — voucher + shipping labels", key: true },
-      { title: "Drive folder shared to your email", sub: "Open the voucher & labels inside", key: true },
+      { title: "Issued on the spot", sub: "Within a month — voucher + shipping label", key: true },
+      { title: "Download immediately", sub: "A copy is kept in the shared Drive", key: true },
     ],
     monthNote:
       "shipping labels can only be created from one month before the ship date. Once it's within a month we'll prepare everything and share a Google Drive folder with your registered email — the voucher and labels will be inside.",
@@ -131,6 +131,12 @@ const messages = {
       "shipping labels can only be created from one month before shipping. Once your ship date is within a month, we'll prepare everything and share a Google Drive folder with your registered email. The voucher and shipping labels will be inside.",
     doneSoon:
       "Your shipment is within a month, so we'll prepare the documents (voucher and shipping labels) right away and share a Google Drive folder with your registered email.",
+    doneReadyHeading: "Your documents are ready",
+    doneReadyBody:
+      "The voucher and shipping label have been issued — download them right below. A copy is also kept in the shared Google Drive.",
+    dlVoucher: "Download voucher",
+    dlLabel: "Download shipping label",
+    dlLeg: (n: number) => `Shipping label (leg ${n})`,
     doneBack: "Back to portal",
     errGeneric: "Could not register the request. Please try again.",
     errNetwork: "Network error. Please check your connection.",
@@ -195,11 +201,11 @@ const messages = {
       { title: "BondExが書類を発行", sub: "バウチャー＋配送伝票", key: false },
       { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
     ],
-    // 出荷が1ヶ月以内 → 待ち無しですぐ発行
+    // 出荷が1ヶ月以内 → その場で発行してすぐDL
     flowSoon: [
       { title: "発行依頼を登録", sub: "旅程を入力（今ここ）", key: false },
-      { title: "BondExがすぐ発行", sub: "1ヶ月以内なので即発行（バウチャー＋伝票）", key: true },
-      { title: "Driveフォルダをメールで共有", sub: "中の書類をご利用ください", key: true },
+      { title: "その場で発行", sub: "1ヶ月以内なので即発行（バウチャー＋伝票）", key: true },
+      { title: "すぐにダウンロード", sub: "共有ドライブにも保管します", key: true },
     ],
     monthNote:
       "配送伝票（送り状）は出荷日の1ヶ月前からしか発行できません。1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します（中にバウチャー・配送伝票が入ります）。",
@@ -210,6 +216,12 @@ const messages = {
       "配送伝票（送り状）は出荷の1ヶ月前からしか発行できません。出荷日の1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・配送伝票が入っています。",
     doneSoon:
       "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・配送伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
+    doneReadyHeading: "書類の準備ができました",
+    doneReadyBody:
+      "バウチャーと配送伝票（送り状）を発行しました。下のボタンからすぐにダウンロードできます。共有ドライブにも保管しています。",
+    dlVoucher: "バウチャーをダウンロード",
+    dlLabel: "送り状をダウンロード",
+    dlLeg: (n: number) => `送り状をダウンロード（区間${n}）`,
     doneBack: "ポータルに戻る",
     errGeneric: "発行依頼の登録に失敗しました。もう一度お試しください。",
     errNetwork: "通信エラーです。接続をご確認ください。",
@@ -237,7 +249,13 @@ export default function AgencyNewBookingPage() {
   >([])
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [error, setError] = useState("")
-  const [result, setResult] = useState<{ bookingId: string; needsLabelWait: boolean } | null>(null)
+  const [result, setResult] = useState<{
+    bookingId: string
+    needsLabelWait: boolean
+    allIssued: boolean
+    labels: Array<{ legIndex: number; url: string }>
+  } | null>(null)
+  const [dlBusy, setDlBusy] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseNote, setParseNote] = useState("")
   const [parseError, setParseError] = useState("")
@@ -381,11 +399,49 @@ export default function AgencyNewBookingPage() {
         setStatus("error")
         return
       }
-      setResult({ bookingId: data.bookingId, needsLabelWait: Boolean(data.needsLabelWait) })
+      setResult({
+        bookingId: data.bookingId,
+        needsLabelWait: Boolean(data.needsLabelWait),
+        allIssued: Boolean(data.allIssued),
+        labels: Array.isArray(data.labels) ? data.labels : [],
+      })
       setStatus("done")
     } catch {
       setError(t.errNetwork)
       setStatus("error")
+    }
+  }
+
+  // 成功画面からバウチャーを直接DL (代理店 JWT で自社限定エンドポイントを叩く)
+  const downloadVoucher = async (bookingId: string) => {
+    setDlBusy(true)
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (!token) {
+        setError(t.notLoggedIn)
+        return
+      }
+      const res = await fetch(`/api/agency/voucher?booking_id=${encodeURIComponent(bookingId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        alert(t.errNetwork)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${bookingId}_voucher.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert(t.errNetwork)
+    } finally {
+      setDlBusy(false)
     }
   }
 
@@ -442,22 +498,49 @@ export default function AgencyNewBookingPage() {
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
           </div>
 
-          {/* 書類の受け取り方法 — 大きく強調 */}
-          <div className="rounded-2xl border-2 border-[#FED7AA] bg-[#FFF7ED] p-6">
-            <div className="flex items-center gap-2 mb-3">
-              <FolderOpen className="w-5 h-5 text-[#C8102E]" strokeWidth={2} />
-              <p className="text-[15px] font-bold text-[#9A3412]">{t.doneShareHeading}</p>
+          {result.allIssued ? (
+            /* 1ヶ月以内 → 即発行済み。その場でDL */
+            <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Check className="w-5 h-5 text-emerald-700" strokeWidth={2.5} />
+                <p className="text-[15px] font-bold text-emerald-900">{t.doneReadyHeading}</p>
+              </div>
+              <p className="text-[14px] text-emerald-800 leading-[2] mb-4">{t.doneReadyBody}</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadVoucher(result.bookingId)}
+                  disabled={dlBusy}
+                  className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-[#C8102E] text-white text-[13px] font-bold hover:bg-[#a00d25] disabled:opacity-50"
+                >
+                  {dlBusy ? "…" : t.dlVoucher}
+                </button>
+                {result.labels.map((l) => (
+                  <a
+                    key={l.legIndex}
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl border border-[#C8102E] text-[#C8102E] text-[13px] font-bold hover:bg-[#FFF1F2]"
+                  >
+                    {result.labels.length > 1 ? t.dlLeg(l.legIndex + 1) : t.dlLabel}
+                  </a>
+                ))}
+              </div>
             </div>
-            <p className="text-[14px] text-[#7C2D12] leading-[2]">
-              {result.needsLabelWait ? t.doneWait : t.doneSoon}
-            </p>
-          </div>
-
-          <FlowDiagram
-            heading={t.flowHeading}
-            steps={result.needsLabelWait ? t.flow : t.flowSoon}
-            icons={result.needsLabelWait ? FLOW_ICONS : FLOW_ICONS_SOON}
-          />
+          ) : (
+            /* 1ヶ月超 → 発行窓の外。窓が開いたら発行してご連絡 */
+            <>
+              <div className="rounded-2xl border-2 border-[#FED7AA] bg-[#FFF7ED] p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <FolderOpen className="w-5 h-5 text-[#C8102E]" strokeWidth={2} />
+                  <p className="text-[15px] font-bold text-[#9A3412]">{t.doneShareHeading}</p>
+                </div>
+                <p className="text-[14px] text-[#7C2D12] leading-[2]">{t.doneWait}</p>
+              </div>
+              <FlowDiagram heading={t.flowHeading} steps={t.flow} icons={FLOW_ICONS} />
+            </>
+          )}
 
           <div className="text-center">
             <Link
@@ -733,7 +816,7 @@ export default function AgencyNewBookingPage() {
 
 const FLOW_ICONS: LucideIcon[] = [ClipboardList, CalendarClock, PackageCheck, MailCheck]
 // 1ヶ月以内 (待ち無し) 版: 待機ステップが無いのでカレンダー時計を使わない
-const FLOW_ICONS_SOON: LucideIcon[] = [ClipboardList, PackageCheck, MailCheck]
+const FLOW_ICONS_SOON: LucideIcon[] = [ClipboardList, PackageCheck, Download]
 
 function FlowDiagram({
   heading,
