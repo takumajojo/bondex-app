@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
-import { ensureAgencyFolder, isDriveConfigured } from "@/lib/google-drive"
+import { ensureAgencyFolder, cleanupRootBookingFolders, isDriveConfigured } from "@/lib/google-drive"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -40,5 +40,8 @@ export async function POST(req: NextRequest) {
         : { name, ok: false, error: r.error },
     )
   }
-  return NextResponse.json({ ok: true, results })
+  // 併せて root 直下に散らばった古い予約フォルダをゴミ箱へ (入れ子化前の残骸掃除)
+  const cleanup = await cleanupRootBookingFolders()
+
+  return NextResponse.json({ ok: true, results, cleanupTrashed: cleanup.trashed })
 }

@@ -260,6 +260,56 @@ export async function putBookingDocuments(
 }
 
 /**
+ * 共有ドライブ直下に散らばった予約フォルダ (BDX-* が root 直下にあるもの) をゴミ箱へ移す。
+ * 入れ子化する前の古い残骸の掃除用。代理店フォルダ (BondEx Test Agency 等) は
+ * "BDX-" を含まないので対象外。ゴミ箱移動なので 30 日は復元可能。
+ */
+export async function cleanupRootBookingFolders(): Promise<{
+  ok: boolean
+  trashed: string[]
+  error?: string
+}> {
+  const creds = loadCredentials()
+  if (!creds || !ROOT_ID) return { ok: false, trashed: [], error: "Google Drive not configured" }
+  try {
+    const token = await getAccessToken(creds)
+    const query = [
+      "mimeType='application/vnd.google-apps.folder'",
+      `'${ROOT_ID}' in parents`,
+      "name contains 'BDX-'",
+      "trashed=false",
+    ].join(" and ")
+    const url = new URL(DRIVE_FILES)
+    url.searchParams.set("q", query)
+    url.searchParams.set("fields", "files(id,name)")
+    url.searchParams.set("supportsAllDrives", "true")
+    url.searchParams.set("includeItemsFromAllDrives", "true")
+    url.searchParams.set("corpora", "drive")
+    url.searchParams.set("driveId", ROOT_ID)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const data = (await res.json().catch(() => ({}))) as {
+      files?: Array<{ id: string; name: string }>
+      error?: { message?: string }
+    }
+    if (!res.ok) return { ok: false, trashed: [], error: data.error?.message || String(res.status) }
+    const trashed: string[] = []
+    for (const f of data.files ?? []) {
+      const patchUrl = new URL(`${DRIVE_FILES}/${f.id}`)
+      patchUrl.searchParams.set("supportsAllDrives", "true")
+      const del = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ trashed: true }),
+      })
+      if (del.ok) trashed.push(f.name)
+    }
+    return { ok: true, trashed }
+  } catch (err) {
+    return { ok: false, trashed: [], error: err instanceof Error ? err.message : "Drive error" }
+  }
+}
+
+/**
  * 代理店フォルダ (共有ドライブ直下) を find-or-create する。
  * 新規代理店の追加時に呼び、予約が無くても代理店フォルダを先に用意しておく。
  */
