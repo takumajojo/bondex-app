@@ -42,7 +42,7 @@ import { carrierConfig, slotLabel } from "@/lib/carrier"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 import { OperatorCardReminder } from "@/components/operator-card-reminder"
 import { buildVoucherFileName } from "@/lib/utils"
-import type { GuestLanguage } from "@/lib/guest-language"
+import { normalizeGuestLanguage, type GuestLanguage } from "@/lib/guest-language"
 
 const FLAT_RATE_YEN = 5000
 
@@ -455,6 +455,35 @@ interface ParsedItinerary {
   shipments: ParsedShipment[]
 }
 
+/** GET /api/operator/request の 1 区間ぶんの行 (代理店の発行依頼を発行画面へ復元する)。 */
+interface RequestRow {
+  booking_id: string
+  leg_index: number
+  agency: string | null
+  status: string | null
+  representative: string | null
+  booking_name: string | null
+  group_name: string | null
+  traveler_count: number | null
+  tour_number: string | null
+  carrier: string | null
+  guest_language: string | null
+  shipment_date: string | null
+  expected_arrival: string | null
+  delivery_time: string | null
+  from_hotel: string | null
+  from_city: string | null
+  from_place_id: string | null
+  from_check_in: string | null
+  to_hotel: string | null
+  to_city: string | null
+  to_place_id: string | null
+  to_check_out: string | null
+  recipient: string | null
+  suitcase_count: number | null
+  notes: string | null
+}
+
 // 編集可能な State: パース結果に suitcaseCount + 備考 + 予約者情報など
 interface EditableShipment extends ParsedShipment {
   suitcaseCount: number
@@ -480,6 +509,10 @@ interface EditableItinerary {
   tourNumber?: string
   /** 配送キャリア (sagawa=佐川 / yamato=ヤマト)。既定=佐川 (スーツケースは佐川が安い)。 */
   carrier?: string
+  /** 代理店の発行依頼から読み込んだ場合の既存 Booking ID。
+   *  指定時は発行でこの ID を再利用し、requested 予約を upsert で発行済みに更新する
+   *  (新規採番しない = 予約番号・tour_number・drive_url を維持)。 */
+  bookingId?: string
 }
 
 type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generated" | "error"
@@ -625,6 +658,8 @@ export default function OperatorPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // 代理店の発行依頼から読み込んだ場合の出所表示 (レビュー画面のバナー用)
+  const [fromRequest, setFromRequest] = useState<{ bookingId: string; agency: string } | null>(null)
 
   // 画面遷移のたびに先頭にスクロール。前の画面のスクロール位置を引き継ぐと、
   // 次の画面が「途中から始まっている」ように見えてしまうため。
@@ -638,6 +673,81 @@ export default function OperatorPage() {
     const loaded = loadSettings()
     setSettings(loaded)
     if (!loaded) setSettingsOpen(true)
+  }, [])
+
+  // 代理店の発行依頼 (?requestId=BDX-...) から発行画面を復元する。
+  // 既存の発行パイプライン (バウチャー + Ship&co + 検証) をそのまま使い、
+  // operator がレビュー→発行する。booking_id を維持するため upsert で
+  // requested→issued に更新される (新規採番しない)。
+  useEffect(() => {
+    const requestId = new URLSearchParams(window.location.search).get("requestId")?.trim()
+    if (!requestId) return
+    let cancelled = false
+    ;(async () => {
+      setPhase("parsing")
+      try {
+        const res = await fetch(
+          `/api/operator/request?booking_id=${encodeURIComponent(requestId)}`,
+        )
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(body.error || res.statusText)
+        }
+        const { booking } = (await res.json()) as { booking: RequestRow[] }
+        if (cancelled) return
+        if (!Array.isArray(booking) || booking.length === 0) throw new Error("Not found")
+        const head = booking[0]
+        const shipments: EditableShipment[] = booking.map((r) => ({
+          shipmentDate: r.shipment_date ?? "",
+          expectedArrival: r.expected_arrival ?? "",
+          from: {
+            hotel: r.from_hotel ?? "",
+            address: "",
+            city: r.from_city ?? "",
+            placeId: r.from_place_id ?? undefined,
+          },
+          to: {
+            hotel: r.to_hotel ?? "",
+            address: "",
+            city: r.to_city ?? "",
+            placeId: r.to_place_id ?? undefined,
+          },
+          recipient: r.recipient ?? "",
+          suitcaseCount: r.suitcase_count ?? 1,
+          specialNote: r.notes ?? "",
+          deliveryTime: r.delivery_time ?? undefined,
+          bookingName: r.booking_name ?? undefined,
+          fromCheckIn: r.from_check_in ?? undefined,
+          toCheckOut: r.to_check_out ?? undefined,
+        }))
+        const editable: EditableItinerary = {
+          bookingId: head.booking_id,
+          guest: {
+            familyName: head.group_name ?? "",
+            travelerCount: head.traveler_count ?? 1,
+            travelers: head.representative
+              ? [{ name: head.representative, title: "", type: "adult" }]
+              : [],
+            showGroupName: !!head.group_name,
+          },
+          shipments,
+          guestLanguage: normalizeGuestLanguage(head.guest_language),
+          tourNumber: head.tour_number ?? undefined,
+          carrier: head.carrier ?? "sagawa",
+        }
+        setItinerary(editable)
+        setVerifications(emptyVerifications(shipments.length))
+        setFromRequest({ bookingId: head.booking_id, agency: head.agency ?? "" })
+        setPhase("review")
+      } catch (e) {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : "発行依頼の読み込みに失敗しました")
+        setPhase("error")
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const onSaveSettings = useCallback((next: OperatorSettings) => {
@@ -661,6 +771,7 @@ export default function OperatorPage() {
   const reset = useCallback(() => {
     setPhase("idle")
     setItinerary(null)
+    setFromRequest(null)
     setFileName("")
     setError("")
     setVerifications({ representative: false, legs: [] })
@@ -823,7 +934,8 @@ export default function OperatorPage() {
     const dd = String(now.getDate()).padStart(2, "0")
     // 十分なエントロピー (衝突→他社予約の上書き / track 列挙を防ぐ)。lib の generateBookingId と同方式。
     const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()
-    const sharedBookingId = `BDX-${yy}${mm}${dd}-${rand}`
+    // 発行依頼から読み込んだ場合は既存 ID を再利用 (upsert で requested→issued に更新)。
+    const sharedBookingId = itinerary.bookingId?.trim() || `BDX-${yy}${mm}${dd}-${rand}`
 
     const tourCompanyFromSettings = settings?.tourCompany || ""
     const payload = {
@@ -1392,6 +1504,14 @@ export default function OperatorPage() {
           </section>
         )}
 
+        {phase === "review" && itinerary && fromRequest && (
+          <div className="mb-4 rounded-lg border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+            <span className="font-semibold">代理店の発行依頼を読み込みました。</span>{" "}
+            {fromRequest.agency ? `${fromRequest.agency}／` : ""}予約番号{" "}
+            <span className="font-mono">{fromRequest.bookingId}</span>
+            。内容を確認し、そのまま発行してください（予約番号は維持されます）。
+          </div>
+        )}
         {phase === "review" && itinerary && (
           <ReviewView
             t={t}

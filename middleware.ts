@@ -57,6 +57,7 @@ export const config = {
     "/api/places/search",
     "/api/shipments",
     "/api/shipments/duplicate-check",
+    "/api/operator/request",
     "/api/voucher/labels",
     "/api/invoices/generate",
     "/api/agencies",

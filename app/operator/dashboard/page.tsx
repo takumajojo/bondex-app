@@ -504,23 +504,35 @@ export default function DashboardPage() {
                           </p>
                         )}
                         <div className="mt-1 flex flex-col gap-0.5">
-                          <a
-                            href={`/api/voucher/regenerate?booking_id=${encodeURIComponent(it.booking_id)}`}
-                            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                            title="Voucher PDF を再ダウンロード (発行時の言語で出ます)"
-                          >
-                            <RefreshCw className="w-2.5 h-2.5" strokeWidth={1.5} />
-                            Voucher 再発行
-                          </a>
-                          {it.yamato_label_url && (
+                          {it.status === "requested" ? (
                             <a
-                              href={`/api/voucher/labels?booking_id=${encodeURIComponent(it.booking_id)}`}
-                              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                              title="この予約の全区間の送り状を 1 つの PDF で"
+                              href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+                              title="代理店の発行依頼を発行画面に読み込み、レビューして発行します"
                             >
-                              <Download className="w-2.5 h-2.5" strokeWidth={1.5} />
-                              送り状一括
+                              この依頼を発行 →
                             </a>
+                          ) : (
+                            <>
+                              <a
+                                href={`/api/voucher/regenerate?booking_id=${encodeURIComponent(it.booking_id)}`}
+                                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                                title="Voucher PDF を再ダウンロード (発行時の言語で出ます)"
+                              >
+                                <RefreshCw className="w-2.5 h-2.5" strokeWidth={1.5} />
+                                Voucher 再発行
+                              </a>
+                              {it.yamato_label_url && (
+                                <a
+                                  href={`/api/voucher/labels?booking_id=${encodeURIComponent(it.booking_id)}`}
+                                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                                  title="この予約の全区間の送り状を 1 つの PDF で"
+                                >
+                                  <Download className="w-2.5 h-2.5" strokeWidth={1.5} />
+                                  送り状一括
+                                </a>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
