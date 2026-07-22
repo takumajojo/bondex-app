@@ -212,6 +212,29 @@ export function parseJpAddressString(addr: string): {
   }
 }
 
+/**
+ * 番地の正規化 — 佐川 (e飛伝) は「44番地1」形式を郵便番号と不一致 (E2-0004) で弾く。
+ * Ship&co ダッシュボードで通る形は「44-1」。全角数字/ハイフンを半角に、
+ * 数字に続く 丁目/番地/番/号 をハイフンに畳む。
+ *
+ * 数字が前置する場合のみ変換するため、町名に含まれる「一番町」等 (数字なしの番) は
+ * 壊さない。ヤマト経路では使わない (過去実績のあるマッピングを維持するため)。
+ * 例: 東九条上殿田町44番地1 → 東九条上殿田町44-1 / 西浅草3丁目17番1号 → 西浅草3-17-1
+ */
+export function normalizeBanchi(s: string): string {
+  return (s || "")
+    .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)) // 全角数字→半角
+    .replace(/[−－–—ー]/g, "-") // 全角ハイフン類→半角
+    .replace(/(\d+)丁目/g, "$1-") // 3丁目 → 3-
+    .replace(/(\d+)番地(\d+)号?/g, "$1-$2") // 44番地1 / 44番地1号 → 44-1
+    .replace(/(\d+)番(\d+)号?/g, "$1-$2") // 17番1号 → 17-1
+    .replace(/(\d+)番地/g, "$1") // 44番地 → 44
+    .replace(/(\d+)号/g, "$1") // 1号 → 1
+    .replace(/-{2,}/g, "-") // 連続ハイフンを1つに
+    .replace(/-$/, "") // 末尾ハイフン除去
+    .trim()
+}
+
 // Yamato (Ship&co) 構造 — Ship&co の field マッピング:
 //   province : 都道府県 (例: 千葉県)
 //   city     : 市区郡町村 (例: 千葉市美浜区) ← Yamato 補助
@@ -453,7 +476,7 @@ async function resolveYamatoAddress(
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
     city: cityWard,
-    address1: isYamato ? cityWard : streetOnly || cityWard,
+    address1: isYamato ? cityWard : normalizeBanchi(streetOnly) || cityWard,
     address2: isYamato ? fullPath : "",
     extra: "",
   }
