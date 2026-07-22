@@ -325,6 +325,10 @@ function pickComponent(components: AddressComponent[], type: string): string {
 // Yamato は full_name+company を結合して shipper_name にする可能性があるため長すぎ厳禁 (ES001023)。
 const SENDER_FULL_NAME = "BondEx"
 const SENDER_COMPANY = "手荷物配送代行"
+// ご依頼主(集荷連絡先)の TEL は環境変数で固定できる。設定時は sender に優先適用。
+// 実番号をコード/リポジトリに残さないための仕組み。未設定なら発送元ホテルの電話、
+// それも無ければ 0 埋め (FALLBACK_PHONE) にフォールバックする。
+const SENDER_PHONE = process.env.BONDEX_SENDER_PHONE?.replace(/[^\d+]/g, "") || ""
 
 // Google Places (language=ja) でホテルを検索し、Yamato 形式の構造化住所を返す.
 // 失敗時はホテル名のみのフォールバックを返す (Ship&co は zip 必須なので最終的に弾かれる)
@@ -440,6 +444,8 @@ async function resolveYamatoAddress(
   let phone = result?.international_phone_number ?? ""
   phone = phone.replace(/[^\d+]/g, "")
   if (!phone) phone = FALLBACK_PHONE
+  // ご依頼主(集荷連絡先)は env で固定可能。設定時は発送元の電話に優先。
+  if (isSender && SENDER_PHONE) phone = SENDER_PHONE
 
   // ご依頼主 (sender) = "BondEx" 固定 (ES001023 長すぎ対策)
   // お届け先様名 (recipient) = 宿泊者名 (運送業法上 必須)。
