@@ -566,10 +566,6 @@ export default function AgencyNewBookingPage() {
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder={t.groupNamePlaceholder} autoComplete="off" />
             </Field>
-            <Field label={t.travelerCount} htmlFor="tc">
-              <input id="tc" type="number" min={1} max={99} className={inputCls} value={travelerCount}
-                onChange={(e) => setTravelerCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
-            </Field>
             <Field label={t.guestLanguage} htmlFor="gl">
               <select id="gl" className={inputCls} value={guestLanguage}
                 onChange={(e) => setGuestLanguage(e.target.value)}>

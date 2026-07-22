@@ -38,18 +38,10 @@ export const metadata: Metadata = {
     images: ['/og-image.jpg'],
   },
   icons: {
-    // BondEx ロゴの頭文字モノグラム — 再生成: python3 scripts/generate-favicons.py
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-    ],
-    apple: '/apple-icon.png',
+    // BondEx モノグラム (赤地 + 白B)。再生成: python3 scripts/generate-favicons.py
+    // ?v= はブラウザのファビコンキャッシュを更新するためのバージョン。差し替え時に上げる。
+    icon: [{ url: '/icon-light-32x32.png?v=2', type: 'image/png', sizes: '32x32' }],
+    apple: '/apple-icon.png?v=2',
   },
   verification: {
     google: 'YyLHJbV0atoJ5ZBJmZ-HkygRp-IVkLwGVZzN3Dn6xwQ',
