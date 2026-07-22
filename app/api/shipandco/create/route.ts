@@ -320,10 +320,11 @@ function pickComponent(components: AddressComponent[], type: string): string {
   return components.find((c) => c.types.includes(type))?.long_name ?? ""
 }
 
-// 依頼主 (sender) は BondEx 固定 (ES001023 ご依頼主名が長すぎ対策).
-// Yamato は shipper_name に full_name と company を結合した値を使う可能性があるため両方短くする.
+// 依頼主 (sender) = BondEx が手荷物配送を「代行手配」していることを送り状で明示する。
+// 氏名欄=BondEx / 法人名欄=手荷物配送代行 に分け、旧「BondEx が2行に重複」を解消。
+// Yamato は full_name+company を結合して shipper_name にする可能性があるため長すぎ厳禁 (ES001023)。
 const SENDER_FULL_NAME = "BondEx"
-const SENDER_COMPANY = "BondEx"
+const SENDER_COMPANY = "手荷物配送代行"
 
 // Google Places (language=ja) でホテルを検索し、Yamato 形式の構造化住所を返す.
 // 失敗時はホテル名のみのフォールバックを返す (Ship&co は zip 必須なので最終的に弾かれる)
