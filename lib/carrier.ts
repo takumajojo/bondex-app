@@ -80,8 +80,8 @@ export const ALL_TIME_SLOTS: readonly string[] = Array.from(
 
 /** 配達時間帯コードの表示ラベル (両キャリア分を一元管理)。 */
 export const TIME_SLOT_LABELS: Record<string, { ja: string; en: string }> = {
-  "not-specified": { ja: "指定なし（推奨）", en: "Not specified (recommended)" },
-  "before-noon": { ja: "午前中", en: "Before noon" },
+  "not-specified": { ja: "指定なし（日付確実）", en: "Not specified (guarantees the date)" },
+  "before-noon": { ja: "午前中（推奨）", en: "Before noon (recommended)" },
   "before-ten": { ja: "10時まで", en: "Before 10:00" },
   "before-five": { ja: "17時まで", en: "Before 17:00" },
   "12-14": { ja: "12時〜14時", en: "12:00–14:00" },

@@ -7,7 +7,7 @@ import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search
 import {
   Loader2, Check, Plus, Trash2, ArrowLeft, Info,
   ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
-  UploadCloud, Sparkles, Download, type LucideIcon,
+  UploadCloud, Sparkles, Download, AlertTriangle, type LucideIcon,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
@@ -42,7 +42,7 @@ const emptyLeg = (): Leg => ({
   expectedArrival: "",
   fromCheckIn: "",
   toCheckOut: "",
-  deliveryTime: "not-specified", // 既定は「時間指定なし」(翌日午前必着は業者保証外のため安全側)
+  deliveryTime: "before-noon", // 既定は午前中着 (ランオペの基本希望)。翌日着×午前中はタイト警告を出す
   recipient: "",
   suitcaseCount: 1,
   notes: "",
@@ -85,7 +85,9 @@ const messages = {
     fromCheckIn: "Check-in at pickup hotel (optional)",
     toCheckOut: "Check-out at delivery hotel (optional)",
     deliveryTime: "Delivery time slot",
-    nextDayRisk: "For next-day arrival, morning slots may not be guaranteed.",
+    nextDayRisk:
+      "This schedule is tight — with a morning slot we can't promise the arrival date. To lock the date in, remove the time slot. Keep \"Before noon\" anyway?",
+    removeTimeSlot: "Remove the time slot (lock the date)",
     deliverySlots: {
       "not-specified": "Not specified",
       "before-noon": "Before noon (recommended)",
@@ -170,7 +172,9 @@ const messages = {
     fromCheckIn: "発送元ホテルのチェックイン日（任意）",
     toCheckOut: "お届け先ホテルのチェックアウト日（任意）",
     deliveryTime: "配達時間帯",
-    nextDayRisk: "翌日到着では午前中の指定が難しい場合があります。",
+    nextDayRisk:
+      "この日程だと「午前中」では配達日をお約束できません。日付を確実にするには時間指定を外してください。それでも午前中にしますか？",
+    removeTimeSlot: "時間指定を外す（日付を確実にする）",
     deliverySlots: {
       "not-specified": "指定なし",
       "before-noon": "午前中（推奨）",
@@ -353,7 +357,7 @@ export default function AgencyNewBookingPage() {
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
           fromCheckIn: "",
           toCheckOut: "",
-          deliveryTime: "not-specified",
+          deliveryTime: "before-noon",
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
           notes: "",
@@ -750,10 +754,19 @@ export default function AgencyNewBookingPage() {
                   ))}
                 </select>
                 {isNextDayEarlySlotRisky(leg.shipmentDate, leg.expectedArrival, leg.deliveryTime) && (
-                  <p className="text-[11px] text-amber-600 flex items-start gap-1">
-                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={1.6} />
-                    {t.nextDayRisk}
-                  </p>
+                  <div className="mt-1.5 rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
+                    <p className="text-[12px] text-amber-900 font-medium flex items-start gap-1.5 leading-relaxed">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={2} />
+                      {t.nextDayRisk}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => updateLeg(i, { deliveryTime: "not-specified" })}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 underline underline-offset-2 hover:text-amber-950"
+                    >
+                      {t.removeTimeSlot}
+                    </button>
+                  </div>
                 )}
               </div>
               <Field label={t.notes} htmlFor={`nt${i}`}>

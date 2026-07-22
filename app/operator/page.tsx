@@ -161,7 +161,8 @@ const messages = {
     deliveryTime1820: "18:00 – 20:00",
     deliveryTime1921: "19:00 – 21:00",
     deliveryTimeNextDayRisk:
-      "This is a next-day delivery — morning slots may not be reliably honored for this route. Consider a later time slot or a later arrival date.",
+      "This schedule is tight — with a morning slot the arrival date can't be promised. To lock the date in, remove the time slot. Keep \"Before noon\" anyway?",
+    removeTimeSlot: "Remove the time slot (lock the date)",
     optional: "(optional)",
     addLegBtn: "Add another leg",
     removeLeg: "Remove",
@@ -322,7 +323,8 @@ const messages = {
     deliveryTime1820: "18時〜20時",
     deliveryTime1921: "19時〜21時",
     deliveryTimeNextDayRisk:
-      "発送日の翌日到着のご指定です。エリアによっては午前中のお届けが難しい場合があります。時間帯を後ろにずらすか、到着日を後ろに変更することもご検討ください。",
+      "この日程だと「午前中」では配達日をお約束できません。日付を確実にするには時間指定を外してください。それでも午前中にしますか？",
+    removeTimeSlot: "時間指定を外す（日付を確実にする）",
     optional: "(任意)",
     addLegBtn: "区間を追加",
     removeLeg: "削除",
@@ -996,7 +998,7 @@ export default function OperatorPage() {
             carrier: itinerary!.carrier ?? "sagawa", // 既定=佐川
             shipmentDate: s.shipmentDate,
             deliveryDate: s.expectedArrival,
-            deliveryTime: s.deliveryTime || "not-specified",
+            deliveryTime: s.deliveryTime || "before-noon",
             suitcaseCount: s.suitcaseCount,
             from: {
               hotel: s.from.hotel,
@@ -1967,7 +1969,7 @@ function ShipmentRow({
     shipment.shipmentDate &&
     shipment.expectedArrival &&
     !isValidDeliveryDate(shipment.expectedArrival, shipment.shipmentDate, "standard")
-  const deliveryTime = shipment.deliveryTime || "not-specified"
+  const deliveryTime = shipment.deliveryTime || "before-noon"
   const nextDayRisk =
     !!shipment.shipmentDate &&
     !!shipment.expectedArrival &&
@@ -2142,9 +2144,18 @@ function ShipmentRow({
           </select>
         </div>
         {nextDayRisk && (
-          <p className="text-[11px] text-amber-700 font-medium" role="alert">
-            ⚠ {t.deliveryTimeNextDayRisk}
-          </p>
+          <div className="mt-1.5 max-w-xs rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2" role="alert">
+            <p className="text-[12px] text-amber-900 font-medium leading-relaxed">
+              ⚠ {t.deliveryTimeNextDayRisk}
+            </p>
+            <button
+              type="button"
+              onClick={() => onUpdate(index, { deliveryTime: "not-specified" })}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 underline underline-offset-2 hover:text-amber-950"
+            >
+              {t.removeTimeSlot}
+            </button>
+          </div>
         )}
       </div>
 

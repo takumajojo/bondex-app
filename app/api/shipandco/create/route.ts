@@ -542,7 +542,7 @@ export async function POST(req: NextRequest) {
   // 佐川とヤマトで時間帯コード体系が異なる (lib/carrier)。エリア/サービス可否は
   // キャリア側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
   const rawDeliveryTime = typeof body.deliveryTime === "string" ? body.deliveryTime.trim() : ""
-  const deliveryTime = carrier.timeSlots.includes(rawDeliveryTime) ? rawDeliveryTime : "not-specified"
+  const deliveryTime = carrier.timeSlots.includes(rawDeliveryTime) ? rawDeliveryTime : "before-noon"
 
   const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
   // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
