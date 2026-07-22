@@ -947,10 +947,9 @@ function VoucherPage({
           <View style={[vs.detailCell, { width: "25%" }]}>
             <Text style={vs.dk}>GUEST / ご予約者</Text>
             <Text style={vs.dv}>{guestName}</Text>
-            <Text style={vs.dvSmall}>
-              {data.groupName ? `${safeText(data.groupName)} ・ ` : ""}
-              {data.travelerCount} guest{data.travelerCount === 1 ? "" : "s"} / {data.travelerCount}名様
-            </Text>
+            {data.groupName ? (
+              <Text style={vs.dvSmall}>{safeText(data.groupName)}</Text>
+            ) : null}
           </View>
           <View style={[vs.detailCell, { width: "25%" }]}>
             <Text style={vs.dk}>LUGGAGE / お荷物</Text>
