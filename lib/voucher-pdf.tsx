@@ -253,16 +253,6 @@ function dowLabel(ymd: string): string {
   return `(${DOW_EN[dow]})`
 }
 
-/** a → b の泊数 (どちらか欠け・逆転時は null) */
-function nightsBetween(a?: string, b?: string): number | null {
-  if (!a || !b) return null
-  const pa = parseYmd(a)
-  const pb = parseYmd(b)
-  if (!pa || !pb) return null
-  const diff =
-    (Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / 86400000
-  return diff > 0 ? diff : null
-}
 
 /** 区間サフィックス: 0 → A, 1 → B ... 25 → Z, それ以降は L27 形式 */
 export function legSuffix(index: number): string {
@@ -595,6 +585,7 @@ const vs = StyleSheet.create({
     paddingHorizontal: mm(2.2),
   },
   lookupCellName: { width: "42%" },
+  lookupCellNameWide: { width: "78%" }, // 日付欄が無い時 (発送元・チェックアウト日なし)
   lookupCellCheckin: { width: "36%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
   lookupCellRoom: { width: "22%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
   lk: { fontSize: 5.3, letterSpacing: 0.4, color: MUTED, lineHeight: 1.3 },
@@ -759,26 +750,29 @@ function FlowStep({ num, main, sub, color }: { num: string; main: string; sub?: 
 
 function LookupGrid({
   guestName,
-  checkIn,
-  nights,
+  dateEn,
+  dateJa,
+  dateValue,
 }: {
   guestName: string
-  checkIn?: string
-  nights: number | null
+  // 日付欄 (任意)。dateValue がある時だけ表示 (発送先のチェックアウト日など)。
+  dateEn?: string
+  dateJa?: string
+  dateValue?: string
 }) {
+  const showDate = !!(dateValue && dateEn)
   return (
     <View style={vs.lookupGrid}>
-      <View style={[vs.lookupCell, vs.lookupCellName]}>
+      <View style={[vs.lookupCell, showDate ? vs.lookupCellName : vs.lookupCellNameWide]}>
         <Text style={[vs.lk, vs.lkPrimary]}>GUEST NAME{"\n"}ご予約者名</Text>
         <Text style={vs.lvPrimary}>{guestName}</Text>
       </View>
-      <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
-        <Text style={[vs.lk, vs.lkPrimary]}>CHECK-IN{"\n"}チェックイン日</Text>
-        <Text style={vs.lvPrimary}>
-          {checkIn ? formatJpDate(checkIn) : "—"}
-          {nights !== null ? <Text style={vs.lvNights}> ～{nights}泊</Text> : null}
-        </Text>
-      </View>
+      {showDate && (
+        <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
+          <Text style={[vs.lk, vs.lkPrimary]}>{dateEn}{"\n"}{dateJa}</Text>
+          <Text style={vs.lvPrimary}>{formatJpDate(dateValue!)}</Text>
+        </View>
+      )}
       <View style={[vs.lookupCell, vs.lookupCellRoom]}>
         <Text style={vs.lk}>ROOM NO.{"\n"}お部屋番号</Text>
         <View style={vs.lvBlank} />
@@ -813,8 +807,6 @@ function VoucherPage({
   const toHotel = jb(shipment.to.hotel)
   const fromHotelJa = safeText(shipment.from.hotel)
   const toHotelJa = safeText(shipment.to.hotel)
-  const nightsFrom = nightsBetween(shipment.fromCheckIn, shipment.shipmentDate)
-  const nightsTo = nightsBetween(shipment.expectedArrival, shipment.toCheckOut)
   // ゲスト言語 (en / zh / it / fr / es)。zh のみ NotoSansSC で描画 (JP フォントに簡体字が無い)。
   // it/fr/es はラテン文字のためNotoSansJPのフォールバックで描画可能 (アクセント付き文字も含めて確認済み)。
   const lang: GuestLanguage = normalizeGuestLanguage(data.guestLanguage)
@@ -1071,11 +1063,7 @@ function VoucherPage({
         <View style={vs.hdBlock}>
           <Text style={[vs.hdNo, { color: RED }]}>01 発送元</Text>
           <Text style={vs.hdHotel}>{fromHotelJa}{jb(" 様")}</Text>
-          <LookupGrid
-            guestName={guestName}
-            checkIn={shipment.fromCheckIn}
-            nights={nightsFrom}
-          />
+          <LookupGrid guestName={guestName} />
           <Text style={vs.hdNote}>
             {jb("チェックアウト時にお客様が、本バウチャーと")}
             <Text style={vs.hdNoteStrong}>{jb("お荷物と同じ枚数の印字済み送り状")}</Text>
@@ -1092,8 +1080,9 @@ function VoucherPage({
           <Text style={vs.hdHotel}>{toHotelJa}{jb(" 様")}</Text>
           <LookupGrid
             guestName={guestName}
-            checkIn={shipment.expectedArrival}
-            nights={nightsTo}
+            dateEn="CHECK-OUT"
+            dateJa="チェックアウト日"
+            dateValue={shipment.toCheckOut}
           />
           <Text style={vs.hdNote}>
             <Text style={vs.hdNoteStrong}>{formatJpDate(shipment.expectedArrival)}</Text>
