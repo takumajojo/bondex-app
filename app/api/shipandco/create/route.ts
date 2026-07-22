@@ -252,6 +252,7 @@ interface YamatoAddress {
   city: string
   address1: string
   address2: string
+  address3?: string
   extra: string
 }
 
@@ -468,16 +469,40 @@ async function resolveYamatoAddress(
   //   ヤマト (過去実績のあるマッピング d345ef9): address1=市区 / address2=市区+町名+番地
   //     (Yamato parser が address2 から 市区郡町村 を抽出)。既存動作を壊さないため据え置き。
   const isYamato = carrierType === "yamato"
+  const building = isSender ? SENDER_COMPANY : (result?.name ?? hotelName)
+
+  if (isYamato) {
+    // ヤマト: 過去実績のあるマッピング (address1=市区 / address2=市区+町名+番地)。据え置き。
+    return {
+      full_name: fullName,
+      company: building,
+      phone,
+      country: "JP",
+      zip: zip || FALLBACK_ZIP,
+      province: prefecture,
+      city: cityWard,
+      address1: cityWard,
+      address2: fullPath,
+      extra: "",
+    }
+  }
+
+  // 佐川: Ship&co の 住所1=市区町村 / 住所2=町名+番地 / 住所3=建物名 の3段構成に合わせる。
+  // 谷口さんの Ship&co ダッシュボード手動発行で E2-0004 なく通った構成を再現 (2026-07-22)。
+  //   都道府県 = 京都府 / 住所1 = 京都市南区 / 住所2 = 東九条上殿田町44-1 / 住所3 = 建物名
+  // JP のフォームに市区町村の独立欄は無く、区は住所1(address1)に入る。city は空にして
+  // 区の二重計上 (→ E2-0004「郵便番号と住所が一致しない」) を防ぐ。
   return {
     full_name: fullName,
-    company: isSender ? SENDER_COMPANY : (result?.name ?? hotelName),
+    company: building,
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
     province: prefecture,
-    city: cityWard,
-    address1: isYamato ? cityWard : normalizeBanchi(streetOnly) || cityWard,
-    address2: isYamato ? fullPath : "",
+    city: "",
+    address1: cityWard,
+    address2: normalizeBanchi(streetOnly),
+    address3: building,
     extra: "",
   }
 }
