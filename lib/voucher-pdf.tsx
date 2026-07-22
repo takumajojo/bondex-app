@@ -769,18 +769,18 @@ function LookupGrid({
   return (
     <View style={vs.lookupGrid}>
       <View style={[vs.lookupCell, vs.lookupCellName]}>
-        <Text style={[vs.lk, vs.lkPrimary]}>GUEST NAME / ご予約者名</Text>
+        <Text style={[vs.lk, vs.lkPrimary]}>GUEST NAME{"\n"}ご予約者名</Text>
         <Text style={vs.lvPrimary}>{guestName}</Text>
       </View>
       <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
-        <Text style={[vs.lk, vs.lkPrimary]}>CHECK-IN / チェックイン日</Text>
+        <Text style={[vs.lk, vs.lkPrimary]}>CHECK-IN{"\n"}チェックイン日</Text>
         <Text style={vs.lvPrimary}>
           {checkIn ? formatJpDate(checkIn) : "—"}
           {nights !== null ? <Text style={vs.lvNights}> ～{nights}泊</Text> : null}
         </Text>
       </View>
       <View style={[vs.lookupCell, vs.lookupCellRoom]}>
-        <Text style={vs.lk}>ROOM NO. / お部屋番号</Text>
+        <Text style={vs.lk}>ROOM NO.{"\n"}お部屋番号</Text>
         <View style={vs.lvBlank} />
       </View>
     </View>
