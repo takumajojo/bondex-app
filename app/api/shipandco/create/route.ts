@@ -703,6 +703,12 @@ export async function POST(req: NextRequest) {
   const dateSuffix = deliveryDate ? formatYmdShortJp(deliveryDate) : ""
   const refNumberWithDate = dateSuffix ? `${refNumber} ${dateSuffix}` : refNumber
 
+  // 本番発行スイッチ (fail-safe): 環境変数 SHIPANDCO_LIVE が厳密に "true" のときだけ
+  // 実ラベル (課金・実集荷・取消不可) を発行する。未設定・空・タイプミス等は必ずテスト扱い。
+  // 本番化は Vercel で SHIPANDCO_LIVE=true を設定 → 再デプロイ。戻すときは削除/false。
+  const isLive = process.env.SHIPANDCO_LIVE === "true"
+  console.log(`[shipandco/create] mode=${isLive ? "LIVE(本番・実ラベル)" : "TEST(テスト)"} carrier=${carrier.id} ref=${refNumberWithDate}`)
+
   const payload = {
     from_address: fromAddr,
     to_address: toAddr,
@@ -720,7 +726,7 @@ export async function POST(req: NextRequest) {
       // 配達時間帯 — 標準で午前中 (before-noon)。
       time: deliveryTime,
       pack_amount: suitcaseCount,
-      test: true, // POC 固定
+      test: !isLive, // SHIPANDCO_LIVE=true のときだけ本番(実ラベル)。既定はテスト。
     },
     // 品名は1行に集約 (スーツケース / 代表者名 / チェックイン日). 個数は quantity で持たせる.
     products: [
