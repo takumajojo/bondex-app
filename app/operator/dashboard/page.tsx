@@ -142,6 +142,40 @@ export default function DashboardPage() {
     }
   }
 
+  // 予約の書類 (バウチャー+送り状) を共有ドライブの予約番号フォルダに格納
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const syncDrive = useCallback(
+    async (bookingId: string) => {
+      setSyncingId(bookingId)
+      try {
+        const res = await fetch("/api/operator/drive-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookingId }),
+        })
+        const data = (await res.json().catch(() => ({}))) as {
+          folderUrl?: string
+          files?: string[]
+          error?: string
+          warning?: string
+        }
+        if (!res.ok) {
+          alert(`Drive 格納に失敗しました:\n${data.error || res.statusText}`)
+        } else {
+          alert(
+            `Drive に格納しました。\n\n格納ファイル:\n${(data.files || []).join("\n")}\n\nフォルダ:\n${data.folderUrl || ""}${data.warning ? `\n\n注意: ${data.warning}` : ""}`,
+          )
+          await load()
+        }
+      } catch (e) {
+        alert(`Drive 格納エラー: ${e instanceof Error ? e.message : "network"}`)
+      } finally {
+        setSyncingId(null)
+      }
+    },
+    [load],
+  )
+
   // 代理店一覧は agencies マスタから直接取得 (shipments の有無に依らない)
   const [agencies, setAgencies] = useState<string[]>([])
   useEffect(() => {
@@ -536,6 +570,15 @@ export default function DashboardPage() {
                                   送り状一括
                                 </a>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => syncDrive(it.booking_id)}
+                                disabled={syncingId === it.booking_id}
+                                className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 underline underline-offset-2 disabled:opacity-50 text-left"
+                                title="バウチャー+送り状を共有ドライブの予約番号フォルダに格納し、フォルダURLを保存します"
+                              >
+                                {syncingId === it.booking_id ? "格納中…" : "Driveへ格納"}
+                              </button>
                             </>
                           )}
                         </div>
