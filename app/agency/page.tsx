@@ -327,10 +327,12 @@ export default function AgencyDashboard() {
               href="/api/howto?lang=en"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm text-foreground hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm text-foreground hover:bg-slate-50"
+              title={t.howto}
             >
               <BookOpen className="w-4 h-4" strokeWidth={1.6} />
-              {t.howto}
+              {/* スマホでは幅が足りないのでアイコンのみ (ヘッダーの折返し防止) */}
+              <span className="hidden sm:inline">{t.howto}</span>
             </a>
             <AgencyLocaleToggle locale={locale} onChange={setLocale} />
             {userEmail && (
