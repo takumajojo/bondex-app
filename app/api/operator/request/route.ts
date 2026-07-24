@@ -15,7 +15,7 @@ export const runtime = "nodejs"
  */
 export async function GET(req: NextRequest) {
   const bookingId = req.nextUrl.searchParams.get("booking_id")?.trim() || ""
-  if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+  if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(bookingId)) {
     return NextResponse.json({ error: "Invalid booking_id" }, { status: 400 })
   }
   if (!isSupabaseConfigured()) {

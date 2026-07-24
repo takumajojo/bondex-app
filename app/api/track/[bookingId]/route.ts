@@ -22,7 +22,7 @@ export async function GET(
 
   const { bookingId } = await ctx.params
   const trimmed = (bookingId || "").trim()
-  if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(trimmed)) {
+  if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(trimmed)) {
     return NextResponse.json({ error: "Invalid booking ID" }, { status: 400 })
   }
 

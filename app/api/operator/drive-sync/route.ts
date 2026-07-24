@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
   const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : ""
-  if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+  if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(bookingId)) {
     return NextResponse.json({ error: "Invalid bookingId" }, { status: 400 })
   }
 

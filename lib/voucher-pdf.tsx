@@ -1898,17 +1898,9 @@ export const SUPPORT_DEFAULTS = {
   companyAddress: "〒158-0092 東京都世田谷区野毛1-9-12",
 }
 
-export function generateBookingId(): string {
-  const now = new Date()
-  const yy = String(now.getFullYear() % 100).padStart(2, "0")
-  const mm2 = String(now.getMonth() + 1).padStart(2, "0")
-  const dd = String(now.getDate()).padStart(2, "0")
-  // 予約番号は (1) upsert のキー (衝突すると他社の予約を上書きしうる) かつ
-  // (2) /track の bearer capability (知っていれば追跡情報が見える) なので、
-  // 3桁 (900通り/日) では衝突・総当り列挙のリスクがある。暗号乱数の 8 桁英数字にする。
-  const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()
-  return `BDX-${yy}${mm2}${dd}-${rand}`
-}
+// 予約番号の生成は依存ゼロの lib/booking-id に移設 (短縮版 BDX-XXXXXX)。
+// 既存の `import { generateBookingId } from "@/lib/voucher-pdf"` を壊さないよう再エクスポート。
+export { generateBookingId } from "./booking-id"
 
 export function formatIssuedDate(d: Date = new Date()): string {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })

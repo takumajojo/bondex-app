@@ -42,6 +42,7 @@ import { carrierConfig, slotLabel } from "@/lib/carrier"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
 import { OperatorCardReminder } from "@/components/operator-card-reminder"
 import { buildVoucherFileName } from "@/lib/utils"
+import { generateBookingId } from "@/lib/booking-id"
 import { normalizeGuestLanguage, type GuestLanguage } from "@/lib/guest-language"
 
 const FLAT_RATE_YEN = 5000
@@ -931,15 +932,9 @@ export default function OperatorPage() {
     const representativeLabel = computeRepresentativeLabel(itinerary)
 
     // クライアント側で Booking ID を1回だけ生成し、voucher / Yamato 両方に同じ ID を渡して
-    // トレーサビリティを担保する (旧コードでは voucher と Yamato refNumber が別 ID になっていた)
-    const now = new Date()
-    const yy = String(now.getFullYear() % 100).padStart(2, "0")
-    const mm = String(now.getMonth() + 1).padStart(2, "0")
-    const dd = String(now.getDate()).padStart(2, "0")
-    // 十分なエントロピー (衝突→他社予約の上書き / track 列挙を防ぐ)。lib の generateBookingId と同方式。
-    const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()
+    // トレーサビリティを担保する (旧コードでは voucher と Yamato refNumber が別 ID になっていた)。
     // 発行依頼から読み込んだ場合は既存 ID を再利用 (upsert で requested→issued に更新)。
-    const sharedBookingId = itinerary.bookingId?.trim() || `BDX-${yy}${mm}${dd}-${rand}`
+    const sharedBookingId = itinerary.bookingId?.trim() || generateBookingId()
 
     const tourCompanyFromSettings = settings?.tourCompany || ""
     const payload = {

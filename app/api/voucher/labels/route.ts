@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   if (!sb) return NextResponse.json({ error: "Supabase unavailable" }, { status: 500 })
 
   const bookingId = req.nextUrl.searchParams.get("booking_id")?.trim() || ""
-  if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+  if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(bookingId)) {
     return NextResponse.json({ error: "invalid booking_id" }, { status: 400 })
   }
 

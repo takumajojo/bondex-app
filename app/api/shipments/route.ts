@@ -94,7 +94,7 @@ export async function PATCH(req: NextRequest) {
   // 予約単位の Drive URL 登録 (id 不要・booking_id で全区間更新)
   if (body.driveUrl !== undefined) {
     const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : ""
-    if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+    if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(bookingId)) {
       return NextResponse.json({ error: "invalid bookingId" }, { status: 400 })
     }
     const raw = body.driveUrl
@@ -178,7 +178,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
   const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : ""
-  if (!/^BDX-[\dA-Z]+-[\dA-Z]+$/i.test(bookingId)) {
+  if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(bookingId)) {
     return NextResponse.json({ error: "invalid bookingId" }, { status: 400 })
   }
   // 誤操作防止: クライアントは明示的に confirm: "DELETE" を送る必要がある
