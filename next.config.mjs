@@ -18,7 +18,10 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://va.vercel-scripts.com",
   "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.supabase.co https://va.vercel-scripts.com https://vitals.vercel-insights.com https://maps.googleapis.com",
-  "frame-src 'self'",
+  // blob: = 発行前バウチャープレビュー (代理店 確認画面) を iframe で表示するため。
+  //   PDF を blob URL 化して <iframe src="blob:…"> で描画する。'self' だけだと
+  //   Chrome が blob フレームをブロックして真っ白になる。
+  "frame-src 'self' blob:",
   "upgrade-insecure-requests",
 ].join("; ")
 

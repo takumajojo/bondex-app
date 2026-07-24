@@ -1060,6 +1060,7 @@ export default function AgencyNewBookingPage() {
                 </Field>
                 <Field label={t.fromCheckIn} htmlFor={`ci${i}`}>
                   <input id={`ci${i}`} type="date" className={inputCls} value={leg.fromCheckIn}
+                    min={leg.shipmentDate || undefined}
                     onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} />
                 </Field>
                 <Field label={t.toCheckOut} htmlFor={`co${i}`}>
