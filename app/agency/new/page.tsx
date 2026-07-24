@@ -137,9 +137,10 @@ const messages = {
     doneReadyBody:
       "The voucher and shipping label have been issued — download them right below. A copy is also kept in the shared Google Drive.",
     dlVoucher: "Download voucher",
-    howtoHeading: "Guide for the traveler",
-    howtoBody:
-      "A one-page \"How to use this service\" guide, produced in the same language as the voucher. Please hand it to the traveler together with the voucher.",
+    howtoToggle: "Include the \"How to use this service\" guide",
+    howtoToggleSub:
+      "Appends a 1-page traveler guide (same language as the voucher) as the voucher's last page — one page even for multi-leg trips. Hand it to the traveler together with the voucher.",
+    howtoStandalonePrefix: "Need the guide on its own?",
     dlHowto: "Download the guide",
     dlLabel: "Download shipping label",
     dlLeg: (n: number) => `Shipping label (leg ${n})`,
@@ -228,9 +229,10 @@ const messages = {
     doneReadyBody:
       "バウチャーと配送伝票（送り状）を発行しました。下のボタンからすぐにダウンロードできます。共有ドライブにも保管しています。",
     dlVoucher: "バウチャーをダウンロード",
-    howtoHeading: "お客様お渡し用ガイド",
-    howtoBody:
-      "「How to use this service」の1枚もののご案内です。バウチャーと同じ言語で出力されます。バウチャーと合わせてお客様へお渡しください。",
+    howtoToggle: "「How to use this service」ガイドを同梱する",
+    howtoToggleSub:
+      "お客様お渡し用の1枚もののご案内を、バウチャーの最終ページに追加します（バウチャーと同じ言語・複数区間でも1枚）。バウチャーと合わせてお客様へお渡しください。",
+    howtoStandalonePrefix: "ガイド単体が必要な場合は",
     dlHowto: "ご利用ガイドをダウンロード",
     dlLabel: "送り状をダウンロード",
     dlLeg: (n: number) => `送り状をダウンロード（区間${n}）`,
@@ -268,6 +270,8 @@ export default function AgencyNewBookingPage() {
     labels: Array<{ legIndex: number; url: string }>
   } | null>(null)
   const [dlBusy, setDlBusy] = useState(false)
+  // バウチャーにご利用ガイドを同梱するか (既定 ON)。成功画面のDLボタンに反映。
+  const [includeHowto, setIncludeHowto] = useState(true)
   const [parsing, setParsing] = useState(false)
   const [parseNote, setParseNote] = useState("")
   const [parseError, setParseError] = useState("")
@@ -424,7 +428,8 @@ export default function AgencyNewBookingPage() {
     }
   }
 
-  // 成功画面からバウチャーを直接DL (代理店 JWT で自社限定エンドポイントを叩く)
+  // 成功画面からバウチャーを直接DL (代理店 JWT で自社限定エンドポイントを叩く)。
+  // includeHowto=false のときだけ ?howto=0 でご利用ガイドの同梱を外す (既定は同梱)。
   const downloadVoucher = async (bookingId: string) => {
     setDlBusy(true)
     try {
@@ -434,9 +439,11 @@ export default function AgencyNewBookingPage() {
         setError(t.notLoggedIn)
         return
       }
-      const res = await fetch(`/api/agency/voucher?booking_id=${encodeURIComponent(bookingId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const howtoParam = includeHowto ? "" : "&howto=0"
+      const res = await fetch(
+        `/api/agency/voucher?booking_id=${encodeURIComponent(bookingId)}${howtoParam}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
       if (!res.ok) {
         alert(t.errNetwork)
         return
@@ -510,6 +517,20 @@ export default function AgencyNewBookingPage() {
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
           </div>
 
+          {/* バウチャー出力時に「ご利用ガイド」を最終ページに同梱するか選べる (既定 ON・複数区間でも1枚) */}
+          <label className="flex items-start gap-2.5 rounded-xl border border-[#E5E7EB] bg-white p-3.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeHowto}
+              onChange={(e) => setIncludeHowto(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border shrink-0"
+            />
+            <span>
+              <span className="block text-[13px] font-bold text-[#0F172A]">{t.howtoToggle}</span>
+              <span className="block text-[12px] text-muted-foreground leading-[1.7] mt-0.5">{t.howtoToggleSub}</span>
+            </span>
+          </label>
+
           {result.allIssued ? (
             /* 1ヶ月以内 → 即発行済み。その場でDL */
             <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-6">
@@ -563,20 +584,18 @@ export default function AgencyNewBookingPage() {
             </>
           )}
 
-          {/* お客様お渡し用ガイド。バウチャーと同じ言語で出力する (認証不要の静的PDF) */}
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5">
-            <p className="text-[13px] font-bold text-[#0F172A] mb-1">{t.howtoHeading}</p>
-            <p className="text-[12px] text-muted-foreground leading-[1.9] mb-3">{t.howtoBody}</p>
+          {/* ご利用ガイド単体が欲しいとき用の控えめなリンク (バウチャーには既定で同梱済み) */}
+          <p className="text-center text-[12px] text-muted-foreground">
+            {t.howtoStandalonePrefix}{" "}
             <a
               href={`/api/howto?lang=${guestLanguage}&dl=1`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl border border-[#0F172A] text-[#0F172A] text-[13px] font-bold hover:bg-slate-50"
+              className="font-bold text-[#0F172A] underline underline-offset-2 hover:text-[#C8102E]"
             >
-              <Download className="w-4 h-4" strokeWidth={2} />
               {t.dlHowto}
             </a>
-          </div>
+          </p>
 
           <div className="text-center">
             <Link

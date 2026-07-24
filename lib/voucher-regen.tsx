@@ -25,7 +25,7 @@ type RegenOutcome =
 export async function regenerateVoucherPdf(
   sb: SupabaseClient,
   bookingId: string,
-  opts?: { expectedAgency?: string },
+  opts?: { expectedAgency?: string; includeHowto?: boolean },
 ): Promise<RegenOutcome> {
   const { data, error } = await sb
     .from("shipments")
@@ -95,6 +95,8 @@ export async function regenerateVoucherPdf(
     supportQrDataUri,
     supportQrKind: waUrl ? "whatsapp" : "email",
     guestLanguage: normalizeGuestLanguage(data[0].guest_language),
+    // 既定 = ガイド同梱。呼び出し側が false を渡したときだけ省く。
+    includeHowto: opts?.includeHowto !== false,
     shipments: data.map((s) => ({
       shipmentDate: s.shipment_date,
       expectedArrival: s.expected_arrival ?? s.shipment_date,

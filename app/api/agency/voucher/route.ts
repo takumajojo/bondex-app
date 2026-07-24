@@ -40,8 +40,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Supabase client unavailable" }, { status: 500 })
     }
 
+    // 既定でガイド同梱。?howto=0 のときだけ省く。
+    const includeHowto = req.nextUrl.searchParams.get("howto") !== "0"
     const outcome = await regenerateVoucherPdf(sb, bookingId, {
       expectedAgency: auth.agency.name,
+      includeHowto,
     })
     if (!outcome.ok) {
       // 他社の予約 or 存在しない → どちらも 404 相当で存在を秘匿

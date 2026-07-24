@@ -193,10 +193,11 @@ const messages = {
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
     settingsShowContactOnVoucher: "Show this contact number on the guest voucher",
     guestLanguageLabel: "Voucher language (guest pages)",
-    includeHowtoLabel: "Also issue the \"How to ship\" guide (1-page PDF for the itinerary packet)",
+    includeHowtoLabel: "Append the \"How to use this service\" guide as the last page of the voucher (1 page, even for multi-leg trips)",
     howtoCardTitle: "How to ship guide",
     howtoCardSub: "A 1-page guest guide. Include it in the itinerary packet — no extra explanation needed.",
     howtoStandalone: "Download the \"How to ship\" guide:",
+    howtoIncludedNote: "The traveler guide is included as the last page of the voucher",
     dupTitle: "Possible duplicate booking",
     dupBody: "A booking with the same guest name and the same shipping date already exists. Issuing again may create a double shipment.",
     dupProceed: "Issue anyway",
@@ -355,10 +356,11 @@ const messages = {
     settingsContactPhonePlaceholder: "+81-XX-XXXX-XXXX",
     settingsShowContactOnVoucher: "この連絡先をお客様用バウチャーに表示する",
     guestLanguageLabel: "バウチャー言語 (ゲスト向けページ)",
-    includeHowtoLabel: "「How to ship」ガイドも同時発行する (行程表に同梱できる 1 枚もの)",
+    includeHowtoLabel: "ご利用ガイドをバウチャーの最終ページに同梱する (複数区間でも 1 枚)",
     howtoCardTitle: "How to ship ガイド",
     howtoCardSub: "ゲスト向けの 1 枚もの説明書。行程表に同梱すれば、旅行会社からの説明が不要になります。",
     howtoStandalone: "「How to ship」ガイド単体ダウンロード:",
+    howtoIncludedNote: "バウチャーの最終ページにご利用ガイドを同梱しています",
     dupTitle: "二重発行の可能性があります",
     dupBody: "同じお名前・同じ発送日の予約が既に登録されています。このまま発行すると二重配送になる恐れがあります。内容をご確認ください。",
     dupProceed: "それでも発行する",
@@ -522,8 +524,8 @@ type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generat
 interface GeneratedDocs {
   bookingId: string
   voucherUrl: string
-  /** How to ship ガイド (同時発行を選んだ場合のみ) */
-  howtoUrl?: string
+  /** ガイドをバウチャー末尾に同梱したか (別ファイルではなく voucherUrl の最終ページ) */
+  howtoIncluded: boolean
   howtoLang: GuestLanguage
   yamatoLabels: YamatoLabel[]
   representativeLabel: string
@@ -953,6 +955,8 @@ export default function OperatorPage() {
       contactDisplayMode: settings?.contactDisplayMode ?? "bondex_support",
       showContact: settings?.contactDisplayMode !== "hidden",
       guestLanguage: itinerary.guestLanguage ?? "en",
+      // ガイドはバウチャー末尾に同梱 (既定 ON・複数区間でも 1 枚)。別ファイルにはしない。
+      includeHowto: itinerary.includeHowto !== false,
       shipments: itinerary.shipments.map((s) => ({
         shipmentDate: s.shipmentDate,
         expectedArrival: s.expectedArrival,
@@ -1088,32 +1092,18 @@ export default function OperatorPage() {
       }
     }
 
-    // How to ship ガイド (静的 1 枚もの) — 失敗しても発行全体は止めない
+    // ガイドはバウチャー PDF に同梱済み (includeHowto)。別ファイルは作らない。
     const guestLang = itinerary.guestLanguage ?? "en"
-    async function fetchHowto(): Promise<string | null> {
-      try {
-        const res = await fetch("/api/voucher/generate?type=howto", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ guestLanguage: guestLang }),
-        })
-        if (!res.ok) return null
-        return URL.createObjectURL(await res.blob())
-      } catch {
-        return null
-      }
-    }
 
     try {
-      const [voucher, howtoUrl, ...yamatoLabels] = await Promise.all([
+      const [voucher, ...yamatoLabels] = await Promise.all([
         fetchPdf("voucher"),
-        itinerary.includeHowto !== false ? fetchHowto() : Promise.resolve(null),
         ...itinerary.shipments.map((_, i) => fetchYamatoLabel(i)),
       ])
       setGeneratedDocs({
         bookingId: voucher.bookingId,
         voucherUrl: voucher.url,
-        howtoUrl: (howtoUrl as string | null) ?? undefined,
+        howtoIncluded: itinerary.includeHowto !== false,
         howtoLang: guestLang,
         yamatoLabels,
         representativeLabel,
@@ -1433,7 +1423,7 @@ export default function OperatorPage() {
             <p className="text-xs text-muted-foreground text-center">
               {t.howtoStandalone}{" "}
               <a
-                href="/api/voucher/generate?type=howto&lang=en"
+                href="/api/howto?lang=en"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
@@ -1442,7 +1432,7 @@ export default function OperatorPage() {
               </a>
               {" ／ "}
               <a
-                href="/api/voucher/generate?type=howto&lang=zh"
+                href="/api/howto?lang=zh"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
@@ -1451,7 +1441,7 @@ export default function OperatorPage() {
               </a>
               {" ／ "}
               <a
-                href="/api/voucher/generate?type=howto&lang=it"
+                href="/api/howto?lang=it"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
@@ -1460,7 +1450,7 @@ export default function OperatorPage() {
               </a>
               {" ／ "}
               <a
-                href="/api/voucher/generate?type=howto&lang=fr"
+                href="/api/howto?lang=fr"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
@@ -1469,7 +1459,7 @@ export default function OperatorPage() {
               </a>
               {" ／ "}
               <a
-                href="/api/voucher/generate?type=howto&lang=es"
+                href="/api/howto?lang=es"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
@@ -2796,18 +2786,10 @@ function GeneratedView({
         />
       </section>
 
-      {docs.howtoUrl && (
-        <section>
-          <DocCard
-            title={t.howtoCardTitle}
-            subtitle={t.howtoCardSub}
-            href={docs.howtoUrl}
-            downloadName={`BondEx_HowToShip_${docs.howtoLang.toUpperCase()}.pdf`}
-            downloadLabel={t.download}
-            previewLabel={t.preview}
-            openFullLabel={t.openFullPreview}
-          />
-        </section>
+      {docs.howtoIncluded && (
+        <p className="text-[12px] text-muted-foreground -mt-2 pl-1">
+          {t.howtoIncludedNote} ({docs.howtoLang.toUpperCase()})
+        </p>
       )}
 
       {/* Yamato 送り状 (Ship&co API) */}

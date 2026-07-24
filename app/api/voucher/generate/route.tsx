@@ -53,6 +53,7 @@ interface RequestBody {
   showContact?: unknown
   contactDisplayMode?: unknown
   guestLanguage?: unknown
+  includeHowto?: unknown
 }
 
 const CONTACT_MODES = ["bondex_support", "travel_agency", "tour_operator", "hidden"] as const
@@ -266,6 +267,8 @@ export async function POST(req: NextRequest) {
     showContact: body.showContact !== false,
     contactDisplayMode: asContactMode(body.contactDisplayMode),
     guestLanguage: normalizeGuestLanguage(body.guestLanguage),
+    // ガイドはバウチャー末尾に同梱 (既定 ON)。複数区間でも 1 枚。
+    includeHowto: body.includeHowto !== false,
   }
 
   try {

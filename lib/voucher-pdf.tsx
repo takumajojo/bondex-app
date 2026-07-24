@@ -192,6 +192,10 @@ export interface VoucherInput {
    *  未設定時は mailto:support@ のフォールバック。ルート側で生成。 */
   supportQrDataUri?: string
   supportQrKind?: "whatsapp" | "email"
+  /** バウチャー末尾に「How to use this service」ガイドを 1 枚同梱するか。
+   *  既定 = 同梱する (undefined/true)。false のときだけ省く。
+   *  区間が何本でもガイドは常に 1 枚 (区間ごとには増えない)。 */
+  includeHowto?: boolean
 }
 
 function resolveContactMode(data: VoucherInput): ContactDisplayMode {
@@ -1143,6 +1147,14 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
       {data.shipments.map((shipment, i) => (
         <VoucherPage key={i} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />
       ))}
+      {/* How to use ガイドを末尾に 1 枚だけ同梱 (複数区間でも 1 枚)。既定 ON。 */}
+      {data.includeHowto !== false ? (
+        <HowToShipPage
+          language={normalizeGuestLanguage(data.guestLanguage)}
+          supportQrDataUri={data.supportQrDataUri}
+          supportQrKind={data.supportQrKind}
+        />
+      ) : null}
     </Document>
   )
 }
@@ -1564,7 +1576,12 @@ function SceneHotel() {
   )
 }
 
-export function HowToShipDocument({
+/**
+ * How to ship ガイドの 1 ページ本体 (Document ラッパー無し)。
+ * 単体 PDF (HowToShipDocument) と、バウチャー末尾への同梱 (VoucherDocument) の
+ * 両方から使う。複数区間でも常に 1 枚 = このページ 1 つだけを差し込む。
+ */
+export function HowToShipPage({
   language,
   supportQrDataUri,
   supportQrKind,
@@ -1577,7 +1594,6 @@ export function HowToShipDocument({
   const zf = language === "zh" ? ht.zh : {}
   const NEED_ICONS = [<VoucherMiniIcon key="v" />, <LabelMiniIcon key="l" />, <LuggageMiniIcon key="b" />]
   return (
-    <Document title={`BondEx How to Ship (${language.toUpperCase()})`} author="BondEx" subject="How to ship guide">
       <Page size="A4" style={[ht.page, zf]} wrap={false}>
         {/* masthead */}
         <View style={vs.masthead}>
@@ -1693,6 +1709,21 @@ export function HowToShipDocument({
           <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
         </View>
       </Page>
+  )
+}
+
+export function HowToShipDocument({
+  language,
+  supportQrDataUri,
+  supportQrKind,
+}: {
+  language: GuestLanguage
+  supportQrDataUri?: string
+  supportQrKind?: "whatsapp" | "email"
+}) {
+  return (
+    <Document title={`BondEx How to Ship (${language.toUpperCase()})`} author="BondEx" subject="How to ship guide">
+      <HowToShipPage language={language} supportQrDataUri={supportQrDataUri} supportQrKind={supportQrKind} />
     </Document>
   )
 }

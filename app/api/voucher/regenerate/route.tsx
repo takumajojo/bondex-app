@@ -38,7 +38,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid booking_id" }, { status: 400 })
     }
 
-    const outcome = await regenerateVoucherPdf(sb, bookingId)
+    // 既定でガイド同梱。?howto=0 のときだけ省く。
+    const includeHowto = req.nextUrl.searchParams.get("howto") !== "0"
+    const outcome = await regenerateVoucherPdf(sb, bookingId, { includeHowto })
     if (!outcome.ok) {
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
