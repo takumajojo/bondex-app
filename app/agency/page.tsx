@@ -13,6 +13,7 @@ import {
   Plus,
   FolderOpen,
   Info,
+  BookOpen,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
@@ -71,7 +72,9 @@ const messages = {
     voucher: "Voucher",
     driveFolder: "Folder",
     preparing: "Preparing",
+    waybillLater: "Shipping label: issued about a month before shipping",
     newBooking: "New request",
+    howto: "How to use",
     farNote:
       "Requests with a ship date more than a month away: shipping labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
     downloading: "Preparing…",
@@ -120,7 +123,9 @@ const messages = {
     voucher: "バウチャー",
     driveFolder: "フォルダ",
     preparing: "準備中",
+    waybillLater: "送り状は発送の約1ヶ月前に発行します",
     newBooking: "新規発行",
+    howto: "ご利用ガイド",
     farNote:
       "発送日が1ヶ月以上先の依頼は、送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
     downloading: "準備中…",
@@ -315,6 +320,18 @@ export default function AgencyDashboard() {
                 {t.newBooking}
               </Link>
             )}
+            {/* お客様お渡し用ガイド。認証不要の /api/howto (静的PDF) を別タブで開く。
+                ゲスト向け資料なので日本語版は無く、既定は EN。他言語 (zh/it/fr/es) は
+                予約完了画面からその予約のバウチャー言語で出力する。 */}
+            <a
+              href="/api/howto?lang=en"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm text-foreground hover:bg-slate-50"
+            >
+              <BookOpen className="w-4 h-4" strokeWidth={1.6} />
+              {t.howto}
+            </a>
             <AgencyLocaleToggle locale={locale} onChange={setLocale} />
             {userEmail && (
               <span className="text-xs text-muted-foreground hidden sm:inline">{userEmail}</span>
@@ -485,22 +502,21 @@ export default function AgencyDashboard() {
                               <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                             </a>
                           )}
-                          {it.status !== "requested" && (
-                            <button
-                              type="button"
-                              onClick={() => downloadVoucher(it.booking_id)}
-                              disabled={voucherBusy === it.booking_id}
-                              className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
-                              title={`${t.voucher} (${it.booking_id})`}
-                            >
-                              {voucherBusy === it.booking_id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
-                              ) : (
-                                <FileDown className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              )}
-                              {voucherBusy === it.booking_id ? t.downloading : t.voucher}
-                            </button>
-                          )}
+                          {/* バウチャーは Ship&co 不要 = 依頼直後 (requested) でも常にDL可能 */}
+                          <button
+                            type="button"
+                            onClick={() => downloadVoucher(it.booking_id)}
+                            disabled={voucherBusy === it.booking_id}
+                            className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
+                            title={`${t.voucher} (${it.booking_id})`}
+                          >
+                            {voucherBusy === it.booking_id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                            ) : (
+                              <FileDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+                            )}
+                            {voucherBusy === it.booking_id ? t.downloading : t.voucher}
+                          </button>
                           {it.yamato_label_url && (
                             <a
                               href={it.yamato_label_url}
@@ -513,8 +529,8 @@ export default function AgencyDashboard() {
                               <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                             </a>
                           )}
-                          {it.status === "requested" && !it.drive_url && (
-                            <span className="text-xs text-muted-foreground">{t.preparing}</span>
+                          {it.status === "requested" && (
+                            <span className="text-[11px] text-muted-foreground">{t.waybillLater}</span>
                           )}
                         </div>
                       </td>

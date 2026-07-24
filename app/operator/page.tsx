@@ -133,7 +133,7 @@ const messages = {
     yamatoDateWindow:
       "The shipment date is more than 30 days away, beyond the carrier's issuance window. The label will be issued automatically closer to the date.",
     yamatoDateInvalid: "The shipment date is invalid. Please check the itinerary date.",
-    notesLabel: "Notes (optional)",
+    notesLabel: "Message to the hotel (optional)",
     notesPlaceholder: "Anything to tell the hotel — e.g. drop-off by 8:00, fragile, senior guest…",
     // New (Phase 2 — feedback from agency)
     manualEntry: "Enter manually",
@@ -295,7 +295,7 @@ const messages = {
     yamatoDateWindow:
       "出荷予定日が30日以上先のため、配送業者の発行可能期間を超えています。出荷予定日が近づき次第、自動で発行されます。",
     yamatoDateInvalid: "出荷予定日が不正です。旅程の日付をご確認ください。",
-    notesLabel: "備考 (任意)",
+    notesLabel: "ホテルへの申し送り (任意)",
     notesPlaceholder: "ホテルに伝えたいことがあれば — 例: 8時までに発送、割れ物注意、高齢のお客様…",
     // New (Phase 2 — 代理店フィードバック反映)
     manualEntry: "マニュアル入力",

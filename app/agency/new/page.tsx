@@ -106,7 +106,7 @@ const messages = {
     recipient: "Recipient (optional)",
     recipientPlaceholder: "Defaults to the delivery hotel front desk",
     suitcases: "Suitcases",
-    notes: "Notes (optional)",
+    notes: "Message to the hotel (optional)",
     addLeg: "Add leg",
     removeLeg: "Remove",
     submit: "Submit request",
@@ -130,13 +130,17 @@ const messages = {
     doneBooking: "Booking number",
     doneShareHeading: "How you'll receive the documents",
     doneWait:
-      "shipping labels can only be created from one month before shipping. Once your ship date is within a month, we'll prepare everything and share a Google Drive folder with your registered email. The voucher and shipping labels will be inside.",
+      "The voucher is ready — download it right now from the button below (for your final documents and internal records). The shipping label can only be created from about a month before shipping, so we'll prepare it once the ship date is within a month and place it in your booking folder on the shared drive.",
     doneSoon:
       "Your shipment is within a month, so we'll prepare the documents (voucher and shipping labels) right away and share a Google Drive folder with your registered email.",
     doneReadyHeading: "Your documents are ready",
     doneReadyBody:
       "The voucher and shipping label have been issued — download them right below. A copy is also kept in the shared Google Drive.",
     dlVoucher: "Download voucher",
+    howtoHeading: "Guide for the traveler",
+    howtoBody:
+      "A one-page \"How to use this service\" guide, produced in the same language as the voucher. Please hand it to the traveler together with the voucher.",
+    dlHowto: "Download the guide",
     dlLabel: "Download shipping label",
     dlLeg: (n: number) => `Shipping label (leg ${n})`,
     doneBack: "Back to portal",
@@ -193,7 +197,7 @@ const messages = {
     recipient: "受取人（任意）",
     recipientPlaceholder: "未入力ならお届け先ホテルのフロント宛",
     suitcases: "個数",
-    notes: "備考（任意）",
+    notes: "ホテルへの申し送り（任意）",
     addLeg: "区間を追加",
     removeLeg: "削除",
     submit: "発行依頼を送信",
@@ -217,13 +221,17 @@ const messages = {
     doneBooking: "予約番号",
     doneShareHeading: "書類の受け取り方法",
     doneWait:
-      "配送伝票（送り状）は出荷の1ヶ月前からしか発行できません。出荷日の1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。フォルダの中にバウチャー・配送伝票が入っています。",
+      "バウチャーは今すぐ下のボタンからダウンロードいただけます（ファイナルドキュメントへの同封・社内のツアーファイル保管にご利用ください）。配送伝票（送り状）は出荷の約1ヶ月前からしか発行できないため、出荷日の1ヶ月前になりましたら弊社で発行し、共有ドライブの予約番号フォルダに格納してご連絡します。",
     doneSoon:
       "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・配送伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
     doneReadyHeading: "書類の準備ができました",
     doneReadyBody:
       "バウチャーと配送伝票（送り状）を発行しました。下のボタンからすぐにダウンロードできます。共有ドライブにも保管しています。",
     dlVoucher: "バウチャーをダウンロード",
+    howtoHeading: "お客様お渡し用ガイド",
+    howtoBody:
+      "「How to use this service」の1枚もののご案内です。バウチャーと同じ言語で出力されます。バウチャーと合わせてお客様へお渡しください。",
+    dlHowto: "ご利用ガイドをダウンロード",
     dlLabel: "送り状をダウンロード",
     dlLeg: (n: number) => `送り状をダウンロード（区間${n}）`,
     doneBack: "ポータルに戻る",
@@ -540,11 +548,35 @@ export default function AgencyNewBookingPage() {
                   <FolderOpen className="w-5 h-5 text-[#C8102E]" strokeWidth={2} />
                   <p className="text-[15px] font-bold text-[#9A3412]">{t.doneShareHeading}</p>
                 </div>
-                <p className="text-[14px] text-[#7C2D12] leading-[2]">{t.doneWait}</p>
+                <p className="text-[14px] text-[#7C2D12] leading-[2] mb-4">{t.doneWait}</p>
+                {/* バウチャーは Ship&co 不要 = 1ヶ月超の依頼でも今すぐDLできる */}
+                <button
+                  type="button"
+                  onClick={() => downloadVoucher(result.bookingId)}
+                  disabled={dlBusy}
+                  className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-[#C8102E] text-white text-[13px] font-bold hover:bg-[#a00d25] disabled:opacity-50"
+                >
+                  {dlBusy ? "…" : t.dlVoucher}
+                </button>
               </div>
               <FlowDiagram heading={t.flowHeading} steps={t.flow} icons={FLOW_ICONS} />
             </>
           )}
+
+          {/* お客様お渡し用ガイド。バウチャーと同じ言語で出力する (認証不要の静的PDF) */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5">
+            <p className="text-[13px] font-bold text-[#0F172A] mb-1">{t.howtoHeading}</p>
+            <p className="text-[12px] text-muted-foreground leading-[1.9] mb-3">{t.howtoBody}</p>
+            <a
+              href={`/api/howto?lang=${guestLanguage}&dl=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl border border-[#0F172A] text-[#0F172A] text-[13px] font-bold hover:bg-slate-50"
+            >
+              <Download className="w-4 h-4" strokeWidth={2} />
+              {t.dlHowto}
+            </a>
+          </div>
 
           <div className="text-center">
             <Link

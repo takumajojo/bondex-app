@@ -232,8 +232,12 @@ export async function POST(req: NextRequest) {
   const anyIssued = legOut.some((r) => r.issued)
   const needsLabelWait = !allIssued // 未発行(1ヶ月超 or 発行不可)の区間がある
 
-  // 発行できた予約は書類を共有ドライブにも保管 (best-effort・失敗しても DL は可能)。
-  if (anyIssued && opPw) {
+  // 書類は共有ドライブにも保管 (best-effort・失敗しても画面から DL は可能)。
+  // 未発行 (1ヶ月超) でもバウチャーだけは今この時点で確定するので必ず流す。
+  // 代理店はファイナルドキュメント作成・社内のツアーファイル保管でバウチャーを
+  // 予約完了時点で必要とするため (2026-07 My Japan Planner 堀部さんの要望)。
+  // 送り状は 1ヶ月前の発行後、drive-sync が再実行されて同じフォルダに追加される。
+  if (opPw) {
     try {
       await fetch(`${origin}/api/operator/drive-sync`, {
         method: "POST",
