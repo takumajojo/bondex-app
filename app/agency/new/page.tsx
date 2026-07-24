@@ -109,8 +109,33 @@ const messages = {
     notes: "Message to the hotel (optional)",
     addLeg: "Add leg",
     removeLeg: "Remove",
-    submit: "Submit request",
+    submit: "Review before issuing",
     submitting: "Submitting…",
+    // 確認(プレビュー)ステップ
+    confirmBadge: "Step 2 of 3 — Review",
+    confirmTitle: "Please review before issuing",
+    confirmLead: "Check the details below and the voucher preview. Nothing is issued or charged until you confirm.",
+    reviewHeading: "Booking details",
+    previewHeading: "Voucher preview",
+    previewLoading: "Building the preview…",
+    previewUnavailable: "Preview unavailable — you can still review the details above.",
+    backToEdit: "Back to edit",
+    confirmIssue: "Issue with these details",
+    confirmIssuing: "Issuing…",
+    valTitle: "Please fix the following before continuing:",
+    errPastDate: (n: number) => `Leg ${n}: the ship date is in the past — please check the year.`,
+    errArrivalBeforeShip: (n: number) => `Leg ${n}: the arrival date is before the ship date.`,
+    errMissingHotel: (n: number) => `Leg ${n}: both the origin and destination hotel are required.`,
+    rvGuest: "Lead traveler",
+    rvTour: "Tour no.",
+    rvLang: "Voucher language",
+    rvLeg: "Leg",
+    rvRoute: "Route",
+    rvShip: "Ship",
+    rvArrive: "Arrive",
+    rvBags: "Bags",
+    rvSlot: "Time slot",
+    rvNote: "Message to hotel",
     flowHeading: "How it works",
     flow: [
       { title: "Register request", sub: "Enter the itinerary (you are here)", key: false },
@@ -126,6 +151,10 @@ const messages = {
     ],
     monthNote:
       "shipping labels can only be created from one month before the ship date. Once it's within a month we'll prepare everything and share a Google Drive folder with your registered email — the voucher and labels will be inside.",
+    issueFailTitle: "The shipping label could not be issued",
+    issueFailBody:
+      "The booking is saved and the voucher is ready, but the shipping label for the leg(s) below could not be created. Please check the ship/arrival dates and hotel names, then edit the booking — or contact BondEx.",
+    issueFailLeg: (n: number) => `Leg ${n}`,
     doneTitle: "Request received",
     doneBooking: "Booking number",
     doneShareHeading: "How you'll receive the documents",
@@ -201,7 +230,32 @@ const messages = {
     notes: "ホテルへの申し送り（任意）",
     addLeg: "区間を追加",
     removeLeg: "削除",
-    submit: "発行依頼を送信",
+    submit: "確認画面へ進む",
+    // 確認(プレビュー)ステップ
+    confirmBadge: "ステップ 2 / 3 — 内容確認",
+    confirmTitle: "発行前に内容をご確認ください",
+    confirmLead: "下記の内容とバウチャーのプレビューをご確認ください。確定するまで発行も課金もされません。",
+    reviewHeading: "予約内容",
+    previewHeading: "バウチャー プレビュー",
+    previewLoading: "プレビューを作成中…",
+    previewUnavailable: "プレビューを表示できませんでした。上記の内容はご確認いただけます。",
+    backToEdit: "入力に戻って修正",
+    confirmIssue: "この内容で発行する",
+    confirmIssuing: "発行中…",
+    valTitle: "発行前に次の点をご確認ください:",
+    errPastDate: (n: number) => `区間${n}: 発送日が過去の日付です。年をご確認ください。`,
+    errArrivalBeforeShip: (n: number) => `区間${n}: 到着日が発送日より前になっています。`,
+    errMissingHotel: (n: number) => `区間${n}: 発送元・発送先ホテルの両方が必要です。`,
+    rvGuest: "ご予約者",
+    rvTour: "ツアー番号",
+    rvLang: "バウチャー言語",
+    rvLeg: "区間",
+    rvRoute: "経路",
+    rvShip: "発送",
+    rvArrive: "到着",
+    rvBags: "個数",
+    rvSlot: "時間帯",
+    rvNote: "ホテルへの申し送り",
     submitting: "送信中…",
     flowHeading: "この後の流れ",
     flow: [
@@ -218,6 +272,10 @@ const messages = {
     ],
     monthNote:
       "配送伝票（送り状）は出荷日の1ヶ月前からしか発行できません。1ヶ月前になりましたら書類一式をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します（中にバウチャー・配送伝票が入ります）。",
+    issueFailTitle: "送り状を発行できませんでした",
+    issueFailBody:
+      "予約は保存され、バウチャーもご利用いただけますが、下記の区間の送り状を作成できませんでした。発送日・到着日と、ホテル名をご確認のうえ修正いただくか、BondEx までご連絡ください。",
+    issueFailLeg: (n: number) => `区間${n}`,
     doneTitle: "発行依頼を受け付けました",
     doneBooking: "予約番号",
     doneShareHeading: "書類の受け取り方法",
@@ -246,6 +304,33 @@ const messages = {
 const inputCls =
   "w-full h-11 rounded-xl border border-[#CBD5E1] px-3 text-[14px] text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#C8102E]/40 focus:border-[#C8102E]"
 
+/** ローカル(日本)日付の YYYY-MM-DD。過去日チェックに使う。 */
+function todayYmd(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/**
+ * 発行前の入力チェック。過去日・到着<発送などを確定前に止める。
+ * (2026-07: 発送日を前年で入力し送り状が出ない事故があったため確認画面で必ず弾く)
+ */
+function validateLegs(
+  legs: Leg[],
+  m: { errPastDate: (n: number) => string; errArrivalBeforeShip: (n: number) => string; errMissingHotel: (n: number) => string },
+): string[] {
+  const today = todayYmd()
+  const errs: string[] = []
+  legs.forEach((leg, i) => {
+    const n = i + 1
+    if (!leg.fromHotel.trim() || !leg.toHotel.trim()) errs.push(m.errMissingHotel(n))
+    if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
+    if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
+      errs.push(m.errArrivalBeforeShip(n))
+  })
+  return errs
+}
+
 export default function AgencyNewBookingPage() {
   const router = useRouter()
   const { locale, setLocale } = useAgencyLocale()
@@ -268,10 +353,16 @@ export default function AgencyNewBookingPage() {
     needsLabelWait: boolean
     allIssued: boolean
     labels: Array<{ legIndex: number; url: string }>
+    issueFailures: Array<{ legIndex: number; error?: string }>
   } | null>(null)
   const [dlBusy, setDlBusy] = useState(false)
   // バウチャーにご利用ガイドを同梱するか (既定 ON)。成功画面のDLボタンに反映。
   const [includeHowto, setIncludeHowto] = useState(true)
+  // 入力 → 確認(プレビュー) → 完了 の3ステップ。done は status==="done" で表現。
+  const [step, setStep] = useState<"input" | "confirm">("input")
+  const [previewUrl, setPreviewUrl] = useState<string>("")
+  const [previewBusy, setPreviewBusy] = useState(false)
+  const [valErrors, setValErrors] = useState<string[]>([])
   const [parsing, setParsing] = useState(false)
   const [parseNote, setParseNote] = useState("")
   const [parseError, setParseError] = useState("")
@@ -420,6 +511,7 @@ export default function AgencyNewBookingPage() {
         needsLabelWait: Boolean(data.needsLabelWait),
         allIssued: Boolean(data.allIssued),
         labels: Array.isArray(data.labels) ? data.labels : [],
+        issueFailures: Array.isArray(data.issueFailures) ? data.issueFailures : [],
       })
       setStatus("done")
     } catch {
@@ -464,10 +556,43 @@ export default function AgencyNewBookingPage() {
     }
   }
 
+  // 確認画面用のバウチャープレビューを取得 (DB書込・発行なし)
+  const fetchPreview = async () => {
+    setPreviewBusy(true)
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return ""
+    })
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (!token) return
+      const res = await fetch("/api/agency/voucher-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ representative, tourNumber, bookingName, groupName, guestLanguage, includeHowto, legs }),
+      })
+      if (!res.ok) return
+      setPreviewUrl(URL.createObjectURL(await res.blob()))
+    } catch {
+      /* プレビュー失敗は致命ではない — 内容確認は表で可能 */
+    } finally {
+      setPreviewBusy(false)
+    }
+  }
+
+  // 入力 → 確認へ。ここでは発行しない (検証 + 二重依頼チェックのみ)。
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError("")
     setDupMatches([])
+    // 入力検証 (過去日・到着<発送・ホテル未入力) — 誤りは確定前に必ず止める
+    const errs = validateLegs(legs, t)
+    setValErrors(errs)
+    if (errs.length > 0) {
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
     // 二重依頼チェック (自社内・警告のみ)。マッチしたら止めて確認を促す。
     try {
       const sb = getBrowserSupabase()
@@ -486,14 +611,22 @@ export default function AgencyNewBookingPage() {
           const matches = Array.isArray(data.matches) ? data.matches : []
           if (matches.length > 0) {
             setDupMatches(matches)
-            return // 警告を出して止める (「このまま登録」で submitBooking)
+            return // 警告を出して止める (「このまま確認へ」で goToConfirm)
           }
         }
       }
     } catch {
-      /* 重複チェック失敗は無視して登録に進む (ベストエフォート) */
+      /* 重複チェック失敗は無視して確認へ進む (ベストエフォート) */
     }
-    await submitBooking()
+    goToConfirm()
+  }
+
+  // 確認ステップへ遷移し、プレビューを読み込む
+  const goToConfirm = () => {
+    setDupMatches([])
+    setStep("confirm")
+    window.scrollTo({ top: 0, behavior: "smooth" })
+    void fetchPreview()
   }
 
   if (!authChecked) {
@@ -516,6 +649,24 @@ export default function AgencyNewBookingPage() {
             <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
           </div>
+
+          {/* 1ヶ月以内なのに送り状を発行できなかった区間があるときの明示 (無言で「待ち」にしない) */}
+          {result.issueFailures.length > 0 && (
+            <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-5">
+              <p className="text-[14px] font-bold text-red-800 flex items-center gap-1.5">
+                <AlertTriangle className="w-4.5 h-4.5 shrink-0" strokeWidth={2} />
+                {t.issueFailTitle}
+              </p>
+              <p className="text-[13px] text-red-700 leading-[1.9] mt-2">{t.issueFailBody}</p>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {result.issueFailures.map((f) => (
+                  <li key={f.legIndex} className="text-[12px] font-bold text-red-800 bg-red-100 rounded px-2 py-0.5">
+                    {t.issueFailLeg(f.legIndex + 1)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* バウチャー出力時に「ご利用ガイド」を最終ページに同梱するか選べる (既定 ON・複数区間でも1枚) */}
           <label className="flex items-start gap-2.5 rounded-xl border border-[#E5E7EB] bg-white p-3.5 cursor-pointer select-none">
@@ -610,6 +761,114 @@ export default function AgencyNewBookingPage() {
     )
   }
 
+  // ── ステップ2: 確認(プレビュー)。ここでは発行しない。戻る=入力へ / 発行=完了へ ──
+  if (step === "confirm") {
+    return (
+      <main className="min-h-screen bg-slate-50 px-6 py-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <button
+              type="button"
+              onClick={() => setStep("input")}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
+              {t.backToEdit}
+            </button>
+            <AgencyLocaleToggle locale={locale} onChange={setLocale} />
+          </div>
+
+          <div className="mb-6">
+            <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">{t.confirmBadge}</p>
+            <h1 className="text-[22px] font-bold text-[#0F172A] mt-1">{t.confirmTitle}</h1>
+            <p className="text-[13px] text-[#64748B] mt-2 leading-relaxed">{t.confirmLead}</p>
+          </div>
+
+          {error && (
+            <p className="text-[13px] text-red-600 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3" role="alert">
+              {error}
+            </p>
+          )}
+
+          {/* 内容サマリ */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6 space-y-4">
+            <p className="text-[13px] font-bold text-[#0F172A]">{t.reviewHeading}</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+              <ReviewRow label={t.rvGuest} value={representative} />
+              {tourNumber ? <ReviewRow label={t.rvTour} value={tourNumber} /> : null}
+              <ReviewRow label={t.rvLang} value={(GUEST_LANGS.find(([c]) => c === guestLanguage)?.[1]) || guestLanguage} />
+            </div>
+            <div className="space-y-3 pt-1">
+              {legs.map((leg, i) => (
+                <div key={i} className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4">
+                  <p className="text-[12px] font-bold text-[#334155] mb-2">{t.rvLeg} {i + 1}</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
+                    <ReviewRow label={t.rvRoute} value={`${leg.fromHotel} → ${leg.toHotel}`} span />
+                    <ReviewRow label={t.rvShip} value={leg.shipmentDate} />
+                    <ReviewRow label={t.rvArrive} value={leg.expectedArrival} />
+                    <ReviewRow label={t.rvBags} value={String(leg.suitcaseCount)} />
+                    <ReviewRow label={t.rvSlot} value={slotLabel(leg.deliveryTime, locale)} />
+                    {leg.notes ? <ReviewRow label={t.rvNote} value={leg.notes} span /> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ご利用ガイド同梱トグル (プレビューに反映) */}
+          <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-[#E5E7EB] bg-white p-3.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeHowto}
+              onChange={(e) => { setIncludeHowto(e.target.checked); void fetchPreview() }}
+              className="mt-0.5 h-4 w-4 rounded border-border shrink-0"
+            />
+            <span>
+              <span className="block text-[13px] font-bold text-[#0F172A]">{t.howtoToggle}</span>
+              <span className="block text-[12px] text-muted-foreground leading-[1.7] mt-0.5">{t.howtoToggleSub}</span>
+            </span>
+          </label>
+
+          {/* バウチャー プレビュー */}
+          <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4">
+            <p className="text-[13px] font-bold text-[#0F172A] mb-3">{t.previewHeading}</p>
+            {previewBusy ? (
+              <div className="h-[70vh] flex items-center justify-center text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" strokeWidth={1.8} />
+                <span className="text-[13px]">{t.previewLoading}</span>
+              </div>
+            ) : previewUrl ? (
+              <iframe title={t.previewHeading} src={previewUrl} className="w-full h-[70vh] rounded-lg border border-[#E5E7EB]" />
+            ) : (
+              <p className="text-[13px] text-muted-foreground py-8 text-center">{t.previewUnavailable}</p>
+            )}
+          </div>
+
+          {/* アクション: 戻る / 発行 */}
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <button
+              type="button"
+              onClick={() => setStep("input")}
+              className="sm:flex-1 h-12 rounded-xl border border-[#0F172A] text-[#0F172A] text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-slate-50"
+            >
+              <ArrowLeft className="w-4 h-4" strokeWidth={2} />
+              {t.backToEdit}
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitBooking()}
+              disabled={status === "submitting"}
+              className="sm:flex-1 h-12 rounded-xl bg-[#C8102E] text-white text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#A00D25] disabled:opacity-50"
+            >
+              {status === "submitting" ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} /> : <Check className="w-4 h-4" strokeWidth={2.5} />}
+              {status === "submitting" ? t.confirmIssuing : t.confirmIssue}
+            </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8">
       <div className="max-w-2xl mx-auto">
@@ -637,6 +896,21 @@ export default function AgencyNewBookingPage() {
             icons={previewNeedsWait ? FLOW_ICONS : FLOW_ICONS_SOON}
           />
         </div>
+
+        {/* 入力検証エラー (過去日など) — 確認へ進む前に表示 */}
+        {valErrors.length > 0 && (
+          <div className="mb-5 rounded-xl border border-red-300 bg-red-50 p-4" role="alert">
+            <p className="text-[13px] font-bold text-red-800 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" strokeWidth={2} />
+              {t.valTitle}
+            </p>
+            <ul className="mt-1.5 space-y-0.5 list-disc pl-5">
+              {valErrors.map((msg, i) => (
+                <li key={i} className="text-[12px] text-red-700">{msg}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <form onSubmit={onSubmit} className="space-y-5">
           {/* 旅程表の AI 自動読み込み (任意) */}
@@ -857,8 +1131,7 @@ export default function AgencyNewBookingPage() {
                   </ul>
                   <button
                     type="button"
-                    onClick={() => void submitBooking()}
-                    disabled={status === "submitting"}
+                    onClick={goToConfirm}
                     className="mt-3 h-9 px-4 rounded-lg bg-amber-600 text-white text-[13px] font-bold hover:bg-amber-700 disabled:opacity-50"
                   >
                     {t.dupProceed}
@@ -942,6 +1215,16 @@ function Field({ label, htmlFor, required, children }: {
         {required && <span className="text-[#C8102E] ml-1">*</span>}
       </label>
       {children}
+    </div>
+  )
+}
+
+// 確認画面の 1 行 (ラベル: 値)。span=true で 2 カラム全幅。
+function ReviewRow({ label, value, span }: { label: string; value: string; span?: boolean }) {
+  return (
+    <div className={span ? "col-span-2" : ""}>
+      <span className="block text-[11px] text-muted-foreground">{label}</span>
+      <span className="block text-[13px] text-[#0F172A] font-medium break-words">{value || "—"}</span>
     </div>
   )
 }

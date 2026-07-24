@@ -188,11 +188,18 @@ export async function POST(req: NextRequest) {
   //    サーバー内から OPERATOR_PASSWORD で呼び、検証済みの発行ロジックを再利用する。
   const origin = req.nextUrl.origin
   const opPw = process.env.OPERATOR_PASSWORD
-  const legOut: Array<{ legIndex: number; issued: boolean; labelUrl?: string }> = []
+  // reason: "far" = 1ヶ月超で発行窓の外 (正常な待ち) / "failed" = 発行を試みたが失敗
+  const legOut: Array<{
+    legIndex: number
+    issued: boolean
+    labelUrl?: string
+    reason?: "far" | "failed"
+    error?: string
+  }> = []
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i]
     if (daysUntilShip(leg.shipmentDate) > 30 || !opPw) {
-      legOut.push({ legIndex: i, issued: false })
+      legOut.push({ legIndex: i, issued: false, reason: "far" })
       continue
     }
     try {
@@ -222,14 +229,23 @@ export async function POST(req: NextRequest) {
           guestLanguage,
         }),
       })
-      const d = (await res.json().catch(() => ({}))) as { label?: string }
-      legOut.push({ legIndex: i, issued: Boolean(res.ok && d.label), labelUrl: d.label })
+      const d = (await res.json().catch(() => ({}))) as { label?: string; error?: string; code?: string; status?: string }
+      if (res.ok && d.label) {
+        legOut.push({ legIndex: i, issued: true, labelUrl: d.label })
+      } else if (d.status === "deferred") {
+        // shipandco 側で発行窓外と判定 (リードタイム超) — 正常な待ち扱い
+        legOut.push({ legIndex: i, issued: false, reason: "far" })
+      } else {
+        // 1ヶ月以内なのに発行できなかった = 要確認 (過去日・住所解決失敗など)
+        legOut.push({ legIndex: i, issued: false, reason: "failed", error: d.code || d.error || "issue failed" })
+      }
     } catch {
-      legOut.push({ legIndex: i, issued: false })
+      legOut.push({ legIndex: i, issued: false, reason: "failed", error: "network error" })
     }
   }
   const allIssued = legOut.length > 0 && legOut.every((r) => r.issued)
   const anyIssued = legOut.some((r) => r.issued)
+  const issueFailures = legOut.filter((r) => r.reason === "failed")
   const needsLabelWait = !allIssued // 未発行(1ヶ月超 or 発行不可)の区間がある
 
   // 書類は共有ドライブにも保管 (best-effort・失敗しても画面から DL は可能)。
@@ -280,6 +296,8 @@ export async function POST(req: NextRequest) {
     labels: legOut
       .filter((r) => r.issued && r.labelUrl)
       .map((r) => ({ legIndex: r.legIndex, url: r.labelUrl })),
+    // 1ヶ月以内なのに発行できなかった区間 (過去日・住所解決失敗など) — 画面で明示する
+    issueFailures: issueFailures.map((r) => ({ legIndex: r.legIndex, error: r.error })),
     noticeEmailSent,
   })
 }
