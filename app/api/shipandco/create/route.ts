@@ -708,11 +708,12 @@ export async function POST(req: NextRequest) {
   const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
   const productName = rawProductName || "スーツケース"
   // 品名(~28字)に「チェックイン{月}/{日}予定」を明示 (受取ホテルが予約照会しやすいように)。
-  //   チェックイン日 = お客様がお届け先ホテルに入る日 = 荷物の到着日 (deliveryDate)。
+  //   チェックイン日 = お客様がお届け先ホテルに入る日 (fromCheckIn)。荷物の到着日(deliveryDate)
+  //   とは別 — 早期配達を希望するお客様がいるため到着日をそのまま流用しない。
   //   宿泊者名は宛名(お届け先様名)に入るので品名では省いて字数を確保する。
   const checkinMd =
-    deliveryDate && /^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)
-      ? `${parseInt(deliveryDate.slice(5, 7), 10)}/${parseInt(deliveryDate.slice(8, 10), 10)}`
+    fromCheckIn && /^\d{4}-\d{2}-\d{2}$/.test(fromCheckIn)
+      ? `${parseInt(fromCheckIn.slice(5, 7), 10)}/${parseInt(fromCheckIn.slice(8, 10), 10)}`
       : ""
   const recipientLastName = lastNameOnly(guestForLabel)
   const productNameFull = checkinMd

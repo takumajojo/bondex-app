@@ -972,15 +972,15 @@ function VoucherPage({
           <View style={[vs.detailCell, { width: "25%" }]}>
             <Text style={vs.dk}>LUGGAGE / お荷物</Text>
             <Text style={vs.dv}>
-              {shipment.suitcaseCount} piece{shipment.suitcaseCount === 1 ? "" : "s"}
+              {shipment.suitcaseCount} item{shipment.suitcaseCount === 1 ? "" : "s"}
             </Text>
-            <Text style={vs.dvSmall}>Total {totalLuggage} luggage</Text>
+            <Text style={vs.dvSmall}>Total {totalLuggage} item{totalLuggage === 1 ? "" : "s"}</Text>
           </View>
           <View style={[vs.detailCell, { width: "25%" }]}>
             <Text style={vs.dk}>SERVICE TYPE / 種別</Text>
-            <Text style={vs.dv}>{totalLegs > 1 ? "MULTI-LEG" : "SINGLE LEG"}</Text>
+            <Text style={vs.dv}>Hotel → Hotel</Text>
             <Text style={vs.dvSmall}>
-              {totalLegs > 1 ? `Leg ${legIndex + 1} of ${totalLegs}` : "Point to Point"}
+              {totalLegs > 1 ? `Leg ${legIndex + 1} of ${totalLegs}` : jb("ホテル間配送")}
             </Text>
           </View>
           <View style={[vs.detailCell, { width: "25%" }]}>
@@ -1080,16 +1080,8 @@ function VoucherPage({
         <View style={vs.hdBlock}>
           <Text style={[vs.hdNo, { color: RED }]}>01 発送元</Text>
           <Text style={vs.hdHotel}>{fromHotelJa}{jb(" 様")}</Text>
-          {/* 発送元ホテルは「予約名 + チェックイン日」で予約照会するため必ず両方を記載。
-              部屋番号は不明なので出さない (2026-07 谷口さん指示・堀部さんの照会要件)。 */}
-          <LookupGrid
-            guestName={guestName}
-            dateEn="CHECK-IN"
-            dateJa="チェックイン日"
-            dateValue={shipment.fromCheckIn}
-            alwaysShowDate
-            hideRoom
-          />
+          {/* 発送元では お客様が対面で荷物+バウチャーを渡すため予約照合日は不要。氏名のみ。 */}
+          <LookupGrid guestName={guestName} hideRoom />
           <Text style={vs.hdNote}>
             {jb("チェックアウト時にお客様が、本バウチャーと")}
             <Text style={vs.hdNoteStrong}>{jb("お荷物と同じ枚数の印字済み送り状")}</Text>
@@ -1097,18 +1089,19 @@ function VoucherPage({
             <Text style={vs.hdNoteStrong}>{jb("出荷する荷物")}</Text>
             {jb("としてお預かりのうえ、送り状とあわせて集荷ドライバーへお渡しください。")}
           </Text>
-          {shipment.specialNote ? (
-            <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
-          ) : null}
         </View>
         <View style={[vs.hdBlock, { marginLeft: mm(3.5) }]}>
           <Text style={[vs.hdNo, { color: INK }]}>02 発送先</Text>
           <Text style={vs.hdHotel}>{toHotelJa}{jb(" 様")}</Text>
+          {/* 到着(お届け先)ホテルは お客様来訪前に荷物を保管するため「予約名 + チェックイン日」で
+              照合する。fromCheckIn = お届け先ホテルのチェックイン日 (2026-07 谷口さん指示で
+              発送元→到着に意味変更・発送日以降の強制は撤廃=早期配達可)。 */}
           <LookupGrid
             guestName={guestName}
-            dateEn="CHECK-OUT"
-            dateJa="チェックアウト日"
-            dateValue={shipment.toCheckOut}
+            dateEn="CHECK-IN"
+            dateJa="チェックイン日"
+            dateValue={shipment.fromCheckIn}
+            alwaysShowDate
           />
           <Text style={vs.hdNote}>
             <Text style={vs.hdNoteStrong}>{formatJpDate(shipment.expectedArrival)}</Text>
@@ -1116,6 +1109,9 @@ function VoucherPage({
             <Text style={vs.hdNoteStrong}>{jb("到着済み荷物")}</Text>
             {jb("としてお預かりのうえ、チェックイン時にお客様へお渡しください。")}
           </Text>
+          {shipment.specialNote ? (
+            <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -1204,12 +1200,12 @@ const HOWTO_L10N = {
     checkHead: "CHECK YOUR LABEL",
     checkSub: "A 10-second check:",
     checks: [
-      "Sender name = your group representative",
+      "Your name is on the TO (delivery) side",
       "Destination hotel is correct",
       "Arrival date matches your plan",
     ],
-    labelMockFrom: "FROM: Representative name",
-    labelMockTo: "TO: Your next hotel",
+    labelMockFrom: "FROM: BondEx",
+    labelMockTo: "TO: Your name + next hotel",
     labelMockDate: "Arrival date",
     stepsHead: "3 EASY STEPS",
     steps: [
@@ -1241,12 +1237,12 @@ const HOWTO_L10N = {
     checkHead: "确认标签 CHECK YOUR LABEL",
     checkSub: "只需 10 秒确认：",
     checks: [
-      "寄件人姓名＝团队代表姓名",
+      "收件人(TO)一侧有您的姓名",
       "目的地酒店正确",
       "到达日期与行程一致",
     ],
-    labelMockFrom: "FROM: 代表姓名",
-    labelMockTo: "TO: 下一家酒店",
+    labelMockFrom: "FROM: BondEx",
+    labelMockTo: "TO: 您的姓名 + 下一家酒店",
     labelMockDate: "到达日期",
     stepsHead: "简单三步 3 EASY STEPS",
     steps: [
@@ -1278,12 +1274,12 @@ const HOWTO_L10N = {
     checkHead: "CONTROLLA L'ETICHETTA / CHECK YOUR LABEL",
     checkSub: "Un controllo di 10 secondi:",
     checks: [
-      "Nome mittente = rappresentante del gruppo",
+      "Il tuo nome è sul lato TO (destinatario)",
       "L'hotel di destinazione è corretto",
       "La data di arrivo corrisponde al programma",
     ],
-    labelMockFrom: "FROM: Nome rappresentante",
-    labelMockTo: "TO: Il tuo prossimo hotel",
+    labelMockFrom: "FROM: BondEx",
+    labelMockTo: "TO: Il tuo nome + prossimo hotel",
     labelMockDate: "Data di arrivo",
     stepsHead: "3 PASSI SEMPLICI / 3 EASY STEPS",
     steps: [
@@ -1315,12 +1311,12 @@ const HOWTO_L10N = {
     checkHead: "VÉRIFIEZ VOTRE ÉTIQUETTE / CHECK YOUR LABEL",
     checkSub: "Une vérification de 10 secondes :",
     checks: [
-      "Nom de l'expéditeur = représentant du groupe",
+      "Votre nom figure du côté TO (destinataire)",
       "L'hôtel de destination est correct",
       "La date d'arrivée correspond à votre programme",
     ],
-    labelMockFrom: "FROM : Nom du représentant",
-    labelMockTo: "TO : Votre prochain hôtel",
+    labelMockFrom: "FROM : BondEx",
+    labelMockTo: "TO : Votre nom + prochain hôtel",
     labelMockDate: "Date d'arrivée",
     stepsHead: "3 ÉTAPES SIMPLES / 3 EASY STEPS",
     steps: [
@@ -1352,12 +1348,12 @@ const HOWTO_L10N = {
     checkHead: "REVISE SU ETIQUETA / CHECK YOUR LABEL",
     checkSub: "Una revisión de 10 segundos:",
     checks: [
-      "Nombre del remitente = representante del grupo",
+      "Su nombre está en el lado TO (destinatario)",
       "El hotel de destino es correcto",
       "La fecha de llegada coincide con su itinerario",
     ],
-    labelMockFrom: "FROM: Nombre del representante",
-    labelMockTo: "TO: Su próximo hotel",
+    labelMockFrom: "FROM: BondEx",
+    labelMockTo: "TO: Su nombre + próximo hotel",
     labelMockDate: "Fecha de llegada",
     stepsHead: "3 PASOS SENCILLOS / 3 EASY STEPS",
     steps: [
