@@ -7,7 +7,7 @@ import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search
 import {
   Loader2, Check, Plus, Trash2, ArrowLeft, Info,
   ClipboardList, CalendarClock, PackageCheck, MailCheck, ChevronRight, FolderOpen,
-  UploadCloud, Sparkles, Download, AlertTriangle, type LucideIcon,
+  UploadCloud, Sparkles, Download, AlertTriangle, ExternalLink, type LucideIcon,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
@@ -119,6 +119,8 @@ const messages = {
     previewHeading: "Voucher preview",
     previewLoading: "Building the preview…",
     previewUnavailable: "Preview unavailable — you can still review the details above.",
+    previewOpenTab: "Open in a new tab",
+    previewFallbackNote: "If the preview is blank (e.g. on Safari), use \"Open in a new tab\" above.",
     backToEdit: "Back to edit",
     confirmIssue: "Issue with these details",
     confirmIssuing: "Issuing…",
@@ -240,6 +242,8 @@ const messages = {
     previewHeading: "バウチャー プレビュー",
     previewLoading: "プレビューを作成中…",
     previewUnavailable: "プレビューを表示できませんでした。上記の内容はご確認いただけます。",
+    previewOpenTab: "新しいタブで開く",
+    previewFallbackNote: "プレビューが空白の場合（Safari など）は、上の「新しいタブで開く」からご確認ください。",
     backToEdit: "入力に戻って修正",
     confirmIssue: "この内容で発行する",
     confirmIssuing: "発行中…",
@@ -371,6 +375,7 @@ export default function AgencyNewBookingPage() {
   const [step, setStep] = useState<"input" | "confirm">("input")
   const [previewUrl, setPreviewUrl] = useState<string>("")
   const [previewBusy, setPreviewBusy] = useState(false)
+  const [previewError, setPreviewError] = useState<string>("")
   const [valErrors, setValErrors] = useState<string[]>([])
   const [parsing, setParsing] = useState(false)
   const [parseNote, setParseNote] = useState("")
@@ -568,6 +573,7 @@ export default function AgencyNewBookingPage() {
   // 確認画面用のバウチャープレビューを取得 (DB書込・発行なし)
   const fetchPreview = async () => {
     setPreviewBusy(true)
+    setPreviewError("")
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
       return ""
@@ -575,16 +581,22 @@ export default function AgencyNewBookingPage() {
     try {
       const sb = getBrowserSupabase()
       const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
-      if (!token) return
+      if (!token) {
+        setPreviewError(t.notLoggedIn)
+        return
+      }
       const res = await fetch("/api/agency/voucher-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ representative, tourNumber, bookingName, groupName, guestLanguage, includeHowto, legs }),
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        setPreviewError(`${t.previewUnavailable} (HTTP ${res.status})`)
+        return
+      }
       setPreviewUrl(URL.createObjectURL(await res.blob()))
     } catch {
-      /* プレビュー失敗は致命ではない — 内容確認は表で可能 */
+      setPreviewError(t.previewUnavailable)
     } finally {
       setPreviewBusy(false)
     }
@@ -840,14 +852,36 @@ export default function AgencyNewBookingPage() {
 
           {/* バウチャー プレビュー */}
           <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-            <p className="text-[13px] font-bold text-[#0F172A] mb-3">{t.previewHeading}</p>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <p className="text-[13px] font-bold text-[#0F172A]">{t.previewHeading}</p>
+              {/* 別タブで開く = ブラウザ非依存の確実な表示 (Safari等は iframe 内の
+                  blob PDF を描画しないため、ネイティブのPDFビューアで開けるようにする)。 */}
+              {previewUrl && (
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#0F172A] text-white text-[12px] font-bold hover:bg-[#1E293B]"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" strokeWidth={2} />
+                  {t.previewOpenTab}
+                </a>
+              )}
+            </div>
             {previewBusy ? (
-              <div className="h-[70vh] flex items-center justify-center text-muted-foreground">
+              <div className="h-[60vh] flex items-center justify-center text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" strokeWidth={1.8} />
                 <span className="text-[13px]">{t.previewLoading}</span>
               </div>
+            ) : previewError ? (
+              <p className="text-[13px] text-red-600 py-8 text-center">{previewError}</p>
             ) : previewUrl ? (
-              <iframe title={t.previewHeading} src={previewUrl} className="w-full h-[70vh] rounded-lg border border-[#E5E7EB]" />
+              <>
+                {/* Chrome/Firefox/Edge はインライン表示。Safari 等で空白の場合は上の
+                    「新しいタブで開く」からご確認ください。 */}
+                <iframe title={t.previewHeading} src={previewUrl} className="w-full h-[70vh] rounded-lg border border-[#E5E7EB]" />
+                <p className="text-[11px] text-muted-foreground mt-2 text-center">{t.previewFallbackNote}</p>
+              </>
             ) : (
               <p className="text-[13px] text-muted-foreground py-8 text-center">{t.previewUnavailable}</p>
             )}
