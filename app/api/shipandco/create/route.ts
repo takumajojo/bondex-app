@@ -747,6 +747,9 @@ export async function POST(req: NextRequest) {
       ...(deliveryDate ? { date: deliveryDate, delivery_date: deliveryDate } : {}),
       // 配達時間帯 — 標準で午前中 (before-noon)。
       time: deliveryTime,
+      // 国内便の荷物サイズ (3辺合計区分)。未指定だと Ship&co が最小60(2kg)にして
+      // しまいスーツケースには小さすぎるため、キャリア既定 (佐川=160) を明示。
+      pack_size: carrier.packSize,
       pack_amount: suitcaseCount,
       test: !isLive, // SHIPANDCO_LIVE=true のときだけ本番(実ラベル)。既定はテスト。
     },

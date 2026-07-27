@@ -32,6 +32,10 @@ export interface CarrierConfig {
    *  佐川/ヤマトとも常温便は「発送翌日〜7日」。実際の到達可否 (長距離の翌日不可等) は
    *  Ship&co が発行時に検証するため、ここは粗いレンジガード。 */
   deliveryRule: { minOffsetDays: number; maxOffsetDays: number }
+  /** Ship&co 国内便の荷物サイズ (setup.pack_size)。3辺合計の区分。
+   *  未指定だと Ship&co が最小 (60=2kg) になり、スーツケースには小さすぎる。
+   *  スーツケースは 160 (Max 160cm/25kg・ガイド表記と一致) を既定にする。 */
+  packSize: number
 }
 
 export const CARRIERS: Record<Carrier, CarrierConfig> = {
@@ -45,6 +49,7 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     maxLeadDays: 50,
     timeSlots: ["not-specified", "before-noon", "12-14", "14-16", "16-18", "18-20", "18-21", "19-21"],
     deliveryRule: { minOffsetDays: 1, maxOffsetDays: 7 },
+    packSize: 160, // 佐川: 60/80/100/140/160 のうちスーツケース既定=160
   },
   yamato: {
     id: "yamato",
@@ -57,6 +62,7 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     maxLeadDays: 30,
     timeSlots: ["not-specified", "before-noon", "before-ten", "before-five", "14-16", "16-18", "18-20", "19-21"],
     deliveryRule: { minOffsetDays: 1, maxOffsetDays: 7 },
+    packSize: 160, // ヤマト: 60〜200 のうちスーツケース既定=160
   },
 }
 
