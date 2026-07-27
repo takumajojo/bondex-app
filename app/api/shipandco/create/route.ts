@@ -656,10 +656,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // お届け先の宛名 = 宿泊者名 (代表者名) + 様。会社名にはホテル名が入るので、
+  // 宛名にもホテル名を入れると「帝国ホテル東京 / 帝国ホテル東京」と二重になり、かつ
+  // お客様名が送り状に出ない。受け取りホテルが「予約名」で照合できるよう宿泊者名を入れる
+  // (運送業法上も お届け先様名 = 宿泊者名)。宿泊者名が無い時のみ Front Desk。
+  const guestForLabel = (representative || bookingName || "").trim()
+  const toRecipientName = guestForLabel ? `${guestForLabel} 様` : (toInput.recipient?.trim() || "Front Desk")
+
   // Google Places で構造化住所を取得
   const [fromAddr, toAddr] = await Promise.all([
-    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId, carrier.id),  // sender = BondEx
-    resolveYamatoAddress(toHotel, toInput.recipient ?? "Front Desk", placesKey, false, toPlaceId, carrier.id),     // recipient = hotel
+    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId, carrier.id),  // ご依頼主 = BondEx
+    resolveYamatoAddress(toHotel, toRecipientName, placesKey, false, toPlaceId, carrier.id),                          // お届け先: 会社=ホテル / 宛名=宿泊者名
   ])
 
   // 解決結果を Vercel ログに残す (再発時の根本特定用) — 全フィールドを出力する
@@ -700,8 +707,8 @@ export async function POST(req: NextRequest) {
   //   日付は記事欄 (ref_number) で表示する.
   const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
   const productName = rawProductName || "スーツケース"
-  const recipientName = (toInput.recipient ?? "").trim()
-  const recipientLastName = lastNameOnly(recipientName)
+  // 品名の苗字は宿泊者名から取る (旧: toInput.recipient=ホテル名 → "スーツケース 東京 様" と誤表示)
+  const recipientLastName = lastNameOnly(guestForLabel)
   const productNameFull = recipientLastName
     ? `${productName} ${recipientLastName} 様`
     : productName
