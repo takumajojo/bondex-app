@@ -707,11 +707,19 @@ export async function POST(req: NextRequest) {
   //   日付は記事欄 (ref_number) で表示する.
   const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
   const productName = rawProductName || "スーツケース"
-  // 品名の苗字は宿泊者名から取る (旧: toInput.recipient=ホテル名 → "スーツケース 東京 様" と誤表示)
+  // 品名(~28字)に「チェックイン{月}/{日}予定」を明示 (受取ホテルが予約照会しやすいように)。
+  //   チェックイン日 = お客様がお届け先ホテルに入る日 = 荷物の到着日 (deliveryDate)。
+  //   宿泊者名は宛名(お届け先様名)に入るので品名では省いて字数を確保する。
+  const checkinMd =
+    deliveryDate && /^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)
+      ? `${parseInt(deliveryDate.slice(5, 7), 10)}/${parseInt(deliveryDate.slice(8, 10), 10)}`
+      : ""
   const recipientLastName = lastNameOnly(guestForLabel)
-  const productNameFull = recipientLastName
-    ? `${productName} ${recipientLastName} 様`
-    : productName
+  const productNameFull = checkinMd
+    ? `${productName} チェックイン${checkinMd}予定`
+    : recipientLastName
+      ? `${productName} ${recipientLastName} 様`
+      : productName
 
   // 記事欄 (ref_number): "BDX-260629-903-L1 7/11着" の形式で BondEx 番号 + 配達日を集約.
   const dateSuffix = deliveryDate ? formatYmdShortJp(deliveryDate) : ""
