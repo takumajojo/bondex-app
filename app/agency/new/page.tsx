@@ -82,7 +82,7 @@ const messages = {
     bookingNamePlaceholder: "Same as representative if blank",
     groupName: "Group name (optional)",
     groupNamePlaceholder: "e.g. Johnson Family",
-    fromCheckIn: "Check-in at pickup hotel (optional)",
+    fromCheckIn: "Check-in date at pickup hotel",
     toCheckOut: "Check-out at delivery hotel (optional)",
     deliveryTime: "Delivery time slot",
     nextDayRisk:
@@ -126,6 +126,7 @@ const messages = {
     errPastDate: (n: number) => `Leg ${n}: the ship date is in the past — please check the year.`,
     errArrivalBeforeShip: (n: number) => `Leg ${n}: the arrival date is before the ship date.`,
     errMissingHotel: (n: number) => `Leg ${n}: both the origin and destination hotel are required.`,
+    errMissingCheckIn: (n: number) => `Leg ${n}: the check-in date at the pickup hotel is required (hotels look up the booking by name + check-in date).`,
     rvGuest: "Lead traveler",
     rvTour: "Tour no.",
     rvLang: "Voucher language",
@@ -203,7 +204,7 @@ const messages = {
     bookingNamePlaceholder: "空欄なら代表者と同じ",
     groupName: "団体名（任意）",
     groupNamePlaceholder: "例: 山田ご一行",
-    fromCheckIn: "発送元ホテルのチェックイン日（任意）",
+    fromCheckIn: "発送元ホテルのチェックイン日",
     toCheckOut: "お届け先ホテルのチェックアウト日（任意）",
     deliveryTime: "配達時間帯",
     nextDayRisk:
@@ -246,6 +247,7 @@ const messages = {
     errPastDate: (n: number) => `区間${n}: 発送日が過去の日付です。年をご確認ください。`,
     errArrivalBeforeShip: (n: number) => `区間${n}: 到着日が発送日より前になっています。`,
     errMissingHotel: (n: number) => `区間${n}: 発送元・発送先ホテルの両方が必要です。`,
+    errMissingCheckIn: (n: number) => `区間${n}: 発送元ホテルのチェックイン日は必須です（ホテルは「予約名＋チェックイン日」で照会するため）。`,
     rvGuest: "ご予約者",
     rvTour: "ツアー番号",
     rvLang: "バウチャー言語",
@@ -317,13 +319,20 @@ function todayYmd(): string {
  */
 function validateLegs(
   legs: Leg[],
-  m: { errPastDate: (n: number) => string; errArrivalBeforeShip: (n: number) => string; errMissingHotel: (n: number) => string },
+  m: {
+    errPastDate: (n: number) => string
+    errArrivalBeforeShip: (n: number) => string
+    errMissingHotel: (n: number) => string
+    errMissingCheckIn: (n: number) => string
+  },
 ): string[] {
   const today = todayYmd()
   const errs: string[] = []
   legs.forEach((leg, i) => {
     const n = i + 1
     if (!leg.fromHotel.trim() || !leg.toHotel.trim()) errs.push(m.errMissingHotel(n))
+    // 発送元ホテルのチェックイン日は必須 (バウチャーのホテル予約照会に必ず記載するため)
+    if (!leg.fromCheckIn) errs.push(m.errMissingCheckIn(n))
     if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
     if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
       errs.push(m.errArrivalBeforeShip(n))
@@ -1058,10 +1067,12 @@ export default function AgencyNewBookingPage() {
                     onChange={(e) => updateLeg(i, { suitcaseCount: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
                     required />
                 </Field>
-                <Field label={t.fromCheckIn} htmlFor={`ci${i}`}>
+                {/* 発送元ホテルのチェックイン日はホテルの予約照会に必須。発送日より前になる
+                    ことが通常なので日付下限は設けない (集荷=チェックアウト日より前に投宿)。 */}
+                <Field label={t.fromCheckIn} htmlFor={`ci${i}`} required>
                   <input id={`ci${i}`} type="date" className={inputCls} value={leg.fromCheckIn}
-                    min={leg.shipmentDate || undefined}
-                    onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} />
+                    max={leg.shipmentDate || undefined}
+                    onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} required />
                 </Field>
                 <Field label={t.toCheckOut} htmlFor={`co${i}`}>
                   <input id={`co${i}`} type="date" className={inputCls} value={leg.toCheckOut}

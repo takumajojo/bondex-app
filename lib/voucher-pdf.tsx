@@ -757,14 +757,22 @@ function LookupGrid({
   dateEn,
   dateJa,
   dateValue,
+  alwaysShowDate,
+  hideRoom,
 }: {
   guestName: string
-  // 日付欄 (任意)。dateValue がある時だけ表示 (発送先のチェックアウト日など)。
+  // 日付欄。dateValue がある時に表示 (発送先のチェックアウト日など)。
   dateEn?: string
   dateJa?: string
   dateValue?: string
+  // alwaysShowDate: 値が無くてもラベル+空欄で必ず日付列を出す (発送元のチェックイン日など、
+  //   ホテルが「予約名+チェックイン日」で照会するため必須表示。2026-07 谷口さん指示)。
+  alwaysShowDate?: boolean
+  // hideRoom: 部屋番号列を出さない (発送元は部屋番号が不明なので予約名+チェックイン日のみ)。
+  hideRoom?: boolean
 }) {
-  const showDate = !!(dateValue && dateEn)
+  const hasDateValue = !!(dateValue && dateEn)
+  const showDate = hasDateValue || !!(alwaysShowDate && dateEn)
   return (
     <View style={vs.lookupGrid}>
       <View style={[vs.lookupCell, showDate ? vs.lookupCellName : vs.lookupCellNameWide]}>
@@ -774,13 +782,19 @@ function LookupGrid({
       {showDate && (
         <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
           <Text style={[vs.lk, vs.lkPrimary]}>{dateEn}{"\n"}{dateJa}</Text>
-          <Text style={vs.lvPrimary}>{formatJpDate(dateValue!)}</Text>
+          {hasDateValue ? (
+            <Text style={vs.lvPrimary}>{formatJpDate(dateValue!)}</Text>
+          ) : (
+            <View style={vs.lvBlank} />
+          )}
         </View>
       )}
-      <View style={[vs.lookupCell, vs.lookupCellRoom]}>
-        <Text style={vs.lk}>ROOM NO.{"\n"}お部屋番号</Text>
-        <View style={vs.lvBlank} />
-      </View>
+      {!hideRoom && (
+        <View style={[vs.lookupCell, vs.lookupCellRoom]}>
+          <Text style={vs.lk}>ROOM NO.{"\n"}お部屋番号</Text>
+          <View style={vs.lvBlank} />
+        </View>
+      )}
     </View>
   )
 }
@@ -1066,7 +1080,16 @@ function VoucherPage({
         <View style={vs.hdBlock}>
           <Text style={[vs.hdNo, { color: RED }]}>01 発送元</Text>
           <Text style={vs.hdHotel}>{fromHotelJa}{jb(" 様")}</Text>
-          <LookupGrid guestName={guestName} />
+          {/* 発送元ホテルは「予約名 + チェックイン日」で予約照会するため必ず両方を記載。
+              部屋番号は不明なので出さない (2026-07 谷口さん指示・堀部さんの照会要件)。 */}
+          <LookupGrid
+            guestName={guestName}
+            dateEn="CHECK-IN"
+            dateJa="チェックイン日"
+            dateValue={shipment.fromCheckIn}
+            alwaysShowDate
+            hideRoom
+          />
           <Text style={vs.hdNote}>
             {jb("チェックアウト時にお客様が、本バウチャーと")}
             <Text style={vs.hdNoteStrong}>{jb("お荷物と同じ枚数の印字済み送り状")}</Text>
