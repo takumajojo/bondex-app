@@ -129,6 +129,7 @@ const messages = {
     errArrivalBeforeShip: (n: number) => `Leg ${n}: the arrival date is before the ship date.`,
     errMissingHotel: (n: number) => `Leg ${n}: both the origin and destination hotel are required.`,
     errMissingCheckIn: (n: number) => `Leg ${n}: the check-in date at the pickup hotel is required (hotels look up the booking by name + check-in date).`,
+    errCheckInBeforeShip: (n: number) => `Leg ${n}: the check-in date must be on or after the ship date.`,
     rvGuest: "Lead traveler",
     rvTour: "Tour no.",
     rvLang: "Voucher language",
@@ -252,6 +253,7 @@ const messages = {
     errArrivalBeforeShip: (n: number) => `区間${n}: 到着日が発送日より前になっています。`,
     errMissingHotel: (n: number) => `区間${n}: 発送元・発送先ホテルの両方が必要です。`,
     errMissingCheckIn: (n: number) => `区間${n}: 発送元ホテルのチェックイン日は必須です（ホテルは「予約名＋チェックイン日」で照会するため）。`,
+    errCheckInBeforeShip: (n: number) => `区間${n}: チェックイン日は発送日以降にしてください。`,
     rvGuest: "ご予約者",
     rvTour: "ツアー番号",
     rvLang: "バウチャー言語",
@@ -328,6 +330,7 @@ function validateLegs(
     errArrivalBeforeShip: (n: number) => string
     errMissingHotel: (n: number) => string
     errMissingCheckIn: (n: number) => string
+    errCheckInBeforeShip: (n: number) => string
   },
 ): string[] {
   const today = todayYmd()
@@ -337,6 +340,8 @@ function validateLegs(
     if (!leg.fromHotel.trim() || !leg.toHotel.trim()) errs.push(m.errMissingHotel(n))
     // 発送元ホテルのチェックイン日は必須 (バウチャーのホテル予約照会に必ず記載するため)
     if (!leg.fromCheckIn) errs.push(m.errMissingCheckIn(n))
+    // チェックイン日は発送日以降 (谷口さん指示: 発送日より前は不整合)
+    else if (leg.shipmentDate && leg.fromCheckIn < leg.shipmentDate) errs.push(m.errCheckInBeforeShip(n))
     if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
     if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
       errs.push(m.errArrivalBeforeShip(n))
@@ -1101,11 +1106,11 @@ export default function AgencyNewBookingPage() {
                     onChange={(e) => updateLeg(i, { suitcaseCount: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
                     required />
                 </Field>
-                {/* 発送元ホテルのチェックイン日はホテルの予約照会に必須。発送日より前になる
-                    ことが通常なので日付下限は設けない (集荷=チェックアウト日より前に投宿)。 */}
+                {/* チェックイン日は発送日以降のみ選択可 (谷口さん指示: 発送日より前の
+                    チェックインは不整合)。発送日を変えたら下限も追従する。 */}
                 <Field label={t.fromCheckIn} htmlFor={`ci${i}`} required>
                   <input id={`ci${i}`} type="date" className={inputCls} value={leg.fromCheckIn}
-                    max={leg.shipmentDate || undefined}
+                    min={leg.shipmentDate || undefined}
                     onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} required />
                 </Field>
                 <Field label={t.toCheckOut} htmlFor={`co${i}`}>
