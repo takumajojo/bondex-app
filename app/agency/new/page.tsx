@@ -29,6 +29,7 @@ type Leg = {
   recipient: string
   suitcaseCount: number
   notes: string
+  noteTarget: "from" | "to" | "both"
 }
 
 const emptyLeg = (): Leg => ({
@@ -46,6 +47,7 @@ const emptyLeg = (): Leg => ({
   recipient: "",
   suitcaseCount: 1,
   notes: "",
+  noteTarget: "to", // 既定はお届け先ホテル宛
 })
 
 const GUEST_LANGS: Array<[string, string]> = [
@@ -107,6 +109,10 @@ const messages = {
     recipientPlaceholder: "Defaults to the delivery hotel front desk",
     suitcases: "Suitcases",
     notes: "Message to the hotel (optional)",
+    noteTargetLabel: "Show on",
+    noteTargetTo: "Delivery hotel",
+    noteTargetFrom: "Pickup hotel",
+    noteTargetBoth: "Both",
     addLeg: "Add leg",
     removeLeg: "Remove",
     submit: "Review before issuing",
@@ -231,6 +237,10 @@ const messages = {
     recipientPlaceholder: "未入力ならお届け先ホテルのフロント宛",
     suitcases: "個数",
     notes: "ホテルへの申し送り（任意）",
+    noteTargetLabel: "掲載先",
+    noteTargetTo: "お届け先ホテル",
+    noteTargetFrom: "発送元ホテル",
+    noteTargetBoth: "両方",
     addLeg: "区間を追加",
     removeLeg: "削除",
     submit: "確認画面へ進む",
@@ -479,6 +489,7 @@ export default function AgencyNewBookingPage() {
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
           notes: "",
+          noteTarget: "to" as const,
         })),
       )
       setParseNote(t.autoDone)
@@ -1136,10 +1147,21 @@ export default function AgencyNewBookingPage() {
                   </div>
                 )}
               </div>
-              <Field label={t.notes} htmlFor={`nt${i}`}>
-                <input id={`nt${i}`} className={inputCls} value={leg.notes}
-                  onChange={(e) => updateLeg(i, { notes: e.target.value })} />
-              </Field>
+              <div className="grid md:grid-cols-[1fr_auto] gap-3 items-end">
+                <Field label={t.notes} htmlFor={`nt${i}`}>
+                  <input id={`nt${i}`} className={inputCls} value={leg.notes}
+                    onChange={(e) => updateLeg(i, { notes: e.target.value })} />
+                </Field>
+                {/* 申し送りの掲載先 (堀部さんFB): 発送元 / お届け先(既定) / 両方 */}
+                <Field label={t.noteTargetLabel} htmlFor={`ntt${i}`}>
+                  <select id={`ntt${i}`} className={inputCls} value={leg.noteTarget}
+                    onChange={(e) => updateLeg(i, { noteTarget: e.target.value as Leg["noteTarget"] })}>
+                    <option value="to">{t.noteTargetTo}</option>
+                    <option value="from">{t.noteTargetFrom}</option>
+                    <option value="both">{t.noteTargetBoth}</option>
+                  </select>
+                </Field>
+              </div>
             </div>
           ))}
 

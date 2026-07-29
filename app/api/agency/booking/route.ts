@@ -45,6 +45,7 @@ interface LegInput {
   recipient: string
   suitcaseCount: number
   notes: string
+  noteTarget: string
 }
 
 function parseLeg(raw: unknown): LegInput | { error: string } {
@@ -68,6 +69,8 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   const deliveryTime = DELIVERY_SLOT_SET.has(rawDelivery) ? rawDelivery : ""
   const fromCheckIn = DATE_RE.test(s(o.fromCheckIn)) ? s(o.fromCheckIn) : ""
   const toCheckOut = DATE_RE.test(s(o.toCheckOut)) ? s(o.toCheckOut) : ""
+  const rawNoteTarget = s(o.noteTarget)
+  const noteTarget = ["from", "to", "both"].includes(rawNoteTarget) ? rawNoteTarget : ""
   return {
     fromHotel,
     fromPlaceId: s(o.fromPlaceId),
@@ -83,6 +86,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     recipient,
     suitcaseCount,
     notes,
+    noteTarget,
   }
 }
 
@@ -224,6 +228,7 @@ export async function POST(req: NextRequest) {
           fromCheckIn: leg.fromCheckIn,
           toCheckOut: leg.toCheckOut,
           specialNote: leg.notes,
+          noteTarget: leg.noteTarget,
           tourNumber,
           groupName,
           guestLanguage,

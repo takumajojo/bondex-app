@@ -41,6 +41,7 @@ interface PreviewLeg {
   recipient?: unknown
   suitcaseCount?: unknown
   notes?: unknown
+  noteTarget?: unknown
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "")
@@ -146,6 +147,11 @@ export async function POST(req: NextRequest) {
       fromCheckIn: str(l.fromCheckIn) || undefined,
       toCheckOut: str(l.toCheckOut) || undefined,
       specialNote: str(l.notes) || undefined,
+      noteTarget: (["from", "to", "both"].includes(str(l.noteTarget)) ? str(l.noteTarget) : undefined) as
+        | "from"
+        | "to"
+        | "both"
+        | undefined,
     })),
   }
 

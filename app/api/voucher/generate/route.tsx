@@ -30,6 +30,7 @@ interface RequestShipment {
   dropOffTime?: unknown
   pickUpNote?: unknown
   specialNote?: unknown
+  noteTarget?: unknown
   destinationNights?: unknown
   bookingName?: unknown
   fromCheckIn?: unknown
@@ -114,6 +115,9 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
     dropOffTime: asString(s.dropOffTime).trim() || undefined,
     pickUpNote: asString(s.pickUpNote).trim() || undefined,
     specialNote: asString(s.specialNote).trim() || undefined,
+    noteTarget: (["from", "to", "both"].includes(asString(s.noteTarget).trim())
+      ? asString(s.noteTarget).trim()
+      : undefined) as "from" | "to" | "both" | undefined,
     destinationNights,
     bookingName: asString(s.bookingName).trim() || undefined,
     fromCheckIn: asString(s.fromCheckIn).trim() || undefined,

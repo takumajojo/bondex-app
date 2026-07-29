@@ -47,6 +47,8 @@ export interface ShipmentRecord {
   status: ShipmentStatus
   error_message: string | null
   notes: string | null
+  /** ホテルへの申し送りの掲載先: from=発送元のみ / to=お届け先のみ(既定) / both=両方。 */
+  note_target: string | null
   /** 書類一式を格納した Google Drive フォルダの共有 URL (BondEx が発行後に登録)。 */
   drive_url: string | null
   /** ヤマトお届け時間帯 (DELIVERY_TIME_SLOTS の値)。代理店の希望。 */
@@ -117,6 +119,7 @@ export async function saveShipment(
     status: input.status ?? "issued",
     error_message: input.error_message ?? null,
     notes: input.notes ?? null,
+    note_target: input.note_target ?? null,
     drive_url: input.drive_url ?? null,
     delivery_time: input.delivery_time ?? null,
     carrier: input.carrier ?? "sagawa",

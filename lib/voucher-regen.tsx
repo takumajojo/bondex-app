@@ -30,7 +30,7 @@ export async function regenerateVoucherPdf(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes, guest_language, carrier",
+      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier",
     )
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
@@ -108,6 +108,7 @@ export async function regenerateVoucherPdf(
       fromCheckIn: s.from_check_in ?? undefined,
       toCheckOut: s.to_check_out ?? undefined,
       specialNote: s.notes ?? undefined,
+      noteTarget: (s.note_target as "from" | "to" | "both" | null) ?? undefined,
     })),
   }
 

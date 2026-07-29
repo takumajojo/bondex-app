@@ -37,8 +37,6 @@ const FONT_DIR = path.join(process.cwd(), "public", "fonts")
 const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
 
 const BONDEX_SUPPORT_EMAIL = "support@bondex.express"
-// 配送業者 (ヤマト) の連絡先 — 実番号確定までプレースホルダ (テンプレートと同じ)
-const SUPPLIER_TEL_PLACEHOLDER = "+81-XX-XXXX-XXXX"
 
 // 日本語のハイフンなし改行:
 // textkit は単語内の改行点 (penalty node) で必ず "-" を挿入するため、
@@ -146,6 +144,8 @@ export interface VoucherShipment {
   dropOffTime?: string
   pickUpNote?: string
   specialNote?: string
+  /** 申し送りの掲載先: "from"=発送元のみ / "to"=お届け先のみ (既定) / "both"=両方。 */
+  noteTarget?: "from" | "to" | "both"
   destinationNights?: number
   /** Reservation booking name (may differ from recipient). Optional. */
   bookingName?: string
@@ -879,16 +879,10 @@ function VoucherPage({
           <Text style={vs.lbLeg}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
         </View>
         <View style={vs.lbMain}>
+          {/* バナーは「どのホテル間の便か」の見出しに専念。日付は下の DROP-OFF/PICK-UP
+              ブロックが大きく曜日つきで表示するため、ここでは重複を避けて出さない
+              (2026-07 堀部さんFB: 情報の重複を解消)。 */}
           <Text style={vs.lbRoute}>{`${fromHotel} → ${toHotel}`}</Text>
-          <View style={vs.lbDates}>
-            <Text style={[vs.lbDateText, zf]}>
-              {L.dropLabel}<Text style={vs.lbDateStrong}>{formatEnDate(shipment.shipmentDate)}</Text>
-            </Text>
-            <View style={vs.lbSep} />
-            <Text style={[vs.lbDateText, zf]}>
-              {L.pickLabel}<Text style={vs.lbDateStrong}>{formatEnDate(shipment.expectedArrival)}</Text>
-            </Text>
-          </View>
         </View>
       </View>
 
@@ -1009,9 +1003,7 @@ function VoucherPage({
           <View style={[vs.detailCell, { width: contactCell ? "50%" : "100%" }]}>
             <Text style={vs.dk}>SUPPLIER / 配送業者</Text>
             <Text style={vs.dv}>{jb(carrierConfig(data.carrier).voucherLabel)}</Text>
-            <Text style={vs.dvSmall}>
-              Tel: {SUPPLIER_TEL_PLACEHOLDER}　*Japanese speaking only
-            </Text>
+            {/* Tel 行は実番号確定まで非表示 (仮番号 +81-XX-XXXX-XXXX を顧客/ホテルに出さない・谷口さん判断 2026-07-27) */}
           </View>
         </View>
       </View>
@@ -1089,6 +1081,10 @@ function VoucherPage({
             <Text style={vs.hdNoteStrong}>{jb("出荷する荷物")}</Text>
             {jb("としてお預かりのうえ、送り状とあわせて集荷ドライバーへお渡しください。")}
           </Text>
+          {/* 申し送り: 掲載先が発送元 or 両方 のとき発送元にも出す */}
+          {shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? (
+            <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
+          ) : null}
         </View>
         <View style={[vs.hdBlock, { marginLeft: mm(3.5) }]}>
           <Text style={[vs.hdNo, { color: INK }]}>02 発送先</Text>
@@ -1109,7 +1105,8 @@ function VoucherPage({
             <Text style={vs.hdNoteStrong}>{jb("到着済み荷物")}</Text>
             {jb("としてお預かりのうえ、チェックイン時にお客様へお渡しください。")}
           </Text>
-          {shipment.specialNote ? (
+          {/* 申し送り: 掲載先が お届け先(既定) or 両方 のとき発送先に出す */}
+          {shipment.specialNote && shipment.noteTarget !== "from" ? (
             <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
           ) : null}
         </View>
@@ -1211,7 +1208,7 @@ const HOWTO_L10N = {
     steps: [
       { title: "Pack smart", body: "Passport, tickets, medicine — keep them with you." },
       { title: "Hand over at reception", body: "Voucher + labels to the front desk — the courier will attach them for you." },
-      { title: "Pick up & go", body: "Collect your bags at your next hotel's reception." },
+      { title: "Drop off & go", body: "Travel light — your luggage will be waiting at your next hotel." },
     ],
     trackHead: "TRACK ANYTIME",
     trackBody: "Scan the QR code on your voucher.",
@@ -1248,7 +1245,7 @@ const HOWTO_L10N = {
     steps: [
       { title: "聪明打包", body: "护照、车票、药品请随身携带。" },
       { title: "在前台交付", body: "将凭证和标签交给前台。无需粘贴，配送员会安装。" },
-      { title: "领取行李", body: "在下一家酒店的前台领取。" },
+      { title: "轻装出发", body: "轻松出行——您的行李将在下一家酒店等候您。" },
     ],
     trackHead: "随时追踪 TRACK ANYTIME",
     trackBody: "扫描凭证上的二维码即可。",
@@ -1285,7 +1282,7 @@ const HOWTO_L10N = {
     steps: [
       { title: "Fai i bagagli con criterio", body: "Passaporto, biglietti, medicine — tienili con te." },
       { title: "Consegna alla reception", body: "Voucher + etichette alla reception — sarà il corriere ad applicarle." },
-      { title: "Ritira e riparti", body: "Ritira i bagagli alla reception del tuo prossimo hotel." },
+      { title: "Parti leggero", body: "Viaggia leggero — i tuoi bagagli ti aspetteranno al prossimo hotel." },
     ],
     trackHead: "TRACCIA IN OGNI MOMENTO / TRACK ANYTIME",
     trackBody: "Scansiona il codice QR sul tuo voucher.",
@@ -1322,7 +1319,7 @@ const HOWTO_L10N = {
     steps: [
       { title: "Faites vos bagages intelligemment", body: "Passeport, billets, médicaments — gardez-les avec vous." },
       { title: "Remettez à la réception", body: "Bon + étiquettes à la réception — le transporteur les fixera lui-même." },
-      { title: "Récupérez et partez", body: "Récupérez vos bagages à la réception de votre prochain hôtel." },
+      { title: "Voyagez léger", body: "Voyagez léger — vos bagages vous attendront à votre prochain hôtel." },
     ],
     trackHead: "SUIVEZ À TOUT MOMENT / TRACK ANYTIME",
     trackBody: "Scannez le code QR sur votre bon.",
@@ -1359,7 +1356,7 @@ const HOWTO_L10N = {
     steps: [
       { title: "Empaque con inteligencia", body: "Pasaporte, billetes, medicinas — llévelos con usted." },
       { title: "Entregue en recepción", body: "Comprobante + etiquetas en recepción — el transportista las colocará." },
-      { title: "Recoja y continúe", body: "Recoja su equipaje en la recepción de su próximo hotel." },
+      { title: "Viaje ligero", body: "Viaje ligero — su equipaje le estará esperando en su próximo hotel." },
     ],
     trackHead: "SIGA SU ENVÍO EN TODO MOMENTO / TRACK ANYTIME",
     trackBody: "Escanee el código QR de su comprobante.",

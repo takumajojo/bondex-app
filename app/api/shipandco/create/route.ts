@@ -286,6 +286,8 @@ interface CreateBody {
   fromCheckIn?: unknown
   toCheckOut?: unknown
   specialNote?: unknown
+  /** 申し送りの掲載先 from/to/both (バウチャー専用・既定=お届け先)。 */
+  noteTarget?: unknown
   tourNumber?: unknown
   groupName?: unknown
 }
@@ -566,6 +568,8 @@ export async function POST(req: NextRequest) {
   const fromCheckIn = typeof body.fromCheckIn === "string" ? body.fromCheckIn.trim() : ""
   const toCheckOut = typeof body.toCheckOut === "string" ? body.toCheckOut.trim() : ""
   const specialNote = typeof body.specialNote === "string" ? body.specialNote.trim() : ""
+  const rawNoteTarget = typeof body.noteTarget === "string" ? body.noteTarget.trim() : ""
+  const noteTarget = ["from", "to", "both"].includes(rawNoteTarget) ? rawNoteTarget : "" // 既定(空)=お届け先
   const tourNumber = typeof body.tourNumber === "string" ? body.tourNumber.trim() : ""
   const groupName = typeof body.groupName === "string" ? body.groupName.trim() : ""
 
@@ -626,6 +630,7 @@ export async function POST(req: NextRequest) {
       carrier: carrier.id,
       status: "pending",
       notes: specialNote || null,
+      note_target: noteTarget || null,
     })
     return NextResponse.json({
       status: "deferred",
@@ -814,6 +819,7 @@ export async function POST(req: NextRequest) {
       amount_yen: suitcaseCount * 5000,
       ship_ref_number: refNumber,
       notes: specialNote || null,
+      note_target: noteTarget || null,
     }
 
     if (!res.ok) {
