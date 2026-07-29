@@ -34,7 +34,7 @@ export async function GET(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, recipient, status, yamato_tracking, yamato_tracking_detail, created_at, updated_at",
+      "booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, recipient, status, yamato_tracking, yamato_tracking_detail, guest_language, carrier, created_at, updated_at",
     )
     .eq("booking_id", trimmed)
     .order("leg_index", { ascending: true })
@@ -63,8 +63,12 @@ export async function GET(
     checkedAt: string
   }
 
+  const first = data[0] as { guest_language?: string | null; carrier?: string | null }
   return NextResponse.json({
     bookingId: trimmed,
+    // 旅行者の言語 (バウチャーと同じ) と配送キャリア。追跡ページの表示言語・追跡リンクに使う。
+    guestLanguage: first?.guest_language ?? "en",
+    carrier: first?.carrier ?? "sagawa",
     legs: data.map((s) => {
       // yamato_tracking (番号だけの配列) を正としつつ、cron が書き込んだ
       // yamato_tracking_detail (番号ごとの現在地・ステータス) があれば番号単位でマージする。
