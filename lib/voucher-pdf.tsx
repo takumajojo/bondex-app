@@ -153,6 +153,9 @@ export interface VoucherShipment {
   fromCheckIn?: string
   /** Guest check-out date at the to-hotel (YYYY-MM-DD). Optional. */
   toCheckOut?: string
+  /** ホテル名の英語併記 (日本語名のホテル向け)。お客様が読めるよう補う。 */
+  fromHotelEn?: string
+  toHotelEn?: string
 }
 
 export type ContactDisplayMode =
@@ -367,7 +370,7 @@ const vs = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
   },
-  h1: { fontSize: 17, fontWeight: 700, lineHeight: 1.12 },
+  h1: { fontSize: 14, fontWeight: 700, lineHeight: 1.12 },
   h1Sub: { fontSize: 9, color: INK_SOFT, marginTop: mm(1.2) },
   trackingModule: {
     width: mm(40),
@@ -446,6 +449,7 @@ const vs = StyleSheet.create({
   legMy: { fontSize: 8, fontWeight: 700, letterSpacing: 0.5, marginLeft: mm(2.5), marginBottom: 2 },
   legDow: { fontSize: 7.5, color: RED, fontWeight: 700, marginLeft: mm(2.5), marginBottom: 2 },
   legHotelEn: { fontSize: 11, fontWeight: 700, lineHeight: 1.15, marginTop: mm(1.4) },
+  legHotelSub: { fontSize: 8.5, color: INK_SOFT, lineHeight: 1.2, marginTop: mm(0.4) },
   legWhen: { marginTop: "auto", paddingTop: mm(1.2) },
   legWhenEn: { fontSize: 7, fontWeight: 700, lineHeight: 1.35 },
   legWhenJa: { fontSize: 7, color: INK_SOFT, lineHeight: 1.35 },
@@ -825,6 +829,11 @@ function VoucherPage({
   const toHotel = jb(shipment.to.hotel)
   const fromHotelJa = safeText(shipment.from.hotel)
   const toHotelJa = safeText(shipment.to.hotel)
+  // 英語併記 (日本語名のホテルのみ)。JP 名と一致する場合は出さない。
+  const fromHotelEn =
+    shipment.fromHotelEn && safeText(shipment.fromHotelEn) !== fromHotelJa ? safeText(shipment.fromHotelEn) : ""
+  const toHotelEn =
+    shipment.toHotelEn && safeText(shipment.toHotelEn) !== toHotelJa ? safeText(shipment.toHotelEn) : ""
   // ゲスト言語 (en / zh / it / fr / es)。zh のみ NotoSansSC で描画 (JP フォントに簡体字が無い)。
   // it/fr/es はラテン文字のためNotoSansJPのフォールバックで描画可能 (アクセント付き文字も含めて確認済み)。
   const lang: GuestLanguage = normalizeGuestLanguage(data.guestLanguage)
@@ -872,24 +881,20 @@ function VoucherPage({
         </View>
       </View>
 
-      {/* 区間バナー: どのホテルに渡す紙か一瞬で分かるようにする */}
+      {/* 区間バナー: 何番目の区間かだけを示す。経路(送付先)・日付は下の
+          DROP-OFF/PICK-UP ブロックが詳しく表示するため、ここでは重複を避けて出さない
+          (2026-07 谷口さんFB: ここで必要なのは LEG の数のみ)。 */}
       <View style={vs.legBanner}>
         <View>
           <Text style={[vs.lbKicker, zf]}>{jb(L.kicker)}</Text>
           <Text style={vs.lbLeg}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
-        </View>
-        <View style={vs.lbMain}>
-          {/* バナーは「どのホテル間の便か」の見出しに専念。日付は下の DROP-OFF/PICK-UP
-              ブロックが大きく曜日つきで表示するため、ここでは重複を避けて出さない
-              (2026-07 堀部さんFB: 情報の重複を解消)。 */}
-          <Text style={vs.lbRoute}>{`${fromHotel} → ${toHotel}`}</Text>
         </View>
       </View>
 
       {/* doc title + tracking module */}
       <View style={vs.docTitle}>
         <View>
-          <Text style={vs.h1}>LUGGAGE FORWARDING{"\n"}VOUCHER</Text>
+          <Text style={vs.h1}>LUGGAGE FORWARDING VOUCHER</Text>
           <Text style={vs.h1Sub}>荷物配送引換証</Text>
         </View>
         <View style={vs.trackingModule}>
@@ -927,6 +932,7 @@ function VoucherPage({
             <Text style={vs.legDow}>{dowLabel(shipment.shipmentDate)}</Text>
           </View>
           <Text style={vs.legHotelEn}>{fromHotel}</Text>
+          {fromHotelEn ? <Text style={vs.legHotelSub}>{fromHotelEn}</Text> : null}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
@@ -946,6 +952,7 @@ function VoucherPage({
             <Text style={vs.legDow}>{dowLabel(shipment.expectedArrival)}</Text>
           </View>
           <Text style={vs.legHotelEn}>{toHotel}</Text>
+          {toHotelEn ? <Text style={vs.legHotelSub}>{toHotelEn}</Text> : null}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>

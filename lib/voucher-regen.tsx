@@ -2,6 +2,7 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { buildVoucherFileName } from "@/lib/utils"
+import { getPlaceNameByLang, hasJapanese } from "@/lib/places-search"
 import {
   VoucherDocument,
   SUPPORT_DEFAULTS,
@@ -30,7 +31,7 @@ export async function regenerateVoucherPdf(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier",
+      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en",
     )
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
@@ -75,6 +76,36 @@ export async function regenerateVoucherPdf(
     console.error("[voucher-regen] QR generation failed:", err)
   }
 
+  // ホテル名の英語併記 (バウチャーはお客様が読むため)。日本語名のホテルだけ Google Places
+  // から英語名を補い、DB にキャッシュ (次回以降は API を叩かない)。失敗しても JP 名で継続。
+  type Row = (typeof data)[number] & {
+    from_place_id?: string | null; to_place_id?: string | null
+    from_hotel_en?: string | null; to_hotel_en?: string | null
+  }
+  const enName = new Map<number, { from?: string; to?: string }>()
+  await Promise.all(
+    (data as Row[]).map(async (s) => {
+      const out: { from?: string; to?: string } = {}
+      const wb: Record<string, string> = {}
+      const fromJa = s.from_hotel ?? ""
+      const toJa = s.to_hotel ?? ""
+      if (s.from_hotel_en) out.from = s.from_hotel_en
+      else if (hasJapanese(fromJa) && s.from_place_id) {
+        const n = await getPlaceNameByLang(s.from_place_id, "en")
+        if (n && !hasJapanese(n)) { out.from = n; wb.from_hotel_en = n }
+      }
+      if (s.to_hotel_en) out.to = s.to_hotel_en
+      else if (hasJapanese(toJa) && s.to_place_id) {
+        const n = await getPlaceNameByLang(s.to_place_id, "en")
+        if (n && !hasJapanese(n)) { out.to = n; wb.to_hotel_en = n }
+      }
+      if (Object.keys(wb).length) {
+        await sb.from("shipments").update(wb).eq("booking_id", bookingId).eq("leg_index", s.leg_index)
+      }
+      enName.set(s.leg_index, out)
+    }),
+  )
+
   const input: VoucherInput = {
     bookingId,
     issuedDate: formatIssuedDate(),
@@ -102,6 +133,8 @@ export async function regenerateVoucherPdf(
       expectedArrival: s.expected_arrival ?? s.shipment_date,
       from: { hotel: s.from_hotel ?? "", address: "", city: s.from_city ?? "" },
       to: { hotel: s.to_hotel ?? "", address: "", city: s.to_city ?? "" },
+      fromHotelEn: enName.get(s.leg_index)?.from,
+      toHotelEn: enName.get(s.leg_index)?.to,
       recipient: s.recipient ?? "",
       suitcaseCount: s.suitcase_count ?? 0,
       bookingName: s.booking_name ?? undefined,

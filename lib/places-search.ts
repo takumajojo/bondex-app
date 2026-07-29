@@ -33,6 +33,34 @@ export function parseJpAddress(formattedAddr: string): { prefecture: string; cit
   return { prefecture, city }
 }
 
+/**
+ * place_id からホテル名を指定言語で取得する (バウチャーの英語併記用)。
+ * 日本語で保存されたホテル名に対し英語名を補うのに使う。失敗時は null。
+ */
+export async function getPlaceNameByLang(placeId: string, lang: "en" | "ja"): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey || !placeId) return null
+  const url = new URL(`${PLACES_BASE}/details/json`)
+  url.searchParams.set("place_id", placeId)
+  url.searchParams.set("language", lang)
+  url.searchParams.set("fields", "name")
+  url.searchParams.set("key", apiKey)
+  try {
+    const res = await fetch(url.toString())
+    if (!res.ok) return null
+    const data = (await res.json()) as { status?: string; result?: { name?: string } }
+    if (data.status !== "OK") return null
+    return data.result?.name?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/** 日本語 (漢字/かな) を含むか。英語併記が必要かの判定に使う。 */
+export function hasJapanese(s: string): boolean {
+  return /[぀-ヿ㐀-鿿]/.test(s)
+}
+
 export type PlacesSearchResult =
   | { ok: true; candidates: PlaceCandidate[] }
   | { ok: false; status: number; error: string }

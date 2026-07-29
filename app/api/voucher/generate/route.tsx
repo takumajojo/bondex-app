@@ -35,6 +35,8 @@ interface RequestShipment {
   bookingName?: unknown
   fromCheckIn?: unknown
   toCheckOut?: unknown
+  fromHotelEn?: unknown
+  toHotelEn?: unknown
 }
 
 interface RequestBody {
@@ -122,6 +124,8 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
     bookingName: asString(s.bookingName).trim() || undefined,
     fromCheckIn: asString(s.fromCheckIn).trim() || undefined,
     toCheckOut: asString(s.toCheckOut).trim() || undefined,
+    fromHotelEn: asString(s.fromHotelEn).trim() || undefined,
+    toHotelEn: asString(s.toHotelEn).trim() || undefined,
   }
 }
 
