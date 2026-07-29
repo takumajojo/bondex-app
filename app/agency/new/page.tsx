@@ -1013,23 +1013,25 @@ export default function AgencyNewBookingPage() {
 
           {/* 予約全体の情報 */}
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6 grid md:grid-cols-2 gap-4">
+            {/* 配送会社(佐川)の氏名欄上限に合わせ、氏名系は 40 文字までに制限。
+                送り状側でも安全のため自動短縮するが、入力段階でも超過を防ぐ。 */}
             <Field label={t.representative} htmlFor="rep" required>
-              <input id="rep" className={inputCls} value={representative}
+              <input id="rep" className={inputCls} value={representative} maxLength={40}
                 onChange={(e) => setRepresentative(e.target.value)} required
                 placeholder={t.representativePlaceholder} autoComplete="off" />
             </Field>
             <Field label={t.tourNumber} htmlFor="tour">
-              <input id="tour" className={inputCls} value={tourNumber}
+              <input id="tour" className={inputCls} value={tourNumber} maxLength={40}
                 onChange={(e) => setTourNumber(e.target.value)}
                 placeholder={t.tourNumberPlaceholder} autoComplete="off" />
             </Field>
             <Field label={t.bookingName} htmlFor="bookingName">
-              <input id="bookingName" className={inputCls} value={bookingName}
+              <input id="bookingName" className={inputCls} value={bookingName} maxLength={40}
                 onChange={(e) => setBookingName(e.target.value)}
                 placeholder={t.bookingNamePlaceholder} autoComplete="off" />
             </Field>
             <Field label={t.groupName} htmlFor="groupName">
-              <input id="groupName" className={inputCls} value={groupName}
+              <input id="groupName" className={inputCls} value={groupName} maxLength={40}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder={t.groupNamePlaceholder} autoComplete="off" />
             </Field>
@@ -1149,8 +1151,12 @@ export default function AgencyNewBookingPage() {
               </div>
               <div className="grid md:grid-cols-[1fr_auto] gap-3 items-end">
                 <Field label={t.notes} htmlFor={`nt${i}`}>
-                  <input id={`nt${i}`} className={inputCls} value={leg.notes}
+                  {/* バウチャーのホテル欄に収まるよう 60 文字までに制限 (堀部さんFB) */}
+                  <input id={`nt${i}`} className={inputCls} value={leg.notes} maxLength={60}
                     onChange={(e) => updateLeg(i, { notes: e.target.value })} />
+                  <span className="block text-right text-[11px] text-muted-foreground mt-0.5">
+                    {leg.notes.length}/60
+                  </span>
                 </Field>
                 {/* 申し送りの掲載先 (堀部さんFB): 発送元 / お届け先(既定) / 両方 */}
                 <Field label={t.noteTargetLabel} htmlFor={`ntt${i}`}>

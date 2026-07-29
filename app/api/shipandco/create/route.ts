@@ -89,6 +89,33 @@ function formatYmdShortJp(ymd: string): string {
   return `${parseInt(m[1], 10)}/${parseInt(m[2], 10)}着`
 }
 
+// 全角=2 / 半角=1 として表示幅を数える (佐川の氏名欄は全角約16=幅32が上限)。
+function displayWidth(s: string): number {
+  let w = 0
+  for (const ch of s) w += ch.charCodeAt(0) > 0xff ? 2 : 1
+  return w
+}
+
+/**
+ * 佐川の氏名/会社名欄に収まるよう名称を短縮する (E1-0043「お届先氏名で文字数オーバー」対策)。
+ * 全角16=幅32 が上限なので既定 maxWidth=28 と安全側に。上限超過時は区切り
+ * (カンマ/読点/スペース) の直前で切って途中切れを避け、末尾の記号を落とす。
+ * 例: "THE OSAKA STATION HOTEL, Autograph Collection" → "THE OSAKA STATION HOTEL"
+ */
+function capName(input: string, maxWidth = 28): string {
+  const s = (input ?? "").trim()
+  if (!s || displayWidth(s) <= maxWidth) return s
+  let cut = ""
+  for (const ch of s) {
+    if (displayWidth(cut + ch) > maxWidth) break
+    cut += ch
+  }
+  // 区切り (, 、 / スペース) の直前まで戻して単語途中の切断を避ける
+  const m = cut.match(/^(.*[^\s,、/])[\s,、/]/)
+  const clean = (m ? m[1] : cut).replace(/[\s,、/･・]+$/u, "").trim()
+  return clean || cut.trim()
+}
+
 // 苗字のみ抽出 ("Mr. Jack Costanzo" → "Costanzo")。
 // 品名欄の文字数節約用. 入力が日本語名 / 1単語の場合はそのまま返す.
 function lastNameOnly(fullName: string): string {
@@ -452,9 +479,10 @@ async function resolveYamatoAddress(
   // ご依頼主 (sender) = "BondEx" 固定 (ES001023 長すぎ対策)
   // お届け先様名 (recipient) = 宿泊者名 (運送業法上 必須)。
   //   recipient が空の場合のみ ホテル名にフォールバック.
+  // 佐川の氏名欄上限に収める (E1-0043 対策)。宿泊者名+様 が長すぎるケースを短縮。
   const fullName = isSender
     ? SENDER_FULL_NAME
-    : (recipient.trim() || result?.name || hotelName)
+    : capName(recipient.trim() || result?.name || hotelName)
 
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
@@ -478,7 +506,8 @@ async function resolveYamatoAddress(
   //   ヤマト (過去実績のあるマッピング d345ef9): address1=市区 / address2=市区+町名+番地
   //     (Yamato parser が address2 から 市区郡町村 を抽出)。既存動作を壊さないため据え置き。
   const isYamato = carrierType === "yamato"
-  const building = isSender ? SENDER_COMPANY : (result?.name ?? hotelName)
+  // お届け先の会社名(ホテル名)も佐川の欄上限に収める (E1-0043: 長いホテル名対策)。
+  const building = isSender ? SENDER_COMPANY : capName(result?.name ?? hotelName)
 
   if (isYamato) {
     // ヤマト: 過去実績のあるマッピング (address1=市区 / address2=市区+町名+番地)。据え置き。
