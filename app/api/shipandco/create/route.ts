@@ -116,6 +116,19 @@ function capName(input: string, maxWidth = 28): string {
   return clean || cut.trim()
 }
 
+/**
+ * 京都の「通り名」アドレス対策 (佐川 E2-0004: 郵便番号と住所が一致しない)。
+ * 例 "木屋町通三条上る上大阪町509" のように町名の前に通り名(○○通△△上る/下る/
+ * 東入/西入)が付くと、佐川は zip↔町名 の照合に失敗する。京都府のときだけ通り名
+ * prefix を除去し「町名+番地」だけ残す ("上大阪町509")。zip=町名 で照合が通る。
+ */
+function stripKyotoRouteName(street: string, prefecture: string): string {
+  if (prefecture !== "京都府") return street
+  const m = street.match(/^.*(?:[上下][ルる]|[東西]入[ルる]?)(.+)$/u)
+  const rest = m?.[1]?.trim()
+  return rest && /[町丁]/.test(rest) ? rest : street // 町名らしき文字が残る時だけ採用
+}
+
 // 苗字のみ抽出 ("Mr. Jack Costanzo" → "Costanzo")。
 // 品名欄の文字数節約用. 入力が日本語名 / 1単語の場合はそのまま返す.
 function lastNameOnly(fullName: string): string {
@@ -539,7 +552,8 @@ async function resolveYamatoAddress(
     province: prefecture,
     city: "",
     address1: cityWard,
-    address2: normalizeBanchi(streetOnly),
+    // 京都は通り名prefixを外して 町名+番地 に (E2-0004 対策)。他府県は素通し。
+    address2: normalizeBanchi(stripKyotoRouteName(streetOnly, prefecture)),
     address3: building,
     extra: "",
   }
