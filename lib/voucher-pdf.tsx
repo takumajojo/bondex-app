@@ -825,15 +825,16 @@ function VoucherPage({
   const contactMode = resolveContactMode(data)
   const totalLuggage = data.shipments.reduce((s, x) => s + x.suitcaseCount, 0)
   const guestName = jb(shipment.bookingName) || jb(data.representativeLabel)
-  const fromHotel = jb(shipment.from.hotel)
-  const toHotel = jb(shipment.to.hotel)
   const fromHotelJa = safeText(shipment.from.hotel)
   const toHotelJa = safeText(shipment.to.hotel)
-  // 英語併記 (日本語名のホテルのみ)。JP 名と一致する場合は出さない。
-  const fromHotelEn =
-    shipment.fromHotelEn && safeText(shipment.fromHotelEn) !== fromHotelJa ? safeText(shipment.fromHotelEn) : ""
-  const toHotelEn =
-    shipment.toHotelEn && safeText(shipment.toHotelEn) !== toHotelJa ? safeText(shipment.toHotelEn) : ""
+  const fromEn = shipment.fromHotelEn?.trim() || ""
+  const toEn = shipment.toHotelEn?.trim() || ""
+  // ゲスト向け (DROP-OFF/PICK-UP) はアルファベット優先で表示 (お客様が読めるように)。
+  // 英語名が無ければ元の表記。日本語名は参考として小さく添える (タクシー等で提示用)。
+  const fromHotelGuest = jb(fromEn || shipment.from.hotel)
+  const toHotelGuest = jb(toEn || shipment.to.hotel)
+  const fromHotelGuestJa = fromEn && fromHotelJa && fromHotelJa !== fromEn ? fromHotelJa : ""
+  const toHotelGuestJa = toEn && toHotelJa && toHotelJa !== toEn ? toHotelJa : ""
   // ゲスト言語 (en / zh / it / fr / es)。zh のみ NotoSansSC で描画 (JP フォントに簡体字が無い)。
   // it/fr/es はラテン文字のためNotoSansJPのフォールバックで描画可能 (アクセント付き文字も含めて確認済み)。
   const lang: GuestLanguage = normalizeGuestLanguage(data.guestLanguage)
@@ -931,8 +932,8 @@ function VoucherPage({
             <Text style={vs.legMy}>{monthYear(shipment.shipmentDate)}</Text>
             <Text style={vs.legDow}>{dowLabel(shipment.shipmentDate)}</Text>
           </View>
-          <Text style={vs.legHotelEn}>{fromHotel}</Text>
-          {fromHotelEn ? <Text style={vs.legHotelSub}>{fromHotelEn}</Text> : null}
+          <Text style={vs.legHotelEn}>{fromHotelGuest}</Text>
+          {fromHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(fromHotelGuestJa)}</Text> : null}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
@@ -951,8 +952,8 @@ function VoucherPage({
             <Text style={vs.legMy}>{monthYear(shipment.expectedArrival)}</Text>
             <Text style={vs.legDow}>{dowLabel(shipment.expectedArrival)}</Text>
           </View>
-          <Text style={vs.legHotelEn}>{toHotel}</Text>
-          {toHotelEn ? <Text style={vs.legHotelSub}>{toHotelEn}</Text> : null}
+          <Text style={vs.legHotelEn}>{toHotelGuest}</Text>
+          {toHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(toHotelGuestJa)}</Text> : null}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
