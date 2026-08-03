@@ -93,6 +93,14 @@ function safeText(input?: string | null): string {
   return input.normalize("NFD").replace(/\u0304/g, "").normalize("NFC")
 }
 
+// \u5b9f\u5728\u3059\u308b\u96fb\u8a71\u756a\u53f7\u3060\u3051\u3092\u8fd4\u3059\u3002\u4eee\u756a\u53f7 (+81-XX-XXXX-XXXX \u7b49\u306e X \u6df7\u3058\u308a) \u3084\u7a7a\u30fb\u6841\u4e0d\u8db3\u306f
+// \u7a7a\u6587\u5b57\u306b\u3057\u3066\u3001\u9867\u5ba2/\u30db\u30c6\u30eb\u306b\u6e21\u308b\u66f8\u985e\u306b\u507d\u756a\u53f7\u3092\u51fa\u3055\u306a\u3044 (2026-07 \u672c\u756a\u5316\u524d\u306e\u5b89\u5168\u7b56)\u3002
+function realPhone(input?: string | null): string {
+  const s = (input || "").trim()
+  if (!s || /x/i.test(s)) return ""
+  return (s.match(/\d/g)?.length ?? 0) >= 6 ? s : ""
+}
+
 // ---------------------------------------------------------------------------
 // jb() — Japanese breakable: 日本語文字間に U+2009 (幅 0・パッチ済み) を挿入して
 // ハイフンなしの改行点を作る。簡易禁則処理つき:
@@ -850,21 +858,24 @@ function VoucherPage({
       case "travel_agency":
         return {
           label: "TRAVEL AGENCY CONTACT / 旅行会社連絡先",
-          value: data.contactPersonPhone,
+          value: realPhone(data.contactPersonPhone) || "—",
           small: data.contactPersonName ? `担当：${safeText(data.contactPersonName)}` : "",
         }
       case "tour_operator":
         return {
           label: "TOUR OPERATOR CONTACT / ランドオペレーター連絡先",
-          value: data.contactPersonPhone,
+          value: realPhone(data.contactPersonPhone) || "—",
           small: data.contactPersonName ? `担当：${safeText(data.contactPersonName)}` : "",
         }
-      default:
+      default: {
+        // 実番号があれば電話を主表示、無ければメールを主表示にして仮番号を出さない
+        const ph = realPhone(data.supportPhone)
         return {
           label: "CONTACT / お問い合わせ",
-          value: data.supportPhone,
-          small: `9:00 – 18:00 JST ・ ${data.supportEmail}`,
+          value: ph || data.supportEmail,
+          small: ph ? `9:00 – 18:00 JST ・ ${data.supportEmail}` : "9:00 – 18:00 JST",
         }
+      }
     }
   })()
 
@@ -1126,14 +1137,16 @@ function VoucherPage({
           <Text style={vs.cK}>荷物配送手配業者 / FORWARDING OPERATOR</Text>
           <Text style={vs.cV}>{jb("BondEx サポートデスク")}</Text>
           <Text style={vs.cVSmall}>
-            {data.supportEmail} ／ {data.supportPhone}
+            {realPhone(data.supportPhone)
+              ? `${data.supportEmail} ／ ${realPhone(data.supportPhone)}`
+              : data.supportEmail}
           </Text>
         </View>
         <View style={[vs.contactCell, vs.contactCellR]}>
           <Text style={vs.cK}>ランドオペレーター / LAND OPERATOR</Text>
           <Text style={vs.cV}>{jb(data.tourCompany) || "—"}</Text>
           <Text style={vs.cVSmall}>
-            {data.contactPersonPhone || "—"}
+            {realPhone(data.contactPersonPhone) || (data.contactPersonName ? "" : "—")}
             {data.contactPersonName ? jb(`（担当：${data.contactPersonName}）`) : ""}
           </Text>
         </View>
@@ -1915,7 +1928,9 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
 // ---------------------------------------------------------------------------
 
 export const SUPPORT_DEFAULTS = {
-  phone: "+81-XX-XXXX-XXXX",
+  // 実番号は Vercel の BONDEX_SUPPORT_PHONE で設定。未設定なら空 → バウチャーは
+  // 電話行を出さずメールのみ表示 (仮番号を顧客/ホテルに出さない)。
+  phone: process.env.BONDEX_SUPPORT_PHONE?.trim() || "",
   email: BONDEX_SUPPORT_EMAIL,
   contactPersonName: "谷口",
   companyName: "株式会社JOJO",
