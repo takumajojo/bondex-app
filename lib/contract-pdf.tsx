@@ -82,16 +82,18 @@ const styles = StyleSheet.create({
   },
   coverLogo: { width: 140, height: 70, marginBottom: 14 },
   coverTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 500,
     color: C_FG,
-    letterSpacing: 6,
-    marginBottom: 6,
+    letterSpacing: 5,
+    lineHeight: 1.35,
+    marginBottom: 12,
   },
   coverSubtitle: {
     fontSize: 9,
     color: C_MUTED,
     letterSpacing: 2,
+    lineHeight: 1.4,
   },
   // Intro paragraph
   intro: {
@@ -141,8 +143,8 @@ const styles = StyleSheet.create({
   },
   signatureRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    marginBottom: 24,
+    alignItems: "flex-start",
+    marginBottom: 22,
   },
   signatureLabel: {
     width: 24,
@@ -159,13 +161,18 @@ const styles = StyleSheet.create({
     color: C_FG,
     marginBottom: 4,
   },
-  signatureStamp: {
-    fontSize: 9,
+  signatureSeal: {
+    marginTop: 12,
+    alignSelf: "flex-end",
+    width: 34,
+    height: 34,
+    borderWidth: 0.5,
+    borderColor: C_HAIRLINE,
+    borderRadius: 2,
+    fontSize: 8,
     color: C_MUTED,
-    marginTop: 8,
-    borderTopWidth: 0.5,
-    borderTopColor: C_HAIRLINE,
-    paddingTop: 6,
+    textAlign: "center",
+    paddingTop: 12,
   },
   effectiveDate: {
     fontSize: 11,
@@ -250,7 +257,9 @@ export function ContractDocument({ data }: { data: ContractInput }) {
         </View>
 
         <Text style={styles.intro}>
-          {data.bondex.companyName}（以下「甲」という）と{data.agency.name}（以下「乙」という）は、
+          {data.bondex.companyName}（以下「甲」という）と
+          {data.agency.name?.trim() ? data.agency.name : "＿＿＿＿＿＿＿＿＿＿＿＿"}
+          （以下「乙」という）は、
           甲が運営する荷物配送手配サービス「{brand}」（以下「本サービス」という）の利用に関し、
           以下のとおり契約（以下「本契約」という）を締結する。
         </Text>
@@ -388,32 +397,29 @@ export function ContractDocument({ data }: { data: ContractInput }) {
 
         <Text style={styles.effectiveDate}>{data.effectiveDate}</Text>
 
-        {/* 署名欄 */}
+        {/* 署名欄 — 甲(BondEx)は記入済み、乙(代理店)は署名・押印用に空欄 */}
         <View style={styles.signatureBlock}>
           <View style={styles.signatureRow}>
             <Text style={styles.signatureLabel}>甲</Text>
             <View style={styles.signatureCol}>
-              <Text style={styles.signatureLine}>{data.bondex.address}</Text>
-              <Text style={styles.signatureLine}>{data.bondex.companyName}</Text>
+              <Text style={styles.signatureLine}>住所：{data.bondex.address}</Text>
+              <Text style={styles.signatureLine}>会社名：{data.bondex.companyName}</Text>
               <Text style={styles.signatureLine}>
-                {data.bondex.representativeTitle}　{data.bondex.representativeName}
+                代表者：{data.bondex.representativeTitle}　{data.bondex.representativeName}
               </Text>
-              <Text style={styles.signatureStamp}>　　　　　　　　　　　　　　　　　　　　　　　印</Text>
+              <Text style={styles.signatureSeal}>印</Text>
             </View>
           </View>
 
           <View style={styles.signatureRow}>
             <Text style={styles.signatureLabel}>乙</Text>
             <View style={styles.signatureCol}>
+              <Text style={styles.signatureLine}>住所：{data.agency.address ?? ""}</Text>
+              <Text style={styles.signatureLine}>会社名：{data.agency.name ?? ""}</Text>
               <Text style={styles.signatureLine}>
-                {data.agency.address || "　　　　　　　　　　　　　　　　　　　　"}
+                代表者：{[data.agency.representativeTitle, data.agency.representativeName].filter(Boolean).join("　")}
               </Text>
-              <Text style={styles.signatureLine}>{data.agency.name}</Text>
-              <Text style={styles.signatureLine}>
-                {data.agency.representativeTitle || "代表者役職"}
-                {data.agency.representativeName || "　　　　　　　　"}
-              </Text>
-              <Text style={styles.signatureStamp}>　　　　　　　　　　　　　　　　　　　　　　　印</Text>
+              <Text style={styles.signatureSeal}>印</Text>
             </View>
           </View>
         </View>

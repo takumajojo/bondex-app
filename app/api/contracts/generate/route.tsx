@@ -7,10 +7,6 @@ import { ContractDocument } from "@/lib/contract-pdf"
 export const runtime = "nodejs"
 export const maxDuration = 30
 
-function formatJpDate(d: Date): string {
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
-}
-
 /**
  * 代理店業務委託契約書 PDF を生成する.
  *
@@ -54,13 +50,16 @@ export async function GET(req: NextRequest) {
       <ContractDocument
         data={{
           contractNumber,
-          effectiveDate: formatJpDate(today),
+          // たたき台のため締結日は空欄(署名時に手書き)。確定運用時は formatJpDate(today) に戻す
+          effectiveDate: "　　　　年　　月　　日",
           agency: {
-            name: agencyRow.name,
-            // 代表者役職・氏名・住所は契約時に手書きしてもらう前提でテンプレに空欄を残す
+            // 一旦ブランク(谷口さん指示 2026-08-03): 乙の会社名・代表者・住所は
+            // 署名時に代理店が記入/押印する前提で空欄。プレフィルに戻す場合は
+            // name: agencyRow.name / representativeName: agencyRow.contact_person 等を渡す
+            name: "",
             representativeTitle: undefined,
-            representativeName: agencyRow.contact_person ?? undefined,
-            address: agencyRow.billing_address ?? undefined,
+            representativeName: undefined,
+            address: undefined,
           },
           bondex: {
             companyName: "株式会社JOJO",
