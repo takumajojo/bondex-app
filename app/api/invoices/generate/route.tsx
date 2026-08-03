@@ -20,19 +20,14 @@ function formatJpDate(d: Date): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
 }
 
+function endOfMonth(year: number, month: number): Date {
+  // month は 1-12. 当月末日を返す (JS Date は 0-indexed のため month をそのまま渡すと当月末日).
+  return new Date(year, month, 0)
+}
+
 function endOfNextMonth(year: number, month: number): Date {
   // month は 1-12. 翌月末日を返す.
   return new Date(year, month + 1, 0)
-}
-
-/**
- * 翌月締めの翌月20日 = 翌々月20日.
- * 例: 6月分 → 7月末締め → 8月20日支払期限
- */
-function paymentDueDate(year: number, month: number): Date {
-  // month は 1-12. 翌々月20日.
-  // JS Date は month=0-11 だが「2か月後」を計算するため month+2 をそのまま渡せば翌々月の 20日が得られる.
-  return new Date(year, month + 1, 20)  // month は 1-indexed, JS は 0-indexed なので +1 が「翌々月」
 }
 
 export async function GET(req: NextRequest) {
@@ -115,10 +110,10 @@ export async function GET(req: NextRequest) {
   }))
 
   const issuedDate = formatJpDate(new Date())
-  // 締日: 翌月末日 (例: 6月分 → 7月末)
-  const closingDate = formatJpDate(endOfNextMonth(year, month))
-  // 支払期限: 締日の翌月20日 (例: 6月分 → 8月20日)
-  const dueDate = formatJpDate(paymentDueDate(year, month))
+  // 締日: 当月末日 (月末締め。例: 6月分 → 6月30日)
+  const closingDate = formatJpDate(endOfMonth(year, month))
+  // 支払期限: 翌月末日 (翌月払い。例: 6月分 → 7月31日)
+  const dueDate = formatJpDate(endOfNextMonth(year, month))
   const period = `${year}年${month}月分`
 
   const doc = (
