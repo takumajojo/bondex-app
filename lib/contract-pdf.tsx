@@ -138,13 +138,13 @@ const styles = StyleSheet.create({
   },
   // Signature block
   signatureBlock: {
-    marginTop: 30,
+    marginTop: 14,
     flexDirection: "column",
   },
   signatureRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 22,
+    marginBottom: 16,
   },
   signatureLabel: {
     width: 24,
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     color: C_FG,
     fontWeight: 500,
     textAlign: "center",
-    marginBottom: 30,
+    marginBottom: 18,
   },
   // Footer
   footer: {
@@ -305,9 +305,9 @@ export function ContractDocument({ data }: { data: ContractInput }) {
 
         <Article num={4} title="料金">
           <Para>
-            1. 本業務の料金は、配送対象物1個あたり金{price.toLocaleString()}円（税別）とする。
+            1. 本業務の料金は、配送対象物1個あたり金{price.toLocaleString()}円（消費税込）とする。
           </Para>
-          <Para>2. 上記料金は、実運送人の運賃及び甲の手配手数料を含む。</Para>
+          <Para>2. 上記料金は、消費税、実運送人の運賃及び甲の手配手数料を含む。</Para>
           <Para>
             3. 上記料金は乙の旅行商品の販売価格に含めて旅行者から徴収するものとし、旅行者から直接甲に支払いは行わない。
           </Para>
@@ -373,17 +373,41 @@ export function ContractDocument({ data }: { data: ContractInput }) {
           <Para>3. 甲は逸失利益、間接損害、特別損害について一切責任を負わない。</Para>
         </Article>
 
-        <Article num={11} title="合意管轄">
+        <Article num={11} title="不可抗力">
+          <Item num="1.">
+            天災地変、悪天候、地震、火災、戦争、暴動、疫病の蔓延、法令の制定・改廃、公権力による命令・処分、輸送機関の事故・遅延その他甲乙の責めに帰すことのできない事由により、本契約上の義務の履行が遅延し又は不能となった場合、当該当事者はその責任を負わない。
+          </Item>
+          <Item num="2.">
+            前項の事由により手荷物の運送に遅延、紛失又は毀損等が生じた場合の取扱いは、実運送人の運送約款によるものとする。
+          </Item>
+        </Article>
+
+        <Article num={12} title="反社会的勢力の排除">
+          <Item num="1.">
+            甲及び乙は、自己及び自己の役員が、暴力団、暴力団員、暴力団準構成員、暴力団関係企業、総会屋その他これらに準ずる反社会的勢力（以下「反社会的勢力」という）に該当せず、かつ反社会的勢力と社会的に非難されるべき関係を有しないことを表明し、保証する。
+          </Item>
+          <Item num="2.">
+            甲又は乙は、相手方が前項に違反した場合、何らの催告を要することなく直ちに本契約を解除することができる。この場合、解除された当事者は、解除により生じた損害の賠償を相手方に対して請求することができない。
+          </Item>
+        </Article>
+
+        <Article num={13} title="権利義務の譲渡禁止">
+          <Para>
+            甲及び乙は、相手方の書面による事前の承諾なく、本契約上の地位を第三者に承継させ、又は本契約から生じる権利義務の全部若しくは一部を第三者に譲渡し、引き受けさせ、若しくは担保に供してはならない。
+          </Para>
+        </Article>
+
+        <Article num={14} title="合意管轄">
           <Para>
             本契約に関する紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とする。
           </Para>
         </Article>
 
-        <Article num={12} title="準拠法">
+        <Article num={15} title="準拠法">
           <Para>本契約は、日本法に準拠し、日本法に従って解釈されるものとする。</Para>
         </Article>
 
-        <Article num={13} title="協議事項">
+        <Article num={16} title="協議事項">
           <Para>
             本契約に定めのない事項又は本契約の条項の解釈について疑義が生じた場合は、両当事者が信義誠実の原則に従い協議のうえ、これを決定する。
           </Para>
@@ -391,6 +415,8 @@ export function ContractDocument({ data }: { data: ContractInput }) {
 
         <View style={styles.divider} />
 
+        {/* 契約成立文・締結日・署名欄はページ跨ぎで分断しない */}
+        <View wrap={false}>
         <Text style={[styles.intro, { textAlign: "center" }]}>
           以上、本契約の成立を証するため、本書2通を作成し、両当事者が記名押印の上、それぞれ1通を保有する。
         </Text>
@@ -422,6 +448,7 @@ export function ContractDocument({ data }: { data: ContractInput }) {
               <Text style={styles.signatureSeal}>印</Text>
             </View>
           </View>
+        </View>
         </View>
 
         {/* Footer */}
