@@ -6,9 +6,12 @@ import {
   updateShipmentFields,
   setBookingDriveUrl,
   deleteBooking,
+  getShipment,
   type ShipmentStatus,
 } from "@/lib/shipments-db"
-import { isSupabaseConfigured } from "@/lib/supabase"
+import { isSupabaseConfigured, getSupabase } from "@/lib/supabase"
+import { chargeShipmentIfDue } from "@/lib/charge"
+import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -159,6 +162,51 @@ export async function PATCH(req: NextRequest) {
       ? await updateShipmentStatus(id, patch.status)
       : await updateShipmentFields(id, patch)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+
+  // 手動でステータスを集荷完了以降に変えた場合の副作用 (自動同期 cron と同じ)。
+  // いずれも best-effort — 更新自体は既に成立しているので失敗しても 200 を返す。
+  if (patch.status && ["picked_up", "in_transit", "delivered"].includes(patch.status)) {
+    // 集荷完了以降 → カード課金 (idempotent・STRIPE_CHARGE_LIVE=true 時のみ実際に課金)
+    try {
+      await chargeShipmentIfDue(id)
+    } catch (e) {
+      console.error("[shipments] charge hook failed:", e instanceof Error ? e.message : e)
+    }
+    // 配達完了 → 代理店へ通知
+    if (patch.status === "delivered") {
+      try {
+        const ship = await getShipment(id)
+        if (ship) {
+          let agencyEmail: string | null = null
+          let english = false
+          const sb = getSupabase()
+          if (sb) {
+            const { data: ag } = await sb
+              .from("agencies")
+              .select("contact_email, is_domestic")
+              .eq("name", ship.agency)
+              .maybeSingle()
+            agencyEmail = ag?.contact_email ?? null
+            english = ag?.is_domestic === false
+          }
+          await sendDeliveryCompleteEmail({
+            agencyEmail,
+            agencyName: ship.agency,
+            bookingId: ship.booking_id,
+            legIndex: ship.leg_index,
+            representative: ship.representative,
+            recipient: ship.recipient,
+            toHotel: ship.to_hotel,
+            tracking: ship.yamato_tracking,
+            english,
+          })
+        }
+      } catch (e) {
+        console.error("[shipments] delivery notify failed:", e instanceof Error ? e.message : e)
+      }
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
 

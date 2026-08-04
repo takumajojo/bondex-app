@@ -59,6 +59,14 @@ export interface ShipmentRecord {
   guest_language: string | null
   /** 集荷漏れアラート送信日時 (cron が設定・二重通知防止)。 */
   pickup_alert_sent_at: string | null
+  /** カード課金の実行日時 (集荷完了時に off_session 課金。二重課金防止のキー)。 */
+  charged_at: string | null
+  /** 課金に使った Stripe PaymentIntent ID。 */
+  stripe_payment_intent_id: string | null
+  /** 実際に課金した金額 (税込・円)。amount_yen と一致するが監査用に別途保存。 */
+  charge_amount_yen: number | null
+  /** 課金失敗時のエラー文言 (成功で null に戻す)。 */
+  charge_error: string | null
   created_at: string
   updated_at: string
 }
@@ -335,6 +343,77 @@ export async function markPickupAlerted(ids: string[]): Promise<void> {
     .update({ pickup_alert_sent_at: new Date().toISOString() })
     .in("id", ids)
   if (error) console.error("[shipments-db] markPickupAlerted failed", error.message)
+}
+
+/**
+ * ID 1件取得 (課金・配達通知フックが手動更新パスから区間の詳細を引くため)。
+ */
+export async function getShipment(id: string): Promise<ShipmentRecord | null> {
+  const sb = getSupabase()
+  if (!sb) return null
+  const { data, error } = await sb.from("shipments").select("*").eq("id", id).maybeSingle()
+  if (error) {
+    console.error("[shipments-db] getShipment failed", error.message)
+    return null
+  }
+  return (data as ShipmentRecord) ?? null
+}
+
+/**
+ * 発行すべき予約 (発行漏れ防止のデイリーダイジェスト用)。
+ * status が requested/pending のまま、発送日が [today, horizon] の区間 =
+ * 「発行窓に入った / まもなく入るのに、まだヤマト送り状を発行していない」もの。
+ * ※発送日を過ぎた分は listPickupMisses が別途アラートするため、ここでは today 以降のみ。
+ */
+export async function listIssueDue(
+  todayJstYmd: string,
+  horizonJstYmd: string,
+): Promise<ShipmentRecord[]> {
+  const sb = getSupabase()
+  if (!sb) return []
+  const { data, error } = await sb
+    .from("shipments")
+    .select("*")
+    .in("status", ["requested", "pending"])
+    .gte("shipment_date", todayJstYmd)
+    .lte("shipment_date", horizonJstYmd)
+    .order("shipment_date", { ascending: true })
+  if (error) {
+    console.error("[shipments-db] listIssueDue failed", error.message)
+    return []
+  }
+  return (data ?? []) as ShipmentRecord[]
+}
+
+/** カード課金成功を記録 (二重課金防止の charged_at をセット)。 */
+export async function recordShipmentCharge(
+  id: string,
+  paymentIntentId: string,
+  amountYen: number,
+): Promise<void> {
+  const sb = getSupabase()
+  if (!sb) return
+  const { error } = await sb
+    .from("shipments")
+    .update({
+      charged_at: new Date().toISOString(),
+      stripe_payment_intent_id: paymentIntentId,
+      charge_amount_yen: amountYen,
+      charge_error: null,
+    })
+    .eq("id", id)
+  if (error) console.error("[shipments-db] recordShipmentCharge failed", error.message)
+}
+
+/** カード課金失敗を記録 (charged_at は据え置き=再試行可能、エラーだけ残す)。 */
+export async function recordShipmentChargeError(id: string, message: string): Promise<void> {
+  const sb = getSupabase()
+  if (!sb) return
+  const { error } = await sb
+    .from("shipments")
+    .update({ charge_error: message.slice(0, 500) })
+    .eq("id", id)
+  if (error) console.error("[shipments-db] recordShipmentChargeError failed", error.message)
 }
 
 /**

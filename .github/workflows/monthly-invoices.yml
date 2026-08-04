@@ -1,0 +1,46 @@
+name: Monthly invoices
+
+# 前月分の請求書を自動生成し、BondEx 運用 (と INVOICE_AUTOSEND=true なら代理店) へ
+# メール送付する (/api/cron/monthly-invoices)。対象は payment_method='invoice' の
+# 稼働中代理店のみ (カード払いは集荷完了ごとに個別課金)。
+#
+# 事前設定 (他 cron と共通): CRON_SECRET リポジトリシークレット。
+
+on:
+  schedule:
+    # 毎月1日 00:20 UTC = 09:20 JST (前月分を締めて送付)
+    - cron: "20 0 1 * *"
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "対象月 YYYY-MM (空なら前月)"
+        required: false
+        default: ""
+
+jobs:
+  monthly-invoices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx monthly-invoices endpoint
+        run: |
+          MONTH="${{ github.event.inputs.month }}"
+          URL="https://bondex.express/api/cron/monthly-invoices"
+          if [ -n "$MONTH" ]; then
+            URL="$URL?month=$MONTH"
+          fi
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2 — $URL"
+            response=$(curl -s -w "\n%{http_code}" --max-time 150 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              "$URL")
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::monthly-invoices failed after 2 attempts"
+          exit 1

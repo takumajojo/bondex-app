@@ -75,8 +75,10 @@
 | `ALERT_EMAIL` | 通知/控えの宛先 | ○ |
 | `RESEND_API_KEY`/`ALERT_FROM_EMAIL` | メールのフォールバック（Resend） | 任意 |
 | `GOOGLE_DRIVE_SA_KEY`/`GOOGLE_DRIVE_ROOT_ID` | 共有ドライブ格納 | ○ |
-| `CRON_SECRET` | cron 認証 | ○ |
+| `CRON_SECRET` | cron 認証（3本共通: sync-tracking / issue-due / monthly-invoices）。**GitHub Actions の Repository Secret にも同じ値** | ○ |
 | `STRIPE_SECRET_KEY`/`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | カード保存 | 任意（未設定なら「準備中」） |
+| `STRIPE_CHARGE_LIVE` | **"true"で集荷完了時に保存カードへ実課金**。未設定/その他は課金しない（コードは通るが無害） | 本番課金時（谷口さん承認） |
+| `INVOICE_AUTOSEND` | **"true"で月次請求書を代理店へ直接自動送信**。未設定は運用(ALERT_EMAIL)控えのみ→手動転送 | 慣れてから |
 | `SLACK_WEBHOOK_URL` | アラート通知（設定すれば） | 推奨 |
 | `BONDEX_WHATSAPP_URL` | WhatsApp導線 | 任意 |
 
@@ -91,12 +93,15 @@
 ## 7. Go-Live スイッチ・不可逆操作の注意
 
 - **`SHIPANDCO_LIVE=true`**: これを入れて再デプロイすると、以降の発行は**実ラベル=課金+実集荷+取消不可**。まずは1件テスト発行で確認してから。**谷口さんの明示承認が必要な操作**。
+- **`STRIPE_CHARGE_LIVE=true`**: 集荷完了（picked_up）時に、カード払い代理店の保存カードへ **¥5,000×個数を実課金**（off_session）。本番Stripeキーが前提。未設定なら課金コードは通るが1円も動かない。**谷口さんの明示承認が必要な操作**。二重課金は `shipments.charged_at` と Stripe idempotencyKey で二重防止。
+- **`INVOICE_AUTOSEND=true`**: 月次請求書を代理店へ直接自動送信。未設定は運用控えのみ（谷口さんが中身を確認して手動転送）。初月は未設定で回すのが安全。
 - 送り状の集荷連絡先 `BONDEX_SENDER_PHONE` を実番号にしてからLIVE化する（現状は仮 `000...`）。
 - お客様向けCONTACT電話は未確定（バウチャーは電話非表示で運用可）。
 
 ## 8. データベース（Supabase）
 
-- マイグレーションは `sql/001_*.sql` 〜 `sql/014_*.sql`。Supabase に順に適用。主なテーブル: `shipments`, `agencies`, `user_agencies`, `claim_cases`, `parse_log`, `contact_inquiries`, `agency_contract_signatures`。
+- マイグレーションは `sql/001_*.sql` 〜 `sql/015_*.sql`。Supabase に順に適用。主なテーブル: `shipments`, `agencies`, `user_agencies`, `claim_cases`, `parse_log`, `contact_inquiries`, `agency_contract_signatures`。
+- `sql/015_shipment_charges.sql`（適用済 2026-08-04）: `shipments` にカード課金記録カラム `charged_at` / `stripe_payment_intent_id` / `charge_amount_yen` / `charge_error` を追加。
 - 適用は Supabase MCP（`apply_migration`）またはダッシュボードSQL。**適用漏れ事故の前例あり**（`contact_inquiries` 未作成で問い合わせが消失）→ 新テーブル追加時は本番適用を必ず確認。
 
 ## 9. 主要ファイルマップ
@@ -119,8 +124,10 @@
 - **メール送信診断** `GET /api/operator/mail-test`（operator）… 設定状況＋`?to=`で実送信テスト（機密値は返さない）。
 - 全アラートは送信可否に関わらず `console.error` にも残す（Vercel Functions ログ / cron JSON で追跡可能）。
 
-### 定期ジョブ
-- **`sync-tracking`** … GitHub Actions（`.github/workflows/sync-tracking.yml`、毎時）が `/api/cron/sync-tracking` を叩く（`CRON_SECRET` 認証）。追跡状態更新＋集荷漏れ/異常アラート。
+### 定期ジョブ（すべて GitHub Actions → `CRON_SECRET` 認証）
+- **`sync-tracking`** … `.github/workflows/sync-tracking.yml`（毎時）→ `/api/cron/sync-tracking`。追跡状態更新＋集荷漏れ/異常アラート。集荷完了→カード課金フック、配達完了→代理店通知もここで発火。
+- **`issue-due`** … `.github/workflows/issue-due.yml`（毎日08:10 JST）→ `/api/cron/issue-due`。発送日が今日〜30日先で未発行（requested/pending）の予約を運用へダイジェスト通知。**発行漏れ防止の要**（自動発行はしない・運用が /operator から手動発行）。
+- **`monthly-invoices`** … `.github/workflows/monthly-invoices.yml`（毎月1日09:20 JST）→ `/api/cron/monthly-invoices`。請求書払い代理店の前月分請求書を生成し運用（`INVOICE_AUTOSEND=true`なら代理店へも）送付。手動再送は Actions の "Run workflow" で対象月を指定可。
 - ⚠️ **cronのデッドマンズスイッチが未実装**（下記アクション参照）。GitHub Actionsのスケジュールは停止しても気づけない。
 
 ### すぐ気づくために（推奨・未実装）
@@ -155,6 +162,13 @@
 - **契約プレビューの無限ローディング→未確認署名リスク** を修正（PDF取得失敗時もHTML全文を必ず表示）
 - **公開 Stripe PaymentIntent 生成**（金額任意＝カードテスト脆弱性・レガシー未使用）を削除
 - **Ship&coトークンの流出ファイル**（`.env<token>` 誤生成）を削除
+
+### 追加是正（2026-08-04 第2弾: フロー網羅監査＋穴埋め）
+- **[最重要] 1ヶ月超先の予約が永遠に発行されない穴** を封鎖: 発送30日前に入った未発行予約を毎朝ダイジェスト通知する `cron/issue-due` を新設（+ 発送日超過分は集荷漏れアラートが `requested` も対象に）。手荷物の発行漏れ→未出荷事故を二重の網で検知。
+- **カード課金の未実装** を実装: 集荷完了時に保存カードへ off_session 個別課金（`lib/charge.ts`）。**`STRIPE_CHARGE_LIVE=true` まで無害**（フラグ+本番キーが揃うまで1円も動かない）。`charged_at`＋idempotencyKey で二重課金防止。sync-tracking と手動ステータス更新の両経路でフック。
+- **請求書の税額バグ** を修正: `¥5,000税込` を税抜扱いして10%上乗せ（＝10%過大請求）していたのを**内税表示**に（`invoice-pdf.tsx` `taxInclusive`）。月次自動生成＋送付 `cron/monthly-invoices` を新設（既定は運用控えのみ→`INVOICE_AUTOSEND=true`で代理店直送）。
+- **承認/クレーム/配達完了の通知漏れ** を封鎖: 代理店承認時・クレーム受付時・配達完了時に通知を追加。
+- **レガシー削除**: 未使用の `/api/email`（本番で実送信しないダミー）を削除。
 
 ### 要対応（重要度順）
 1. **[要ローテーション] Ship&coトークン**: 流出ファイルにあった live トークンをShip&coで再発行し `SHIPANDCO_API_KEY` を差替え。

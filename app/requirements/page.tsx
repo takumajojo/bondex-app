@@ -212,7 +212,7 @@ const requirements = {
       },
     ],
     timing: ["認証コード送信（Email/SMS選択可）", "予約確定（booking_confirmed）", "集荷完了（追跡番号通知 / delivery_complete）", "ラベル生成（label_generated）", "例外発生時"],
-    emailApi: "/api/email - 3種類のメールテンプレート（booking_confirmed / delivery_complete / label_generated）。RESEND_API_KEY 未設定時はコンソールモック出力。",
+    emailApi: "lib/mailer.ts（SMTP優先→Resendフォールバックの共通送信）を各所から利用。配達完了通知は lib/delivery-notify.ts、発行依頼受付は lib/agency-notify.ts、異常系アラートは lib/ops-alert.ts。未設定時は console にフォールバック出力。",
   },
 
   

@@ -74,6 +74,13 @@ export interface InvoiceInput {
   }
   items: InvoiceLineItem[]
   taxRate?: number         // デフォルト 0.10 (10%)
+  /**
+   * true のとき items.amountYen を「税込」金額として扱う (内税表示)。
+   * BondEx の料金は契約上 ¥5,000 税込なので本番はこちら。
+   * 合計 = 小計、消費税は内数として按分表示する。
+   * false (既定) は従来どおり税抜 → 税を上乗せ (外税)。
+   */
+  taxInclusive?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -397,10 +404,14 @@ function parseBankInfo(raw: string): React.JSX.Element {
 }
 
 export function InvoiceDocument({ data }: { data: InvoiceInput }) {
-  const subtotal = data.items.reduce((sum, it) => sum + it.amountYen, 0)
   const taxRate = data.taxRate ?? 0.10
-  const tax = Math.floor(subtotal * taxRate)
-  const total = subtotal + tax
+  const taxInclusive = data.taxInclusive === true
+  // 明細金額の合計 (税込モードでは税込額、税抜モードでは税抜額)
+  const lineSum = data.items.reduce((sum, it) => sum + it.amountYen, 0)
+  // net=税抜相当 / tax=消費税 / total=請求総額(税込)
+  const net = taxInclusive ? Math.round(lineSum / (1 + taxRate)) : lineSum
+  const tax = taxInclusive ? lineSum - net : Math.floor(lineSum * taxRate)
+  const total = taxInclusive ? lineSum : lineSum + tax
   const totalSuitcases = data.items.reduce((sum, it) => sum + it.suitcaseCount, 0)
 
   return (
@@ -475,7 +486,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           <Text style={[styles.th, styles.col_route]}>区間</Text>
           <Text style={[styles.th, styles.col_rep]}>代表者</Text>
           <Text style={[styles.th, styles.col_qty]}>個数</Text>
-          <Text style={[styles.th, styles.col_amt]}>金額 (税抜)</Text>
+          <Text style={[styles.th, styles.col_amt]}>{taxInclusive ? "金額 (税込)" : "金額 (税抜)"}</Text>
         </View>
         {data.items.map((it, i) => (
           <View key={i} style={styles.tableRow}>
@@ -496,20 +507,42 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
 
         {/* Totals */}
         <View style={styles.totalsBlock}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>小計</Text>
-            <Text style={styles.totalValue}>¥{subtotal.toLocaleString()}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>
-              消費税 ({Math.round(taxRate * 100)}%)
-            </Text>
-            <Text style={styles.totalValue}>¥{tax.toLocaleString()}</Text>
-          </View>
-          <View style={styles.grandTotalRow}>
-            <Text style={styles.grandTotalLabel}>合計</Text>
-            <Text style={styles.grandTotalValue}>¥{total.toLocaleString()}</Text>
-          </View>
+          {taxInclusive ? (
+            <>
+              {/* 内税表示: 合計(税込) を主とし、消費税は内数として示す */}
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>税抜金額</Text>
+                <Text style={styles.totalValue}>¥{net.toLocaleString()}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>
+                  内 消費税 ({Math.round(taxRate * 100)}%)
+                </Text>
+                <Text style={styles.totalValue}>¥{tax.toLocaleString()}</Text>
+              </View>
+              <View style={styles.grandTotalRow}>
+                <Text style={styles.grandTotalLabel}>合計 (税込)</Text>
+                <Text style={styles.grandTotalValue}>¥{total.toLocaleString()}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>小計</Text>
+                <Text style={styles.totalValue}>¥{net.toLocaleString()}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>
+                  消費税 ({Math.round(taxRate * 100)}%)
+                </Text>
+                <Text style={styles.totalValue}>¥{tax.toLocaleString()}</Text>
+              </View>
+              <View style={styles.grandTotalRow}>
+                <Text style={styles.grandTotalLabel}>合計</Text>
+                <Text style={styles.grandTotalValue}>¥{total.toLocaleString()}</Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Bank info — 構造化表示 */}

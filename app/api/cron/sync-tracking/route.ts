@@ -3,6 +3,8 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
+import { chargeShipmentIfDue } from "@/lib/charge"
+import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -239,7 +241,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await sb
     .from("shipments")
-    .select("id, booking_id, leg_index, agency, status, yamato_tracking, yamato_tracking_detail")
+    .select("id, booking_id, leg_index, agency, status, representative, recipient, to_hotel, yamato_tracking, yamato_tracking_detail")
     .not("yamato_tracking", "is", null)
     .not("status", "in", '("delivered","cancelled","failed")')
 
@@ -247,12 +249,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // ランドオペレーター通知用: 代理店名 → contact_email の対応表を 1 回で引く
+  // ランドオペレーター通知用: 代理店名 → contact_email / 国内外フラグ の対応表を 1 回で引く
   const agencyEmailByName = new Map<string, string>()
+  const agencyForeignByName = new Map<string, boolean>()
   {
-    const { data: agencies } = await sb.from("agencies").select("name, contact_email")
+    const { data: agencies } = await sb.from("agencies").select("name, contact_email, is_domestic")
     for (const a of agencies ?? []) {
       if (a.name && a.contact_email) agencyEmailByName.set(a.name, a.contact_email)
+      if (a.name) agencyForeignByName.set(a.name, a.is_domestic === false)
     }
   }
 
@@ -286,9 +290,12 @@ export async function GET(req: NextRequest) {
   let updated = 0
   let detailUpdated = 0
   let skipped = skippedNoTracking
+  let deliveryNotified = 0
   const unmapped: Array<{ bookingId: string; leg: number; raw: string }> = []
   const failures: Array<{ bookingId: string; leg: number; reason: string }> = []
   const alertsSent: Array<{ bookingId: string; leg: number; exception: string }> = []
+  const chargesMade: Array<{ bookingId: string; leg: number; amountYen: number }> = []
+  const chargeFailures: Array<{ bookingId: string; leg: number; error: string }> = []
 
   interface PrevDetail {
     number: string
@@ -424,6 +431,44 @@ export async function GET(req: NextRequest) {
     if (statusAdvances) updated++
     if (anySuccess) detailUpdated++
     if (!statusAdvances && !anySuccess) skipped++
+
+    // ── ステータス前進に伴う副作用 (いずれも best-effort・cron 本体は巻き込まない) ──
+    if (statusAdvances && bestStatus) {
+      // 集荷完了 (picked_up) 以降に到達 → カード課金 (STRIPE_CHARGE_LIVE=true 時のみ実行)。
+      // idempotent (charged_at ガード) なので、picked_up を飛ばして in_transit/delivered に
+      // 直接進んだ場合でも取りこぼさず、二重にも課金しない。
+      if (progressionRank(bestStatus) >= progressionRank("picked_up")) {
+        try {
+          const r = await chargeShipmentIfDue(row.id as string)
+          if (r.charged) {
+            chargesMade.push({ bookingId: row.booking_id, leg: row.leg_index, amountYen: r.amountYen ?? 0 })
+          } else if (r.error) {
+            chargeFailures.push({ bookingId: row.booking_id, leg: row.leg_index, error: r.error })
+          }
+        } catch (e) {
+          console.error("[sync-tracking] charge hook failed:", e instanceof Error ? e.message : e)
+        }
+      }
+      // 配達完了 → 代理店へ通知 (delivered は次回以降 cron 対象外なので一度きり)
+      if (bestStatus === "delivered") {
+        try {
+          await sendDeliveryCompleteEmail({
+            agencyEmail: agencyEmailByName.get(row.agency as string) ?? null,
+            agencyName: row.agency as string,
+            bookingId: row.booking_id as string,
+            legIndex: row.leg_index as number,
+            representative: (row.representative as string) ?? "",
+            recipient: (row.recipient as string) ?? "",
+            toHotel: (row.to_hotel as string) ?? "",
+            tracking: (row.yamato_tracking as string[] | null) ?? null,
+            english: agencyForeignByName.get(row.agency as string) ?? false,
+          })
+          deliveryNotified++
+        } catch (e) {
+          console.error("[sync-tracking] delivery notify failed:", e instanceof Error ? e.message : e)
+        }
+      }
+    }
   }
 
   // ------------------------------------------------------------------
@@ -471,8 +516,11 @@ export async function GET(req: NextRequest) {
     updated,
     detailUpdated,
     skipped,
+    deliveryNotified,
     unmapped,
     alertsSent,
+    chargesMade,
+    chargeFailures,
     failures,
   })
 }

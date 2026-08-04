@@ -1,0 +1,37 @@
+name: Issue-due daily digest
+
+# 発行漏れ防止のデイリーダイジェスト。発送日が今日〜30日先で未発行の予約を
+# 毎朝まとめて BondEx 運用へ通知する (/api/cron/issue-due)。
+#
+# 事前設定 (sync-tracking と共通):
+#   Repository → Settings → Secrets and variables → Actions
+#   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
+
+on:
+  schedule:
+    # 毎日 23:10 UTC = 08:10 JST (運用の朝イチに届く)
+    - cron: "10 23 * * *"
+  workflow_dispatch: {}  # 手動実行 (Actions タブから即実行)
+
+jobs:
+  issue-due:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx issue-due digest endpoint
+        run: |
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2"
+            response=$(curl -s -w "\n%{http_code}" --max-time 90 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              https://bondex.express/api/cron/issue-due)
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::issue-due digest failed after 2 attempts"
+          exit 1
