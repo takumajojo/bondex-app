@@ -66,7 +66,7 @@ export function PdfPreview({
   return (
     <div>
       {state === "loading" && (
-        <div className="py-16 text-center text-sm text-muted-foreground">契約書を読み込み中…</div>
+        <div className="py-16 text-center text-sm text-muted-foreground">PDFを読み込み中…</div>
       )}
       {state === "error" && !fallback && (
         <div className="py-16 text-center text-sm text-muted-foreground">
