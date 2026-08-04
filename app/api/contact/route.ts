@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
+import { sendMail } from "@/lib/mailer"
 
 export const runtime = "nodejs"
 
 const NOTIFY_TO = process.env.ALERT_EMAIL || "support@bondex.express"
-const NOTIFY_FROM = process.env.ALERT_FROM_EMAIL || "BondEx <alerts@bondex.express>"
 
 interface Body {
   company?: unknown
@@ -21,44 +21,27 @@ function s(v: unknown): string {
 // 簡易メール形式チェック (RFC 完全準拠は不要 — 明らかな不正のみ弾く)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-async function notifyViaResend(input: {
+async function notify(input: {
   company: string
   name: string
   email: string
   message: string
 }): Promise<void> {
-  const key = process.env.RESEND_API_KEY
-  if (!key) {
-    // 未設定なら通知はスキップ (DB には保存済みなので取りこぼさない)
-    console.log("[contact] Resend 未設定 — DB 保存のみ:", { email: input.email })
-    return
-  }
-  try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: NOTIFY_FROM,
-        to: [NOTIFY_TO],
-        reply_to: input.email,
-        subject: `[BondEx] 導入相談 — ${input.company || input.name || input.email}`,
-        text: [
-          `会社名: ${input.company || "—"}`,
-          `お名前: ${input.name || "—"}`,
-          `メール: ${input.email}`,
-          "",
-          "ご相談内容:",
-          input.message,
-        ].join("\n"),
-      }),
-    })
-  } catch (err) {
-    // 通知失敗は致命的でない (DB に残る)
-    console.error("[contact] Resend 送信失敗:", err instanceof Error ? err.message : err)
-  }
+  // SMTP優先 / Resendフォールバック。未設定なら送らない (DBには保存済み)。
+  const r = await sendMail({
+    to: NOTIFY_TO,
+    replyTo: input.email,
+    subject: `[BondEx] 導入相談 — ${input.company || input.name || input.email}`,
+    text: [
+      `会社名: ${input.company || "—"}`,
+      `お名前: ${input.name || "—"}`,
+      `メール: ${input.email}`,
+      "",
+      "ご相談内容:",
+      input.message,
+    ].join("\n"),
+  })
+  if (!r.sent) console.log("[contact] 通知メール未送信:", r.error, "(DB保存済み)")
 }
 
 export async function POST(req: NextRequest) {
@@ -106,7 +89,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2) 通知メール (best-effort)
-  await notifyViaResend({ company, name, email, message })
+  await notify({ company, name, email, message })
 
   return NextResponse.json({ ok: true })
 }

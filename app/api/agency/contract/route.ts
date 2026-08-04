@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { ContractDocument, CONTRACT_VERSION, type ContractInput } from "@/lib/contract-pdf"
+import { sendMail, mailerConfigured } from "@/lib/mailer"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -42,9 +43,7 @@ async function sendSignedContract(opts: {
   signedDate: string
   pdfBase64: string
 }): Promise<{ agencySent: boolean; bondexSent: boolean; to?: string; note?: string }> {
-  const key = process.env.RESEND_API_KEY
-  if (!key) return { agencySent: false, bondexSent: false, note: "メール未設定" }
-  const from = process.env.ALERT_FROM_EMAIL || "BondEx <onboarding@resend.dev>"
+  if (!mailerConfigured()) return { agencySent: false, bondexSent: false, note: "メール未設定" }
   const subject = `【BondEx】業務委託契約書 締結のお控え（${opts.agencyName}）`
   const text = [
     `${opts.agencyName} 御中`,
@@ -56,45 +55,26 @@ async function sendSignedContract(opts: {
     "",
     "— BondEx / 株式会社JOJO（support@bondex.express）",
   ].join("\n")
+  const attachments = [{ filename: "bondex-contract-signed.pdf", contentBase64: opts.pdfBase64 }]
 
-  // 会社宛とBondEx控えは別々に送る(共有ドメインで会社宛が弾かれてもBondEx控えは届くように)
-  const sendOne = async (to: string): Promise<boolean> => {
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from,
-          to: [to],
-          subject,
-          text,
-          attachments: [{ filename: "bondex-contract-signed.pdf", content: opts.pdfBase64 }],
-        }),
-      })
-      if (!res.ok) {
-        const body = await res.text().catch(() => "")
-        console.error("[contract] Resend 送信失敗:", to, res.status, body.slice(0, 300))
-        return false
-      }
-      return true
-    } catch (e) {
-      console.error("[contract] Resend 例外:", to, e instanceof Error ? e.message : e)
-      return false
-    }
-  }
-
+  // 会社宛とBondEx控えは別々に送る(片方が失敗しても他方は届くように)
   const agencyEmail = opts.toAgencyEmail.trim()
   const bondexCopy = process.env.ALERT_EMAIL?.trim()
-  const agencySent = agencyEmail ? await sendOne(agencyEmail) : false
-  const bondexSent = bondexCopy && bondexCopy !== agencyEmail ? await sendOne(bondexCopy) : false
+  const agencyRes = agencyEmail
+    ? await sendMail({ to: agencyEmail, subject, text, attachments })
+    : { sent: false }
+  const bondexRes =
+    bondexCopy && bondexCopy !== agencyEmail
+      ? await sendMail({ to: bondexCopy, subject, text, attachments })
+      : { sent: false }
   return {
-    agencySent,
-    bondexSent,
+    agencySent: agencyRes.sent,
+    bondexSent: bondexRes.sent,
     to: agencyEmail || undefined,
     note: !agencyEmail
       ? "会社の登録メール未設定"
-      : !agencySent
-        ? "会社宛はメール設定(ドメイン認証)の完了後に届きます"
+      : !agencyRes.sent
+        ? "会社宛の送信設定(SMTP)を確認してください"
         : undefined,
   }
 }
