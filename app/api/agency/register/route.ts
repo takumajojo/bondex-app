@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { ensureAgencyFolder } from "@/lib/google-drive"
+import { sendMail } from "@/lib/mailer"
 
 export const runtime = "nodejs"
 
@@ -151,6 +152,56 @@ export async function POST(req: NextRequest) {
     await ensureAgencyFolder(agencyName)
   } catch {
     /* Drive 未設定・失敗は無視 */
+  }
+
+  // 5) 通知メール (best-effort・失敗しても登録は成功させる)。
+  //    ① BondEx 運用へ「承認待ちの新規代理店」通知（承認漏れ防止）
+  //    ② 代理店へ受付確認（承認をお待ちいただく案内）
+  try {
+    const opsTo = process.env.ALERT_EMAIL || "support@bondex.express"
+    await sendMail({
+      to: opsTo,
+      replyTo: email,
+      subject: `【BondEx】新規代理店の登録（承認待ち）: ${agencyName}`,
+      text: [
+        "新しい代理店がセルフ登録しました。運営画面で承認してください。",
+        "",
+        `代理店名　：${agencyName}`,
+        `連絡先　　：${email}`,
+        contactPerson ? `ご担当者　：${contactPerson}` : "",
+        phone ? `電話　　　：${phone}` : "",
+        `区分　　　：${isDomestic ? "国内" : "海外"} ／ 決済：${paymentMethod}`,
+        "",
+        "▼ 承認はこちら",
+        "https://bondex.express/operator/agencies",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    })
+    await sendMail({
+      to: email,
+      replyTo: opsTo,
+      subject: "【BondEx】ご登録ありがとうございます（承認をお待ちください）",
+      text: [
+        `${agencyName} 御中`,
+        "",
+        "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
+        "このたびはBondExへのご登録、誠にありがとうございます。",
+        "",
+        "内容を確認のうえ、担当者が承認いたします。承認完了後、ログインして発行依頼をご利用いただけます。",
+        "（初回のご利用前に、契約書へのご署名をお願いしております。）",
+        "",
+        "ご不明な点は support@bondex.express までお気軽にお問い合わせください。",
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "BondEx（手荷物配送手配サービス）／ 株式会社JOJO",
+        "Web  : https://bondex.express",
+        "Mail : support@bondex.express",
+        "━━━━━━━━━━━━━━━━━━",
+      ].join("\n"),
+    })
+  } catch (e) {
+    console.error("[agency/register] 通知メール失敗:", e instanceof Error ? e.message : e)
   }
 
   return NextResponse.json({ ok: true, paymentMethod, status: "pending" })
