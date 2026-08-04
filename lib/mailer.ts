@@ -94,7 +94,7 @@ async function sendViaResend(opts: {
   }
 }
 
-/** メール1通を送る。SMTP優先、無ければResend。どちらも無ければ送らない。 */
+/** メール1通を送る。SMTP優先→失敗時はResendにフォールバック。どちらも無ければ送らない。 */
 export async function sendMail(opts: {
   to: string
   subject: string
@@ -103,7 +103,17 @@ export async function sendMail(opts: {
   replyTo?: string
 }): Promise<SendResult> {
   if (!opts.to?.trim()) return { sent: false, error: "no recipient" }
-  if (smtpConfigured()) return sendViaSmtp(opts)
+  if (smtpConfigured()) {
+    const r = await sendViaSmtp(opts)
+    if (r.sent) return r
+    // SMTP失敗時、Resendがあればフォールバックして取りこぼしを防ぐ
+    if (process.env.RESEND_API_KEY) {
+      const r2 = await sendViaResend(opts)
+      if (r2.sent) return { ...r2, error: `smtp_failed(${r.error})→resend_ok` }
+      return { sent: false, error: `smtp(${r.error}) / resend(${r2.error})` }
+    }
+    return r
+  }
   if (process.env.RESEND_API_KEY) return sendViaResend(opts)
   return { sent: false, error: "no mailer configured" }
 }

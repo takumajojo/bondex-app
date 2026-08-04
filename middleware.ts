@@ -70,6 +70,7 @@ export const config = {
     "/operator/inquiries",
     "/api/claims",
     "/api/operator/inquiries",
+    "/api/operator/mail-test",
     "/api/contracts/generate",
     // /agency/* と /track/* と /api/track/* は public (代理店は Supabase Auth で、track は token-free)
   ],

@@ -31,7 +31,7 @@ async function notify(input: {
   const r = await sendMail({
     to: NOTIFY_TO,
     replyTo: input.email,
-    subject: `[BondEx] 導入相談 — ${input.company || input.name || input.email}`,
+    subject: `【BondEx】新規お問い合わせ（${input.company || input.name || input.email}）`,
     text: [
       `会社名: ${input.company || "—"}`,
       `お名前: ${input.name || "—"}`,

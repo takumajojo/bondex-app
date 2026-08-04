@@ -44,28 +44,43 @@ async function sendSignedContract(opts: {
   pdfBase64: string
 }): Promise<{ agencySent: boolean; bondexSent: boolean; to?: string; note?: string }> {
   if (!mailerConfigured()) return { agencySent: false, bondexSent: false, note: "メール未設定" }
-  const subject = `【BondEx】業務委託契約書 締結のお控え（${opts.agencyName}）`
+  const subject = `【BondEx】業務委託契約 締結完了のご連絡（${opts.agencyName} 御中）`
   const text = [
     `${opts.agencyName} 御中`,
     "",
-    `BondEx（株式会社JOJO）との業務委託契約が ${opts.signedDate} に締結されました。`,
-    `署名者：${opts.signerName}`,
+    "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
     "",
-    "署名済みの契約書PDFを添付します。控えとして保管してください。",
+    "このたびは業務委託契約にご同意・ご署名を賜り、誠にありがとうございます。",
+    `下記のとおり ${opts.signedDate} 付で本契約が締結されましたので、署名済みの契約書（PDF）を添付のうえご送付申し上げます。`,
+    "控えとして大切に保管くださいますようお願い申し上げます。",
     "",
-    "— BondEx / 株式会社JOJO（support@bondex.express）",
+    "───────────────────",
+    "　契約名　：業務委託契約書",
+    `　締結日　：${opts.signedDate}`,
+    `　署名者　：${opts.signerName}`,
+    "───────────────────",
+    "",
+    "ご不明な点がございましたら、本メールへのご返信、または support@bondex.express までお気軽にお問い合わせください。",
+    "今後とも何卒よろしくお願い申し上げます。",
+    "",
+    "━━━━━━━━━━━━━━━━━━",
+    "BondEx（手荷物配送手配サービス）／ 株式会社JOJO",
+    "Web  : https://bondex.express",
+    "Mail : support@bondex.express",
+    "━━━━━━━━━━━━━━━━━━",
   ].join("\n")
   const attachments = [{ filename: "bondex-contract-signed.pdf", contentBase64: opts.pdfBase64 }]
+  const replyTo = "support@bondex.express"
 
   // 会社宛とBondEx控えは別々に送る(片方が失敗しても他方は届くように)
   const agencyEmail = opts.toAgencyEmail.trim()
   const bondexCopy = process.env.ALERT_EMAIL?.trim()
   const agencyRes = agencyEmail
-    ? await sendMail({ to: agencyEmail, subject, text, attachments })
+    ? await sendMail({ to: agencyEmail, subject, text, attachments, replyTo })
     : { sent: false }
   const bondexRes =
     bondexCopy && bondexCopy !== agencyEmail
-      ? await sendMail({ to: bondexCopy, subject, text, attachments })
+      ? await sendMail({ to: bondexCopy, subject, text, attachments, replyTo })
       : { sent: false }
   return {
     agencySent: agencyRes.sent,
