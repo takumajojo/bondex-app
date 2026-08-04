@@ -280,6 +280,9 @@ export function ContractDocument({ data }: { data: ContractInput }) {
           <Para>
             2. 実際の運送業務は実運送人が行い、甲は運送業務を行わない。甲は貨物利用運送事業者ではなく、業務取次として本業務を行う。
           </Para>
+          <Para>
+            3. 手荷物の運送に係る送り状上の荷送人は旅行者とし、甲は旅行者のために集荷の手配及び送り状の作成を代行する。甲は自己の名をもって運送契約の当事者とならない。
+          </Para>
         </Article>
 
         <Article num={3} title="運送責任及びクレーム対応">

@@ -362,11 +362,10 @@ function pickComponent(components: AddressComponent[], type: string): string {
   return components.find((c) => c.types.includes(type))?.long_name ?? ""
 }
 
-// 依頼主 (sender) = BondEx が手荷物配送を「代行手配」していることを送り状で明示する。
-// 氏名欄=BondEx / 法人名欄=手荷物配送代行 に分け、旧「BondEx が2行に重複」を解消。
-// Yamato は full_name+company を結合して shipper_name にする可能性があるため長すぎ厳禁 (ES001023)。
-const SENDER_FULL_NAME = "BondEx"
-const SENDER_COMPANY = "手荷物配送代行"
+// 依頼主 (sender/荷送人) = 旅行者(宿泊者) とし、会社名欄=発送元ホテル名 とする。
+// これは BondEx を「取次」に一貫させるため — 運送契約は 旅行者⇔実運送人 で成立し、
+// BondEx は自己の名で荷送人にならない (2026-08-03 谷口さん確定)。集荷連絡先(TEL)のみ
+// BondEx の番号を使う (BONDEX_SENDER_PHONE)。
 // ご依頼主(集荷連絡先)の TEL は環境変数で固定できる。設定時は sender に優先適用。
 // 実番号をコード/リポジトリに残さないための仕組み。未設定なら発送元ホテルの電話、
 // それも無ければ 0 埋め (FALLBACK_PHONE) にフォールバックする。
@@ -489,13 +488,10 @@ async function resolveYamatoAddress(
   // ご依頼主(集荷連絡先)は env で固定可能。設定時は発送元の電話に優先。
   if (isSender && SENDER_PHONE) phone = SENDER_PHONE
 
-  // ご依頼主 (sender) = "BondEx" 固定 (ES001023 長すぎ対策)
-  // お届け先様名 (recipient) = 宿泊者名 (運送業法上 必須)。
+  // 氏名欄 = 旅行者(宿泊者)名。ご依頼主(発送元)・お届け先とも 荷送人/荷受人=旅行者。
   //   recipient が空の場合のみ ホテル名にフォールバック.
   // 佐川の氏名欄上限に収める (E1-0043 対策)。宿泊者名+様 が長すぎるケースを短縮。
-  const fullName = isSender
-    ? SENDER_FULL_NAME
-    : capName(recipient.trim() || result?.name || hotelName)
+  const fullName = capName(recipient.trim() || result?.name || hotelName)
 
   // 完全な住所パス (city + address1 を結合した形)
   const fullAddress = cityWard + streetOnly
@@ -519,8 +515,8 @@ async function resolveYamatoAddress(
   //   ヤマト (過去実績のあるマッピング d345ef9): address1=市区 / address2=市区+町名+番地
   //     (Yamato parser が address2 から 市区郡町村 を抽出)。既存動作を壊さないため据え置き。
   const isYamato = carrierType === "yamato"
-  // お届け先の会社名(ホテル名)も佐川の欄上限に収める (E1-0043: 長いホテル名対策)。
-  const building = isSender ? SENDER_COMPANY : capName(result?.name ?? hotelName)
+  // 会社名欄 = ホテル名 (発送元/お届け先とも)。佐川の欄上限に収める (E1-0043: 長いホテル名対策)。
+  const building = capName(result?.name ?? hotelName)
 
   if (isYamato) {
     // ヤマト: 過去実績のあるマッピング (address1=市区 / address2=市区+町名+番地)。据え置き。
@@ -709,11 +705,13 @@ export async function POST(req: NextRequest) {
   // お客様名が送り状に出ない。受け取りホテルが「予約名」で照合できるよう宿泊者名を入れる
   // (運送業法上も お届け先様名 = 宿泊者名)。宿泊者名が無い時のみ Front Desk。
   const guestForLabel = (representative || bookingName || "").trim()
+  const labelRecipientName = guestForLabel ? `${guestForLabel} 様` : "Front Desk"
   const toRecipientName = guestForLabel ? `${guestForLabel} 様` : (toInput.recipient?.trim() || "Front Desk")
 
   // Google Places で構造化住所を取得
   const [fromAddr, toAddr] = await Promise.all([
-    resolveYamatoAddress(fromHotel, fromInput.recipient ?? "Front Desk", placesKey, true, fromPlaceId, carrier.id),  // ご依頼主 = BondEx
+    // ご依頼主(荷送人) = 旅行者名 様 / 会社=発送元ホテル / TEL=BondEx(集荷連絡先)。取次のため BondEx は荷送人名にしない。
+    resolveYamatoAddress(fromHotel, labelRecipientName, placesKey, true, fromPlaceId, carrier.id),
     resolveYamatoAddress(toHotel, toRecipientName, placesKey, false, toPlaceId, carrier.id),                          // お届け先: 会社=ホテル / 宛名=宿泊者名
   ])
 
