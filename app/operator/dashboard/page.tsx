@@ -14,6 +14,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Building2,
+  Mail,
   Search,
   Pencil,
   Trash2,
@@ -281,6 +282,13 @@ export default function DashboardPage() {
             >
               <AlertTriangle className="w-4 h-4" strokeWidth={1.5} />
               クレーム管理
+            </Link>
+            <Link
+              href="/operator/inquiries"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Mail className="w-4 h-4" strokeWidth={1.5} />
+              問い合わせ
             </Link>
             <button
               onClick={() => void load()}

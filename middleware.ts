@@ -67,7 +67,9 @@ export const config = {
     "/api/voucher/label",
     "/operator/claims",
     "/operator/agencies",
+    "/operator/inquiries",
     "/api/claims",
+    "/api/operator/inquiries",
     "/api/contracts/generate",
     // /agency/* と /track/* と /api/track/* は public (代理店は Supabase Auth で、track は token-free)
   ],
