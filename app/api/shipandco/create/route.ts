@@ -5,6 +5,8 @@ import {
   getDeliverableRange,
 } from "@/lib/yamato-delivery"
 import { saveShipment } from "@/lib/shipments-db"
+import { getSupabase } from "@/lib/supabase"
+import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
 
@@ -643,7 +645,7 @@ export async function POST(req: NextRequest) {
     // リードタイム超 (ヤマト30 / 佐川50) — 今は発行できない。Ship&co を呼ばず deferred。
     const issuableFrom = issuableFromYmd(shipmentDate, carrier.maxLeadDays)
     // 管理ダッシュボードに pending として登録 (issuableFrom 以降に自動発行する想定)
-    await saveShipment({
+    const savedDeferred = await saveShipment({
       booking_id: bookingId || refNumber,
       leg_index: legIndex,
       agency,
@@ -671,6 +673,23 @@ export async function POST(req: NextRequest) {
       notes: specialNote || null,
       note_target: noteTarget || null,
     })
+    if (!savedDeferred.ok) {
+      // pending 行が保存されないと 1ヶ月前の自動発行が走らない=手荷物が発行漏れになる。即アラート。
+      await sendOpsAlert({
+        subject: `【要対応】発行予約(pending)の保存失敗: ${bookingId || refNumber}-L${legIndex + 1}`,
+        lines: [
+          `発送予定日: ${shipmentDate} ／ 発行可能日: ${issuableFrom}`,
+          `代理店: ${agency || "-"}`,
+          `エラー: ${savedDeferred.error ?? "unknown"}`,
+          "→ pending 行が無いと自動発行されません。手動で登録し直してください。",
+        ],
+        agencyEmail: null,
+      })
+      return NextResponse.json(
+        { error: "Failed to save deferred shipment", code: "DEFERRED_SAVE_FAILED", detail: savedDeferred.error },
+        { status: 500 },
+      )
+    }
     return NextResponse.json({
       status: "deferred",
       shipmentDate,
@@ -703,6 +722,29 @@ export async function POST(req: NextRequest) {
   // お届け先の宛名 = 宿泊者名 (代表者名) + 様。会社名にはホテル名が入るので、
   // 宛名にもホテル名を入れると「帝国ホテル東京 / 帝国ホテル東京」と二重になり、かつ
   // お客様名が送り状に出ない。受け取りホテルが「予約名」で照合できるよう宿泊者名を入れる
+  // 冪等性ガード: 既に (booking_id, leg_index) が issued 済みなら Ship&co を再度呼ばず
+  // 保存済みラベルを返す。マルチ区間の一部失敗→再発行での「二重発行・二重課金」を防ぐ。
+  {
+    const sbIdem = getSupabase()
+    if (sbIdem) {
+      const { data: existing } = await sbIdem
+        .from("shipments")
+        .select("status, yamato_tracking, yamato_label_url")
+        .eq("booking_id", bookingId || refNumber)
+        .eq("leg_index", legIndex)
+        .maybeSingle()
+      if (existing?.status === "issued" && existing.yamato_label_url) {
+        return NextResponse.json({
+          status: "issued",
+          alreadyIssued: true,
+          label: existing.yamato_label_url,
+          trackingNumbers: existing.yamato_tracking ?? [],
+          savedToDb: true,
+        })
+      }
+    }
+  }
+
   // (運送業法上も お届け先様名 = 宿泊者名)。宿泊者名が無い時のみ Front Desk。
   const guestForLabel = (representative || bookingName || "").trim()
   const labelRecipientName = guestForLabel ? `${guestForLabel} 様` : "Front Desk"
@@ -902,6 +944,19 @@ export async function POST(req: NextRequest) {
       console.error(
         `[shipandco/create] Yamato issued but DB save FAILED for ${baseRecord.booking_id}-L${legIndex}: ${saved.error}`,
       )
+      // 課金済みラベルなのにDB無記録=孤児。ダッシュボードにも追跡にも出ないので即アラート。
+      await sendOpsAlert({
+        subject: `【緊急】発行済みラベルのDB保存失敗（要手動リカバリ）: ${baseRecord.booking_id}-L${legIndex + 1}`,
+        lines: [
+          "送り状は発行済み（LIVE時は課金・取消不可の可能性）ですが、DBに保存できませんでした。",
+          `追跡番号: ${(d.delivery?.tracking_numbers ?? []).join(", ") || "-"}`,
+          `ラベルURL: ${d.delivery?.label ?? "-"}`,
+          `代理店: ${agency || "-"} ／ 予約: ${baseRecord.booking_id} L${legIndex + 1}`,
+          `エラー: ${saved.error ?? "unknown"}`,
+          "→ ダッシュボードに出ないため、この情報から手動でリカバリしてください。",
+        ],
+        agencyEmail: null,
+      })
     }
     return NextResponse.json({
       status: "issued",

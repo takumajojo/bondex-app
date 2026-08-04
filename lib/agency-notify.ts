@@ -9,8 +9,8 @@
  * 宛先は代理店の contact_email + BondEx 運用アドレス(控え)。
  */
 
-const RESEND_ENDPOINT = "https://api.resend.com/emails"
-const FROM = process.env.ALERT_FROM_EMAIL || "BondEx <no-reply@bondex.express>"
+import { sendMail, mailerConfigured } from "./mailer"
+
 const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
 
 export interface BookingRequestEmailInput {
@@ -71,40 +71,23 @@ function buildEmail(
 export async function sendBookingRequestEmail(
   input: BookingRequestEmailInput,
 ): Promise<{ sent: boolean; error?: string }> {
-  const key = process.env.RESEND_API_KEY
   const { subject, lines, callout } = buildEmail(input)
   // 取りこぼし防止でログには必ず残す
   console.error(`[agency-notify] ${subject} :: ${[...lines, ...callout].join(" | ")}`)
-  if (!key) return { sent: false, error: "RESEND_API_KEY unset" }
+  if (!mailerConfigured()) return { sent: false, error: "mailer unset" }
 
-  const to: string[] = []
-  if (input.agencyEmail) to.push(input.agencyEmail)
-  to.push(BONDEX_OPS_EMAIL)
-  if (to.length === 0) return { sent: false, error: "no recipient" }
+  const recipients: string[] = []
+  if (input.agencyEmail) recipients.push(input.agencyEmail)
+  recipients.push(BONDEX_OPS_EMAIL)
 
-  const html = `
-    <div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px">
-      <h2 style="color:#C8102E;font-size:18px">${subject}</h2>
-      ${lines.map((l) => `<p style="margin:8px 0;font-size:14px;color:#111;line-height:1.7">${l}</p>`).join("")}
-      <div style="margin:16px 0;padding:16px 18px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px">
-        <p style="margin:0 0 8px 0;font-size:13px;font-weight:700;color:#9A3412">📁 書類の受け取り方法 / How you receive the documents</p>
-        ${callout.map((l) => `<p style="margin:6px 0;font-size:14px;color:#7C2D12;line-height:1.8">${l}</p>`).join("")}
-      </div>
-      <hr style="margin:24px 0;border:none;border-top:1px solid #eee"/>
-      <p style="font-size:12px;color:#888">BondEx — bondex.express ｜ support@bondex.express</p>
-    </div>`
-  try {
-    const res = await fetch(RESEND_ENDPOINT, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to, subject, html }),
-    })
-    if (!res.ok) {
-      const b = await res.text().catch(() => "")
-      return { sent: false, error: `Resend HTTP ${res.status}: ${b.slice(0, 200)}` }
-    }
-    return { sent: true }
-  } catch (e) {
-    return { sent: false, error: e instanceof Error ? e.message : String(e) }
+  // SMTP優先→Resendフォールバック。宛先ごとに送る(片方失敗でも他方に届く)。
+  const text = [...lines, "", ...callout, "", "— BondEx ／ bondex.express ｜ support@bondex.express"].join("\n")
+  let anySent = false
+  const errs: string[] = []
+  for (const to of recipients) {
+    const r = await sendMail({ to, subject, text, replyTo: "support@bondex.express" })
+    if (r.sent) anySent = true
+    else errs.push(`${to}: ${r.error}`)
   }
+  return anySent ? { sent: true } : { sent: false, error: errs.join("; ") }
 }

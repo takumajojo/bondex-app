@@ -13,7 +13,8 @@
  * 戻り値で報告する。
  */
 
-const ALERT_FROM = process.env.ALERT_FROM_EMAIL || "BondEx Alerts <alerts@bondex.express>"
+import { sendMail, mailerConfigured } from "./mailer"
+
 const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
 
 export interface OpsAlertInput {
@@ -28,40 +29,6 @@ export interface OpsAlertResult {
   emailSent: boolean
   slackSent: boolean
   errors: string[]
-}
-
-async function sendViaResend(
-  apiKey: string,
-  to: string[],
-  subject: string,
-  lines: string[],
-): Promise<string | null> {
-  const html = `
-    <div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px">
-      <h2 style="color:#C8102E;font-size:18px">${subject}</h2>
-      ${lines.map((l) => `<p style="margin:6px 0;font-size:14px;color:#111">${l}</p>`).join("")}
-      <hr style="margin:24px 0;border:none;border-top:1px solid #eee"/>
-      <p style="font-size:12px;color:#888">
-        BondEx 配送監視 (自動送信) — このステータスは Ship&co / ヤマト運輸の追跡情報に基づきます。
-      </p>
-    </div>`
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: ALERT_FROM, to, subject, html }),
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => "")
-      return `Resend HTTP ${res.status}: ${body.slice(0, 200)}`
-    }
-    return null
-  } catch (err) {
-    return err instanceof Error ? err.message : String(err)
-  }
 }
 
 async function sendViaSlack(webhookUrl: string, subject: string, lines: string[]): Promise<string | null> {
@@ -81,13 +48,18 @@ async function sendViaSlack(webhookUrl: string, subject: string, lines: string[]
 export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult> {
   const result: OpsAlertResult = { emailSent: false, slackSent: false, errors: [] }
 
-  const resendKey = process.env.RESEND_API_KEY
-  if (resendKey) {
-    const to = [BONDEX_OPS_EMAIL]
-    if (input.agencyEmail) to.push(input.agencyEmail)
-    const err = await sendViaResend(resendKey, to, input.subject, input.lines)
-    if (err) result.errors.push(`email: ${err}`)
-    else result.emailSent = true
+  // メール: 共通 mailer (SMTP優先→Resendフォールバック)。BondEx運用 + 代理店(任意)。
+  // 宛先ごとに送るので、片方が失敗しても他方には届く。
+  if (mailerConfigured()) {
+    const text = [...input.lines, "", "— BondEx 配送監視（自動送信）"].join("\n")
+    const recipients = [BONDEX_OPS_EMAIL, ...(input.agencyEmail ? [input.agencyEmail] : [])]
+    let anySent = false
+    for (const to of recipients) {
+      const r = await sendMail({ to, subject: input.subject, text })
+      if (r.sent) anySent = true
+      else result.errors.push(`email(${to}): ${r.error}`)
+    }
+    result.emailSent = anySent
   }
 
   const slackUrl = process.env.SLACK_WEBHOOK_URL
@@ -97,8 +69,8 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
     else result.slackSent = true
   }
 
-  if (!resendKey && !slackUrl) {
-    result.errors.push("no channel configured (RESEND_API_KEY / SLACK_WEBHOOK_URL both unset)")
+  if (!mailerConfigured() && !slackUrl) {
+    result.errors.push("no channel configured (SMTP / RESEND_API_KEY / SLACK_WEBHOOK_URL all unset)")
   }
   // 取りこぼし防止: チャンネル成否に関わらず必ずログにも残す
   console.error(`[ops-alert] ${input.subject} :: ${input.lines.join(" | ")}`)

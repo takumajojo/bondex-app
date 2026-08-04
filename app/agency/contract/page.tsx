@@ -264,10 +264,16 @@ export default function AgencyContractPage() {
                 )}
               </div>
               <div className="rounded-xl border border-border bg-muted/30 p-3 max-h-[600px] overflow-y-auto">
-                <PdfPreview
-                  bytes={previewBytes}
-                  fallback={<ContractHtml agencyName={status?.agencyName || ""} />}
-                />
+                {previewBytes ? (
+                  // 実PDFをcanvas描画(デザイン一致)。pdf.js失敗時はHTML全文にフォールバック。
+                  <PdfPreview
+                    bytes={previewBytes}
+                    fallback={<ContractHtml agencyName={status?.agencyName || ""} />}
+                  />
+                ) : (
+                  // プレビューPDFの取得自体に失敗した場合も、必ず全文を表示してから署名させる
+                  <ContractHtml agencyName={status?.agencyName || ""} />
+                )}
               </div>
             </div>
 
