@@ -305,7 +305,9 @@ export async function findDuplicateBookings(params: {
 
 /**
  * 集荷漏れ候補: 発送日を過ぎても集荷が確認できていない区間。
- * (status が pending/issued のまま = picked_up 以降に進んでいない)
+ * (status が requested/pending/issued のまま = picked_up 以降に進んでいない)
+ * ※ requested/pending は「発行すらされずに発送日を過ぎた=手荷物が出荷されていない」
+ *   最重要ケース。1ヶ月超先の予約が発行漏れのまま放置される事故をここで検知する。
  */
 export async function listPickupMisses(
   todayJstYmd: string,
@@ -315,7 +317,7 @@ export async function listPickupMisses(
   const { data, error } = await sb
     .from("shipments")
     .select("*")
-    .in("status", ["pending", "issued"])
+    .in("status", ["requested", "pending", "issued"])
     .lte("shipment_date", todayJstYmd)
     .is("pickup_alert_sent_at", null)
   if (error) {

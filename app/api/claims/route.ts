@@ -10,6 +10,7 @@ import {
   type ClaimInsert,
 } from "@/lib/claims-db"
 import { isSupabaseConfigured } from "@/lib/supabase"
+import { sendOpsAlert } from "@/lib/ops-alert"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -83,6 +84,25 @@ export async function POST(req: NextRequest) {
       occurred_at: typeof body.occurred_at === "string" ? body.occurred_at : null,
     })
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 500 })
+
+    // クレーム受付を BondEx 運用へ即通知(佐川/ヤマトの補償請求は期限があるため取りこぼし厳禁)。
+    const bId = typeof body.booking_id === "string" ? body.booking_id : ""
+    const rName = typeof body.reporter_name === "string" ? body.reporter_name : ""
+    try {
+      await sendOpsAlert({
+        subject: `【クレーム受付】${category}${bId ? ` — ${bId}` : ""}`,
+        lines: [
+          `種別: ${category}`,
+          bId ? `予約: ${bId}` : "",
+          rName ? `報告者: ${rName}` : "",
+          `内容: ${description}`,
+          "→ /operator の「クレーム管理」で対応状況を更新してください。",
+        ].filter(Boolean),
+      })
+    } catch (e) {
+      console.error("[claims] 受付通知失敗:", e instanceof Error ? e.message : e)
+    }
+
     return NextResponse.json({ ok: true, id: result.id })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Internal error"

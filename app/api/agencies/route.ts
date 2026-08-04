@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
+import { sendMail } from "@/lib/mailer"
 
 export const runtime = "nodejs"
 
@@ -72,11 +73,38 @@ export async function PATCH(req: NextRequest) {
     .from("agencies")
     .update({ status })
     .eq("id", id)
-    .select("id, name, status")
+    .select("id, name, status, contact_email")
     .single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // 承認(active化)時は代理店へ「承認されました」通知。best-effort(失敗しても承認は成立)。
+  if (status === "active" && data?.contact_email) {
+    try {
+      await sendMail({
+        to: data.contact_email,
+        replyTo: process.env.ALERT_EMAIL || "support@bondex.express",
+        subject: "【BondEx】アカウントが承認されました",
+        text: [
+          `${data.name} 御中`,
+          "",
+          "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
+          "アカウントのご登録が承認されました。ログインして発行依頼をご利用いただけます。",
+          "",
+          "▼ ログイン",
+          "https://bondex.express/agency/login",
+          "",
+          "初回のご利用前に、契約書へのご署名をお願いしております（ポータルの「契約書に署名」から）。",
+          "",
+          "ご不明な点は support@bondex.express までお問い合わせください。",
+        ].join("\n"),
+      })
+    } catch (e) {
+      console.error("[agencies] 承認通知メール失敗:", e instanceof Error ? e.message : e)
+    }
+  }
+
   return NextResponse.json({ ok: true, agency: data })
 }
