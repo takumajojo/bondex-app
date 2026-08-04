@@ -97,6 +97,14 @@ export async function POST(req: NextRequest) {
   const auth = await resolveAgencyFromRequest(req)
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  // 契約書が未署名なら運用不可 (register→contract→agree→operate)。UIゲートのサーバー側担保。
+  if (auth.agency.contract_status !== "signed") {
+    return NextResponse.json(
+      { error: "ご利用には契約書への署名が必要です。ポータルの「契約書に署名」から締結してください。", code: "CONTRACT_UNSIGNED" },
+      { status: 403 },
+    )
+  }
+
   // 承認待ち・停止中は登録不可
   if (auth.agency.status === "pending") {
     return NextResponse.json({ error: "アカウントは承認待ちです。承認後にご利用いただけます。" }, { status: 403 })

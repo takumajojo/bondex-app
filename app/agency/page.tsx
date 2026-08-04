@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Info,
   BookOpen,
+  FileSignature,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
@@ -74,6 +75,10 @@ const messages = {
     preparing: "Preparing",
     waybillLater: "Shipping label: issued about a month before shipping",
     newBooking: "New request",
+    signContract: "Sign contract",
+    signBannerTitle: "Please sign the service agreement to start",
+    signBannerBody: "Review the agreement and agree & sign on-screen (no email needed). Issuing unlocks once signed.",
+    signBannerBtn: "Review & sign the agreement",
     howto: "How to use",
     farNote:
       "Requests with a ship date more than a month away: shipping labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
@@ -125,6 +130,10 @@ const messages = {
     preparing: "準備中",
     waybillLater: "送り状は発送の約1ヶ月前に発行します",
     newBooking: "新規発行",
+    signContract: "契約書に署名",
+    signBannerTitle: "運用開始には契約書への署名が必要です",
+    signBannerBody: "業務委託契約書をご確認のうえ、その場で同意・署名してください（メール不要）。署名後に発行がご利用いただけます。",
+    signBannerBtn: "契約書を確認して署名する",
     howto: "ご利用ガイド",
     farNote:
       "発送日が1ヶ月以上先の依頼は、送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
@@ -170,6 +179,7 @@ export default function AgencyDashboard() {
   const [error, setError] = useState("")
   const [noAgency, setNoAgency] = useState<{ detail?: string } | null>(null)
   const [agencyStatus, setAgencyStatus] = useState<string>("active")
+  const [contractStatus, setContractStatus] = useState<string>("unsigned")
   const [paymentMethod, setPaymentMethod] = useState<string>("invoice")
   const [cardOnFile, setCardOnFile] = useState<boolean>(false)
   const [cardDismissed, setCardDismissed] = useState<boolean>(false)
@@ -194,7 +204,7 @@ export default function AgencyDashboard() {
     // 2. 自分の agency を取得 (status / 決済方法 / カード有無も)
     const { data: agency, error: aErr } = await sb
       .from("agencies")
-      .select("name, status, payment_method, card_on_file")
+      .select("name, status, payment_method, card_on_file, contract_status")
       .maybeSingle()
     if (aErr) {
       setNoAgency({ detail: aErr.message })
@@ -208,6 +218,7 @@ export default function AgencyDashboard() {
     }
     setAgencyName(agency.name)
     setAgencyStatus((agency as { status?: string }).status || "active")
+    setContractStatus((agency as { contract_status?: string }).contract_status || "unsigned")
     setPaymentMethod((agency as { payment_method?: string }).payment_method || "invoice")
     setCardOnFile(Boolean((agency as { card_on_file?: boolean }).card_on_file))
 
@@ -311,13 +322,22 @@ export default function AgencyDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
-            {!error && !noAgency && agencyStatus === "active" && (
+            {!error && !noAgency && agencyStatus === "active" && contractStatus === "signed" && (
               <Link
                 href="/agency/new"
                 className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-[#C8102E] text-white text-sm font-semibold hover:bg-[#A00D25]"
               >
                 <Plus className="w-4 h-4" strokeWidth={2.2} />
                 {t.newBooking}
+              </Link>
+            )}
+            {!error && !noAgency && agencyStatus === "active" && contractStatus !== "signed" && (
+              <Link
+                href="/agency/contract"
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-[#C8102E] text-white text-sm font-semibold hover:bg-[#A00D25]"
+              >
+                <FileSignature className="w-4 h-4" strokeWidth={2.2} />
+                {t.signContract}
               </Link>
             )}
             {/* お客様お渡し用ガイド。認証不要の /api/howto (静的PDF) を別タブで開く。
@@ -350,6 +370,24 @@ export default function AgencyDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        {!error && !noAgency && agencyStatus === "active" && contractStatus !== "signed" && (
+          <div className="rounded-xl border border-[#C8102E]/30 bg-[#C8102E]/5 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <FileSignature className="w-5 h-5 text-[#C8102E] mt-0.5 shrink-0" strokeWidth={1.8} />
+              <div>
+                <p className="text-sm font-semibold text-foreground">{t.signBannerTitle}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{t.signBannerBody}</p>
+              </div>
+            </div>
+            <Link
+              href="/agency/contract"
+              className="shrink-0 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg bg-[#C8102E] text-white text-sm font-semibold hover:bg-[#A00D25]"
+            >
+              <FileSignature className="w-4 h-4" strokeWidth={2.2} />
+              {t.signBannerBtn}
+            </Link>
+          </div>
+        )}
         {(error || noAgency) && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {noAgency

@@ -54,7 +54,19 @@ export interface ContractInput {
   }
   pricePerSuitcaseYen?: number   // デフォルト 5,000
   serviceBrandName?: string      // デフォルト "BondEx"
+  // 電子署名(手書きサイン+同意)。存在すると 乙 欄を署名者情報で埋め、署名画像と監査情報を印字する。
+  signature?: {
+    signerName: string           // 署名者氏名
+    signerTitle?: string         // 署名者役職
+    signedDate: string           // 2026年8月4日
+    signatureImageDataUrl?: string // data:image/png;base64,...
+    auditId?: string             // 監査ID (署名レコード id)
+    docHashShort?: string        // 文書ハッシュ先頭
+  }
 }
+
+// 契約書テンプレートのバージョン。条文を変更したら必ず更新する(署名がどの版への同意か特定するため)。
+export const CONTRACT_VERSION = "2026-08-04-v1"
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -173,6 +185,30 @@ const styles = StyleSheet.create({
     color: C_MUTED,
     textAlign: "center",
     paddingTop: 12,
+  },
+  signatureImageWrap: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+    alignItems: "center",
+  },
+  signatureImage: {
+    width: 130,
+    height: 46,
+    objectFit: "contain",
+  },
+  signatureImageCaption: {
+    fontSize: 7,
+    color: C_MUTED,
+    marginTop: 2,
+  },
+  auditNote: {
+    marginTop: 18,
+    fontSize: 8,
+    color: C_MUTED,
+    lineHeight: 1.6,
+    borderTopWidth: 0.5,
+    borderTopColor: C_HAIRLINE,
+    paddingTop: 8,
   },
   effectiveDate: {
     fontSize: 11,
@@ -446,12 +482,31 @@ export function ContractDocument({ data }: { data: ContractInput }) {
               <Text style={styles.signatureLine}>住所：{data.agency.address ?? ""}</Text>
               <Text style={styles.signatureLine}>会社名：{data.agency.name ?? ""}</Text>
               <Text style={styles.signatureLine}>
-                代表者：{[data.agency.representativeTitle, data.agency.representativeName].filter(Boolean).join("　")}
+                代表者：
+                {data.signature
+                  ? [data.signature.signerTitle, data.signature.signerName].filter(Boolean).join("　")
+                  : [data.agency.representativeTitle, data.agency.representativeName].filter(Boolean).join("　")}
               </Text>
-              <Text style={styles.signatureSeal}>印</Text>
+              {data.signature?.signatureImageDataUrl ? (
+                <View style={styles.signatureImageWrap}>
+                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                  <Image src={data.signature.signatureImageDataUrl} style={styles.signatureImage} />
+                  <Text style={styles.signatureImageCaption}>署名（電子）</Text>
+                </View>
+              ) : (
+                <Text style={styles.signatureSeal}>印</Text>
+              )}
             </View>
           </View>
         </View>
+
+        {data.signature && (
+          <Text style={styles.auditNote}>
+            本契約は{data.signature.signedDate}に、上記乙の担当者が BondEx（bondex.express）上で契約内容を確認し、電子的に同意・署名して締結したものです。
+            {data.signature.auditId ? ` 監査ID: ${data.signature.auditId}` : ""}
+            {data.signature.docHashShort ? ` ／ 文書ハッシュ(SHA-256先頭): ${data.signature.docHashShort}` : ""}
+          </Text>
+        )}
         </View>
 
         {/* Footer */}

@@ -10,6 +10,7 @@ export interface AgencyRecord {
   stripe_customer_id: string | null
   card_on_file: boolean | null
   is_domestic: boolean | null
+  contract_status: string | null
 }
 
 /**
@@ -45,7 +46,7 @@ export async function resolveAgencyFromRequest(
 
   const { data: agency } = await sb
     .from("agencies")
-    .select("id, name, contact_email, status, payment_method, stripe_customer_id, card_on_file, is_domestic")
+    .select("id, name, contact_email, status, payment_method, stripe_customer_id, card_on_file, is_domestic, contract_status")
     .eq("id", agencyId)
     .maybeSingle()
   if (!agency) return null
