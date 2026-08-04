@@ -211,7 +211,7 @@ function Article({
   children: React.ReactNode
 }) {
   return (
-    <View style={styles.article}>
+    <View style={styles.article} wrap={false}>
       <Text style={styles.articleTitle}>第{num}条（{title}）</Text>
       {children}
     </View>
