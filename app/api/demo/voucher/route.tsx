@@ -41,10 +41,8 @@ export async function POST(req: NextRequest) {
   }
 
   const shipDate = arrivalDate && /^\d{4}-\d{2}-\d{2}$/.test(arrivalDate) ? arrivalDate : ""
-  const sampleNote =
-    lang === "ja"
-      ? "★ これは見本です（実際のご利用時に正式書類を発行します）"
-      : "★ SAMPLE — a real voucher is issued when you use the service"
+  // ゲスト言語は en/zh/it/fr/es（旅行者向け・"ja"は無い）。見本注記は英語+日本語併記で固定。
+  const sampleNote = "★ 見本 / SAMPLE — a real voucher is issued when you use the service"
 
   const input: VoucherInput = {
     bookingId: "SAMPLE-DEMO",
