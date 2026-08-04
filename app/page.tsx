@@ -301,6 +301,12 @@ export default function LandingPage() {
             ))}
           </nav>
           <div className="flex items-center gap-3 sm:gap-4">
+            <Link
+              href="/demo"
+              className="hidden sm:inline text-[13px] font-medium text-[#0F172A] hover:text-[#C8102E]"
+            >
+              デモを試す
+            </Link>
             <a
               href={CONTACT_FORM_URL}
               target="_blank"
@@ -347,6 +353,15 @@ export default function LandingPage() {
                   </a>
                 </li>
               ))}
+              <li>
+                <Link
+                  href="/demo"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-3 text-[15px] font-medium text-[#1F2937] hover:text-[#C8102E]"
+                >
+                  デモを試す
+                </Link>
+              </li>
               <li>
                 <Link
                   href="/agency/login"
