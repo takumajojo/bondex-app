@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, Loader2, Check, Eraser, FileSignature, Download, ShieldCheck, ExternalLink } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { ContractHtml } from "@/components/contract-html"
+import { PdfPreview } from "@/components/pdf-preview"
 
 interface Status {
   status: string
@@ -22,6 +23,7 @@ export default function AgencyContractPage() {
   const [token, setToken] = useState<string | null>(null)
   const [status, setStatus] = useState<Status | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string>("")
+  const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -73,6 +75,8 @@ export default function AgencyContractPage() {
         if (pv.ok) {
           const blob = await pv.blob()
           setPreviewUrl(URL.createObjectURL(blob))
+          const ab = await blob.arrayBuffer()
+          setPreviewBytes(new Uint8Array(ab))
         }
       }
     } catch (e) {
@@ -259,8 +263,11 @@ export default function AgencyContractPage() {
                   </div>
                 )}
               </div>
-              <div className="rounded-xl border border-border bg-card p-5 max-h-[560px] overflow-y-auto">
-                <ContractHtml agencyName={status?.agencyName || ""} />
+              <div className="rounded-xl border border-border bg-muted/30 p-3 max-h-[600px] overflow-y-auto">
+                <PdfPreview
+                  bytes={previewBytes}
+                  fallback={<ContractHtml agencyName={status?.agencyName || ""} />}
+                />
               </div>
             </div>
 
