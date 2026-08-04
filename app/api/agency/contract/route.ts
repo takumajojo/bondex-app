@@ -32,6 +32,56 @@ function jpDate(d: Date): string {
   return `${y}年${m}月${dd}日`
 }
 
+// 署名済み契約書を登録会社(+BondEx控え)へメール送信する。ベストエフォート(失敗しても署名は成立)。
+// ※ onboarding@resend.dev(共有ドメイン)では Resend 登録メール宛しか届かない。任意の代理店宛に
+//    送るには bondex.express のドメイン認証(Plan B)が必要。
+async function sendSignedContract(opts: {
+  toAgencyEmail: string
+  agencyName: string
+  signerName: string
+  signedDate: string
+  pdfBase64: string
+}): Promise<{ sent: boolean; to?: string; note?: string }> {
+  const key = process.env.RESEND_API_KEY
+  if (!key) return { sent: false, note: "メール未設定" }
+  const to = opts.toAgencyEmail.trim()
+  if (!to) return { sent: false, note: "会社の登録メール未設定" }
+  const from = process.env.ALERT_FROM_EMAIL || "BondEx <onboarding@resend.dev>"
+  const bondexCopy = process.env.ALERT_EMAIL?.trim()
+  const recipients = [to, ...(bondexCopy && bondexCopy !== to ? [bondexCopy] : [])]
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: recipients,
+        subject: `【BondEx】業務委託契約書 締結のお控え（${opts.agencyName}）`,
+        text: [
+          `${opts.agencyName} 御中`,
+          "",
+          `BondEx（株式会社JOJO）との業務委託契約が ${opts.signedDate} に締結されました。`,
+          `署名者：${opts.signerName}`,
+          "",
+          "署名済みの契約書PDFを添付します。控えとして保管してください。",
+          "",
+          "— BondEx / 株式会社JOJO（support@bondex.express）",
+        ].join("\n"),
+        attachments: [{ filename: "bondex-contract-signed.pdf", content: opts.pdfBase64 }],
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      console.error("[contract] Resend 送信失敗:", res.status, body.slice(0, 300))
+      return { sent: false, note: `送信失敗(${res.status})` }
+    }
+    return { sent: true, to }
+  } catch (e) {
+    console.error("[contract] Resend 例外:", e instanceof Error ? e.message : e)
+    return { sent: false, note: "送信エラー" }
+  }
+}
+
 function contractNumberFor(agencyName: string): string {
   const now = new Date()
   const ym = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`
@@ -226,11 +276,23 @@ export async function POST(req: NextRequest) {
     .eq("id", resolved.agency.id)
   if (agErr) return NextResponse.json({ error: agErr.message }, { status: 500 })
 
+  // 締結後、署名済みPDFを登録会社(+BondEx控え)へメール送信 (ベストエフォート)
+  const email = await sendSignedContract({
+    toAgencyEmail: resolved.agency.contact_email ?? "",
+    agencyName,
+    signerName,
+    signedDate,
+    pdfBase64: signedPdfBase64,
+  })
+
   return NextResponse.json({
     ok: true,
     auditId,
     signedDate,
     contractVersion: CONTRACT_VERSION,
     signedPdfBase64,
+    emailSent: email.sent,
+    emailTo: email.to ?? resolved.agency.contact_email ?? null,
+    emailNote: email.note ?? null,
   })
 }

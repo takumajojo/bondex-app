@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2, Check, Eraser, FileSignature, Download, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Loader2, Check, Eraser, FileSignature, Download, ShieldCheck, ExternalLink } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 
 interface Status {
@@ -28,6 +28,7 @@ export default function AgencyContractPage() {
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [emailInfo, setEmailInfo] = useState<{ sent: boolean; to?: string; note?: string } | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawing = useRef(false)
@@ -153,6 +154,7 @@ export default function AgencyContractPage() {
         a.remove()
         setTimeout(() => URL.revokeObjectURL(url), 4000)
       }
+      setEmailInfo({ sent: !!json.emailSent, to: json.emailTo, note: json.emailNote })
       setDone(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : "署名に失敗しました")
@@ -206,6 +208,13 @@ export default function AgencyContractPage() {
               {status?.signerName ? `署名者：${status.signerName}　` : ""}
               {status?.signedAt ? new Date(status.signedAt).toLocaleString("ja-JP") : ""}
             </p>
+            {emailInfo && (
+              <p className="mt-2 text-sm text-emerald-800">
+                {emailInfo.sent
+                  ? `署名済みの契約書を${emailInfo.to ? `「${emailInfo.to}」` : "ご登録のメール"}へ送信しました。`
+                  : `契約は締結されました。控えメールの送信は保留中です${emailInfo.note ? `（${emailInfo.note}）` : ""}。下のボタンからPDFを保存できます。`}
+              </p>
+            )}
             <button
               onClick={() => void downloadSigned()}
               className="mt-5 inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90"
@@ -225,14 +234,41 @@ export default function AgencyContractPage() {
             </p>
 
             {/* 契約書プレビュー */}
-            <div className="rounded-xl border border-border overflow-hidden bg-muted/30">
-              {previewUrl ? (
-                <iframe src={previewUrl} title="契約書プレビュー" className="w-full h-[520px]" />
-              ) : (
-                <div className="h-[520px] flex items-center justify-center text-sm text-muted-foreground">
-                  プレビューを読み込めませんでした
-                </div>
-              )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-xs font-medium text-muted-foreground">契約書プレビュー</p>
+                {previewUrl && (
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:opacity-70"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> 別タブで開く
+                    </a>
+                    <a
+                      href={previewUrl}
+                      download="bondex-contract.pdf"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:opacity-70"
+                    >
+                      <Download className="w-3.5 h-3.5" /> PDFで見る
+                    </a>
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-border overflow-hidden bg-muted/30">
+                {previewUrl ? (
+                  <iframe src={previewUrl} title="契約書プレビュー" className="w-full h-[520px]" />
+                ) : (
+                  <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
+                    読み込み中…
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                スマホなどで上に表示されない場合は「別タブで開く」または「PDFで見る」から内容をご確認ください。
+              </p>
             </div>
 
             {/* 署名フォーム */}
