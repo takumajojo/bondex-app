@@ -5,9 +5,11 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Loader2, Check, Eraser, FileSignature, Download, ShieldCheck, ExternalLink } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
+import { ContractHtml } from "@/components/contract-html"
 
 interface Status {
   status: string
+  agencyName?: string
   currentVersion: string
   signed: boolean
   signedAt: string | null
@@ -233,10 +235,10 @@ export default function AgencyContractPage() {
               以下の契約書をご確認のうえ、ページ下部で同意・署名してください。署名するとメール不要でその場で締結が完了します。
             </p>
 
-            {/* 契約書プレビュー */}
+            {/* 契約書本文 (HTML表示 — Safari/iOS 含む全ブラウザで表示可) */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <p className="text-xs font-medium text-muted-foreground">契約書プレビュー</p>
+                <p className="text-xs font-medium text-muted-foreground">契約書（全文）</p>
                 {previewUrl && (
                   <div className="flex items-center gap-3">
                     <a
@@ -245,30 +247,21 @@ export default function AgencyContractPage() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:opacity-70"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" /> 別タブで開く
+                      <ExternalLink className="w-3.5 h-3.5" /> PDFを別タブで開く
                     </a>
                     <a
                       href={previewUrl}
                       download="bondex-contract.pdf"
                       className="inline-flex items-center gap-1 text-xs font-medium text-foreground hover:opacity-70"
                     >
-                      <Download className="w-3.5 h-3.5" /> PDFで見る
+                      <Download className="w-3.5 h-3.5" /> PDFを保存
                     </a>
                   </div>
                 )}
               </div>
-              <div className="rounded-xl border border-border overflow-hidden bg-muted/30">
-                {previewUrl ? (
-                  <iframe src={previewUrl} title="契約書プレビュー" className="w-full h-[520px]" />
-                ) : (
-                  <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
-                    読み込み中…
-                  </div>
-                )}
+              <div className="rounded-xl border border-border bg-card p-5 max-h-[560px] overflow-y-auto">
+                <ContractHtml agencyName={status?.agencyName || ""} />
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                スマホなどで上に表示されない場合は「別タブで開く」または「PDFで見る」から内容をご確認ください。
-              </p>
             </div>
 
             {/* 署名フォーム */}

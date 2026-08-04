@@ -41,44 +41,61 @@ async function sendSignedContract(opts: {
   signerName: string
   signedDate: string
   pdfBase64: string
-}): Promise<{ sent: boolean; to?: string; note?: string }> {
+}): Promise<{ agencySent: boolean; bondexSent: boolean; to?: string; note?: string }> {
   const key = process.env.RESEND_API_KEY
-  if (!key) return { sent: false, note: "メール未設定" }
-  const to = opts.toAgencyEmail.trim()
-  if (!to) return { sent: false, note: "会社の登録メール未設定" }
+  if (!key) return { agencySent: false, bondexSent: false, note: "メール未設定" }
   const from = process.env.ALERT_FROM_EMAIL || "BondEx <onboarding@resend.dev>"
-  const bondexCopy = process.env.ALERT_EMAIL?.trim()
-  const recipients = [to, ...(bondexCopy && bondexCopy !== to ? [bondexCopy] : [])]
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: recipients,
-        subject: `【BondEx】業務委託契約書 締結のお控え（${opts.agencyName}）`,
-        text: [
-          `${opts.agencyName} 御中`,
-          "",
-          `BondEx（株式会社JOJO）との業務委託契約が ${opts.signedDate} に締結されました。`,
-          `署名者：${opts.signerName}`,
-          "",
-          "署名済みの契約書PDFを添付します。控えとして保管してください。",
-          "",
-          "— BondEx / 株式会社JOJO（support@bondex.express）",
-        ].join("\n"),
-        attachments: [{ filename: "bondex-contract-signed.pdf", content: opts.pdfBase64 }],
-      }),
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => "")
-      console.error("[contract] Resend 送信失敗:", res.status, body.slice(0, 300))
-      return { sent: false, note: `送信失敗(${res.status})` }
+  const subject = `【BondEx】業務委託契約書 締結のお控え（${opts.agencyName}）`
+  const text = [
+    `${opts.agencyName} 御中`,
+    "",
+    `BondEx（株式会社JOJO）との業務委託契約が ${opts.signedDate} に締結されました。`,
+    `署名者：${opts.signerName}`,
+    "",
+    "署名済みの契約書PDFを添付します。控えとして保管してください。",
+    "",
+    "— BondEx / 株式会社JOJO（support@bondex.express）",
+  ].join("\n")
+
+  // 会社宛とBondEx控えは別々に送る(共有ドメインで会社宛が弾かれてもBondEx控えは届くように)
+  const sendOne = async (to: string): Promise<boolean> => {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from,
+          to: [to],
+          subject,
+          text,
+          attachments: [{ filename: "bondex-contract-signed.pdf", content: opts.pdfBase64 }],
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.text().catch(() => "")
+        console.error("[contract] Resend 送信失敗:", to, res.status, body.slice(0, 300))
+        return false
+      }
+      return true
+    } catch (e) {
+      console.error("[contract] Resend 例外:", to, e instanceof Error ? e.message : e)
+      return false
     }
-    return { sent: true, to }
-  } catch (e) {
-    console.error("[contract] Resend 例外:", e instanceof Error ? e.message : e)
-    return { sent: false, note: "送信エラー" }
+  }
+
+  const agencyEmail = opts.toAgencyEmail.trim()
+  const bondexCopy = process.env.ALERT_EMAIL?.trim()
+  const agencySent = agencyEmail ? await sendOne(agencyEmail) : false
+  const bondexSent = bondexCopy && bondexCopy !== agencyEmail ? await sendOne(bondexCopy) : false
+  return {
+    agencySent,
+    bondexSent,
+    to: agencyEmail || undefined,
+    note: !agencyEmail
+      ? "会社の登録メール未設定"
+      : !agencySent
+        ? "会社宛はメール設定(ドメイン認証)の完了後に届きます"
+        : undefined,
   }
 }
 
@@ -180,6 +197,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     status: resolved.agency.contract_status ?? "unsigned",
+    agencyName,
     currentVersion: CONTRACT_VERSION,
     signed: !!sig,
     signedAt: sig?.signed_at ?? null,
@@ -291,7 +309,8 @@ export async function POST(req: NextRequest) {
     signedDate,
     contractVersion: CONTRACT_VERSION,
     signedPdfBase64,
-    emailSent: email.sent,
+    emailSent: email.agencySent,
+    emailBondexSent: email.bondexSent,
     emailTo: email.to ?? resolved.agency.contact_email ?? null,
     emailNote: email.note ?? null,
   })
