@@ -16,6 +16,7 @@ interface Status {
   signedAt: string | null
   signerName: string | null
   signerTitle: string | null
+  address?: string | null
 }
 
 export default function AgencyContractPage() {
@@ -29,6 +30,7 @@ export default function AgencyContractPage() {
 
   const [signerName, setSignerName] = useState("")
   const [signerTitle, setSignerTitle] = useState("")
+  const [companyAddress, setCompanyAddress] = useState("")
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
@@ -68,6 +70,8 @@ export default function AgencyContractPage() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || "取得に失敗しました")
       setStatus(json as Status)
+      // 既に住所が登録済みなら入力欄に初期表示 (再署名時など)
+      if (typeof json.address === "string" && json.address) setCompanyAddress(json.address)
       if (!json.signed) {
         const pv = await fetch("/api/agency/contract?preview=1", {
           headers: { Authorization: `Bearer ${t}` },
@@ -134,6 +138,7 @@ export default function AgencyContractPage() {
     setError(null)
     if (!agreed) return setError("契約内容への同意にチェックを入れてください。")
     if (!signerName.trim()) return setError("署名者のお名前を入力してください。")
+    if (!companyAddress.trim()) return setError("会社住所を入力してください。")
     if (!hasInk.current) return setError("枠内に手書きでサインしてください。")
     const canvas = canvasRef.current
     if (!canvas || !token) return
@@ -143,7 +148,7 @@ export default function AgencyContractPage() {
       const res = await fetch("/api/agency/contract", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ signerName: signerName.trim(), signerTitle: signerTitle.trim(), signatureImage, agreed: true }),
+        body: JSON.stringify({ signerName: signerName.trim(), signerTitle: signerTitle.trim(), companyAddress: companyAddress.trim(), signatureImage, agreed: true }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || "署名に失敗しました")
@@ -304,6 +309,17 @@ export default function AgencyContractPage() {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">会社住所（必須・契約書「乙」欄に記載されます）</label>
+                <input
+                  value={companyAddress}
+                  onChange={(e) => setCompanyAddress(e.target.value)}
+                  maxLength={200}
+                  placeholder="〒100-0001 東京都千代田区…"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
               </div>
 
               <div>

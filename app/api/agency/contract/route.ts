@@ -104,11 +104,12 @@ function contractNumberFor(agencyName: string): string {
 function buildData(
   agencyName: string,
   signature?: ContractInput["signature"] & { effectiveDate?: string },
+  agencyAddress?: string,
 ): ContractInput {
   return {
     contractNumber: contractNumberFor(agencyName),
     effectiveDate: signature?.signedDate ?? "　　　　年　　月　　日",
-    agency: { name: agencyName },
+    agency: { name: agencyName, address: agencyAddress || undefined },
     bondex: BONDEX,
     pricePerSuitcaseYen: 5000,
     serviceBrandName: "BondEx",
@@ -200,6 +201,7 @@ export async function GET(req: NextRequest) {
     signerName: sig?.signer_name ?? null,
     signerTitle: sig?.signer_title ?? null,
     signedVersion: sig?.contract_version ?? null,
+    address: resolved.agency.billing_address ?? null,
   })
 }
 
@@ -225,6 +227,7 @@ export async function POST(req: NextRequest) {
 
   const signerName = typeof body.signerName === "string" ? body.signerName.trim() : ""
   const signerTitle = typeof body.signerTitle === "string" ? body.signerTitle.trim() : ""
+  const companyAddress = typeof body.companyAddress === "string" ? body.companyAddress.trim() : ""
   const signatureImage = typeof body.signatureImage === "string" ? body.signatureImage : ""
   const agreed = body.agreed === true
 
@@ -232,6 +235,8 @@ export async function POST(req: NextRequest) {
   if (!signerName) return NextResponse.json({ error: "署名者のお名前を入力してください。" }, { status: 400 })
   if (signerName.length > 60) return NextResponse.json({ error: "お名前が長すぎます。" }, { status: 400 })
   if (signerTitle.length > 60) return NextResponse.json({ error: "役職が長すぎます。" }, { status: 400 })
+  if (!companyAddress) return NextResponse.json({ error: "会社住所を入力してください。" }, { status: 400 })
+  if (companyAddress.length > 200) return NextResponse.json({ error: "住所が長すぎます。" }, { status: 400 })
   if (!signatureImage.startsWith("data:image/")) {
     return NextResponse.json({ error: "手書きサインが未入力です。" }, { status: 400 })
   }
@@ -248,14 +253,18 @@ export async function POST(req: NextRequest) {
   const signedDate = jpDate(new Date())
 
   // 署名済みPDFを生成 (即時ダウンロード用に base64 で返す)
-  const data = buildData(agencyName, {
-    signerName,
-    signerTitle: signerTitle || undefined,
-    signedDate,
-    signatureImageDataUrl: signatureImage,
-    auditId,
-    docHashShort: docHash.slice(0, 16),
-  })
+  const data = buildData(
+    agencyName,
+    {
+      signerName,
+      signerTitle: signerTitle || undefined,
+      signedDate,
+      signatureImageDataUrl: signatureImage,
+      auditId,
+      docHashShort: docHash.slice(0, 16),
+    },
+    companyAddress,
+  )
   const buf = await renderToBuffer(ContractDocument({ data }))
   const signedPdfBase64 = Buffer.from(buf).toString("base64")
 
@@ -286,6 +295,8 @@ export async function POST(req: NextRequest) {
       contract_signer_name: signerName,
       contract_signer_title: signerTitle || null,
       contract_version: CONTRACT_VERSION,
+      // 契約書に記載した会社住所を保存 (請求書の billing_address にも再利用される)
+      billing_address: companyAddress,
     })
     .eq("id", resolved.agency.id)
   if (agErr) return NextResponse.json({ error: agErr.message }, { status: 500 })
