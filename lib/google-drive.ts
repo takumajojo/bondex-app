@@ -22,6 +22,9 @@ interface ServiceAccount {
 }
 
 const ROOT_ID = process.env.GOOGLE_DRIVE_ROOT_ID?.trim() || ""
+// 契約書の保管フォルダ名 (共有ドライブ直下)。代理店には共有せず、谷口さん(共有ドライブ
+// メンバー)だけが見る想定。予約書類フォルダとは別ツリーで管理する。
+const CONTRACTS_FOLDER_NAME = "契約書"
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files"
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -306,6 +309,34 @@ export async function cleanupRootBookingFolders(): Promise<{
     return { ok: true, trashed }
   } catch (err) {
     return { ok: false, trashed: [], error: err instanceof Error ? err.message : "Drive error" }
+  }
+}
+
+/**
+ * 署名済み契約書を「共有ドライブ → 契約書 → 代理店名」フォルダに保管する。
+ *
+ * 予約書類 (putBookingDocuments) とは別ツリー (契約書/) に隔離し、代理店には
+ * リンクを一切共有しない = 共有ドライブのメンバー (谷口さん) だけが閲覧できる。
+ * クライアントが増えても同じ「契約書/<代理店名>/」構造に自動で溜まる。
+ * 同名ファイルは内容を更新 (再署名で最新版に差し替え)。
+ */
+export async function putContractDocument(
+  agencyName: string,
+  fileName: string,
+  buffer: Buffer,
+): Promise<{ ok: true; folderUrl: string } | { ok: false; error: string }> {
+  const creds = loadCredentials()
+  if (!creds || !ROOT_ID) return { ok: false, error: "Google Drive not configured" }
+  try {
+    const token = await getAccessToken(creds)
+    // 共有ドライブ直下の「契約書」フォルダ (find-or-create)
+    const contractsRoot = await ensureFolder(token, CONTRACTS_FOLDER_NAME, ROOT_ID)
+    // その中に代理店ごとのサブフォルダ (find-or-create)
+    const agencyFolder = await ensureFolder(token, agencyName.trim() || "unknown", contractsRoot.id)
+    await uploadPdf(token, agencyFolder.id, fileName, buffer)
+    return { ok: true, folderUrl: agencyFolder.webViewLink }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Drive error" }
   }
 }
 

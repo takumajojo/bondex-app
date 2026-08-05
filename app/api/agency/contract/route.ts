@@ -6,6 +6,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { ContractDocument, CONTRACT_VERSION, type ContractInput } from "@/lib/contract-pdf"
 import { sendMail, mailerConfigured } from "@/lib/mailer"
+import { putContractDocument } from "@/lib/google-drive"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -289,6 +290,18 @@ export async function POST(req: NextRequest) {
     .eq("id", resolved.agency.id)
   if (agErr) return NextResponse.json({ error: agErr.message }, { status: 500 })
 
+  // 署名済み契約書を谷口さん専用の Drive「契約書/<代理店名>」に保管 (代理店には共有しない・best-effort)。
+  // クライアントが増えても同じ構造に自動で溜まる。失敗しても署名は成立させる。
+  let driveSaved = false
+  try {
+    const safeName = agencyName.replace(/[\\/]/g, "-")
+    const drive = await putContractDocument(agencyName, `${safeName}_契約書_署名済.pdf`, Buffer.from(buf))
+    driveSaved = drive.ok
+    if (!drive.ok) console.error("[contract] Drive 保管失敗:", drive.error)
+  } catch (e) {
+    console.error("[contract] Drive 保管例外:", e instanceof Error ? e.message : e)
+  }
+
   // 締結後、署名済みPDFを登録会社(+BondEx控え)へメール送信 (ベストエフォート)
   const email = await sendSignedContract({
     toAgencyEmail: resolved.agency.contact_email ?? "",
@@ -308,5 +321,6 @@ export async function POST(req: NextRequest) {
     emailBondexSent: email.bondexSent,
     emailTo: email.to ?? resolved.agency.contact_email ?? null,
     emailNote: email.note ?? null,
+    driveSaved,
   })
 }
