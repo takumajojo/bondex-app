@@ -439,7 +439,7 @@ export default function LandingPage() {
             ["初期費用", "0円"],
             ["利用単位", "1件から"],
             ["バウチャー", "即日発行"],
-            ["お支払い", "月次まとめ"],
+            ["お支払い", "月次 ／ カード"],
           ].map(([k, v]) => (
             <div key={k} className="rounded-xl border border-[#E5E7EB] bg-[#F7F8FA] px-3.5 py-2.5">
               <p className="text-[10px] text-[#64748B]">{k}</p>
@@ -715,9 +715,9 @@ export default function LandingPage() {
               },
               {
                 n: "03",
-                title: "月次請求で処理できる",
+                title: "まとめて請求・決済できる",
                 body:
-                  "配送費は個別決済ではなく、代理店様宛に月次でまとめて請求できます。",
+                  "配送費は代理店様宛の月次まとめ請求、またはクレジットカード決済に対応します。",
               },
             ].map((c) => (
               <div
@@ -999,7 +999,7 @@ export default function LandingPage() {
               </h3>
               <p className="text-[15px] text-[#334155] leading-[1.85]">
                 旅程受領後、<strong className="text-[#0F172A]">即日発行</strong>。
-                英/日バイリンガル、ホテル担当者向け一時預かり案内も同梱。
+                英語・中国語・イタリア語・フランス語・スペイン語の多言語に対応。ホテル担当者向けの一時預かり案内も同梱。
               </p>
             </div>
           </div>
@@ -1138,6 +1138,7 @@ export default function LandingPage() {
             <p className="text-[15px] text-[#334155] leading-[1.9]">
               配送費は月次でまとめて精算。月末に当月分をまとめて集計します。
               翌月初に請求書を発行し、翌月末までにお支払いいただきます。
+              クレジットカードでのお支払いにも対応しています。
             </p>
           </div>
 
@@ -1146,7 +1147,7 @@ export default function LandingPage() {
               { term: "締め日", desc: "月末" },
               { term: "請求書発行", desc: "翌月初" },
               { term: "支払期限", desc: "翌月末" },
-              { term: "支払方法", desc: "銀行振込" },
+              { term: "支払方法", desc: "銀行振込 ／ クレジットカード" },
               { term: "運賃", desc: "月次まとめ精算" },
               { term: "請求単位", desc: "月次まとめ請求" },
             ].map((row) => (
@@ -1311,6 +1312,7 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-x-7 gap-y-3 text-[13px] font-medium text-[#334155]">
+            <a href="mailto:support@bondex.express" className="hover:text-[#C8102E]">support@bondex.express</a>
             <Link href="/agency/login" className="hover:text-[#C8102E]">代理店ログイン</Link>
             <Link href="/track" className="hover:text-[#C8102E]">トラッキング</Link>
             <Link href="/legal/terms" className="hover:text-[#C8102E]">利用規約</Link>
