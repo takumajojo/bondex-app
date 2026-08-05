@@ -125,7 +125,7 @@
 - 全アラートは送信可否に関わらず `console.error` にも残す（Vercel Functions ログ / cron JSON で追跡可能）。
 
 ### 定期ジョブ（すべて GitHub Actions → `CRON_SECRET` 認証）
-- **`sync-tracking`** … `.github/workflows/sync-tracking.yml`（毎時）→ `/api/cron/sync-tracking`。追跡状態更新＋集荷漏れ/異常アラート。集荷完了→カード課金フック、配達完了→代理店通知もここで発火。
+- **`sync-tracking`** … `.github/workflows/sync-tracking.yml`（毎時）→ `/api/cron/sync-tracking`。追跡状態更新＋集荷漏れ/異常アラート。集荷完了→カード課金フック、配達完了→代理店通知もここで発火。**キャリア対応**: Ship&co `/v1/tracking/:carrier/:number` を shipments.carrier（佐川/ヤマト）で切替（既定佐川）。※実ラベル（SHIPANDCO_LIVE）でないと追跡番号が付かず自動更新は動かない＝テスト時は手動更新。佐川の実ステータス文字列は初回実荷で `unmapped[]` を確認し必要なら STATUS_KEYWORD_MAP を精緻化。
 - **`issue-due`** … `.github/workflows/issue-due.yml`（毎日08:10 JST）→ `/api/cron/issue-due`。発送日が今日〜30日先で未発行（requested/pending）の予約を運用へダイジェスト通知。**発行漏れ防止の要**（自動発行はしない・運用が /operator から手動発行）。
 - **`monthly-invoices`** … `.github/workflows/monthly-invoices.yml`（毎月1日09:20 JST）→ `/api/cron/monthly-invoices`。請求書払い代理店の前月分請求書を生成し運用（`INVOICE_AUTOSEND=true`なら代理店へも）送付。手動再送は Actions の "Run workflow" で対象月を指定可。
 - ⚠️ **cronのデッドマンズスイッチが未実装**（下記アクション参照）。GitHub Actionsのスケジュールは停止しても気づけない。

@@ -151,19 +151,28 @@ interface TrackingResponse {
 
 const SHIPANDCO_TIMEOUT_MS = 10_000
 
+// Ship&co 追跡 API は GET /v1/tracking/:carrier/:trackingNumber (公式ドキュメント確認済み
+// 2026-08-05: 佐川/ヤマト/日本郵便に対応 https://developer.shipandco.com/en/)。
+// キャリア識別子は shipments.carrier ('sagawa' / 'yamato') をそのまま使う。既定は佐川。
+function trackingCarrierPath(carrier: string | null | undefined): "sagawa" | "yamato" {
+  return carrier === "yamato" ? "yamato" : "sagawa"
+}
+
 /**
  * 1件の Ship&co 呼び出しがハングすると batch 全体が maxDuration まで
  * ブロックされてしまうため、個別に AbortController でタイムアウトを切る。
+ * carrier で照会先を切替 (佐川の荷物をヤマトのURLで引くと空振りするため)。
  */
-async function fetchYamatoTracking(
+async function fetchTracking(
   token: string,
+  carrier: "sagawa" | "yamato",
   trackingNumber: string,
 ): Promise<TrackingResponse | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), SHIPANDCO_TIMEOUT_MS)
   try {
     const res = await fetch(
-      `${SHIPANDCO_BASE}/tracking/yamato/${encodeURIComponent(trackingNumber)}`,
+      `${SHIPANDCO_BASE}/tracking/${carrier}/${encodeURIComponent(trackingNumber)}`,
       {
         headers: { "x-access-token": token, "Content-Type": "application/json" },
         signal: controller.signal,
@@ -171,14 +180,14 @@ async function fetchYamatoTracking(
     )
     if (!res.ok) {
       console.error(
-        `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${trackingNumber}`,
+        `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${carrier}/${trackingNumber}`,
       )
       return null
     }
     return (await res.json()) as TrackingResponse
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
-    console.error(`[cron/sync-tracking] Ship&co call failed for ${trackingNumber}: ${reason}`)
+    console.error(`[cron/sync-tracking] Ship&co call failed for ${carrier}/${trackingNumber}: ${reason}`)
     return null
   } finally {
     clearTimeout(timer)
@@ -241,7 +250,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await sb
     .from("shipments")
-    .select("id, booking_id, leg_index, agency, status, representative, recipient, to_hotel, yamato_tracking, yamato_tracking_detail")
+    .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, to_hotel, yamato_tracking, yamato_tracking_detail")
     .not("yamato_tracking", "is", null)
     .not("status", "in", '("delivered","cancelled","failed")')
 
@@ -268,17 +277,18 @@ export async function GET(req: NextRequest) {
   // Step 1: 全 shipment × 全追跡番号をフラットなタスク一覧にして、まとめて並列取得。
   // 「1 leg 内で直列」ではなく「全体で並列」にすることで、leg 数や口数に関わらず
   // 総所要時間が ceil(タスク総数 / CONCURRENCY) × 平均レイテンシ に収まる。
-  type Task = { rowIndex: number; trackingNumber: string }
+  type Task = { rowIndex: number; trackingNumber: string; carrier: "sagawa" | "yamato" }
   const tasks: Task[] = []
   rows.forEach((row, rowIndex) => {
     const trackingNumbers = (row.yamato_tracking as string[] | null) ?? []
-    trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num }))
+    const carrier = trackingCarrierPath(row.carrier as string | null)
+    trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num, carrier }))
   })
 
   const checkedAt = new Date().toISOString()
 
   const taskResults = await mapWithConcurrency(tasks, CONCURRENCY, async (task) => {
-    const tracking = await fetchYamatoTracking(token, task.trackingNumber)
+    const tracking = await fetchTracking(token, task.carrier, task.trackingNumber)
     return { ...task, current: tracking?.current_status }
   })
 
