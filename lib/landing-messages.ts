@@ -72,6 +72,7 @@ export interface LandingMessages {
     bullets: string[]
     ctaConsult: string
     ctaSample: string
+    heroTryDemo: string
     replyNote: string
     seePricing: string
     stats: { k: string; v: string }[]
@@ -90,6 +91,13 @@ export interface LandingMessages {
   }
   value: {
     items: { title: string; body: string }[]
+  }
+  carriers: {
+    eyebrow: string
+    heading: TwoLine
+    body: string
+    stats: { value: string; label: string }[]
+    footnote: string
   }
   difference: {
     eyebrow: string
@@ -203,7 +211,7 @@ const ja: LandingMessages = {
       "「いつ・どのホテルから送るか」をご指定いただければ、あとの面倒ごとは BondEx がまとめて代行します。",
     subtitleDesktop: {
       first: "「いつ・どのホテルから送るか」の指定だけで、バウチャー発行・送り状手配・",
-      second: "月次請求・変更対応まで。BondEx が配送事業者との取次を担当します。",
+      second: "月次請求・変更対応まで。BondEx が配送会社と直接やり取りします。",
     },
     bullets: [
       "バウチャー・送り状の作成はすべて BondEx",
@@ -212,6 +220,7 @@ const ja: LandingMessages = {
     ],
     ctaConsult: "導入相談へ",
     ctaSample: "サンプル PDF を見る",
+    heroTryDemo: "デモを試す",
     replyNote: "通常 1 営業日以内にご連絡します。",
     seePricing: "料金を見る",
     stats: [
@@ -249,6 +258,17 @@ const ja: LandingMessages = {
       },
     ],
   },
+  carriers: {
+    eyebrow: "配送ネットワーク",
+    heading: { first: "日本最大級の配送網で、", second: "確実にお届け。" },
+    body: "実際の配送は佐川急便・ヤマト運輸が担います。BondEx は両社への集荷手配・送り状作成を代行する取次です。",
+    stats: [
+      { value: "35億個超", label: "両社の年間取扱個数" },
+      { value: "47", label: "全国すべての都道府県をカバー" },
+      { value: "翌日〜", label: "標準の配達スピード" },
+    ],
+    footnote: "※取扱個数は佐川急便・ヤマト運輸の公表値に基づく（2023〜2024年度）。",
+  },
   difference: {
     eyebrow: "従来手配との違い",
     heading: { first: "荷物配送を、", second: "旅行商品の一部に。" },
@@ -271,7 +291,7 @@ const ja: LandingMessages = {
       },
       {
         title: "まとめて請求・決済できる",
-        body: "配送費は代理店様宛の月次まとめ請求、またはクレジットカード決済に対応します。",
+        body: "配送費は代理店様宛に月次まとめ請求。海外の代理店様はクレジットカード決済に対応（日本の銀行口座は不要）。",
       },
     ],
   },
@@ -299,7 +319,7 @@ const ja: LandingMessages = {
     waybillBody: {
       a: "集荷日の ",
       strong: "1 ヶ月前",
-      b: " に発行 (物流業者仕様)。追跡番号付き、大手宅配便ネットワークを利用。",
+      b: " に発行 (物流業者仕様)。追跡番号付き、佐川・ヤマトの配送ネットワークを利用。",
     },
   },
   trust: {
@@ -309,7 +329,7 @@ const ja: LandingMessages = {
       {
         title: "補償",
         head: "1 個あたり最大 30 万円",
-        body: "配送は大手宅配便。運送約款に基づき、1 個あたり最大 30 万円まで補償されます。",
+        body: "配送は佐川・ヤマト。運送約款に基づき、1 個あたり最大 30 万円まで補償されます。",
       },
       {
         title: "取次",
@@ -456,7 +476,7 @@ const en: LandingMessages = {
       "Just tell us when and from which hotel to ship, and BondEx takes care of everything else.",
     subtitleDesktop: {
       first: "Just specify when and from which hotel to ship — voucher issuance, shipping labels,",
-      second: "monthly billing, and change requests included. BondEx handles liaison with the carriers.",
+      second: "monthly billing, and change requests included. BondEx coordinates directly with the carriers.",
     },
     bullets: [
       "BondEx creates every voucher and shipping label",
@@ -465,6 +485,7 @@ const en: LandingMessages = {
     ],
     ctaConsult: "Get started",
     ctaSample: "View a sample PDF",
+    heroTryDemo: "Try the interactive demo",
     replyNote: "We usually reply within one business day.",
     seePricing: "See pricing",
     stats: [
@@ -503,6 +524,17 @@ const en: LandingMessages = {
       },
     ],
   },
+  carriers: {
+    eyebrow: "Delivery network",
+    heading: { first: "Delivered on one of Japan's", second: "largest carrier networks." },
+    body: "Every shipment is carried by Sagawa Express and Yamato Transport. BondEx acts as your agent, arranging pickup and issuing labels with them.",
+    stats: [
+      { value: "3.6 billion+", label: "parcels handled per year (combined)" },
+      { value: "47", label: "prefectures covered nationwide" },
+      { value: "Next-day", label: "standard delivery speed" },
+    ],
+    footnote: "Parcel figures based on Sagawa and Yamato public data (FY2023–2024).",
+  },
   difference: {
     eyebrow: "How it's different",
     heading: { first: "Turn luggage forwarding into", second: "part of the travel product." },
@@ -525,7 +557,7 @@ const en: LandingMessages = {
       },
       {
         title: "Consolidated billing and payment",
-        body: "Shipping costs are billed to the agency in a consolidated monthly invoice, or can be paid by credit card.",
+        body: "Shipping costs are billed to the agency in a consolidated monthly invoice. Overseas agencies can pay by credit card — no Japanese bank account required.",
       },
     ],
   },
@@ -553,7 +585,7 @@ const en: LandingMessages = {
     waybillBody: {
       a: "Issued up to ",
       strong: "one month",
-      b: " before the pickup date (to carrier spec). Includes a tracking number and uses a major courier network.",
+      b: " before the pickup date (to carrier spec). Includes a tracking number and uses the Sagawa and Yamato network.",
     },
   },
   trust: {
@@ -563,7 +595,7 @@ const en: LandingMessages = {
       {
         title: "Compensation",
         head: "Up to ¥300,000 per item",
-        body: "Delivery is handled by major couriers. Under the terms of carriage, each item is covered up to ¥300,000.",
+        body: "Delivery is handled by Sagawa and Yamato. Under the terms of carriage, each item is covered up to ¥300,000.",
       },
       {
         title: "Liaison",
@@ -713,7 +745,7 @@ const es: LandingMessages = {
       "Solo díganos cuándo y desde qué hotel enviar, y BondEx se encarga de todo lo demás.",
     subtitleDesktop: {
       first: "Solo indique cuándo y desde qué hotel enviar: emisión de vouchers, etiquetas de envío,",
-      second: "facturación mensual y cambios incluidos. BondEx gestiona el enlace con los transportistas.",
+      second: "facturación mensual y cambios incluidos. BondEx coordina directamente con los transportistas.",
     },
     bullets: [
       "BondEx crea todos los vouchers y etiquetas de envío",
@@ -722,6 +754,7 @@ const es: LandingMessages = {
     ],
     ctaConsult: "Empezar",
     ctaSample: "Ver un PDF de muestra",
+    heroTryDemo: "Prueba la demo interactiva",
     replyNote: "Normalmente respondemos en un día hábil.",
     seePricing: "Ver precios",
     stats: [
@@ -760,6 +793,17 @@ const es: LandingMessages = {
       },
     ],
   },
+  carriers: {
+    eyebrow: "Red de reparto",
+    heading: { first: "Entregas a través de una de las", second: "mayores redes de mensajería de Japón." },
+    body: "Cada envío corre a cargo de Sagawa Express y Yamato Transport. BondEx actúa como su agente, organizando la recogida y emitiendo las etiquetas con ellos.",
+    stats: [
+      { value: "3.600 millones+", label: "paquetes gestionados al año (en conjunto)" },
+      { value: "47", label: "prefecturas cubiertas en todo el país" },
+      { value: "Día siguiente", label: "velocidad de entrega estándar" },
+    ],
+    footnote: "Cifras de paquetes basadas en datos públicos de Sagawa y Yamato (ejercicios 2023–2024).",
+  },
   difference: {
     eyebrow: "En qué se diferencia",
     heading: { first: "Convierta el reenvío de equipaje en", second: "parte del producto turístico." },
@@ -782,7 +826,7 @@ const es: LandingMessages = {
       },
       {
         title: "Facturación y pago consolidados",
-        body: "Los costes de envío se facturan a la agencia en una factura mensual consolidada, o pueden pagarse con tarjeta de crédito.",
+        body: "Los costes de envío se facturan a la agencia en una factura mensual consolidada. Las agencias extranjeras pueden pagar con tarjeta de crédito, sin necesidad de una cuenta bancaria japonesa.",
       },
     ],
   },
@@ -810,7 +854,7 @@ const es: LandingMessages = {
     waybillBody: {
       a: "Emitida hasta ",
       strong: "un mes",
-      b: " antes de la fecha de recogida (según especificación del transportista). Incluye número de seguimiento y utiliza una gran red de mensajería.",
+      b: " antes de la fecha de recogida (según especificación del transportista). Incluye número de seguimiento y utiliza la red de Sagawa y Yamato.",
     },
   },
   trust: {
@@ -820,7 +864,7 @@ const es: LandingMessages = {
       {
         title: "Cobertura",
         head: "Hasta ¥300,000 por artículo",
-        body: "La entrega corre a cargo de grandes empresas de mensajería. Según las condiciones de transporte, cada artículo está cubierto hasta ¥300,000.",
+        body: "La entrega corre a cargo de Sagawa y Yamato. Según las condiciones de transporte, cada artículo está cubierto hasta ¥300,000.",
       },
       {
         title: "Intermediación",
@@ -970,7 +1014,7 @@ const fr: LandingMessages = {
       "Dites-nous simplement quand et depuis quel hôtel expédier, et BondEx s'occupe de tout le reste.",
     subtitleDesktop: {
       first: "Précisez simplement quand et depuis quel hôtel expédier : émission des bons, étiquettes d'expédition,",
-      second: "facturation mensuelle et demandes de modification incluses. BondEx assure la liaison avec les transporteurs.",
+      second: "facturation mensuelle et demandes de modification incluses. BondEx coordonne directement avec les transporteurs.",
     },
     bullets: [
       "BondEx crée chaque bon et chaque étiquette d'expédition",
@@ -979,6 +1023,7 @@ const fr: LandingMessages = {
     ],
     ctaConsult: "Commencer",
     ctaSample: "Voir un PDF d'exemple",
+    heroTryDemo: "Essayer la démo interactive",
     replyNote: "Nous répondons généralement sous un jour ouvré.",
     seePricing: "Voir les tarifs",
     stats: [
@@ -1017,6 +1062,17 @@ const fr: LandingMessages = {
       },
     ],
   },
+  carriers: {
+    eyebrow: "Réseau de livraison",
+    heading: { first: "Livré sur l'un des plus grands", second: "réseaux de transporteurs du Japon." },
+    body: "Chaque expédition est acheminée par Sagawa Express et Yamato Transport. BondEx agit comme votre intermédiaire, en organisant l'enlèvement et en émettant les étiquettes auprès d'eux.",
+    stats: [
+      { value: "3,6 milliards+", label: "colis traités par an (au total)" },
+      { value: "47", label: "préfectures couvertes dans tout le pays" },
+      { value: "Le lendemain", label: "vitesse de livraison standard" },
+    ],
+    footnote: "Chiffres des colis basés sur les données publiques de Sagawa et Yamato (exercices 2023–2024).",
+  },
   difference: {
     eyebrow: "Ce qui change",
     heading: { first: "Faites de la réexpédition des bagages", second: "un élément du produit touristique." },
@@ -1039,7 +1095,7 @@ const fr: LandingMessages = {
       },
       {
         title: "Facturation et paiement regroupés",
-        body: "Les frais d'expédition sont facturés à l'agence sur une facture mensuelle unique, ou peuvent être réglés par carte bancaire.",
+        body: "Les frais d'expédition sont facturés à l'agence sur une facture mensuelle unique. Les agences étrangères peuvent régler par carte bancaire, sans compte bancaire japonais.",
       },
     ],
   },
@@ -1067,7 +1123,7 @@ const fr: LandingMessages = {
     waybillBody: {
       a: "Émise jusqu'à ",
       strong: "un mois",
-      b: " avant la date d'enlèvement (selon les spécifications du transporteur). Comprend un numéro de suivi et utilise un grand réseau de messagerie.",
+      b: " avant la date d'enlèvement (selon les spécifications du transporteur). Comprend un numéro de suivi et utilise le réseau de Sagawa et Yamato.",
     },
   },
   trust: {
@@ -1077,7 +1133,7 @@ const fr: LandingMessages = {
       {
         title: "Indemnisation",
         head: "Jusqu'à ¥300,000 par article",
-        body: "La livraison est assurée par de grands transporteurs. Selon les conditions de transport, chaque article est couvert jusqu'à ¥300,000.",
+        body: "La livraison est assurée par Sagawa et Yamato. Selon les conditions de transport, chaque article est couvert jusqu'à ¥300,000.",
       },
       {
         title: "Intermédiation",
@@ -1227,7 +1283,7 @@ const zh: LandingMessages = {
       "只需告诉我们何时、从哪家酒店发货，其余的一切都交给 BondEx。",
     subtitleDesktop: {
       first: "只需指定何时、从哪家酒店发货——兑换券开具、运单、",
-      second: "每月结算与变更处理全部包含。BondEx 负责与承运商对接。",
+      second: "每月结算与变更处理全部包含。BondEx 直接与承运商协调对接。",
     },
     bullets: [
       "每一张兑换券和运单都由 BondEx 制作",
@@ -1236,6 +1292,7 @@ const zh: LandingMessages = {
     ],
     ctaConsult: "开始使用",
     ctaSample: "查看示例 PDF",
+    heroTryDemo: "试用互动演示",
     replyNote: "我们通常在一个工作日内回复。",
     seePricing: "查看价格",
     stats: [
@@ -1274,6 +1331,17 @@ const zh: LandingMessages = {
       },
     ],
   },
+  carriers: {
+    eyebrow: "配送网络",
+    heading: { first: "以日本数一数二的配送网络，", second: "确保稳妥送达。" },
+    body: "实际配送由佐川急便与大和运输承担。BondEx 作为居间方，代为向两家公司安排取件并制作运单。",
+    stats: [
+      { value: "超 36 亿件", label: "两家公司的年处理量" },
+      { value: "47", label: "覆盖全国所有都道府县" },
+      { value: "次日起", label: "标准配送时效" },
+    ],
+    footnote: "※包裹处理量依据佐川急便与大和运输的公开数据（2023–2024 财年）。",
+  },
   difference: {
     eyebrow: "有何不同",
     heading: { first: "让行李转运，", second: "成为旅行产品的一部分。" },
@@ -1296,7 +1364,7 @@ const zh: LandingMessages = {
       },
       {
         title: "汇总开票与付款",
-        body: "配送费用以每月一张汇总账单向代理商开具，也可使用信用卡支付。",
+        body: "配送费用以每月一张汇总账单向代理商开具。海外代理商可使用信用卡支付，无需日本银行账户。",
       },
     ],
   },
@@ -1324,7 +1392,7 @@ const zh: LandingMessages = {
     waybillBody: {
       a: "最早于取件日前 ",
       strong: "一个月",
-      b: " 开具（按承运商规格）。附带追踪号，采用大型快递网络。",
+      b: " 开具（按承运商规格）。附带追踪号，采用佐川急便与大和运输的配送网络。",
     },
   },
   trust: {
@@ -1334,7 +1402,7 @@ const zh: LandingMessages = {
       {
         title: "赔偿",
         head: "每件最高 ¥300,000",
-        body: "配送由大型快递公司承担。依据运输条款，每件最高赔偿 ¥300,000。",
+        body: "配送由佐川急便与大和运输承担。依据运输条款，每件最高赔偿 ¥300,000。",
       },
       {
         title: "居间对接",
@@ -1484,7 +1552,7 @@ const it: LandingMessages = {
       "Basta dirci quando e da quale hotel spedire, e BondEx si occupa di tutto il resto.",
     subtitleDesktop: {
       first: "Basta indicare quando e da quale hotel spedire: emissione dei voucher, etichette di spedizione,",
-      second: "fatturazione mensile e richieste di modifica incluse. BondEx cura i rapporti con i corrieri.",
+      second: "fatturazione mensile e richieste di modifica incluse. BondEx si coordina direttamente con i corrieri.",
     },
     bullets: [
       "BondEx crea ogni voucher e ogni etichetta di spedizione",
@@ -1493,6 +1561,7 @@ const it: LandingMessages = {
     ],
     ctaConsult: "Inizia",
     ctaSample: "Guarda un PDF di esempio",
+    heroTryDemo: "Prova la demo interattiva",
     replyNote: "Di norma rispondiamo entro un giorno lavorativo.",
     seePricing: "Vedi i prezzi",
     stats: [
@@ -1531,6 +1600,17 @@ const it: LandingMessages = {
       },
     ],
   },
+  carriers: {
+    eyebrow: "Rete di consegna",
+    heading: { first: "Consegnato su una delle più grandi", second: "reti di corrieri del Giappone." },
+    body: "Ogni spedizione è affidata a Sagawa Express e Yamato Transport. BondEx agisce da tuo intermediario, organizzando il ritiro ed emettendo le etichette con loro.",
+    stats: [
+      { value: "3,6 miliardi+", label: "colli gestiti all'anno (in totale)" },
+      { value: "47", label: "prefetture coperte in tutto il Paese" },
+      { value: "Giorno successivo", label: "velocità di consegna standard" },
+    ],
+    footnote: "Cifre dei colli basate sui dati pubblici di Sagawa e Yamato (esercizi 2023–2024).",
+  },
   difference: {
     eyebrow: "Cosa cambia",
     heading: { first: "Trasforma l'inoltro bagagli in", second: "parte del prodotto turistico." },
@@ -1553,7 +1633,7 @@ const it: LandingMessages = {
       },
       {
         title: "Fatturazione e pagamento riuniti",
-        body: "I costi di spedizione sono fatturati all'agenzia in un'unica fattura mensile, oppure possono essere pagati con carta di credito.",
+        body: "I costi di spedizione sono fatturati all'agenzia in un'unica fattura mensile. Le agenzie estere possono pagare con carta di credito, senza un conto bancario giapponese.",
       },
     ],
   },
@@ -1581,7 +1661,7 @@ const it: LandingMessages = {
     waybillBody: {
       a: "Emessa fino a ",
       strong: "un mese",
-      b: " prima della data di ritiro (secondo le specifiche del corriere). Include un numero di tracciamento e utilizza una grande rete di corrieri.",
+      b: " prima della data di ritiro (secondo le specifiche del corriere). Include un numero di tracciamento e utilizza la rete di Sagawa e Yamato.",
     },
   },
   trust: {
@@ -1591,7 +1671,7 @@ const it: LandingMessages = {
       {
         title: "Risarcimento",
         head: "Fino a ¥300,000 per collo",
-        body: "La consegna è affidata a grandi corrieri. In base alle condizioni di trasporto, ogni collo è coperto fino a ¥300,000.",
+        body: "La consegna è affidata a Sagawa e Yamato. In base alle condizioni di trasporto, ogni collo è coperto fino a ¥300,000.",
       },
       {
         title: "Intermediazione",

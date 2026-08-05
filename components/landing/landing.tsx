@@ -527,6 +527,13 @@ export function Landing({ lang }: { lang: Locale }) {
         >
           {t.hero.ctaSample}
         </a>
+        <a
+          href="/demo"
+          className="mt-3 flex items-center justify-center gap-1.5 text-[13px] font-medium text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1] hover:decoration-[#C8102E]"
+        >
+          {t.hero.heroTryDemo}
+          <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+        </a>
         <div className="flex items-center justify-between mt-3 mb-5">
           <p className="text-[11px] text-[#64748B]">{t.hero.replyNote}</p>
           <a href="#price" className="text-[12px] font-medium text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1]">
@@ -579,7 +586,7 @@ export function Landing({ lang }: { lang: Locale }) {
           <p className="text-[12px] font-medium tracking-[0.15em] text-white/90 mb-6 drop-shadow">
             {t.hero.badgeDesktop}
           </p>
-          <h1 className="text-3xl sm:text-5xl md:text-[54px] lg:text-[64px] font-bold leading-[1.3] tracking-normal mb-8 drop-shadow-lg max-w-4xl">
+          <h1 className="text-3xl sm:text-4xl md:text-[42px] lg:text-[50px] font-bold leading-[1.18] tracking-normal text-balance mb-8 drop-shadow-lg max-w-4xl">
             {t.hero.titleDesktop.first}
             <br className="hidden md:inline" />
             {t.hero.titleDesktop.second}
@@ -607,6 +614,13 @@ export function Landing({ lang }: { lang: Locale }) {
                 className="inline-flex items-center gap-2 px-7 py-4 rounded-md border border-white/60 bg-white/10 backdrop-blur text-white text-[15px] font-medium hover:bg-white/20"
               >
                 {t.hero.ctaSample}
+              </a>
+              <a
+                href="/demo"
+                className="inline-flex items-center gap-1.5 text-[14px] font-medium text-white/90 underline underline-offset-4 decoration-white/40 hover:text-white hover:decoration-white/70"
+              >
+                {t.hero.heroTryDemo}
+                <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
               </a>
             </div>
             <p className="text-[12px] text-white/85 drop-shadow ml-1">
@@ -704,6 +718,38 @@ export function Landing({ lang }: { lang: Locale }) {
               </div>
             )
           })}
+        </div>
+      </section>
+
+      {/* ═══════════════ Carrier trust — 配送網のスケールを社会的証明に ═══════════════
+          BondEx 自体は新しいため、実配送を担う佐川・ヤマトのスケールを引用して信頼を担保する。
+          既存の Eyebrow + SectionH2 + ヘアライン区切りの 3 スタットで統一。新色・画像・ロゴは足さない。 */}
+      <section className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
+        <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
+          <div className="mb-12 md:mb-14 max-w-2xl">
+            <Eyebrow en="CARRIERS" label={t.carriers.eyebrow} />
+            <SectionH2 first={t.carriers.heading.first} second={t.carriers.heading.second} />
+            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
+              {t.carriers.body}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-[#0F172A]/15 divide-y sm:divide-y-0 sm:divide-x divide-[#0F172A]/10">
+            {t.carriers.stats.map((stat, i) => (
+              <div key={i} className="py-8 sm:py-10 sm:px-8 sm:first:pl-0 sm:last:pr-0">
+                <p className="text-4xl md:text-[44px] font-bold tracking-tight text-[#0F172A] leading-none">
+                  {stat.value}
+                </p>
+                <p className="mt-3 text-[13px] md:text-[14px] text-[#64748B] leading-[1.7]">
+                  {stat.label}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-8 text-[12px] text-[#94A3B8] leading-[1.8]">
+            {t.carriers.footnote}
+          </p>
         </div>
       </section>
 
