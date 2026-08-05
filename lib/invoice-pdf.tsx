@@ -81,6 +81,16 @@ export interface InvoiceInput {
    * false (既定) は従来どおり税抜 → 税を上乗せ (外税)。
    */
   taxInclusive?: boolean
+  /**
+   * カード決済など「支払い済み」の場合に指定。指定時は本書を
+   * 「請求書 兼 領収書」として扱い、振込先ブロックの代わりに
+   * 領収 (お支払い済み) ブロックを表示する。
+   */
+  paid?: {
+    method: string      // 例: "クレジットカード"
+    date: string        // 例: "2026年8月5日"
+    reference?: string  // 例: Stripe PaymentIntent ID
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +338,20 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: C_HAIRLINE,
   },
+  // 領収 (お支払い済み) ブロック
+  paidBlock: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: "#F1F7F2",
+    borderLeftWidth: 3,
+    borderLeftColor: "#2E7D32",
+  },
+  paidStamp: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: "#2E7D32",
+    letterSpacing: 1,
+  },
   // Formal greeting (請求書の上)
   greeting: {
     fontSize: 9.5,
@@ -406,6 +430,7 @@ function parseBankInfo(raw: string): React.JSX.Element {
 export function InvoiceDocument({ data }: { data: InvoiceInput }) {
   const taxRate = data.taxRate ?? 0.10
   const taxInclusive = data.taxInclusive === true
+  const paid = data.paid
   // 明細金額の合計 (税込モードでは税込額、税抜モードでは税抜額)
   const lineSum = data.items.reduce((sum, it) => sum + it.amountYen, 0)
   // net=税抜相当 / tax=消費税 / total=請求総額(税込)
@@ -425,7 +450,9 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Image src={LOGO_PATH} style={styles.logo} />
-            <Text style={styles.title}>請 求 書</Text>
+            <Text style={paid ? [styles.title, { fontSize: 20 }] : styles.title}>
+              {paid ? "請求書 兼 領収書" : "請 求 書"}
+            </Text>
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.invoiceMeta}>
@@ -436,8 +463,9 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
             <Text style={styles.invoiceMeta}>
               発行日: {data.issuedDate}{"\n"}
               対象期間: {data.period}
-              {data.closingDate ? `\n締日: ${data.closingDate}` : ""}
-              {"\n"}お支払期限: {data.dueDate}
+              {paid
+                ? `\n決済日: ${paid.date}`
+                : `${data.closingDate ? `\n締日: ${data.closingDate}` : ""}\nお支払期限: ${data.dueDate}`}
             </Text>
           </View>
         </View>
@@ -473,7 +501,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
             </Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
-            <Text style={styles.summaryLabel}>ご請求金額 (税込)</Text>
+            <Text style={styles.summaryLabel}>{paid ? "ご請求金額 (税込・お支払い済み)" : "ご請求金額 (税込)"}</Text>
             <Text style={styles.summaryTotal}>¥{total.toLocaleString()}</Text>
           </View>
         </View>
@@ -545,21 +573,50 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           )}
         </View>
 
-        {/* Bank info — 構造化表示 */}
-        <View style={styles.bankBlock}>
-          <View style={styles.bankHeader}>
-            <Text style={styles.bankLabel}>お振込先 / BANK INFO</Text>
-            <View style={{ flexDirection: "row" }}>
-              <Text style={styles.bankDueLabel}>お支払期限</Text>
-              <Text style={styles.bankDueValue}>{data.dueDate}</Text>
+        {/* お支払い状況: 支払い済み(カード)は領収ブロック、未払いは振込先ブロック */}
+        {paid ? (
+          <View style={styles.paidBlock}>
+            <View style={styles.bankHeader}>
+              <Text style={styles.bankLabel}>お支払い状況 / PAID</Text>
+              <Text style={styles.paidStamp}>お支払い済み</Text>
             </View>
+            <View style={styles.bankGrid}>
+              <View style={[styles.bankCol, { width: 150 }]}>
+                <Text style={styles.bankFieldLabel}>お支払い方法</Text>
+                <Text style={styles.bankFieldValue}>{paid.method}</Text>
+              </View>
+              <View style={[styles.bankCol, { width: 130 }]}>
+                <Text style={styles.bankFieldLabel}>決済日</Text>
+                <Text style={styles.bankFieldValue}>{paid.date}</Text>
+              </View>
+              {paid.reference ? (
+                <View style={[styles.bankCol, { flex: 1 }]}>
+                  <Text style={styles.bankFieldLabel}>決済番号</Text>
+                  <Text style={[styles.bankFieldValue, { fontSize: 8 }]}>{paid.reference}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.bankNote}>
+              上記の金額を、クレジットカードにて領収いたしました。{"\n"}
+              本書は適格請求書 兼 領収書としてご利用いただけます。
+            </Text>
           </View>
-          {parseBankInfo(data.bondex.bankInfo)}
-          <Text style={styles.bankNote}>
-            ・お振込手数料は貴社にてご負担をお願い申し上げます。{"\n"}
-            ・上記期限までにお手続きが難しい場合は、事前にご連絡ください。
-          </Text>
-        </View>
+        ) : (
+          <View style={styles.bankBlock}>
+            <View style={styles.bankHeader}>
+              <Text style={styles.bankLabel}>お振込先 / BANK INFO</Text>
+              <View style={{ flexDirection: "row" }}>
+                <Text style={styles.bankDueLabel}>お支払期限</Text>
+                <Text style={styles.bankDueValue}>{data.dueDate}</Text>
+              </View>
+            </View>
+            {parseBankInfo(data.bondex.bankInfo)}
+            <Text style={styles.bankNote}>
+              ・お振込手数料は貴社にてご負担をお願い申し上げます。{"\n"}
+              ・上記期限までにお手続きが難しい場合は、事前にご連絡ください。
+            </Text>
+          </View>
+        )}
 
         {/* Footer */}
         <View style={styles.footer} fixed>

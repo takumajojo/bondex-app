@@ -39,6 +39,7 @@ interface Shipment {
   yamato_tracking: string[] | null
   yamato_label_url: string | null
   status: string
+  charged_at: string | null
   created_at: string
 }
 
@@ -71,6 +72,7 @@ const messages = {
     emptyState: "No shipments yet",
     waybill: "Waybill",
     voucher: "Voucher",
+    invoice: "Invoice / Receipt",
     driveFolder: "Folder",
     preparing: "Preparing",
     waybillLater: "Shipping label: issued about a month before shipping",
@@ -126,6 +128,7 @@ const messages = {
     emptyState: "案件がまだありません",
     waybill: "送り状",
     voucher: "バウチャー",
+    invoice: "請求書/領収書",
     driveFolder: "フォルダ",
     preparing: "準備中",
     waybillLater: "送り状は発送の約1ヶ月前に発行します",
@@ -184,6 +187,7 @@ export default function AgencyDashboard() {
   const [cardOnFile, setCardOnFile] = useState<boolean>(false)
   const [cardDismissed, setCardDismissed] = useState<boolean>(false)
   const [voucherBusy, setVoucherBusy] = useState<string | null>(null) // booking_id being fetched
+  const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null) // shipment_id being fetched
   const [dlError, setDlError] = useState("")
 
   const load = useCallback(async () => {
@@ -283,6 +287,43 @@ export default function AgencyDashboard() {
       setDlError(messages[locale].dlError)
     } finally {
       setVoucherBusy(null)
+    }
+  }, [locale])
+
+  // カード決済済み区間の「請求書 兼 領収書」DL。voucher と同じ JWT→blob 方式。
+  const downloadInvoice = useCallback(async (shipmentId: string) => {
+    setDlError("")
+    setInvoiceBusy(shipmentId)
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (!token) {
+        setDlError(messages[locale].dlError)
+        return
+      }
+      const res = await fetch(`/api/agency/invoice?shipment_id=${encodeURIComponent(shipmentId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        setDlError(messages[locale].dlError)
+        return
+      }
+      const blob = await res.blob()
+      const cd = res.headers.get("Content-Disposition") || ""
+      const m = cd.match(/filename="?([^"]+)"?/)
+      const fileName = m?.[1] || `bondex-receipt-${shipmentId}.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setDlError(messages[locale].dlError)
+    } finally {
+      setInvoiceBusy(null)
     }
   }, [locale])
 
@@ -568,6 +609,23 @@ export default function AgencyDashboard() {
                               {t.waybill}
                               <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                             </a>
+                          )}
+                          {/* カード決済済みなら請求書 兼 領収書を DL 可能 */}
+                          {it.charged_at && (
+                            <button
+                              type="button"
+                              onClick={() => downloadInvoice(it.id)}
+                              disabled={invoiceBusy === it.id}
+                              className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
+                              title={`${t.invoice} (${it.booking_id}-L${it.leg_index + 1})`}
+                            >
+                              {invoiceBusy === it.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                              ) : (
+                                <FileDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+                              )}
+                              {invoiceBusy === it.id ? t.downloading : t.invoice}
+                            </button>
                           )}
                           {it.status === "requested" && (
                             <span className="text-[11px] text-muted-foreground">{t.waybillLater}</span>

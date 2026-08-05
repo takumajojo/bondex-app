@@ -4,8 +4,12 @@ import {
   getShipment,
   recordShipmentCharge,
   recordShipmentChargeError,
+  type ShipmentRecord,
 } from "@/lib/shipments-db"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { sendMail } from "@/lib/mailer"
+import { buildChargeInvoice } from "@/lib/invoice-build"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 /**
  * 集荷完了時のカード課金 (海外/法人=Stripe 1件ごと課金モデル)。
@@ -124,6 +128,18 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
 
       if (pi.status === "succeeded") {
         await recordShipmentCharge(shipmentId, pi.id, amountYen)
+        // 請求書 兼 領収書を生成して代理店へメール送付 (必須)。
+        // 課金は既に成立しているので、失敗しても throw せずアラートで拾う。
+        await sendChargeInvoice(
+          sb,
+          {
+            ...shipment,
+            charged_at: new Date().toISOString(),
+            stripe_payment_intent_id: pi.id,
+            charge_amount_yen: amountYen,
+          },
+          agency.contact_email,
+        )
         return { charged: true, paymentIntentId: pi.id, amountYen }
       }
 
@@ -144,6 +160,92 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
     const msg = err instanceof Error ? err.message : String(err)
     console.error("[charge] chargeShipmentIfDue 予期せぬエラー:", msg)
     return { charged: false, error: msg }
+  }
+}
+
+/**
+ * カード決済1件の請求書 兼 領収書を生成し、代理店 (+BondEx控え) へメール送付。
+ * メール送付は必須要件。失敗時は throw せず ops へアラート (課金は既に成立済のため)。
+ */
+async function sendChargeInvoice(
+  sb: SupabaseClient,
+  shipment: ShipmentRecord,
+  agencyEmail?: string | null,
+): Promise<void> {
+  const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
+  try {
+    const built = await buildChargeInvoice(sb, shipment)
+    if (!built.ok || !built.buffer) {
+      await sendOpsAlert({
+        subject: `【請求書生成失敗】${legRef} (${shipment.agency})`,
+        lines: [
+          `カード決済は成立しましたが、請求書 兼 領収書のPDF生成に失敗しました。`,
+          `予約: ${legRef} / 代理店: ${shipment.agency} / 理由: ${built.reason ?? "unknown"}`,
+          `→ /operator から手動で発行・送付してください。`,
+        ],
+        agencyEmail: null,
+      })
+      return
+    }
+
+    const attachments = [
+      { filename: built.fileName!, contentBase64: built.buffer.toString("base64") },
+    ]
+    const subject = `【BondEx】請求書 兼 領収書（${legRef}）クレジットカード決済`
+    const body = [
+      `${shipment.agency} 御中`,
+      "",
+      `下記区間の集荷が完了し、ご登録のクレジットカードにて決済いたしました。`,
+      `請求書 兼 領収書（適格請求書）を添付いたします。`,
+      "",
+      `予約番号: ${legRef}`,
+      `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
+      `ご請求金額（税込・お支払い済み）: ¥${(built.totalYen ?? 0).toLocaleString()}`,
+      "",
+      `本書は代理店ポータル（ログイン後の一覧）からもいつでもダウンロードいただけます。`,
+      `ご不明な点は support@bondex.express までお問い合わせください。`,
+      "",
+      "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
+    ].join("\n")
+
+    const bondexCopy = process.env.ALERT_EMAIL || "support@bondex.express"
+    const recipients: string[] = []
+    if (agencyEmail) recipients.push(agencyEmail)
+    recipients.push(bondexCopy)
+
+    let anySent = false
+    const errs: string[] = []
+    for (const to of recipients) {
+      const r = await sendMail({ to, subject, text: body, attachments, replyTo: "support@bondex.express" })
+      if (r.sent) anySent = true
+      else errs.push(`${to}: ${r.error}`)
+    }
+
+    // 代理店宛が送れなかった (メール未登録 or 送信失敗) 場合は必須要件が未達なのでアラート
+    if (!agencyEmail || !anySent || errs.some((e) => agencyEmail && e.startsWith(agencyEmail))) {
+      await sendOpsAlert({
+        subject: `【請求書メール未達】${legRef} (${shipment.agency})`,
+        lines: [
+          `カード決済は成立し請求書は生成しましたが、代理店への送付が未達です。`,
+          `予約: ${legRef} / 代理店: ${shipment.agency}`,
+          agencyEmail ? `宛先: ${agencyEmail}` : `代理店のメールアドレスが未登録です。`,
+          errs.length ? `エラー: ${errs.join("; ")}` : "",
+          `→ /operator から請求書を再送してください（ポータルからも代理店がDL可能）。`,
+        ].filter(Boolean),
+        agencyEmail: null,
+      })
+    }
+  } catch (e) {
+    console.error("[charge] sendChargeInvoice failed:", e instanceof Error ? e.message : e)
+    await sendOpsAlert({
+      subject: `【請求書処理エラー】${legRef} (${shipment.agency})`,
+      lines: [
+        `カード決済は成立しましたが、請求書メール処理で例外が発生しました。`,
+        `予約: ${legRef} / 代理店: ${shipment.agency}`,
+        `→ /operator から手動で発行・送付してください。`,
+      ],
+      agencyEmail: null,
+    })
   }
 }
 
