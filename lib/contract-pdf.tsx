@@ -18,6 +18,8 @@ import { buildArticles, contractPreamble } from "./contract-content"
 
 const FONT_DIR = path.join(process.cwd(), "public", "fonts")
 const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
+// 甲(株式会社JOJO)の社印。契約書に常備で押印する。
+const BONDEX_SEAL_PATH = path.join(process.cwd(), "public", "jojo-seal.png")
 
 try {
   Font.register({
@@ -187,6 +189,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingTop: 12,
   },
+  bondexSeal: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+    width: 52,
+    height: 52,
+    objectFit: "contain",
+  },
   signatureImageWrap: {
     marginTop: 8,
     alignSelf: "flex-end",
@@ -336,7 +345,9 @@ export function ContractDocument({ data }: { data: ContractInput }) {
               <Text style={styles.signatureLine}>
                 代表者：{data.bondex.representativeTitle}　{data.bondex.representativeName}
               </Text>
-              <Text style={styles.signatureSeal}>印</Text>
+              {/* 甲(株式会社JOJO)の社印を常備で押印 */}
+              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+              <Image src={BONDEX_SEAL_PATH} style={styles.bondexSeal} />
             </View>
           </View>
 
