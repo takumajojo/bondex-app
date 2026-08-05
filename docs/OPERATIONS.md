@@ -165,7 +165,7 @@
 
 ### 追加是正（2026-08-04 第2弾: フロー網羅監査＋穴埋め）
 - **[最重要] 1ヶ月超先の予約が永遠に発行されない穴** を封鎖: 発送30日前に入った未発行予約を毎朝ダイジェスト通知する `cron/issue-due` を新設（+ 発送日超過分は集荷漏れアラートが `requested` も対象に）。手荷物の発行漏れ→未出荷事故を二重の網で検知。
-- **カード課金の未実装** を実装: 集荷完了時に保存カードへ off_session 個別課金（`lib/charge.ts`）。**`STRIPE_CHARGE_LIVE=true` まで無害**（フラグ+本番キーが揃うまで1円も動かない）。`charged_at`＋idempotencyKey で二重課金防止。sync-tracking と手動ステータス更新の両経路でフック。
+- **カード課金の未実装** を実装: 集荷完了時に保存カードへ off_session 個別課金（`lib/charge.ts`）。**`STRIPE_CHARGE_LIVE=true` まで無害**（フラグ+本番キーが揃うまで1円も動かない）。`charged_at`＋idempotencyKey で二重課金防止。sync-tracking と手動ステータス更新の両経路でフック。**課金成功時に「請求書 兼 領収書」PDFを生成し代理店へメール送付（必須）**＋控えを運用へ。代理店は `/agency` ポータルの決済済み行から `/api/agency/invoice?shipment_id=` でいつでも再DL可（`buildChargeInvoice`・内税表示・`invoice-pdf paid`）。メール未達は ops アラート。
 - **請求書の税額バグ** を修正: `¥5,000税込` を税抜扱いして10%上乗せ（＝10%過大請求）していたのを**内税表示**に（`invoice-pdf.tsx` `taxInclusive`）。月次自動生成＋送付 `cron/monthly-invoices` を新設（既定は運用控えのみ→`INVOICE_AUTOSEND=true`で代理店直送）。
 - **承認/クレーム/配達完了の通知漏れ** を封鎖: 代理店承認時・クレーム受付時・配達完了時に通知を追加。
 - **レガシー削除**: 未使用の `/api/email`（本番で実送信しないダミー）を削除。
