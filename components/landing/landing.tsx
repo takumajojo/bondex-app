@@ -374,13 +374,18 @@ function HeroDemo({ lang }: { lang: Locale }) {
 
 export function Landing({ lang }: { lang: Locale }) {
   const t = messages[lang]
+  // デスクトップの上部ナビは 5 本に絞ってヘッダーを軽く保つ (安心の理由はモバイルメニューへ)。
   const navItems = [
     { href: NAV_HREFS[0], label: t.nav.flow },
     { href: NAV_HREFS[1], label: t.nav.difference },
     { href: NAV_HREFS[2], label: t.nav.deliverables },
-    { href: NAV_HREFS[3], label: t.nav.trust },
     { href: NAV_HREFS[4], label: t.nav.price },
     { href: NAV_HREFS[5], label: t.nav.faq },
+  ]
+  // モバイル/タブレットメニューにだけ載せる補助リンク (デスクトップ上部からは省く)。
+  const mobileExtraNav = [
+    { href: NAV_HREFS[3], label: t.nav.trust },
+    { href: "/demo", label: t.nav.tryDemo },
   ]
   const [menuOpen, setMenuOpen] = useState(false)
   return (
@@ -398,23 +403,17 @@ export function Landing({ lang }: { lang: Locale }) {
               <a
                 key={item.href}
                 href={item.href}
-                className="text-[14px] font-medium tracking-wide text-[#1F2937] hover:text-[#C8102E] underline-offset-8 decoration-transparent hover:decoration-[#C8102E]/60"
+                className="whitespace-nowrap text-[14px] font-medium tracking-wide text-[#1F2937] hover:text-[#C8102E] underline-offset-8 decoration-transparent hover:decoration-[#C8102E]/60"
               >
                 {item.label}
               </a>
             ))}
           </nav>
           <div className="flex items-center gap-2.5 lg:gap-3">
-            {/* 補助リンク (デモ・ログイン) — デスクトップのみ */}
-            <Link
-              href="/demo"
-              className="hidden lg:inline text-[13px] font-medium text-[#334155] hover:text-[#C8102E]"
-            >
-              {t.nav.tryDemo}
-            </Link>
+            {/* 代理店ログイン (既存顧客導線) — デスクトップのみ。デモ等はモバイルメニュー/本文へ */}
             <Link
               href="/agency/login"
-              className="hidden lg:inline text-[13px] font-medium text-[#64748B] hover:text-[#0F172A]"
+              className="hidden lg:inline text-[13px] font-medium text-[#64748B] hover:text-[#0F172A] whitespace-nowrap"
             >
               {t.nav.agencyLogin}
             </Link>
@@ -427,7 +426,7 @@ export function Landing({ lang }: { lang: Locale }) {
               href={CONTACT_FORM_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium px-4 py-2 rounded-md bg-[#C8102E] text-white hover:bg-[#A00D25]"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium px-4 py-2 rounded-md bg-[#C8102E] text-white hover:bg-[#A00D25]"
             >
               {t.nav.consult}
             </a>
@@ -452,7 +451,7 @@ export function Landing({ lang }: { lang: Locale }) {
             className="lg:hidden border-t border-[#E5E7EB] bg-white px-6 py-4"
           >
             <ul className="flex flex-col divide-y divide-[#F1F5F9]">
-              {navItems.map((item) => (
+              {[...navItems, ...mobileExtraNav].map((item) => (
                 <li key={item.href}>
                   <a
                     href={item.href}
@@ -463,15 +462,6 @@ export function Landing({ lang }: { lang: Locale }) {
                   </a>
                 </li>
               ))}
-              <li>
-                <Link
-                  href="/demo"
-                  onClick={() => setMenuOpen(false)}
-                  className="block py-3 text-[15px] font-medium text-[#1F2937] hover:text-[#C8102E]"
-                >
-                  {t.nav.tryDemo}
-                </Link>
-              </li>
               <li>
                 <Link
                   href="/agency/login"
