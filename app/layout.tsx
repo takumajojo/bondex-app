@@ -17,6 +17,62 @@ const SITE_TITLE = 'BondEx | 荷物配送を、旅行商品の一部に。'
 const SITE_DESC =
   'BondEx（ボンデックス）は、訪日旅行代理店・ランドオペレーター向けの荷物配送手配代行サービスです。旅程データからバウチャー・送り状・追跡情報・月次請求までまとめて対応します。'
 
+// 構造化データ (JSON-LD) — 同名多数 (塗料 Bondex 等) の中で「訪日旅行者向け
+// 手荷物ホテル間配送の取次サービス (株式会社JOJO)」という固有エンティティを
+// 検索エンジン/AIに明確化する。三宮 JOJO Nail で構造化データがエンティティ確立に
+// 効いた勝ちパターンを Web サービスへ適用。参照する logo は 200 を確認済み
+// (404衛生ルール)。連絡先は稼働中の support@bondex.express のみ。
+const STRUCTURED_DATA = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'BondEx',
+      alternateName: 'ボンデックス',
+      url: SITE_URL,
+      logo: `${SITE_URL}/bondex-logo.png`,
+      description:
+        '訪日旅行代理店・ランドオペレーター向けに、日本全国のホテル間で手荷物配送を手配する取次サービス。',
+      parentOrganization: {
+        '@type': 'Organization',
+        name: '株式会社JOJO',
+        url: 'https://www.jojotokyo.com',
+      },
+      sameAs: ['https://www.jojotokyo.com'],
+      contactPoint: {
+        '@type': 'ContactPoint',
+        email: 'support@bondex.express',
+        contactType: 'customer support',
+        availableLanguage: ['Japanese', 'English', 'Spanish', 'French', 'Chinese', 'Italian'],
+      },
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      name: 'BondEx',
+      url: SITE_URL,
+      publisher: { '@id': `${SITE_URL}/#organization` },
+      inLanguage: ['ja', 'en', 'es', 'fr', 'zh', 'it'],
+    },
+    {
+      '@type': 'Service',
+      '@id': `${SITE_URL}/#service`,
+      name: 'BondEx — Luggage Forwarding for Inbound Travel Agencies in Japan',
+      serviceType: 'Hotel-to-hotel luggage forwarding and delivery coordination',
+      provider: { '@id': `${SITE_URL}/#organization` },
+      areaServed: { '@type': 'Country', name: 'Japan' },
+      audience: {
+        '@type': 'Audience',
+        audienceType: 'Inbound travel agencies and land operators',
+      },
+      availableLanguage: ['Japanese', 'English', 'Spanish', 'French', 'Chinese', 'Italian'],
+      description:
+        'BondEx coordinates hotel-to-hotel luggage forwarding across Japan for inbound travel agencies. It issues traveler vouchers and shipping labels, provides tracking, and offers consolidated monthly invoicing or card payment, using major Japanese carriers (Sagawa / Yamato). Operated by JOJO Inc.',
+    },
+  ],
+}
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: SITE_TITLE,
@@ -56,6 +112,11 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
+        {/* 構造化データ (JSON-LD): 固有エンティティ (訪日向け手荷物配送の取次・株式会社JOJO) を明確化 */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+        />
         {/*
           GA Consent Mode v2 — 既定は「拒否」。gtag.js の読み込み前に dataLayer と
           gtag() を定義し、analytics/ad 系の保存を既定で denied にする。
