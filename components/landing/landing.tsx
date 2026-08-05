@@ -392,7 +392,8 @@ export function Landing({ lang }: { lang: Locale }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
           </Link>
-          <nav className="hidden md:flex items-center gap-8">
+          {/* セクションナビ (デスクトップ ≥lg)。タブレット以下はハンバーガーへ集約。 */}
+          <nav className="hidden lg:flex items-center gap-6">
             {navItems.map((item) => (
               <a
                 key={item.href}
@@ -403,13 +404,25 @@ export function Landing({ lang }: { lang: Locale }) {
               </a>
             ))}
           </nav>
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2.5 lg:gap-3">
+            {/* 補助リンク (デモ・ログイン) — デスクトップのみ */}
             <Link
               href="/demo"
-              className="hidden sm:inline text-[13px] font-medium text-[#0F172A] hover:text-[#C8102E]"
+              className="hidden lg:inline text-[13px] font-medium text-[#334155] hover:text-[#C8102E]"
             >
               {t.nav.tryDemo}
             </Link>
+            <Link
+              href="/agency/login"
+              className="hidden lg:inline text-[13px] font-medium text-[#64748B] hover:text-[#0F172A]"
+            >
+              {t.nav.agencyLogin}
+            </Link>
+            {/* 言語切替 (コンパクト・デスクトップ) */}
+            <LangSwitcher current={lang} align="right" className="hidden lg:block" />
+            {/* 区切り — ユーティリティ群と主 CTA を視覚的に分離 */}
+            <span className="hidden lg:block h-5 w-px bg-[#E5E7EB]" aria-hidden="true" />
+            {/* 主 CTA (常時・ひとつだけ強調) */}
             <a
               href={CONTACT_FORM_URL}
               target="_blank"
@@ -418,32 +431,25 @@ export function Landing({ lang }: { lang: Locale }) {
             >
               {t.nav.consult}
             </a>
-            <Link
-              href="/agency/login"
-              className="hidden sm:inline text-[13px] font-medium text-[#64748B] hover:text-[#0F172A]"
-            >
-              {t.nav.agencyLogin}
-            </Link>
-            <LangSwitcher current={lang} className="hidden md:inline-flex" />
-            {/* モバイル用ハンバーガー */}
+            {/* ハンバーガー (タブレット以下) */}
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
               aria-label={menuOpen ? t.nav.menuClose : t.nav.menuOpen}
               aria-expanded={menuOpen}
               aria-controls="mobile-menu"
-              className="md:hidden inline-flex items-center justify-center w-9 h-9 -mr-1 rounded-md text-[#334155] hover:bg-[#F1F5F9]"
+              className="lg:hidden inline-flex items-center justify-center w-9 h-9 -mr-1 rounded-md text-[#334155] hover:bg-[#F1F5F9]"
             >
               {menuOpen ? <X className="w-5 h-5" strokeWidth={2} /> : <Menu className="w-5 h-5" strokeWidth={2} />}
             </button>
           </div>
         </div>
 
-        {/* モバイルメニュー (ドロップダウン) */}
+        {/* モバイル/タブレットメニュー (ドロップダウン) */}
         {menuOpen && (
           <nav
             id="mobile-menu"
-            className="md:hidden border-t border-[#E5E7EB] bg-white px-6 py-4"
+            className="lg:hidden border-t border-[#E5E7EB] bg-white px-6 py-4"
           >
             <ul className="flex flex-col divide-y divide-[#F1F5F9]">
               {navItems.map((item) => (
@@ -476,7 +482,7 @@ export function Landing({ lang }: { lang: Locale }) {
                 </Link>
               </li>
               <li className="pt-3">
-                <LangSwitcher current={lang} />
+                <LangSwitcher current={lang} align="left" />
               </li>
             </ul>
           </nav>
