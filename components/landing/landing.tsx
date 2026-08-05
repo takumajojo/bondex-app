@@ -567,10 +567,12 @@ export function Landing({ lang }: { lang: Locale }) {
 
       {/* ═══════════════ Hero (desktop) — Full-bleed family image ═══════════════ */}
       <section
-        className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat hidden md:flex items-end"
+        className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat bg-[#0F172A] hidden md:flex items-end"
         style={{
+          // 背景色 #0F172A を土台に敷く: 画像読込中/失敗時も暗背景となり白文字が消えない。
+          // グラデも全体に基礎的な暗幕を足し、見出し位置(中〜下部)のコントラストを確保。
           backgroundImage:
-            "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.0) 25%, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.78) 100%), url('/hero-family.webp')",
+            "linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.18) 34%, rgba(0,0,0,0.48) 66%, rgba(0,0,0,0.85) 100%), url('/hero-family.webp')",
         }}
       >
         <div className="w-full max-w-6xl mx-auto px-6 pb-16 md:pb-44 text-white">
