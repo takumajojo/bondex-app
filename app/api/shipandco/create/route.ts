@@ -810,9 +810,12 @@ export async function POST(req: NextRequest) {
       ? `${productName} ${recipientLastName} 様`
       : productName
 
-  // 記事欄 (ref_number): "BDX-260629-903-L1 7/11着" の形式で BondEx 番号 + 配達日を集約.
+  // 記事欄 (ref_number): "BDX-260629-903-L1 (ツアー番号) 7/11着" の形式で
+  //   BondEx 番号 + 代理店のツアー番号 + 配達日 を集約. 代理店は自社のツアー番号で
+  //   照合するため併記する (谷口さん要望 2026-08-05)。ツアー番号は長さ制限のため 20 字で丸める。
   const dateSuffix = deliveryDate ? formatYmdShortJp(deliveryDate) : ""
-  const refNumberWithDate = dateSuffix ? `${refNumber} ${dateSuffix}` : refNumber
+  const tourSuffix = tourNumber ? ` (${tourNumber.slice(0, 20)})` : ""
+  const refNumberWithDate = `${refNumber}${tourSuffix}${dateSuffix ? ` ${dateSuffix}` : ""}`
 
   // 本番発行スイッチ (fail-safe): 環境変数 SHIPANDCO_LIVE が厳密に "true" のときだけ
   // 実ラベル (課金・実集荷・取消不可) を発行する。未設定・空・タイプミス等は必ずテスト扱い。
