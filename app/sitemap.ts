@@ -12,6 +12,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const pages: Array<{ path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"] }> = [
     { path: "/", priority: 1.0, changeFrequency: "weekly" },
     { path: "/en", priority: 0.9, changeFrequency: "weekly" },
+    { path: "/es", priority: 0.9, changeFrequency: "weekly" },
+    { path: "/fr", priority: 0.9, changeFrequency: "weekly" },
+    { path: "/zh", priority: 0.9, changeFrequency: "weekly" },
+    { path: "/it", priority: 0.9, changeFrequency: "weekly" },
     { path: "/track", priority: 0.5, changeFrequency: "monthly" },
     { path: "/legal/terms", priority: 0.3, changeFrequency: "yearly" },
     { path: "/legal/privacy", priority: 0.3, changeFrequency: "yearly" },

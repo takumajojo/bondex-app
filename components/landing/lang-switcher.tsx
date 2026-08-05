@@ -17,6 +17,10 @@ export type LangOption = { code: Locale; label: string; href: string }
 export const LOCALES: LangOption[] = [
   { code: "ja", label: "日本語", href: "/" },
   { code: "en", label: "English", href: "/en" },
+  { code: "es", label: "Español", href: "/es" },
+  { code: "fr", label: "Français", href: "/fr" },
+  { code: "zh", label: "中文", href: "/zh" },
+  { code: "it", label: "Italiano", href: "/it" },
 ]
 
 export function LangSwitcher({

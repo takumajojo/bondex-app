@@ -11,6 +11,10 @@ const SITE_DESC =
 const LANGUAGE_ALTERNATES = {
   ja: "/",
   en: "/en",
+  es: "/es",
+  fr: "/fr",
+  zh: "/zh",
+  it: "/it",
   "x-default": "/",
 }
 
