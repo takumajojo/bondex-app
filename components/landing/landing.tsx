@@ -574,7 +574,7 @@ export function Landing({ lang }: { lang: Locale }) {
 
       {/* ═══════════════ Hero (desktop) — Full-bleed family image ═══════════════ */}
       <section
-        className="relative w-full h-[calc(100vh-4rem)] min-h-[640px] max-h-[820px] overflow-hidden bg-cover bg-center bg-no-repeat bg-[#0F172A] hidden md:flex items-end"
+        className="relative w-full min-h-[calc(100vh-4rem)] overflow-hidden bg-cover bg-center bg-no-repeat bg-[#0F172A] hidden md:flex items-end"
         style={{
           // 背景色 #0F172A を土台に敷く: 画像読込中/失敗時も暗背景となり白文字が消えない。
           // グラデも全体に基礎的な暗幕を足し、見出し位置(中〜下部)のコントラストを確保。
@@ -582,8 +582,8 @@ export function Landing({ lang }: { lang: Locale }) {
             "linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.18) 34%, rgba(0,0,0,0.48) 66%, rgba(0,0,0,0.85) 100%), url('/hero-family.webp')",
         }}
       >
-        <div className="w-full max-w-6xl mx-auto px-6 pb-16 md:pb-44 text-white">
-          <p className="text-[12px] font-medium tracking-[0.15em] text-white/90 mb-6 drop-shadow">
+        <div className="w-full max-w-6xl mx-auto px-6 pt-24 md:pt-28 pb-16 md:pb-40 text-white">
+          <p className="text-[12px] font-medium tracking-[0.15em] text-white/90 mb-5 drop-shadow">
             {t.hero.badgeDesktop}
           </p>
           <h1 className="text-3xl sm:text-4xl md:text-[42px] lg:text-[50px] font-bold leading-[1.18] tracking-normal text-balance mb-8 drop-shadow-lg max-w-4xl">
