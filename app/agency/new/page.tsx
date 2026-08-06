@@ -92,7 +92,7 @@ const messages = {
     removeTimeSlot: "Remove the time slot (lock the date)",
     deliverySlots: {
       "not-specified": "Not specified",
-      "before-noon": "Before noon (recommended)",
+      "before-noon": "Before noon",
       "before-ten": "Before 10:00",
       "before-five": "Before 17:00",
       "14-16": "14:00 – 16:00",
@@ -220,7 +220,7 @@ const messages = {
     removeTimeSlot: "時間指定を外す（日付を確実にする）",
     deliverySlots: {
       "not-specified": "指定なし",
-      "before-noon": "午前中（推奨）",
+      "before-noon": "午前中",
       "before-ten": "10時まで",
       "before-five": "17時まで",
       "14-16": "14時〜16時",
@@ -452,7 +452,7 @@ export default function AgencyNewBookingPage() {
           shipmentDate?: string
           expectedArrival?: string
           from?: { hotel?: string; city?: string }
-          to?: { hotel?: string; city?: string }
+          to?: { hotel?: string; city?: string; checkIn?: string; checkOut?: string }
           recipient?: string
         }>
       }
@@ -483,8 +483,10 @@ export default function AgencyNewBookingPage() {
           toCity: s.to?.city || "",
           shipmentDate: ymd(s.shipmentDate),
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
-          fromCheckIn: "",
-          toCheckOut: "",
+          // お届け先ホテルのチェックイン日(お客様の到着日)/チェックアウト日:
+          // 旅程表に記載があれば転記、なければ発送日を自動で入れる(谷口さん要望)。
+          fromCheckIn: ymd(s.to?.checkIn) || ymd(s.shipmentDate),
+          toCheckOut: ymd(s.to?.checkOut) || ymd(s.shipmentDate),
           deliveryTime: "before-noon",
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正

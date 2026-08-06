@@ -31,6 +31,10 @@ Rules for extracting shipments:
 - Date format: ISO 8601 YYYY-MM-DD. If only month/day given (e.g. "June 10"), infer the year from context (default to next occurrence of that date from today)
 - shipmentDate is the date luggage is HANDED OVER at the from-hotel
 - expectedArrival is the date luggage SHOULD ARRIVE at the to-hotel (often 1-3 days after shipmentDate)
+- to.checkIn / to.checkOut: if the itinerary's accommodation info states the guest's check-in and
+  check-out dates at the DESTINATION (to) hotel, copy them (ISO YYYY-MM-DD). to.checkIn is the customer's
+  arrival date at the destination hotel. Leave them as "" (empty) if the itinerary does not state them —
+  do NOT guess.
 
 CRITICAL — mapping "Luggage transfer <A> - <B>" lines (most common failure):
 - Lines such as "Luggage transfer Tokyo - Kyoto", "Luggage transfer Kyoto to Osaka",
@@ -141,6 +145,16 @@ const TOOL_SCHEMA = {
                 hotel: { type: "string" },
                 address: { type: "string" },
                 city: { type: "string" },
+                checkIn: {
+                  type: "string",
+                  description:
+                    "ISO date (YYYY-MM-DD) the guest CHECKS IN to this destination hotel (the customer's arrival date at the to-hotel), taken from the itinerary's accommodation dates. Empty string if the itinerary does not state it.",
+                },
+                checkOut: {
+                  type: "string",
+                  description:
+                    "ISO date (YYYY-MM-DD) the guest CHECKS OUT of this destination hotel, taken from the itinerary's accommodation dates. Empty string if not stated.",
+                },
               },
               required: ["hotel", "address", "city"],
             },
