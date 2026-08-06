@@ -32,6 +32,25 @@ Rules for extracting shipments:
 - shipmentDate is the date luggage is HANDED OVER at the from-hotel
 - expectedArrival is the date luggage SHOULD ARRIVE at the to-hotel (often 1-3 days after shipmentDate)
 
+CRITICAL — mapping "Luggage transfer <A> - <B>" lines (most common failure):
+- Lines such as "Luggage transfer Tokyo - Kyoto", "Luggage transfer Kyoto to Osaka",
+  "Luggage forwarding: Tokyo → Kyoto", or "手荷物配送 東京→京都" are EXPLICIT, AUTHORITATIVE
+  leg definitions. Each such line is exactly ONE shipment.
+- The ORIGIN city is the FIRST place named (<A>); the DESTINATION city is the SECOND place named (<B>).
+- Set from.city = <A> and to.city = <B>, copied EXACTLY from that line. Do not change or reorder them.
+- Then pick the correct hotels from the itinerary BY CITY:
+  - from.hotel = the hotel the guests stay at IN city <A> (the hotel they check out of / hand the bags over at).
+  - to.hotel   = the hotel the guests stay at IN city <B> (the destination hotel they move to).
+- The destination hotel MUST be physically located in city <B>. NEVER substitute a hotel from a
+  neighbouring or later city. (e.g. for "Tokyo - Kyoto" the destination must be the KYOTO hotel,
+  NOT a Hakone hotel; for "Kyoto - Osaka" it must be the OSAKA hotel, NOT a Hiroshima hotel.)
+- Do NOT simply pair consecutive hotels in the itinerary order. Trust the transfer line's two cities.
+- If the itinerary lists several hotels for one city, choose the one whose stay dates match the transfer timing.
+- If you truly cannot find a hotel located in the named city, leave that hotel as "" (empty) rather than
+  guessing a hotel from a different city. It is better to leave it blank than to send luggage to the wrong city.
+- Sanity check before answering: for every shipment, confirm from.city and to.city are the exact two
+  cities named in its transfer line, and that each hotel's city matches.
+
 Rules for "recipient" (重要):
 - ALWAYS use ONE specific representative individual — never a family/group name
 - The representative is the FIRST adult listed in the Guest Information section

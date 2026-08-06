@@ -259,7 +259,12 @@ export async function POST(req: NextRequest) {
   const allIssued = legOut.length > 0 && legOut.every((r) => r.issued)
   const anyIssued = legOut.some((r) => r.issued)
   const issueFailures = legOut.filter((r) => r.reason === "failed")
-  const needsLabelWait = !allIssued // 未発行(1ヶ月超 or 発行不可)の区間がある
+  const farLegs = legOut.filter((r) => r.reason === "far") // 1ヶ月超先で発行窓の外(正常な待ち)
+  // 「1ヶ月前になったら書類を用意してご連絡します」の案内は、本当に 1ヶ月超先の
+  // 未発行区間があるときだけ出す。1ヶ月以内なのに発行できなかった区間は "failed" で
+  // 別扱い(運用が対応・代理店には issueFailures を画面表示)。1ヶ月以内の発行失敗に
+  // 対して誤って「1ヶ月前になりましたら」と案内しないようにする。
+  const needsLabelWait = farLegs.length > 0
 
   // 書類は共有ドライブにも保管 (best-effort・失敗しても画面から DL は可能)。
   // 未発行 (1ヶ月超) でもバウチャーだけは今この時点で確定するので必ず流す。
@@ -281,10 +286,9 @@ export async function POST(req: NextRequest) {
   // 待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。全発行済みなら不要。
   let noticeEmailSent = false
   if (needsLabelWait) {
-    const earliestShipDate = legs.reduce(
-      (min, l) => (l.shipmentDate < min ? l.shipmentDate : min),
-      legs[0].shipmentDate,
-    )
+    // 1ヶ月超先(far)の区間のうち最も早い発送日を「最短の出荷予定日」として案内する。
+    const farShipDates = farLegs.map((r) => legs[r.legIndex].shipmentDate)
+    const earliestShipDate = farShipDates.reduce((min, d) => (d < min ? d : min), farShipDates[0])
     const locale: "ja" | "en" = auth.agency.is_domestic === false ? "en" : "ja"
     const mail = await sendBookingRequestEmail({
       agencyEmail: auth.agency.contact_email,
