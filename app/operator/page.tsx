@@ -44,6 +44,7 @@ import { OperatorCardReminder } from "@/components/operator-card-reminder"
 import { buildVoucherFileName } from "@/lib/utils"
 import { generateBookingId } from "@/lib/booking-id"
 import { normalizeGuestLanguage, type GuestLanguage } from "@/lib/guest-language"
+import { cleanResidence, type ResidenceAddress } from "@/lib/residence"
 
 const FLAT_RATE_YEN = 5000
 
@@ -439,12 +440,41 @@ interface ParsedGuest {
   showGroupName?: boolean
 }
 
+/** jsonb を ResidenceAddress に正規化。中身が空（ホテル）なら null。 */
+function pickResidence(raw: unknown): ResidenceAddress | null {
+  const r = cleanResidence(raw)
+  return r && (r.street || r.city || r.name) ? r : null
+}
+
+/** 個人宅住所を1行に整形（表示・バウチャー用）。 */
+function residenceOneLine(r: ResidenceAddress): string {
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  const bld = r.building ? ` ${r.building}` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
+
+/** 個人宅の読み取り専用カード（発行画面。ホテル検索の代わりに表示）。 */
+function ResidenceCard({ r }: { r: ResidenceAddress }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-[12px] leading-relaxed">
+      <span className="inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 mr-1.5">
+        個人宅
+      </span>
+      <span className="font-medium">{r.name}</span>
+      <p className="mt-1 text-muted-foreground">{residenceOneLine(r)}</p>
+      {r.phone && <p className="text-muted-foreground">☎ {r.phone}</p>}
+    </div>
+  )
+}
+
 interface ParsedShipmentLocation {
   hotel: string
   address: string
   city: string
   /** Google Places place_id — set when operator selected from autocomplete. */
   placeId?: string
+  /** 個人宅（ホテル以外）。set のとき Places 解決をスキップして住所を直接使う。 */
+  residence?: ResidenceAddress | null
 }
 
 interface ParsedShipment {
@@ -480,10 +510,12 @@ interface RequestRow {
   from_city: string | null
   from_place_id: string | null
   from_check_in: string | null
+  from_residence: unknown
   to_hotel: string | null
   to_city: string | null
   to_place_id: string | null
   to_check_out: string | null
+  to_residence: unknown
   recipient: string | null
   suitcase_count: number | null
   notes: string | null
@@ -702,20 +734,26 @@ export default function OperatorPage() {
         if (cancelled) return
         if (!Array.isArray(booking) || booking.length === 0) throw new Error("Not found")
         const head = booking[0]
-        const shipments: EditableShipment[] = booking.map((r) => ({
+        const shipments: EditableShipment[] = booking.map((r) => {
+          // 個人宅（ホテル以外）は Places 解決をスキップし、保存済みの構造化住所を使う。
+          const fromRes = pickResidence(r.from_residence)
+          const toRes = pickResidence(r.to_residence)
+          return {
           shipmentDate: r.shipment_date ?? "",
           expectedArrival: r.expected_arrival ?? "",
           from: {
             hotel: r.from_hotel ?? "",
-            address: "",
+            address: fromRes ? residenceOneLine(fromRes) : "",
             city: r.from_city ?? "",
-            placeId: r.from_place_id ?? undefined,
+            placeId: fromRes ? undefined : (r.from_place_id ?? undefined),
+            residence: fromRes,
           },
           to: {
             hotel: r.to_hotel ?? "",
-            address: "",
+            address: toRes ? residenceOneLine(toRes) : "",
             city: r.to_city ?? "",
-            placeId: r.to_place_id ?? undefined,
+            placeId: toRes ? undefined : (r.to_place_id ?? undefined),
+            residence: toRes,
           },
           recipient: r.recipient ?? "",
           suitcaseCount: r.suitcase_count ?? 1,
@@ -724,7 +762,8 @@ export default function OperatorPage() {
           bookingName: r.booking_name ?? undefined,
           fromCheckIn: r.from_check_in ?? undefined,
           toCheckOut: r.to_check_out ?? undefined,
-        }))
+          }
+        })
         const editable: EditableItinerary = {
           bookingId: head.booking_id,
           guest: {
@@ -1004,12 +1043,14 @@ export default function OperatorPage() {
               recipient: s.recipient,
               placeId: s.from.placeId,
               city: s.from.city,
+              residence: s.from.residence ?? undefined,
             },
             to: {
               hotel: s.to.hotel,
               recipient: s.recipient,
               placeId: s.to.placeId,
               city: s.to.city,
+              residence: s.to.residence ?? undefined,
             },
             // 管理ダッシュボード用メタ情報
             agency: tourCompanyFromSettings,
@@ -1992,37 +2033,43 @@ function ShipmentRow({
             <MapPin className="w-3 h-3" strokeWidth={1.5} />
             {t.from}
           </p>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground" htmlFor={`from-hotel-${index}`}>
-              {t.hotelNameLabel}
-            </label>
-            <HotelSearchInput
-              inputId={`from-hotel-${index}`}
-              ariaLabel={`${t.from} ${t.hotelNameLabel}`}
-              value={shipment.from.hotel}
-              placeholder={t.hotelNamePlaceholder}
-              lang={locale}
-              selectedPlaceId={shipment.from.placeId}
-              onChange={(value) =>
-                onUpdate(index, {
-                  // 編集中は placeId を消す (候補から選び直すまで未確定扱い)
-                  from: { ...shipment.from, hotel: value, placeId: undefined },
-                })
-              }
-              onSelect={(c: PlaceCandidate) =>
-                onUpdate(index, {
-                  from: {
-                    hotel: c.name,
-                    address: c.address,
-                    city: c.city,
-                    placeId: c.placeId,
-                  },
-                })
-              }
-            />
-          </div>
-          {shipment.from.city && (
-            <p className="text-[10px] text-muted-foreground pl-1">📍 {shipment.from.city}</p>
+          {shipment.from.residence ? (
+            <ResidenceCard r={shipment.from.residence} />
+          ) : (
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] text-muted-foreground" htmlFor={`from-hotel-${index}`}>
+                  {t.hotelNameLabel}
+                </label>
+                <HotelSearchInput
+                  inputId={`from-hotel-${index}`}
+                  ariaLabel={`${t.from} ${t.hotelNameLabel}`}
+                  value={shipment.from.hotel}
+                  placeholder={t.hotelNamePlaceholder}
+                  lang={locale}
+                  selectedPlaceId={shipment.from.placeId}
+                  onChange={(value) =>
+                    onUpdate(index, {
+                      // 編集中は placeId を消す (候補から選び直すまで未確定扱い)
+                      from: { ...shipment.from, hotel: value, placeId: undefined },
+                    })
+                  }
+                  onSelect={(c: PlaceCandidate) =>
+                    onUpdate(index, {
+                      from: {
+                        hotel: c.name,
+                        address: c.address,
+                        city: c.city,
+                        placeId: c.placeId,
+                      },
+                    })
+                  }
+                />
+              </div>
+              {shipment.from.city && (
+                <p className="text-[10px] text-muted-foreground pl-1">📍 {shipment.from.city}</p>
+              )}
+            </>
           )}
         </div>
 
@@ -2031,36 +2078,42 @@ function ShipmentRow({
             <MapPin className="w-3 h-3" strokeWidth={1.5} />
             {t.to}
           </p>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground" htmlFor={`to-hotel-${index}`}>
-              {t.hotelNameLabel}
-            </label>
-            <HotelSearchInput
-              inputId={`to-hotel-${index}`}
-              ariaLabel={`${t.to} ${t.hotelNameLabel}`}
-              value={shipment.to.hotel}
-              placeholder={t.hotelNamePlaceholder}
-              lang={locale}
-              selectedPlaceId={shipment.to.placeId}
-              onChange={(value) =>
-                onUpdate(index, {
-                  to: { ...shipment.to, hotel: value, placeId: undefined },
-                })
-              }
-              onSelect={(c: PlaceCandidate) =>
-                onUpdate(index, {
-                  to: {
-                    hotel: c.name,
-                    address: c.address,
-                    city: c.city,
-                    placeId: c.placeId,
-                  },
-                })
-              }
-            />
-          </div>
-          {shipment.to.city && (
-            <p className="text-[10px] text-muted-foreground pl-1">📍 {shipment.to.city}</p>
+          {shipment.to.residence ? (
+            <ResidenceCard r={shipment.to.residence} />
+          ) : (
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] text-muted-foreground" htmlFor={`to-hotel-${index}`}>
+                  {t.hotelNameLabel}
+                </label>
+                <HotelSearchInput
+                  inputId={`to-hotel-${index}`}
+                  ariaLabel={`${t.to} ${t.hotelNameLabel}`}
+                  value={shipment.to.hotel}
+                  placeholder={t.hotelNamePlaceholder}
+                  lang={locale}
+                  selectedPlaceId={shipment.to.placeId}
+                  onChange={(value) =>
+                    onUpdate(index, {
+                      to: { ...shipment.to, hotel: value, placeId: undefined },
+                    })
+                  }
+                  onSelect={(c: PlaceCandidate) =>
+                    onUpdate(index, {
+                      to: {
+                        hotel: c.name,
+                        address: c.address,
+                        city: c.city,
+                        placeId: c.placeId,
+                      },
+                    })
+                  }
+                />
+              </div>
+              {shipment.to.city && (
+                <p className="text-[10px] text-muted-foreground pl-1">📍 {shipment.to.city}</p>
+              )}
+            </>
           )}
         </div>
       </div>

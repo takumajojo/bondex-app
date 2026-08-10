@@ -6,6 +6,7 @@ import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
+import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -34,9 +35,11 @@ interface LegInput {
   fromHotel: string
   fromPlaceId: string
   fromCity: string
+  fromResidence: ResidenceAddress | null
   toHotel: string
   toPlaceId: string
   toCity: string
+  toResidence: ResidenceAddress | null
   shipmentDate: string
   expectedArrival: string
   fromCheckIn: string
@@ -51,14 +54,31 @@ interface LegInput {
 function parseLeg(raw: unknown): LegInput | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "invalid leg" }
   const o = raw as Record<string, unknown>
-  const fromHotel = s(o.fromHotel)
-  const toHotel = s(o.toHotel)
   const shipmentDate = s(o.shipmentDate)
   const expectedArrival = s(o.expectedArrival) || shipmentDate
   const recipient = s(o.recipient)
   const notes = s(o.notes)
   const suitcaseCount = Math.floor(Number(o.suitcaseCount))
-  if (!fromHotel || !toHotel) return { error: "発送元・お届け先ホテルをご入力ください。" }
+
+  // 個人宅（ホテル以外）の判定と検証。kind='residence' のとき構造化住所を必須項目チェック。
+  const fromKind = o.fromKind === "residence" ? "residence" : "hotel"
+  const toKind = o.toKind === "residence" ? "residence" : "hotel"
+  const fromResidence = fromKind === "residence" ? cleanResidence(o.fromResidence) : null
+  const toResidence = toKind === "residence" ? cleanResidence(o.toResidence) : null
+  if (fromKind === "residence") {
+    if (!fromResidence) return { error: "発送元（個人宅）の住所をご入力ください。" }
+    const e = residenceError(fromResidence)
+    if (e) return { error: `発送元（個人宅）の${RESIDENCE_FIELD_LABELS_JA[e]}をご入力ください。` }
+  }
+  if (toKind === "residence") {
+    if (!toResidence) return { error: "お届け先（個人宅）の住所をご入力ください。" }
+    const e = residenceError(toResidence)
+    if (e) return { error: `お届け先（個人宅）の${RESIDENCE_FIELD_LABELS_JA[e]}をご入力ください。` }
+  }
+  // 表示名: ホテル名、個人宅は氏名（from_hotel/to_hotel は NOT NULL のため必ず埋める）。
+  const fromHotel = fromKind === "residence" ? (fromResidence?.name ?? "") : s(o.fromHotel)
+  const toHotel = toKind === "residence" ? (toResidence?.name ?? "") : s(o.toHotel)
+  if (!fromHotel || !toHotel) return { error: "発送元・お届け先をご入力ください。" }
   if (!DATE_RE.test(shipmentDate)) return { error: "発送日を正しくご入力ください。" }
   if (!DATE_RE.test(expectedArrival)) return { error: "到着日を正しくご入力ください。" }
   if (expectedArrival < shipmentDate) return { error: "到着日は発送日以降にしてください。" }
@@ -73,11 +93,13 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   const noteTarget = ["from", "to", "both"].includes(rawNoteTarget) ? rawNoteTarget : ""
   return {
     fromHotel,
-    fromPlaceId: s(o.fromPlaceId),
-    fromCity: s(o.fromCity),
+    fromPlaceId: fromKind === "residence" ? "" : s(o.fromPlaceId),
+    fromCity: fromKind === "residence" ? `${fromResidence?.prefecture ?? ""}${fromResidence?.city ?? ""}` : s(o.fromCity),
+    fromResidence,
     toHotel,
-    toPlaceId: s(o.toPlaceId),
-    toCity: s(o.toCity),
+    toPlaceId: toKind === "residence" ? "" : s(o.toPlaceId),
+    toCity: toKind === "residence" ? `${toResidence?.prefecture ?? ""}${toResidence?.city ?? ""}` : s(o.toCity),
+    toResidence,
     shipmentDate,
     expectedArrival,
     fromCheckIn,
@@ -166,9 +188,11 @@ export async function POST(req: NextRequest) {
       from_hotel: leg.fromHotel,
       from_city: leg.fromCity || null,
       from_place_id: leg.fromPlaceId || null,
+      from_residence: leg.fromResidence,
       to_hotel: leg.toHotel,
       to_city: leg.toCity || null,
       to_place_id: leg.toPlaceId || null,
+      to_residence: leg.toResidence,
       recipient: leg.recipient || leg.toHotel,
       suitcase_count: leg.suitcaseCount,
       amount_yen: 0, // 依頼段階では未確定
@@ -227,8 +251,8 @@ export async function POST(req: NextRequest) {
           deliveryDate: leg.expectedArrival,
           deliveryTime: leg.deliveryTime || "before-noon",
           suitcaseCount: leg.suitcaseCount,
-          from: { hotel: leg.fromHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.fromPlaceId, city: leg.fromCity },
-          to: { hotel: leg.toHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.toPlaceId, city: leg.toCity },
+          from: { hotel: leg.fromHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.fromPlaceId, city: leg.fromCity, residence: leg.fromResidence },
+          to: { hotel: leg.toHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.toPlaceId, city: leg.toCity, residence: leg.toResidence },
           agency: agencyName,
           representative,
           travelerCount,

@@ -10,6 +10,16 @@ import {
   normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
+import { cleanResidence } from "@/lib/residence"
+
+/** 個人宅住所を1行に整形（バウチャーの住所欄用）。ホテル(null)なら空文字。 */
+function residenceLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  const bld = r.building ? ` ${r.building}` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
 
 /**
  * 発行済み shipments データから Voucher PDF を再生成する共有ロジック。
@@ -31,7 +41,7 @@ export async function regenerateVoucherPdf(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, to_hotel, to_city, to_check_out, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en",
+      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, from_residence, to_hotel, to_city, to_check_out, to_residence, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en",
     )
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
@@ -81,6 +91,7 @@ export async function regenerateVoucherPdf(
   type Row = (typeof data)[number] & {
     from_place_id?: string | null; to_place_id?: string | null
     from_hotel_en?: string | null; to_hotel_en?: string | null
+    from_residence?: unknown; to_residence?: unknown
   }
   const enName = new Map<number, { from?: string; to?: string }>()
   await Promise.all(
@@ -128,11 +139,12 @@ export async function regenerateVoucherPdf(
     guestLanguage: normalizeGuestLanguage(data[0].guest_language),
     // 既定 = ガイド同梱。呼び出し側が false を渡したときだけ省く。
     includeHowto: opts?.includeHowto !== false,
-    shipments: data.map((s) => ({
+    shipments: (data as Row[]).map((s) => ({
       shipmentDate: s.shipment_date,
       expectedArrival: s.expected_arrival ?? s.shipment_date,
-      from: { hotel: s.from_hotel ?? "", address: "", city: s.from_city ?? "" },
-      to: { hotel: s.to_hotel ?? "", address: "", city: s.to_city ?? "" },
+      // 個人宅は住所を1行に整形して address に入れる（ホテルは空＝名称のみ表示）。
+      from: { hotel: s.from_hotel ?? "", address: residenceLine(s.from_residence), city: s.from_city ?? "" },
+      to: { hotel: s.to_hotel ?? "", address: residenceLine(s.to_residence), city: s.to_city ?? "" },
       fromHotelEn: enName.get(s.leg_index)?.from,
       toHotelEn: enName.get(s.leg_index)?.to,
       recipient: s.recipient ?? "",

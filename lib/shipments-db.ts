@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase"
+import type { ResidenceAddress } from "@/lib/residence"
 
 /**
  * shipments テーブル CRUD.
@@ -33,10 +34,14 @@ export interface ShipmentRecord {
   from_city: string | null
   from_place_id: string | null
   from_check_in: string | null
+  /** 発送元が個人宅のときの構造化住所。null=ホテル (Places 解決)。 */
+  from_residence: ResidenceAddress | null
   to_hotel: string
   to_city: string | null
   to_place_id: string | null
   to_check_out: string | null
+  /** お届け先が個人宅のときの構造化住所。null=ホテル (Places 解決)。 */
+  to_residence: ResidenceAddress | null
   recipient: string
   suitcase_count: number
   amount_yen: number
@@ -113,10 +118,12 @@ export async function saveShipment(
     from_city: input.from_city ?? null,
     from_place_id: input.from_place_id ?? null,
     from_check_in: input.from_check_in ?? null,
+    from_residence: input.from_residence ?? null,
     to_hotel: input.to_hotel ?? "",
     to_city: input.to_city ?? null,
     to_place_id: input.to_place_id ?? null,
     to_check_out: input.to_check_out ?? null,
+    to_residence: input.to_residence ?? null,
     recipient: input.recipient ?? "",
     suitcase_count: input.suitcase_count ?? 1,
     amount_yen: input.amount_yen ?? 0,

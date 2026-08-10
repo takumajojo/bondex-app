@@ -9,6 +9,7 @@ import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
+import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -557,6 +558,64 @@ async function resolveYamatoAddress(
   }
 }
 
+/**
+ * 個人宅（ホテル以外）の構造化住所から送り状用アドレスを直接組み立てる。
+ * Google Places を介さないため、代理店が入力した都道府県/市区町村/番地をそのまま
+ * キャリアのフィールドへマッピングする。マッピング規則は resolveYamatoAddress と同一
+ * （佐川: 住所1=市区町村 / 住所2=町名+番地 / 住所3=建物、ヤマト: address2=市区+町名番地）。
+ *
+ * 電話は本人（居住者）の番号を使う。ホテル発送では集荷連絡先を BondEx 番号(SENDER_PHONE)に
+ * 上書きするが、個人宅の集荷・再配達は本人に連絡が要るため上書きしない。
+ */
+function buildResidenceAddress(
+  res: ResidenceAddress,
+  carrierType: string,
+): YamatoAddress {
+  const zip = normalizeZip(res.zip) || FALLBACK_ZIP
+  let phone = res.phone.replace(/[^\d+]/g, "")
+  if (!phone) phone = FALLBACK_PHONE
+  const nm = res.name.trim()
+  const fullName = capName(/様\s*$/.test(nm) ? nm : `${nm} 様`)
+  const building = capName(res.building.trim())
+  const prefecture = res.prefecture.trim()
+  const city = res.city.trim()
+  const street = res.street.trim()
+  const isYamato = carrierType === "yamato"
+
+  if (isYamato) {
+    // ヤマト: address1=市区 / address2=市区+町名番地 (Yamato parser が address2 から市区郡町村を抽出)
+    return {
+      full_name: fullName,
+      company: building,
+      phone,
+      country: "JP",
+      zip,
+      province: prefecture,
+      city,
+      address1: city,
+      address2: city + street,
+      address3: building || undefined,
+      extra: "",
+    }
+  }
+
+  // 佐川: 都道府県 / 住所1=市区町村 / 住所2=町名+番地 / 住所3=建物名。
+  // city を空にして区の二重計上 (E2-0004) を防ぐ。
+  return {
+    full_name: fullName,
+    company: building,
+    phone,
+    country: "JP",
+    zip,
+    province: prefecture,
+    city: "",
+    address1: city,
+    address2: normalizeBanchi(stripKyotoRouteName(street, prefecture)),
+    address3: building,
+    extra: "",
+  }
+}
+
 export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "shipandco-create")
   if (!limit.ok) return limit.response
@@ -592,12 +651,21 @@ export async function POST(req: NextRequest) {
   const deliveryDate = rawDeliveryDate && isValidYmd(rawDeliveryDate) ? rawDeliveryDate : ""
   const suitcaseCount = Math.max(1, Math.floor(Number(body.suitcaseCount) || 1))
 
-  const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string }
-  const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string }
-  const fromHotel = (fromInput.hotel ?? "").trim()
-  const toHotel = (toInput.hotel ?? "").trim()
-  const fromPlaceId = (fromInput.placeId ?? "").trim() || undefined
-  const toPlaceId = (toInput.placeId ?? "").trim() || undefined
+  const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string; residence?: unknown }
+  const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string; residence?: unknown }
+  // 個人宅（ホテル以外）。氏名か番地が入っていれば「個人宅」とみなし Places 解決をスキップする。
+  const fromResidenceRaw = cleanResidence(fromInput.residence)
+  const toResidenceRaw = cleanResidence(toInput.residence)
+  const fromResidence =
+    fromResidenceRaw && (fromResidenceRaw.name || fromResidenceRaw.street || fromResidenceRaw.city) ? fromResidenceRaw : null
+  const toResidence =
+    toResidenceRaw && (toResidenceRaw.name || toResidenceRaw.street || toResidenceRaw.city) ? toResidenceRaw : null
+  // 表示名: ホテル名、無ければ個人宅の氏名（DB の from_hotel/to_hotel やログ表示に使う）。
+  const fromHotel = (fromInput.hotel ?? "").trim() || (fromResidence?.name ?? "")
+  const toHotel = (toInput.hotel ?? "").trim() || (toResidence?.name ?? "")
+  // 個人宅は placeId を持たない。
+  const fromPlaceId = fromResidence ? undefined : (fromInput.placeId ?? "").trim() || undefined
+  const toPlaceId = toResidence ? undefined : (toInput.placeId ?? "").trim() || undefined
 
   // 管理ダッシュボード用メタ情報
   const bookingId = typeof body.bookingId === "string" ? body.bookingId.trim() : ""
@@ -660,9 +728,11 @@ export async function POST(req: NextRequest) {
       from_hotel: fromHotel,
       from_place_id: fromPlaceId ?? null,
       from_check_in: fromCheckIn || null,
+      from_residence: fromResidence,
       to_hotel: toHotel,
       to_place_id: toPlaceId ?? null,
       to_check_out: toCheckOut || null,
+      to_residence: toResidence,
       recipient: (toInput.recipient ?? "").trim(),
       suitcase_count: suitcaseCount,
       amount_yen: suitcaseCount * 5000,
@@ -750,11 +820,15 @@ export async function POST(req: NextRequest) {
   const labelRecipientName = guestForLabel ? `${guestForLabel} 様` : "Front Desk"
   const toRecipientName = guestForLabel ? `${guestForLabel} 様` : (toInput.recipient?.trim() || "Front Desk")
 
-  // Google Places で構造化住所を取得
+  // 住所解決: 個人宅は入力値から直接組み立て、ホテルは Google Places で構造化取得。
   const [fromAddr, toAddr] = await Promise.all([
     // ご依頼主(荷送人) = 旅行者名 様 / 会社=発送元ホテル / TEL=BondEx(集荷連絡先)。取次のため BondEx は荷送人名にしない。
-    resolveYamatoAddress(fromHotel, labelRecipientName, placesKey, true, fromPlaceId, carrier.id),
-    resolveYamatoAddress(toHotel, toRecipientName, placesKey, false, toPlaceId, carrier.id),                          // お届け先: 会社=ホテル / 宛名=宿泊者名
+    fromResidence
+      ? Promise.resolve(buildResidenceAddress(fromResidence, carrier.id))
+      : resolveYamatoAddress(fromHotel, labelRecipientName, placesKey, true, fromPlaceId, carrier.id),
+    toResidence
+      ? Promise.resolve(buildResidenceAddress(toResidence, carrier.id))
+      : resolveYamatoAddress(toHotel, toRecipientName, placesKey, false, toPlaceId, carrier.id),                     // お届け先: 会社=ホテル / 宛名=宿泊者名
   ])
 
   // 解決結果を Vercel ログに残す (再発時の根本特定用) — 全フィールドを出力する
@@ -896,10 +970,12 @@ export async function POST(req: NextRequest) {
       from_city: fromAddr?.city || (fromInput.city ?? "") || null,
       from_place_id: fromPlaceId ?? null,
       from_check_in: fromCheckIn || null,
+      from_residence: fromResidence,
       to_hotel: toHotel,
       to_city: toAddr?.city || (toInput.city ?? "") || null,
       to_place_id: toPlaceId ?? null,
       to_check_out: toCheckOut || null,
+      to_residence: toResidence,
       recipient: (toInput.recipient ?? "").trim(),
       suitcase_count: suitcaseCount,
       amount_yen: suitcaseCount * 5000,

@@ -13,14 +13,22 @@ import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
 import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
+import { EMPTY_RESIDENCE, residenceError, type ResidenceAddress } from "@/lib/residence"
+
+/** 発送元/お届け先の種別。hotel=Google Places 検索 / residence=個人宅の手入力。 */
+type EndpointKind = "hotel" | "residence"
 
 type Leg = {
+  fromKind: EndpointKind
   fromHotel: string
   fromPlaceId: string
   fromCity: string
+  fromResidence: ResidenceAddress
+  toKind: EndpointKind
   toHotel: string
   toPlaceId: string
   toCity: string
+  toResidence: ResidenceAddress
   shipmentDate: string
   expectedArrival: string
   fromCheckIn: string
@@ -33,12 +41,16 @@ type Leg = {
 }
 
 const emptyLeg = (): Leg => ({
+  fromKind: "hotel",
   fromHotel: "",
   fromPlaceId: "",
   fromCity: "",
+  fromResidence: { ...EMPTY_RESIDENCE },
+  toKind: "hotel",
   toHotel: "",
   toPlaceId: "",
   toCity: "",
+  toResidence: { ...EMPTY_RESIDENCE },
   shipmentDate: "",
   expectedArrival: "",
   fromCheckIn: "",
@@ -80,6 +92,30 @@ const messages = {
     fromHotel: "From (hotel / pickup)",
     toHotel: "To (hotel / delivery)",
     hotelSearchPlaceholder: "Type a hotel name (Google Maps)",
+    kindHotel: "Hotel",
+    kindResidence: "Private residence",
+    resName: "Full name",
+    resNamePlaceholder: "Recipient / sender name",
+    resPhone: "Phone",
+    resPhonePlaceholder: "e.g. 090-1234-5678",
+    resZip: "Postal code",
+    resZipPlaceholder: "e.g. 1500001",
+    resPref: "Prefecture",
+    resPrefPlaceholder: "e.g. Tokyo",
+    resCity: "City / ward",
+    resCityPlaceholder: "e.g. Shibuya-ku",
+    resStreet: "Street & number",
+    resStreetPlaceholder: "e.g. Jingumae 1-2-3",
+    resBuilding: "Building / room (optional)",
+    resBuildingPlaceholder: "e.g. Sunny Mansion 305",
+    resFieldLabels: {
+      name: "full name",
+      phone: "phone",
+      zip: "postal code (7 digits)",
+      prefecture: "prefecture",
+      city: "city / ward",
+      street: "street & number",
+    } as Record<string, string>,
     bookingName: "Booking name (on voucher)",
     bookingNamePlaceholder: "Same as representative if blank",
     groupName: "Group name (optional)",
@@ -135,6 +171,9 @@ const messages = {
     errArrivalBeforeShip: (n: number) => `Leg ${n}: the arrival date is before the ship date.`,
     errMissingHotel: (n: number) => `Leg ${n}: both the origin and destination hotel are required.`,
     errMissingCheckIn: (n: number) => `Leg ${n}: the check-in date at the delivery hotel is required (the hotel looks up the booking by name + check-in date).`,
+    errResidence: (n: number, side: string, field: string) => `Leg ${n}: the ${side} (private residence) needs a ${field}.`,
+    sideFrom: "origin",
+    sideTo: "destination",
     rvGuest: "Lead traveler",
     rvTour: "Tour no.",
     rvLang: "Voucher language",
@@ -208,6 +247,30 @@ const messages = {
     fromHotel: "発送元（ホテル・集荷）",
     toHotel: "お届け先（ホテル・配達）",
     hotelSearchPlaceholder: "ホテル名を入力（Google マップ検索）",
+    kindHotel: "ホテル",
+    kindResidence: "個人宅",
+    resName: "氏名",
+    resNamePlaceholder: "受取人・発送人のお名前",
+    resPhone: "電話番号",
+    resPhonePlaceholder: "例: 090-1234-5678",
+    resZip: "郵便番号",
+    resZipPlaceholder: "例: 1500001",
+    resPref: "都道府県",
+    resPrefPlaceholder: "例: 東京都",
+    resCity: "市区町村",
+    resCityPlaceholder: "例: 渋谷区",
+    resStreet: "番地・町名",
+    resStreetPlaceholder: "例: 神宮前1-2-3",
+    resBuilding: "建物名・部屋番号（任意）",
+    resBuildingPlaceholder: "例: サニーマンション305",
+    resFieldLabels: {
+      name: "氏名",
+      phone: "電話番号",
+      zip: "郵便番号（7桁）",
+      prefecture: "都道府県",
+      city: "市区町村",
+      street: "番地・町名",
+    } as Record<string, string>,
     bookingName: "予約者名（バウチャー表示）",
     bookingNamePlaceholder: "空欄なら代表者と同じ",
     groupName: "団体名（任意）",
@@ -262,6 +325,9 @@ const messages = {
     errArrivalBeforeShip: (n: number) => `区間${n}: 到着日が発送日より前になっています。`,
     errMissingHotel: (n: number) => `区間${n}: 発送元・発送先ホテルの両方が必要です。`,
     errMissingCheckIn: (n: number) => `区間${n}: お届け先ホテルのチェックイン日は必須です（受取ホテルが「予約名＋チェックイン日」で照会するため）。`,
+    errResidence: (n: number, side: string, field: string) => `区間${n}: ${side}（個人宅）の${field}をご入力ください。`,
+    sideFrom: "発送元",
+    sideTo: "お届け先",
     rvGuest: "ご予約者",
     rvTour: "ツアー番号",
     rvLang: "バウチャー言語",
@@ -320,6 +386,140 @@ const messages = {
 const inputCls =
   "w-full h-11 rounded-xl border border-[#CBD5E1] px-3 text-[14px] text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#C8102E]/40 focus:border-[#C8102E]"
 
+type Msg = (typeof messages)["ja"]
+
+/** 個人宅の構造化住所フィールド一式。ホテル検索の代わりに表示する。 */
+function ResidenceFields({
+  value,
+  onChange,
+  t,
+  idPrefix,
+}: {
+  value: ResidenceAddress
+  onChange: (patch: Partial<ResidenceAddress>) => void
+  t: Msg
+  idPrefix: string
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-3">
+      <Field label={t.resName} htmlFor={`${idPrefix}-name`} required>
+        <input id={`${idPrefix}-name`} className={inputCls} value={value.name} maxLength={60}
+          placeholder={t.resNamePlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ name: e.target.value })} />
+      </Field>
+      <Field label={t.resPhone} htmlFor={`${idPrefix}-phone`} required>
+        <input id={`${idPrefix}-phone`} className={inputCls} value={value.phone} maxLength={20}
+          inputMode="tel" placeholder={t.resPhonePlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ phone: e.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t.resZip} htmlFor={`${idPrefix}-zip`} required>
+          <input id={`${idPrefix}-zip`} className={inputCls} value={value.zip} maxLength={8}
+            inputMode="numeric" placeholder={t.resZipPlaceholder} autoComplete="off"
+            onChange={(e) => onChange({ zip: e.target.value })} />
+        </Field>
+        <Field label={t.resPref} htmlFor={`${idPrefix}-pref`} required>
+          <input id={`${idPrefix}-pref`} className={inputCls} value={value.prefecture} maxLength={10}
+            placeholder={t.resPrefPlaceholder} autoComplete="off"
+            onChange={(e) => onChange({ prefecture: e.target.value })} />
+        </Field>
+      </div>
+      <Field label={t.resCity} htmlFor={`${idPrefix}-city`} required>
+        <input id={`${idPrefix}-city`} className={inputCls} value={value.city} maxLength={40}
+          placeholder={t.resCityPlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ city: e.target.value })} />
+      </Field>
+      <Field label={t.resStreet} htmlFor={`${idPrefix}-street`} required>
+        <input id={`${idPrefix}-street`} className={inputCls} value={value.street} maxLength={60}
+          placeholder={t.resStreetPlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ street: e.target.value })} />
+      </Field>
+      <Field label={t.resBuilding} htmlFor={`${idPrefix}-bld`}>
+        <input id={`${idPrefix}-bld`} className={inputCls} value={value.building} maxLength={60}
+          placeholder={t.resBuildingPlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ building: e.target.value })} />
+      </Field>
+    </div>
+  )
+}
+
+/** 発送元/お届け先の入力（ホテル検索 ⇄ 個人宅トグル）。 */
+function EndpointField({
+  side,
+  leg,
+  index,
+  t,
+  locale,
+  placesAuthHeaders,
+  update,
+}: {
+  side: "from" | "to"
+  leg: Leg
+  index: number
+  t: Msg
+  locale: "ja" | "en"
+  placesAuthHeaders: () => Promise<Record<string, string>>
+  update: (patch: Partial<Leg>) => void
+}) {
+  const isFrom = side === "from"
+  const kind = isFrom ? leg.fromKind : leg.toKind
+  const sectionLabel = isFrom ? t.fromHotel : t.toHotel
+  const hotelValue = isFrom ? leg.fromHotel : leg.toHotel
+  const placeId = isFrom ? leg.fromPlaceId : leg.toPlaceId
+  const residence = isFrom ? leg.fromResidence : leg.toResidence
+  const setKind = (k: EndpointKind) => update(isFrom ? { fromKind: k } : { toKind: k })
+  const onHotelChange = (v: string) =>
+    update(isFrom ? { fromHotel: v, fromPlaceId: "" } : { toHotel: v, toPlaceId: "" })
+  const onHotelSelect = (c: PlaceCandidate) =>
+    update(
+      isFrom
+        ? { fromHotel: c.name, fromPlaceId: c.placeId, fromCity: c.city }
+        : { toHotel: c.name, toPlaceId: c.placeId, toCity: c.city },
+    )
+  const onResidenceChange = (patch: Partial<ResidenceAddress>) =>
+    update(isFrom ? { fromResidence: { ...residence, ...patch } } : { toResidence: { ...residence, ...patch } })
+
+  const tabBase =
+    "flex-1 h-8 rounded-lg text-[12px] font-medium transition-colors border"
+  const tabOn = "bg-[#C8102E] text-white border-[#C8102E]"
+  const tabOff = "bg-white text-[#64748B] border-[#CBD5E1] hover:bg-[#F1F5F9]"
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-[#334155]">{sectionLabel}</span>
+        <div className="flex gap-1 w-[168px]" role="group" aria-label={sectionLabel}>
+          <button type="button" onClick={() => setKind("hotel")}
+            className={`${tabBase} ${kind === "hotel" ? tabOn : tabOff}`} aria-pressed={kind === "hotel"}>
+            {t.kindHotel}
+          </button>
+          <button type="button" onClick={() => setKind("residence")}
+            className={`${tabBase} ${kind === "residence" ? tabOn : tabOff}`} aria-pressed={kind === "residence"}>
+            {t.kindResidence}
+          </button>
+        </div>
+      </div>
+      {kind === "residence" ? (
+        <ResidenceFields value={residence} onChange={onResidenceChange} t={t} idPrefix={`${side}${index}`} />
+      ) : (
+        <HotelSearchInput
+          inputId={`${side}${index}`}
+          value={hotelValue}
+          placeholder={t.hotelSearchPlaceholder}
+          lang={locale}
+          selectedPlaceId={placeId || undefined}
+          endpoint="/api/agency/places/search"
+          getAuthHeaders={placesAuthHeaders}
+          className="h-11 text-[15px]"
+          ariaLabel={sectionLabel}
+          onChange={onHotelChange}
+          onSelect={onHotelSelect}
+        />
+      )}
+    </div>
+  )
+}
+
 /** ローカル(日本)日付の YYYY-MM-DD。過去日チェックに使う。 */
 function todayYmd(): string {
   const d = new Date()
@@ -338,16 +538,33 @@ function validateLegs(
     errArrivalBeforeShip: (n: number) => string
     errMissingHotel: (n: number) => string
     errMissingCheckIn: (n: number) => string
+    errResidence: (n: number, side: string, field: string) => string
+    resFieldLabels: Record<string, string>
+    sideFrom: string
+    sideTo: string
   },
 ): string[] {
   const today = todayYmd()
   const errs: string[] = []
   legs.forEach((leg, i) => {
     const n = i + 1
-    if (!leg.fromHotel.trim() || !leg.toHotel.trim()) errs.push(m.errMissingHotel(n))
-    // お届け先ホテルのチェックイン日は必須 (受取ホテルが予約名+チェックイン日で照合するため)。
-    // 早期配達もあるため発送日との前後は縛らない。
-    if (!leg.fromCheckIn) errs.push(m.errMissingCheckIn(n))
+    // 発送元: ホテルはホテル名必須 / 個人宅は構造化住所を検証
+    if (leg.fromKind === "residence") {
+      const e = residenceError(leg.fromResidence)
+      if (e) errs.push(m.errResidence(n, m.sideFrom, m.resFieldLabels[e]))
+    } else if (!leg.fromHotel.trim()) {
+      errs.push(m.errMissingHotel(n))
+    }
+    // お届け先: 同上
+    if (leg.toKind === "residence") {
+      const e = residenceError(leg.toResidence)
+      if (e) errs.push(m.errResidence(n, m.sideTo, m.resFieldLabels[e]))
+    } else if (!leg.toHotel.trim()) {
+      errs.push(m.errMissingHotel(n))
+    }
+    // お届け先ホテルのチェックイン日は「予約名+チェックイン日」でホテルが照合するため必須。
+    // 個人宅は照合が無いので不要。早期配達もあるため発送日との前後は縛らない。
+    if (leg.toKind !== "residence" && !leg.fromCheckIn) errs.push(m.errMissingCheckIn(n))
     if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
     if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
       errs.push(m.errArrivalBeforeShip(n))
@@ -475,12 +692,17 @@ export default function AgencyNewBookingPage() {
       if (tc >= 1) setTravelerCount(tc)
       setLegs(
         ships.map((s) => ({
+          // 旅程表はホテル前提。個人宅は手動でトグルして入力する。
+          fromKind: "hotel" as const,
           fromHotel: s.from?.hotel || "",
           fromPlaceId: "", // AI 解析では placeId は付かない → 必要なら候補から選び直す
           fromCity: s.from?.city || "",
+          fromResidence: { ...EMPTY_RESIDENCE },
+          toKind: "hotel" as const,
           toHotel: s.to?.hotel || "",
           toPlaceId: "",
           toCity: s.to?.city || "",
+          toResidence: { ...EMPTY_RESIDENCE },
           shipmentDate: ymd(s.shipmentDate),
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
           // お届け先ホテルのチェックイン日(お客様の到着日)/チェックアウト日:
@@ -834,11 +1056,25 @@ export default function AgencyNewBookingPage() {
               <ReviewRow label={t.rvLang} value={(GUEST_LANGS.find(([c]) => c === guestLanguage)?.[1]) || guestLanguage} />
             </div>
             <div className="space-y-3 pt-1">
-              {legs.map((leg, i) => (
+              {legs.map((leg, i) => {
+                const fromLabel = leg.fromKind === "residence"
+                  ? `${leg.fromResidence.name}（${t.kindResidence}）`
+                  : leg.fromHotel
+                const toLabel = leg.toKind === "residence"
+                  ? `${leg.toResidence.name}（${t.kindResidence}）`
+                  : leg.toHotel
+                const resLine = (r: ResidenceAddress) => {
+                  const zip = r.zip ? `〒${r.zip} ` : ""
+                  const bld = r.building ? ` ${r.building}` : ""
+                  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+                }
+                return (
                 <div key={i} className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4">
                   <p className="text-[12px] font-bold text-[#334155] mb-2">{t.rvLeg} {i + 1}</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
-                    <ReviewRow label={t.rvRoute} value={`${leg.fromHotel} → ${leg.toHotel}`} span />
+                    <ReviewRow label={t.rvRoute} value={`${fromLabel} → ${toLabel}`} span />
+                    {leg.fromKind === "residence" ? <ReviewRow label={t.fromHotel} value={resLine(leg.fromResidence)} span /> : null}
+                    {leg.toKind === "residence" ? <ReviewRow label={t.toHotel} value={resLine(leg.toResidence)} span /> : null}
                     <ReviewRow label={t.rvShip} value={leg.shipmentDate} />
                     <ReviewRow label={t.rvArrive} value={leg.expectedArrival} />
                     <ReviewRow label={t.rvBags} value={String(leg.suitcaseCount)} />
@@ -846,7 +1082,8 @@ export default function AgencyNewBookingPage() {
                     {leg.notes ? <ReviewRow label={t.rvNote} value={leg.notes} span /> : null}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
@@ -1062,41 +1299,13 @@ export default function AgencyNewBookingPage() {
                   </button>
                 )}
               </div>
+              <div className="grid md:grid-cols-2 gap-4 items-start">
+                <EndpointField side="from" leg={leg} index={i} t={t} locale={locale}
+                  placesAuthHeaders={placesAuthHeaders} update={(patch) => updateLeg(i, patch)} />
+                <EndpointField side="to" leg={leg} index={i} t={t} locale={locale}
+                  placesAuthHeaders={placesAuthHeaders} update={(patch) => updateLeg(i, patch)} />
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
-                <Field label={t.fromHotel} htmlFor={`from${i}`} required>
-                  <HotelSearchInput
-                    inputId={`from${i}`}
-                    value={leg.fromHotel}
-                    placeholder={t.hotelSearchPlaceholder}
-                    lang={locale}
-                    selectedPlaceId={leg.fromPlaceId || undefined}
-                    endpoint="/api/agency/places/search"
-                    getAuthHeaders={placesAuthHeaders}
-                    className="h-11 text-[15px]"
-                    ariaLabel={t.fromHotel}
-                    onChange={(v) => updateLeg(i, { fromHotel: v, fromPlaceId: "" })}
-                    onSelect={(c: PlaceCandidate) =>
-                      updateLeg(i, { fromHotel: c.name, fromPlaceId: c.placeId, fromCity: c.city })
-                    }
-                  />
-                </Field>
-                <Field label={t.toHotel} htmlFor={`to${i}`} required>
-                  <HotelSearchInput
-                    inputId={`to${i}`}
-                    value={leg.toHotel}
-                    placeholder={t.hotelSearchPlaceholder}
-                    lang={locale}
-                    selectedPlaceId={leg.toPlaceId || undefined}
-                    endpoint="/api/agency/places/search"
-                    getAuthHeaders={placesAuthHeaders}
-                    className="h-11 text-[15px]"
-                    ariaLabel={t.toHotel}
-                    onChange={(v) => updateLeg(i, { toHotel: v, toPlaceId: "" })}
-                    onSelect={(c: PlaceCandidate) =>
-                      updateLeg(i, { toHotel: c.name, toPlaceId: c.placeId, toCity: c.city })
-                    }
-                  />
-                </Field>
                 <Field label={t.shipmentDate} htmlFor={`sd${i}`} required>
                   <input id={`sd${i}`} type="date" className={inputCls} value={leg.shipmentDate}
                     onChange={(e) => updateLeg(i, { shipmentDate: e.target.value })} required />
@@ -1114,16 +1323,20 @@ export default function AgencyNewBookingPage() {
                 </Field>
                 {/* お届け先ホテルのチェックイン日 (=お客様の到着日)。受取ホテルが「予約名+
                     チェックイン日」で照合するため必須。早期配達を希望する人もいるので発送日
-                    との前後関係は縛らない (2026-07 谷口さん指示)。 */}
-                <Field label={t.fromCheckIn} htmlFor={`ci${i}`} required>
-                  <input id={`ci${i}`} type="date" className={inputCls} value={leg.fromCheckIn}
-                    onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} required />
-                </Field>
-                <Field label={t.toCheckOut} htmlFor={`co${i}`}>
-                  <input id={`co${i}`} type="date" className={inputCls} value={leg.toCheckOut}
-                    min={leg.expectedArrival || undefined}
-                    onChange={(e) => updateLeg(i, { toCheckOut: e.target.value })} />
-                </Field>
+                    との前後関係は縛らない (2026-07 谷口さん指示)。個人宅はホテル照合が無いので非表示。 */}
+                {leg.toKind !== "residence" && (
+                  <>
+                    <Field label={t.fromCheckIn} htmlFor={`ci${i}`} required>
+                      <input id={`ci${i}`} type="date" className={inputCls} value={leg.fromCheckIn}
+                        onChange={(e) => updateLeg(i, { fromCheckIn: e.target.value })} required />
+                    </Field>
+                    <Field label={t.toCheckOut} htmlFor={`co${i}`}>
+                      <input id={`co${i}`} type="date" className={inputCls} value={leg.toCheckOut}
+                        min={leg.expectedArrival || undefined}
+                        onChange={(e) => updateLeg(i, { toCheckOut: e.target.value })} />
+                    </Field>
+                  </>
+                )}
               </div>
               <div className="space-y-1.5">
                 <label htmlFor={`dt${i}`} className="text-[12px] font-medium text-[#334155]">

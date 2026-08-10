@@ -11,6 +11,7 @@ import {
   normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
+import { cleanResidence } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -32,8 +33,10 @@ export const maxDuration = 60
 interface PreviewLeg {
   fromHotel?: unknown
   fromCity?: unknown
+  fromResidence?: unknown
   toHotel?: unknown
   toCity?: unknown
+  toResidence?: unknown
   shipmentDate?: unknown
   expectedArrival?: unknown
   fromCheckIn?: unknown
@@ -45,6 +48,15 @@ interface PreviewLeg {
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "")
+
+/** 個人宅住所を1行に整形（バウチャー住所欄）。ホテルなら空。 */
+function previewResidenceLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  const bld = r.building ? ` ${r.building}` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
 
 export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "agency-voucher-preview")
@@ -139,8 +151,8 @@ export async function POST(req: NextRequest) {
     shipments: rawLegs.map((l) => ({
       shipmentDate: str(l.shipmentDate),
       expectedArrival: str(l.expectedArrival) || str(l.shipmentDate),
-      from: { hotel: str(l.fromHotel), address: "", city: str(l.fromCity) },
-      to: { hotel: str(l.toHotel), address: "", city: str(l.toCity) },
+      from: { hotel: str(l.fromHotel), address: previewResidenceLine(l.fromResidence), city: str(l.fromCity) },
+      to: { hotel: str(l.toHotel), address: previewResidenceLine(l.toResidence), city: str(l.toCity) },
       recipient: str(l.recipient) || str(l.toHotel),
       suitcaseCount: Math.max(1, Math.floor(Number(l.suitcaseCount) || 1)),
       bookingName: str(body.bookingName) || undefined,

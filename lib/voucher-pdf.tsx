@@ -945,6 +945,7 @@ function VoucherPage({
           </View>
           <Text style={vs.legHotelEn}>{fromHotelGuest}</Text>
           {fromHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(fromHotelGuestJa)}</Text> : null}
+          {shipment.from.address ? <Text style={vs.legHotelSub}>{jb(shipment.from.address)}</Text> : null}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
@@ -965,6 +966,7 @@ function VoucherPage({
           </View>
           <Text style={vs.legHotelEn}>{toHotelGuest}</Text>
           {toHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(toHotelGuestJa)}</Text> : null}
+          {shipment.to.address ? <Text style={vs.legHotelSub}>{jb(shipment.to.address)}</Text> : null}
           <View style={vs.legWhen}>
             <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
             <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
