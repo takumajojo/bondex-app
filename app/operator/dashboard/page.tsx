@@ -335,6 +335,9 @@ export default function DashboardPage() {
           ))}
         </section>
 
+        {/* Ship&co 接続状況 (本番化=SHIPANDCO_LIVE の前チェック) */}
+        <ShipandcoStatusCard />
+
         {/* Contract generator */}
         <section className="rounded-2xl border border-border bg-white p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -981,5 +984,126 @@ function DeleteBookingModal({
         </div>
       </div>
     </div>
+  )
+}
+
+// ── Ship&co 接続状況カード (本番化=SHIPANDCO_LIVE の前チェック・読み取り専用) ──
+type CarrierRow = { id: string; type: string; name: string; state: string }
+
+const CARRIER_LABEL = (type: string): string => {
+  if (type === "sagawa") return "佐川急便"
+  if (type.startsWith("yamato")) return "ヤマト運輸"
+  return type || "不明"
+}
+
+function ShipandcoStatusCard() {
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState("")
+  const [carriers, setCarriers] = useState<CarrierRow[]>([])
+  const [liveSwitch, setLiveSwitch] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr("")
+    try {
+      const res = await fetch("/api/operator/shipandco-carriers", { cache: "no-store" })
+      const d = (await res.json().catch(() => ({}))) as {
+        ok?: boolean; error?: string; liveSwitch?: boolean; carriers?: CarrierRow[]
+      }
+      if (!res.ok || !d.ok) {
+        setErr(d.error || `HTTP ${res.status}`)
+        return
+      }
+      setCarriers(Array.isArray(d.carriers) ? d.carriers : [])
+      setLiveSwitch(!!d.liveSwitch)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "取得に失敗しました")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const sagawa = carriers.find((c) => c.type === "sagawa")
+
+  return (
+    <section className="rounded-2xl border border-border bg-white p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <Package className="w-4 h-4 text-foreground" strokeWidth={1.5} />
+          <h3 className="text-sm font-medium text-foreground">Ship&amp;co 接続状況</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} strokeWidth={1.5} />
+          再確認
+        </button>
+      </div>
+
+      {/* 発行モード (SHIPANDCO_LIVE) */}
+      <div
+        className={`mb-3 rounded-lg px-3 py-2 text-[12px] font-medium ${
+          liveSwitch ? "bg-red-50 text-red-800 border border-red-200" : "bg-slate-100 text-slate-700"
+        }`}
+      >
+        {liveSwitch
+          ? "発行モード: 本番（実ラベル・実集荷・課金あり）"
+          : "発行モード: テスト（SAMPLE 透かし・集荷/課金なし）"}
+      </div>
+
+      {loading && (
+        <p className="text-[12px] text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+          確認中…
+        </p>
+      )}
+
+      {!loading && err && (
+        <p className="text-[12px] text-amber-700 flex items-start gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={1.6} />
+          確認できませんでした（{err}）
+        </p>
+      )}
+
+      {!loading && !err && (
+        <>
+          {carriers.length === 0 ? (
+            <p className="text-[12px] text-amber-700">配送業者が接続されていません。</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {carriers.map((c) => (
+                <li key={c.id || c.type} className="flex items-center justify-between text-[12px]">
+                  <span className="text-foreground">
+                    {CARRIER_LABEL(c.type)}
+                    {c.name ? <span className="text-muted-foreground">（{c.name}）</span> : null}
+                  </span>
+                  <span
+                    className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      c.state === "disabled"
+                        ? "bg-slate-200 text-slate-600"
+                        : "bg-emerald-100 text-emerald-800"
+                    }`}
+                  >
+                    {c.state === "disabled" ? "無効" : "有効"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+            佐川が「有効」なら、その実契約に対して発行されます。SAMPLE 透かしは発行モードが
+            テストのときだけ付きます。本番化は Vercel の環境変数 SHIPANDCO_LIVE=true で切り替えます
+            （切替後は実集荷・課金が発生します）。
+            {sagawa && sagawa.state !== "disabled" ? "" : " ※佐川が「有効」で表示されていることをご確認ください。"}
+          </p>
+        </>
+      )}
+    </section>
   )
 }
