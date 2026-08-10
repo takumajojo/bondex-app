@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo, Fragment, type FormEvent, type ReactNode } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment, type FormEvent, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { HotelSearchInput, type PlaceCandidate } from "@/components/hotel-search-input"
@@ -108,6 +108,8 @@ const messages = {
     resStreetPlaceholder: "e.g. Jingumae 1-2-3",
     resBuilding: "Building / room (optional)",
     resBuildingPlaceholder: "e.g. Sunny Mansion 305",
+    zipLoading: "Looking up the address…",
+    zipNotFound: "No address found for this postal code — please enter it manually.",
     resFieldLabels: {
       name: "full name",
       phone: "phone",
@@ -263,6 +265,8 @@ const messages = {
     resStreetPlaceholder: "例: 神宮前1-2-3",
     resBuilding: "建物名・部屋番号（任意）",
     resBuildingPlaceholder: "例: サニーマンション305",
+    zipLoading: "住所を検索中…",
+    zipNotFound: "該当する郵便番号が見つかりません。手入力してください。",
     resFieldLabels: {
       name: "氏名",
       phone: "電話番号",
@@ -392,14 +396,65 @@ type Msg = (typeof messages)["ja"]
 function ResidenceFields({
   value,
   onChange,
+  getAuthHeaders,
   t,
   idPrefix,
 }: {
   value: ResidenceAddress
   onChange: (patch: Partial<ResidenceAddress>) => void
+  getAuthHeaders: () => Promise<Record<string, string>>
   t: Msg
   idPrefix: string
 }) {
+  const [zipLoading, setZipLoading] = useState(false)
+  const [zipNotFound, setZipNotFound] = useState(false)
+  // 直近で検索した7桁を覚え、同じ番号で二重に叩かない。
+  const lastLookedUp = useRef("")
+
+  // 郵便番号 → 都道府県/市区町村を自動補完 (町域は番地欄が空のときだけ先頭に入れる)。
+  const lookupPostal = useCallback(
+    async (zip7: string, currentStreet: string) => {
+      if (lastLookedUp.current === zip7) return
+      lastLookedUp.current = zip7
+      setZipNotFound(false)
+      setZipLoading(true)
+      try {
+        const headers = await getAuthHeaders()
+        const res = await fetch(`/api/agency/postal?zip=${zip7}`, { headers })
+        const d = (await res.json().catch(() => ({}))) as {
+          ok?: boolean; found?: boolean; prefecture?: string; city?: string; town?: string
+        }
+        if (res.ok && d.ok && d.found) {
+          const patch: Partial<ResidenceAddress> = {
+            prefecture: d.prefecture || "",
+            city: d.city || "",
+          }
+          // 番地欄が空なら町域(例: 神宮前)を初期値に入れておく。既入力は尊重して上書きしない。
+          if (!currentStreet.trim() && d.town) patch.street = d.town
+          onChange(patch)
+        } else if (res.ok && d.ok && d.found === false) {
+          setZipNotFound(true)
+        }
+      } catch {
+        /* ネットワーク失敗時は手入力継続 (エラーは出さない) */
+      } finally {
+        setZipLoading(false)
+      }
+    },
+    [getAuthHeaders, onChange],
+  )
+
+  const onZipChange = (raw: string) => {
+    onChange({ zip: raw })
+    const digits = raw.replace(/[^\d]/g, "")
+    if (digits.length === 7) {
+      void lookupPostal(digits, value.street)
+    } else {
+      lastLookedUp.current = ""
+      setZipNotFound(false)
+    }
+  }
+
   return (
     <div className="space-y-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-3">
       <Field label={t.resName} htmlFor={`${idPrefix}-name`} required>
@@ -416,7 +471,9 @@ function ResidenceFields({
         <Field label={t.resZip} htmlFor={`${idPrefix}-zip`} required>
           <input id={`${idPrefix}-zip`} className={inputCls} value={value.zip} maxLength={8}
             inputMode="numeric" placeholder={t.resZipPlaceholder} autoComplete="off"
-            onChange={(e) => onChange({ zip: e.target.value })} />
+            onChange={(e) => onZipChange(e.target.value)} />
+          {zipLoading && <span className="block text-[11px] text-[#64748B] mt-0.5">{t.zipLoading}</span>}
+          {zipNotFound && <span className="block text-[11px] text-amber-700 mt-0.5">{t.zipNotFound}</span>}
         </Field>
         <Field label={t.resPref} htmlFor={`${idPrefix}-pref`} required>
           <input id={`${idPrefix}-pref`} className={inputCls} value={value.prefecture} maxLength={10}
@@ -452,6 +509,7 @@ function EndpointField({
   locale,
   placesAuthHeaders,
   update,
+  patchResidence,
 }: {
   side: "from" | "to"
   leg: Leg
@@ -460,6 +518,7 @@ function EndpointField({
   locale: "ja" | "en"
   placesAuthHeaders: () => Promise<Record<string, string>>
   update: (patch: Partial<Leg>) => void
+  patchResidence: (patch: Partial<ResidenceAddress>) => void
 }) {
   const isFrom = side === "from"
   const kind = isFrom ? leg.fromKind : leg.toKind
@@ -476,8 +535,6 @@ function EndpointField({
         ? { fromHotel: c.name, fromPlaceId: c.placeId, fromCity: c.city }
         : { toHotel: c.name, toPlaceId: c.placeId, toCity: c.city },
     )
-  const onResidenceChange = (patch: Partial<ResidenceAddress>) =>
-    update(isFrom ? { fromResidence: { ...residence, ...patch } } : { toResidence: { ...residence, ...patch } })
 
   const tabBase =
     "flex-1 h-8 rounded-lg text-[12px] font-medium transition-colors border"
@@ -500,7 +557,13 @@ function EndpointField({
         </div>
       </div>
       {kind === "residence" ? (
-        <ResidenceFields value={residence} onChange={onResidenceChange} t={t} idPrefix={`${side}${index}`} />
+        <ResidenceFields
+          value={residence}
+          onChange={patchResidence}
+          getAuthHeaders={placesAuthHeaders}
+          t={t}
+          idPrefix={`${side}${index}`}
+        />
       ) : (
         <HotelSearchInput
           inputId={`${side}${index}`}
@@ -623,6 +686,16 @@ export default function AgencyNewBookingPage() {
 
   const updateLeg = (i: number, patch: Partial<Leg>) =>
     setLegs((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+  // 個人宅住所は関数型で最新状態にマージ (郵便番号の非同期補完が古い state を上書きしないように)。
+  const patchResidence = (i: number, side: "from" | "to", patch: Partial<ResidenceAddress>) =>
+    setLegs((prev) =>
+      prev.map((l, idx) => {
+        if (idx !== i) return l
+        return side === "from"
+          ? { ...l, fromResidence: { ...l.fromResidence, ...patch } }
+          : { ...l, toResidence: { ...l.toResidence, ...patch } }
+      }),
+    )
   const addLeg = () => setLegs((prev) => [...prev, emptyLeg()])
   const removeLeg = (i: number) => setLegs((prev) => prev.filter((_, idx) => idx !== i))
 
@@ -1301,9 +1374,11 @@ export default function AgencyNewBookingPage() {
               </div>
               <div className="grid md:grid-cols-2 gap-4 items-start">
                 <EndpointField side="from" leg={leg} index={i} t={t} locale={locale}
-                  placesAuthHeaders={placesAuthHeaders} update={(patch) => updateLeg(i, patch)} />
+                  placesAuthHeaders={placesAuthHeaders} update={(patch) => updateLeg(i, patch)}
+                  patchResidence={(patch) => patchResidence(i, "from", patch)} />
                 <EndpointField side="to" leg={leg} index={i} t={t} locale={locale}
-                  placesAuthHeaders={placesAuthHeaders} update={(patch) => updateLeg(i, patch)} />
+                  placesAuthHeaders={placesAuthHeaders} update={(patch) => updateLeg(i, patch)}
+                  patchResidence={(patch) => patchResidence(i, "to", patch)} />
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label={t.shipmentDate} htmlFor={`sd${i}`} required>
