@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { PDFDocument } from "pdf-lib"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
+import { carrierFileLabel } from "@/lib/utils"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await sb
     .from("shipments")
-    .select("leg_index, yamato_label_url, status")
+    .select("leg_index, yamato_label_url, status, carrier")
     .eq("booking_id", bookingId)
     .neq("status", "cancelled")
     .order("leg_index", { ascending: true })
@@ -65,11 +66,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "送り状の取得に失敗しました" }, { status: 502 })
     }
     const bytes = await merged.save()
+    // ファイル名は区間のキャリアを反映 (混在時は先頭区間のキャリア。既定=佐川)。
+    const carrierName = carrierFileLabel((data ?? [])[0]?.carrier as string | undefined)
     return new NextResponse(new Uint8Array(bytes) as unknown as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="BondEx_${bookingId}_Yamato_Labels.pdf"`,
+        "Content-Disposition": `attachment; filename="BondEx_${bookingId}_${carrierName}_Labels.pdf"`,
         "Cache-Control": "no-store",
       },
     })

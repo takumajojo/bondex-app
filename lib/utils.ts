@@ -26,13 +26,18 @@ export function buildVoucherFileName(info: {
   bookingId: string
   tourNumber?: string
   representativeLabel: string
-  kind?: 'voucher' | 'ops'
+  kind?: 'voucher' | 'ops' | 'label'
 }): string {
   const parts = ['BondEx']
   if (info.tourNumber) parts.push(slugifyForFileName(info.tourNumber))
   parts.push(info.bookingId)
   const rep = slugifyForFileName(info.representativeLabel)
   if (rep) parts.push(rep)
-  parts.push(info.kind === 'ops' ? 'Ops' : 'Voucher')
+  parts.push(info.kind === 'ops' ? 'Ops' : info.kind === 'label' ? 'Label' : 'Voucher')
   return `${parts.join('_')}.pdf`
+}
+
+/** 送り状ファイル名に使うキャリア表示 (sagawa→Sagawa / yamato→Yamato)。既定は佐川。 */
+export function carrierFileLabel(carrier?: string | null): string {
+  return carrier === 'yamato' ? 'Yamato' : 'Sagawa'
 }

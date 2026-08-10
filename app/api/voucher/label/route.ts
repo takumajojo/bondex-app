@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
-import { buildVoucherFileName } from "@/lib/utils"
+import { buildVoucherFileName, carrierFileLabel } from "@/lib/utils"
+import { getSupabase } from "@/lib/supabase"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -42,13 +43,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "failed to fetch label" }, { status: 502 })
   }
 
+  // ファイル名にはこの区間の実際のキャリア (佐川/ヤマト) を反映する。DB から引けなければ
+  // 既定 (佐川) にフォールバック。leg は "L1" 形式なので leg_index=番号-1 に変換して照合。
+  let carrier: string | null = null
+  try {
+    const legIndex = /^L(\d+)$/i.exec(legLabel)?.[1]
+    const sb = getSupabase()
+    if (sb && legIndex) {
+      const { data } = await sb
+        .from("shipments")
+        .select("carrier")
+        .eq("booking_id", bookingId)
+        .eq("leg_index", Number(legIndex) - 1)
+        .maybeSingle()
+      carrier = (data?.carrier as string | undefined) ?? null
+    }
+  } catch {
+    /* 取得失敗時は既定(佐川)にフォールバック */
+  }
+  const carrierName = carrierFileLabel(carrier)
+
   const baseName = buildVoucherFileName({
     bookingId,
     tourNumber,
     representativeLabel,
-    kind: "voucher",
+    kind: "label",
   }).replace(/\.pdf$/, "")
-  const fileName = legLabel ? `${baseName}_${legLabel}_Yamato.pdf` : `${baseName}_Yamato.pdf`
+  const fileName = legLabel ? `${baseName}_${legLabel}_${carrierName}.pdf` : `${baseName}_${carrierName}.pdf`
 
   return new NextResponse(upstream.body, {
     status: 200,
