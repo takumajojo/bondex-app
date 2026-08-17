@@ -85,7 +85,7 @@ export default function InquiriesPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs text-muted-foreground">BondEx 運営</p>
             <h1 className="text-xl font-semibold text-foreground mt-0.5 flex items-center gap-2">
@@ -116,7 +116,7 @@ export default function InquiriesPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <label className="flex items-center gap-2 text-sm text-muted-foreground mb-5 cursor-pointer select-none">
           <input
             type="checkbox"

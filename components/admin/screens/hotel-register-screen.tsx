@@ -102,7 +102,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
   const isValid = form.name && form.postalCode && form.prefecture && form.city && form.street && form.phone && form.contactName && form.contactEmail
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 sm:p-8 max-w-3xl">
       {}
       <div className="flex items-center gap-4 mb-8">
         <button
@@ -129,7 +129,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
           onToggle={() => toggleSection("basic")}
         >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Hotel name" required>
                 <input
                   type="text"
@@ -151,7 +151,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
             </div>
 
             {}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField label="Postal code" required>
                 <input
                   type="text"
@@ -183,7 +183,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
                 />
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Street address" required>
                 <input
                   type="text"
@@ -207,7 +207,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
             {}
             <div className="pt-2 border-t border-border">
               <p className="text-xs text-muted-foreground mb-3">Staff contact for operations</p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField label="Contact name" required>
                   <input
                     type="text"
@@ -295,7 +295,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
             </FormField>
 
             {form.pickupMethod === "scheduled" && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="Scheduled pickup time">
                   <input
                     type="time"
@@ -341,7 +341,7 @@ export function HotelRegisterScreen({ onBack }: HotelRegisterScreenProps) {
           onToggle={() => toggleSection("receiving")}
         >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Receiving hours start">
                 <input
                   type="time"

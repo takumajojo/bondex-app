@@ -250,7 +250,7 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
@@ -261,7 +261,7 @@ export default function DashboardPage() {
               <h1 className="text-xl font-semibold text-foreground mt-0.5">案件ダッシュボード</h1>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Link
               href="/operator"
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -301,7 +301,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         {!configured ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
             <p className="text-sm font-medium text-amber-900 mb-2">
@@ -504,7 +504,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[960px] text-sm">
                 <thead className="bg-muted/50 text-xs uppercase tracking-widest text-muted-foreground">
                   <tr>
                     <th className="text-left p-3 font-medium">発行日</th>
@@ -1370,7 +1370,7 @@ function AgencyStatusCard() {
 
       {!loading && !err && rows.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
+          <table className="w-full min-w-[720px] text-[12px]">
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border">
                 <th className="py-2 pr-3 font-medium">代理店</th>

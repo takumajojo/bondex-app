@@ -74,7 +74,7 @@ export function DashboardOverview({ onSelectOrder, onViewPaymentFailures, onView
       </div>
 
       {}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <button
           onClick={() => onViewOrders("action_required")}
           className="p-4 rounded-lg bg-card border border-border text-left hover:border-foreground/30 hover:shadow-sm transition-all group"
@@ -132,7 +132,8 @@ export function DashboardOverview({ onSelectOrder, onViewPaymentFailures, onView
           </Button>
         </div>
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Order</th>
@@ -163,6 +164,7 @@ export function DashboardOverview({ onSelectOrder, onViewPaymentFailures, onView
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -179,7 +181,8 @@ export function DashboardOverview({ onSelectOrder, onViewPaymentFailures, onView
           </Button>
         </div>
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px]">
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Order</th>
@@ -213,6 +216,7 @@ export function DashboardOverview({ onSelectOrder, onViewPaymentFailures, onView
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>

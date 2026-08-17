@@ -530,16 +530,16 @@ export default function ChangelogPage() {
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {}
         <div className="p-4 rounded-lg bg-muted/50 border border-border">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Latest version</p>
               <p className="font-semibold text-lg">v{latestVersion.version}</p>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <p className="text-sm text-muted-foreground">Total versions</p>
               <p className="font-semibold text-lg">{totalVersions}</p>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <p className="text-sm text-muted-foreground">Last updated</p>
               <p className="font-semibold">{latestVersion.date} {latestVersion.time}</p>
             </div>

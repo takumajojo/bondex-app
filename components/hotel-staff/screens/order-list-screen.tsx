@@ -152,12 +152,12 @@ export function OrderListScreen({ onSelectOrder, onScanOrder, onLogout }: OrderL
     <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full">
       {}
       <header className="p-4 border-b border-border bg-card">
-        <div className="flex items-center justify-between mb-1">
-          <div>
-            <h1 className="font-semibold text-lg text-foreground">{t("header.title")}</h1>
-            <p className="text-sm text-muted-foreground">Park Hyatt Tokyo - Shinjuku</p>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <div className="min-w-0">
+            <h1 className="font-semibold text-lg text-foreground truncate">{t("header.title")}</h1>
+            <p className="text-sm text-muted-foreground truncate">Park Hyatt Tokyo - Shinjuku</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <LanguageSwitcher />
             <button onClick={onLogout} className="p-2 rounded-lg hover:bg-muted transition-colors" aria-label={t("header.logout")}>
               <LogOut className="w-5 h-5 text-muted-foreground" />
