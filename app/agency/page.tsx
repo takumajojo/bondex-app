@@ -391,20 +391,20 @@ export default function AgencyDashboard() {
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
-            <div className="border-l border-border pl-4">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
+            <img src="/bondex-logo.png" alt="BondEx" className="h-9 sm:h-10 w-auto object-contain shrink-0" />
+            <div className="border-l border-border pl-3 sm:pl-4 min-w-0">
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium hidden sm:block">
                 {t.portal}
               </p>
-              <h1 className="text-xl font-semibold text-foreground mt-0.5">
+              <h1 className="text-base sm:text-xl font-semibold text-foreground sm:mt-0.5 truncate">
                 {agencyName || t.defaultTitle}
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             {!error && !noAgency && agencyStatus === "active" && contractStatus === "signed" && (
               <Link
                 href="/agency/new"
@@ -443,16 +443,17 @@ export default function AgencyDashboard() {
             )}
             <button
               onClick={onLogout}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              title={t.signOut}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground shrink-0"
             >
               <LogOut className="w-4 h-4" strokeWidth={1.5} />
-              {t.signOut}
+              <span className="hidden sm:inline">{t.signOut}</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         {!error && !noAgency && agencyStatus === "active" && contractStatus !== "signed" && (
           <div className="rounded-xl border border-[#C8102E]/30 bg-[#C8102E]/5 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -547,7 +548,7 @@ export default function AgencyDashboard() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[820px] text-sm">
                 <thead className="bg-muted/50 text-xs uppercase tracking-widest text-muted-foreground">
                   <tr>
                     <th className="text-left p-3 font-medium">{t.th.issuedDate}</th>

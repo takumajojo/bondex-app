@@ -124,11 +124,16 @@ function mapTrackingStatus(raw: string): ShipmentStatus | null {
     return "in_transit"
   }
 
-  // -- 集荷・発送済み系 (ヤマト語彙: 荷物受付 / 発送済み) --
+  // -- 集荷・発送済み系 --
+  //   ヤマト語彙: 荷物受付 / 発送済み
+  //   佐川語彙: 集荷 (Ship&co は佐川の集荷を英語 "collected" で返す) —
+  //   これが未対応だと佐川便が発行済のまま進まないため必ず含める。
   if (
     s.includes("picked_up") ||
     s.includes("picked up") ||
     s.includes("pickup_complete") ||
+    s.includes("collected") ||
+    s.includes("集荷") ||
     s.includes("荷物受付") ||
     s.includes("発送済")
   ) {
