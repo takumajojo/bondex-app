@@ -72,8 +72,9 @@ const messages = {
       "You've selected card payment. Registering a card in advance saves you from entering it at each issuance (payment is finalized at pickup).",
     emptyState: "No shipments yet",
     waybill: "Waybill",
-    waybillPrint: "Print label (A5)",
-    waybillPrintTitle: "Opens the A5 print page (the print dialog opens with A5 preset).",
+    waybillDlTitle: "Download the label PDF (A5). Print at actual size (100%).",
+    waybillPrint: "A5 print",
+    waybillPrintTitle: "Opens the A5 print page (Chrome/Edge open the dialog with A5 preset).",
     voucher: "Voucher",
     invoice: "Invoice / Receipt",
     driveFolder: "Folder",
@@ -130,8 +131,9 @@ const messages = {
       "カード払いをご選択いただいています。事前にカードをご登録いただくと、発行のたびに入力する必要がなくなります（決済は集荷完了時に確定します）。",
     emptyState: "案件がまだありません",
     waybill: "送り状",
-    waybillPrint: "送り状をA5印刷",
-    waybillPrintTitle: "A5印刷ページを開きます（印刷ダイアログがA5で開きます）。",
+    waybillDlTitle: "送り状PDF（A5）をダウンロード。印刷は実際のサイズ(100%)推奨。",
+    waybillPrint: "A5印刷",
+    waybillPrintTitle: "A5印刷ページを開きます（Chrome/Edgeは印刷ダイアログがA5で開きます）。",
     voucher: "バウチャー",
     invoice: "請求書/領収書",
     driveFolder: "フォルダ",
@@ -192,6 +194,7 @@ export default function AgencyDashboard() {
   const [cardOnFile, setCardOnFile] = useState<boolean>(false)
   const [cardDismissed, setCardDismissed] = useState<boolean>(false)
   const [voucherBusy, setVoucherBusy] = useState<string | null>(null) // booking_id being fetched
+  const [labelBusy, setLabelBusy] = useState<string | null>(null) // shipment id being fetched (送り状DL)
   const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null) // shipment_id being fetched
   const [dlError, setDlError] = useState("")
 
@@ -292,6 +295,40 @@ export default function AgencyDashboard() {
       setDlError(messages[locale].dlError)
     } finally {
       setVoucherBusy(null)
+    }
+  }, [locale])
+
+  // 送り状(A5 PDF)を自社限定エンドポイントから DL。全ブラウザ/プリンターで確実な主導線。
+  // ファイル名は API 側で旅程番号込みに整形される。
+  const downloadLabel = useCallback(async (bookingId: string, legIndex: number) => {
+    setDlError("")
+    const key = `${bookingId}-${legIndex}`
+    setLabelBusy(key)
+    try {
+      const sb = getBrowserSupabase()
+      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+      if (!token) { setDlError(messages[locale].dlError); return }
+      const res = await fetch(
+        `/api/agency/label?booking_id=${encodeURIComponent(bookingId)}&leg_index=${legIndex}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      if (!res.ok) { setDlError(messages[locale].dlError); return }
+      const blob = await res.blob()
+      const cd = res.headers.get("Content-Disposition") || ""
+      const m = cd.match(/filename="?([^"]+)"?/)
+      const fileName = m?.[1] || `BondEx_${bookingId}_L${legIndex + 1}_Label.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setDlError(messages[locale].dlError)
+    } finally {
+      setLabelBusy(null)
     }
   }, [locale])
 
@@ -604,17 +641,34 @@ export default function AgencyDashboard() {
                             {voucherBusy === it.booking_id ? t.downloading : t.voucher}
                           </button>
                           {it.yamato_label_url && (
-                            <a
-                              href={`/agency/print-label?booking_id=${encodeURIComponent(it.booking_id)}&leg_index=${it.leg_index}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26]"
-                              title={t.waybillPrintTitle}
-                            >
-                              <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              {t.waybillPrint}
-                              <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
-                            </a>
+                            <div className="inline-flex items-center gap-3">
+                              {/* 主導線: 送り状PDF(A5)をDL。全ブラウザ/プリンターで確実。印刷は実寸(100%)推奨。 */}
+                              <button
+                                type="button"
+                                onClick={() => downloadLabel(it.booking_id, it.leg_index)}
+                                disabled={labelBusy === `${it.booking_id}-${it.leg_index}`}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26] disabled:opacity-50"
+                                title={t.waybillDlTitle}
+                              >
+                                {labelBusy === `${it.booking_id}-${it.leg_index}` ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                                ) : (
+                                  <Receipt className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                )}
+                                {t.waybill}
+                              </button>
+                              {/* 補助: Chrome/Edge向け A5自動印刷 */}
+                              <a
+                                href={`/agency/print-label?booking_id=${encodeURIComponent(it.booking_id)}&leg_index=${it.leg_index}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                                title={t.waybillPrintTitle}
+                              >
+                                <Printer className="w-3 h-3" strokeWidth={1.5} />
+                                {t.waybillPrint}
+                              </a>
+                            </div>
                           )}
                           {/* カード決済済みなら請求書 兼 領収書を DL 可能 */}
                           {it.charged_at && (
