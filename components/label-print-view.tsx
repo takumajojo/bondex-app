@@ -75,13 +75,20 @@ export function LabelPrintView({
     return () => { cancelled = true }
   }, [bytes, fetchError, fetchLoading])
 
+  // 2ページ目対策の共通リセット:
+  //  - min-h-screen(100vh) は Safari の print で画面高になり空白の2ページ目を生む → lp-root を height:auto に
+  //  - html/body overflow:hidden で、丸め誤差やヘッダ/フッタによるはみ出しを2ページ目にせず1枚に収める
+  const sharedPrintReset = `
+    html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; background: #fff !important; }
+    .lp-root { min-height: 0 !important; height: auto !important; background: #fff !important; }
+    .no-print { display: none !important; }
+  `
   // Safari は縦A5に90°回転で全面 / それ以外は横A5にそのまま全面
   const printCss = isSafari
     ? `
       @page { size: A5 portrait; margin: 0; }
       @media print {
-        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-        .no-print { display: none !important; }
+        ${sharedPrintReset}
         .label-stage { margin: 0; padding: 0; width: 148mm; height: 210mm; position: relative; overflow: hidden; }
         .label-canvas {
           position: absolute; top: 50%; left: 50%;
@@ -94,14 +101,13 @@ export function LabelPrintView({
     : `
       @page { size: A5 landscape; margin: 0; }
       @media print {
-        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-        .no-print { display: none !important; }
+        ${sharedPrintReset}
         .label-stage { margin: 0; padding: 0; }
         .label-canvas { display: block; width: 100%; height: auto; max-height: 100vh; box-shadow: none; }
       }`
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="lp-root min-h-screen bg-slate-100">
       <style>{`
         .label-canvas { display: block; }
         @media screen {
@@ -130,7 +136,7 @@ export function LabelPrintView({
         {state === "loading" && "送り状を準備中…（少し待つと印刷ダイアログが開きます）"}
         {state === "ready" && (
           isSafari
-            ? "印刷ダイアログが開きます。用紙を「A5」にしてそのまま印刷してください（1枚・全面に収まります。Safariでは紙が縦向きで出ますが送り状は原寸です）。"
+            ? "印刷ダイアログが開きます。用紙「A5」を選び、Safariの項目「ヘッダとフッタをプリント」のチェックを外すと、1枚・全面できれいに出ます（Safariでは紙は縦向き・送り状は原寸で回転します）。"
             : "印刷ダイアログが開きます。用紙が「A5・横」になっているのを確認して印刷してください（1枚・全面）。"
         )}
         {state === "error" && (
