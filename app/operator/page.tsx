@@ -20,6 +20,7 @@ import {
   Languages,
   FileText,
   Download,
+  Printer,
   Settings,
   X,
   Clock,
@@ -125,6 +126,7 @@ const messages = {
     generationFailed: "Document generation failed",
     yamatoLabelsHeading: "Shipping labels",
     labelPrintHint: "Labels are A5 (landscape). Print on A5 paper, landscape, at 100% / actual size — turn off “fit to page”.",
+    labelPrintA5: "Print (A5)",
     yamatoLegLabel: (n: number) => `Leg ${n}`,
     yamatoTracking: "Tracking",
     yamatoLabelFailed: "Label issuance failed",
@@ -289,6 +291,7 @@ const messages = {
     generationFailed: "書類の生成に失敗しました",
     yamatoLabelsHeading: "配送伝票",
     labelPrintHint: "送り状は A5・横向き です。印刷は「用紙サイズ=A5／向き=横／倍率=100%（実寸）」で。「用紙に合わせる」はOFFにしてください。",
+    labelPrintA5: "A5で印刷",
     yamatoLegLabel: (n: number) => `区間 ${n}`,
     yamatoTracking: "追跡番号",
     yamatoLabelFailed: "送り状発行に失敗",
@@ -2877,21 +2880,36 @@ function GeneratedView({
                       </span>
                     </p>
                     {y.labelUrl && (
-                      <a
-                        href={`/api/voucher/label?${new URLSearchParams({
-                          url: y.labelUrl,
-                          bookingId: docs.bookingId,
-                          ...(docs.tourNumber ? { tourNumber: docs.tourNumber } : {}),
-                          representative: docs.representativeLabel,
-                          leg: `L${y.legIndex + 1}`,
-                        }).toString()}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-foreground/80 underline underline-offset-2 mt-2"
-                      >
-                        <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
-                        {t.download}
-                      </a>
+                      <div className="flex items-center gap-4 mt-2">
+                        <a
+                          href={`/operator/print-label?${new URLSearchParams({
+                            url: y.labelUrl,
+                            bookingId: docs.bookingId,
+                            leg: `L${y.legIndex + 1}`,
+                          }).toString()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26] underline underline-offset-2"
+                        >
+                          <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          {t.labelPrintA5}
+                        </a>
+                        <a
+                          href={`/api/voucher/label?${new URLSearchParams({
+                            url: y.labelUrl,
+                            bookingId: docs.bookingId,
+                            ...(docs.tourNumber ? { tourNumber: docs.tourNumber } : {}),
+                            representative: docs.representativeLabel,
+                            leg: `L${y.legIndex + 1}`,
+                          }).toString()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-foreground/80 underline underline-offset-2"
+                        >
+                          <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          {t.download}
+                        </a>
+                      </div>
                     )}
                   </>
                 ) : y.status === "deferred" ? (
