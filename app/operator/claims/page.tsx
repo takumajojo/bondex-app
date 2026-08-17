@@ -172,7 +172,7 @@ export default function ClaimsPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
@@ -196,7 +196,7 @@ export default function ClaimsPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         {/* Status summary */}
         <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {(Object.keys(STATUS_META) as ClaimStatus[]).map((st) => (

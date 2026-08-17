@@ -165,7 +165,8 @@ export function OrderListAdminScreen({ onSelectOrder, onBack, initialFilter = "a
       {}
       {filteredOrders.length > 0 ? (
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Order</th>
@@ -212,6 +213,7 @@ export function OrderListAdminScreen({ onSelectOrder, onBack, initialFilter = "a
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div className="rounded-lg border border-border bg-card p-12 text-center">

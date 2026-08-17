@@ -229,17 +229,17 @@ export default async function TrackPage({
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-border">
-        <div className="max-w-3xl mx-auto px-6 py-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-12 w-auto object-contain" />
-            <div className="border-l border-border pl-4">
+            <img src="/bondex-logo.png" alt="BondEx" className="h-12 w-auto object-contain shrink-0" />
+            <div className="border-l border-border pl-3 sm:pl-4 min-w-0">
               <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">{tr.title}</p>
-              <h1 className="text-lg font-semibold text-foreground mt-0.5">{data.bookingId}</h1>
+              <h1 className="text-lg font-semibold text-foreground mt-0.5 truncate">{data.bookingId}</h1>
             </div>
           </div>
           {/* 言語切替 */}
-          <div className="flex flex-wrap gap-1 justify-end">
+          <div className="flex flex-wrap gap-1 justify-end shrink-0">
             {LANGS.map((l) => (
               <a
                 key={l}
@@ -253,7 +253,7 @@ export default async function TrackPage({
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         <div className="rounded-2xl border border-border bg-white p-6">
           <p className="text-sm text-muted-foreground leading-relaxed">{tr.intro}</p>
         </div>
@@ -328,9 +328,9 @@ export default async function TrackPage({
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{tr.recipient}: {leg.recipient}</span>
-                  <span>{tr.updated}: {new Date(leg.updatedAt).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", { dateStyle: "medium", timeStyle: "short" })}</span>
+                <div className="pt-4 border-t border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span className="min-w-0 truncate">{tr.recipient}: {leg.recipient}</span>
+                  <span className="shrink-0">{tr.updated}: {new Date(leg.updatedAt).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", { dateStyle: "medium", timeStyle: "short" })}</span>
                 </div>
               </div>
             </section>

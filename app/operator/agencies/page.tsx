@@ -87,7 +87,7 @@ export default function OperatorAgenciesPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-8 w-auto object-contain" />
@@ -107,7 +107,7 @@ export default function OperatorAgenciesPage() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-5">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-5">
         {error && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>
         )}
@@ -127,7 +127,7 @@ export default function OperatorAgenciesPage() {
             <div className="p-16 text-center text-sm text-muted-foreground">代理店がまだありません</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-muted/50 text-xs uppercase tracking-widest text-muted-foreground">
                   <tr>
                     <th className="text-left p-3 font-medium">代理店</th>

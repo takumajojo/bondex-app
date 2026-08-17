@@ -988,7 +988,7 @@ export default function AgencyNewBookingPage() {
 
   if (status === "done" && result) {
     return (
-      <main className="min-h-screen bg-slate-50 px-6 py-10">
+      <main className="min-h-screen bg-slate-50 px-4 sm:px-6 py-10">
         <div className="w-full max-w-2xl mx-auto space-y-5">
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
@@ -1113,7 +1113,7 @@ export default function AgencyNewBookingPage() {
   // ── ステップ2: 確認(プレビュー)。ここでは発行しない。戻る=入力へ / 発行=完了へ ──
   if (step === "confirm") {
     return (
-      <main className="min-h-screen bg-slate-50 px-6 py-8">
+      <main className="min-h-screen bg-slate-50 px-4 sm:px-6 py-8">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <button
@@ -1261,7 +1261,7 @@ export default function AgencyNewBookingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8">
+    <main className="min-h-screen bg-slate-50 px-4 sm:px-6 py-8">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <Link

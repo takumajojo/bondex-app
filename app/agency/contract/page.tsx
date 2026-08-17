@@ -194,7 +194,7 @@ export default function AgencyContractPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground">BondEx 代理店</p>
             <h1 className="text-xl font-semibold text-foreground mt-0.5">業務委託契約書</h1>
@@ -206,7 +206,7 @@ export default function AgencyContractPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-6 py-8">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         {loading ? (
           <div className="flex items-center justify-center gap-2 text-muted-foreground py-20">
             <Loader2 className="w-5 h-5 animate-spin" /> 読み込み中…

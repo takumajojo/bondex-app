@@ -745,7 +745,7 @@ export default function RequirementsPage() {
               <h1 className="font-semibold">Requirements Document</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
             <span>v{requirements.version}</span>
             <span>|</span>
             <span>Updated: {requirements.lastUpdated}</span>
@@ -1064,7 +1064,7 @@ export default function RequirementsPage() {
         {}
         <Section title="9.5 写真ポリシー">
           <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-3 border border-border rounded-lg">
                 <h4 className="font-medium mb-2">ゲスト撮影（Traveler）</h4>
                 <ul className="space-y-1 text-muted-foreground">
