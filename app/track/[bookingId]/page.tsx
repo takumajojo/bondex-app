@@ -192,17 +192,17 @@ export default async function TrackPage({
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-border">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between gap-4">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-12 w-auto object-contain shrink-0" />
+            <img src="/bondex-logo.png" alt="BondEx" className="h-10 sm:h-12 w-auto object-contain shrink-0" />
             <div className="border-l border-border pl-3 sm:pl-4 min-w-0">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">{tr.title}</p>
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium truncate">{tr.title}</p>
               <h1 className="text-lg font-semibold text-foreground mt-0.5 truncate">{data.bookingId}</h1>
             </div>
           </div>
-          {/* 言語切替 */}
-          <div className="flex flex-wrap gap-1 justify-end shrink-0">
+          {/* 言語切替: スマホは下段に全幅・左寄せ、sm以上は右寄せ */}
+          <div className="flex flex-wrap gap-1 justify-start sm:justify-end w-full sm:w-auto sm:shrink-0">
             {LANGS.map((l) => (
               <a
                 key={l}
