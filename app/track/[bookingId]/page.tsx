@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
+import { TrackingStepper, carrierTrackUrl } from "@/components/tracking-stepper"
 
 interface TrackingNumberStatus {
   number: string
@@ -155,44 +156,6 @@ function carrierName(carrier: string, lang: Lang): string {
   const c = CARRIER_NAME[carrier] ?? CARRIER_NAME.sagawa
   return lang === "ja" ? c.ja : c.en
 }
-function carrierTrackUrl(carrier: string, num: string): string {
-  return carrier === "yamato"
-    ? `https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init=on&number00=1&number01=${num}`
-    : `https://k2k.sagawa-exp.co.jp/p/web/okurijoinput.do?okurijoNo=${num}`
-}
-
-const PIECE_KEYS = ["issued", "picked_up", "in_transit", "delivered"]
-
-function TrackingStepper({ status, steps }: { status: string | null; steps: [string, string, string, string] }) {
-  const idx = PIECE_KEYS.findIndex((s) => s === status)
-  const activeIndex = idx === -1 ? 0 : idx
-  return (
-    <div>
-      <div className="flex items-center">
-        {steps.map((_, i) => (
-          <div key={i} className="flex items-center flex-1 last:flex-none">
-            <div className={`w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center ${i <= activeIndex ? "bg-emerald-500 border-emerald-500" : "bg-white border-border"}`}>
-              {i <= activeIndex && (
-                <svg viewBox="0 0 10 10" className="w-2 h-2" fill="none">
-                  <path d="M2 5.2 L4.2 7.4 L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </div>
-            {i < steps.length - 1 && <div className={`flex-1 h-0.5 mx-0.5 ${i < activeIndex ? "bg-emerald-500" : "bg-border"}`} />}
-          </div>
-        ))}
-      </div>
-      <div className="flex mt-1">
-        {steps.map((label, i) => (
-          <p key={i} className={`flex-1 text-[9px] leading-tight ${i === 0 ? "text-left" : i === steps.length - 1 ? "text-right" : "text-center"} ${i === activeIndex ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-            {label}
-          </p>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 async function fetchTrack(bookingId: string): Promise<TrackData | null> {
   const h = await headers()
   const host = h.get("host") || "localhost:3000"
