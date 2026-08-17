@@ -53,12 +53,13 @@ export async function GET(req: NextRequest) {
 
   const autosend = process.env.INVOICE_AUTOSEND === "true"
 
-  // 対象代理店: 請求書払い & 稼働中
+  // 対象代理店: 請求書払い & 稼働中。テスト代理店 (billing_exempt) は請求しない。
   const { data: agencies, error } = await sb
     .from("agencies")
     .select("name, contact_email, payment_method, status")
     .eq("payment_method", "invoice")
     .eq("status", "active")
+    .neq("billing_exempt", true)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

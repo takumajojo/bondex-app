@@ -70,11 +70,17 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
     // 代理店の決済情報を引く
     const { data: agency } = await sb
       .from("agencies")
-      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id")
+      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt")
       .eq("name", shipment.agency)
       .maybeSingle()
 
     if (!agency) return { charged: false, skipped: true, reason: "agency_not_found" }
+
+    // テスト代理店 (billing_exempt) は、どんなに配送手配しても一切課金しない (谷口さん指示)。
+    // カード登録は可能だが、集荷完了しても課金処理をスキップする。
+    if (agency.billing_exempt) {
+      return { charged: false, skipped: true, reason: "billing_exempt" }
+    }
 
     // 請求書払いの代理店は月次請求書で請求 — カード課金しない
     if (agency.payment_method !== "card") {
