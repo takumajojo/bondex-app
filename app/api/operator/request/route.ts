@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, status, representative, booking_name, group_name, traveler_count, tour_number, carrier, guest_language, shipment_date, expected_arrival, delivery_time, from_hotel, from_city, from_place_id, from_check_in, from_residence, to_hotel, to_city, to_place_id, to_check_out, to_residence, recipient, suitcase_count, notes",
+      "booking_id, leg_index, agency, status, representative, booking_name, group_name, traveler_count, tour_number, carrier, guest_language, shipment_date, expected_arrival, delivery_time, from_hotel, from_city, from_place_id, from_check_in, from_residence, to_hotel, to_city, to_place_id, to_check_out, to_residence, recipient, suitcase_count, item_type, notes",
     )
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })

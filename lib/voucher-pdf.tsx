@@ -1122,7 +1122,7 @@ function VoucherPage({
           />
           <Text style={vs.hdNote}>
             <Text style={vs.hdNoteStrong}>{formatJpDate(shipment.expectedArrival)}</Text>
-            {jb(" にスーツケースが届きます。")}
+            {jb(" にお荷物が届きます。")}
             <Text style={vs.hdNoteStrong}>{jb("到着済み荷物")}</Text>
             {jb("としてお預かりのうえ、チェックイン時にお客様へお渡しください。")}
           </Text>

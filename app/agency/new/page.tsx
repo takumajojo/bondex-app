@@ -14,6 +14,7 @@ import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
 import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
 import { EMPTY_RESIDENCE, residenceError, type ResidenceAddress } from "@/lib/residence"
+import { ITEM_TYPES, type ItemTypeKey } from "@/lib/item-types"
 
 /** 発送元/お届け先の種別。hotel=Google Places 検索 / residence=個人宅の手入力。 */
 type EndpointKind = "hotel" | "residence"
@@ -36,6 +37,8 @@ type Leg = {
   deliveryTime: string
   recipient: string
   suitcaseCount: number
+  itemType: ItemTypeKey
+  itemOther: string
   notes: string
   noteTarget: "from" | "to" | "both"
 }
@@ -58,6 +61,8 @@ const emptyLeg = (): Leg => ({
   deliveryTime: "before-noon", // 既定は午前中着 (ランオペの基本希望)。翌日着×午前中はタイト警告を出す
   recipient: "",
   suitcaseCount: 1,
+  itemType: "suitcase", // 既定はスーツケース (従来どおり)
+  itemOther: "",
   notes: "",
   noteTarget: "to", // 既定はお届け先ホテル宛
 })
@@ -145,7 +150,11 @@ const messages = {
     expectedArrival: "Arrival date",
     recipient: "Recipient (optional)",
     recipientPlaceholder: "Defaults to the delivery hotel front desk",
-    suitcases: "Suitcases",
+    suitcases: "Pieces",
+    itemLabel: "Item type",
+    itemOtherLabel: "Describe the item",
+    itemOtherPlaceholder: "e.g. Musical instrument",
+    rvItem: "Item",
     notes: "Message to the hotel (optional)",
     noteTargetLabel: "Show on",
     noteTargetTo: "Delivery hotel",
@@ -176,6 +185,7 @@ const messages = {
     errResidence: (n: number, side: string, field: string) => `Leg ${n}: the ${side} (private residence) needs a ${field}.`,
     sideFrom: "origin",
     sideTo: "destination",
+    errItemOther: (n: number) => `Leg ${n}: please describe the item (you chose "Other").`,
     rvGuest: "Lead traveler",
     rvTour: "Tour no.",
     rvLang: "Voucher language",
@@ -303,6 +313,10 @@ const messages = {
     recipient: "受取人（任意）",
     recipientPlaceholder: "未入力ならお届け先ホテルのフロント宛",
     suitcases: "個数",
+    itemLabel: "品目",
+    itemOtherLabel: "品目（自由記述）",
+    itemOtherPlaceholder: "例: 楽器",
+    rvItem: "品目",
     notes: "ホテルへの申し送り（任意）",
     noteTargetLabel: "掲載先",
     noteTargetTo: "お届け先ホテル",
@@ -332,6 +346,7 @@ const messages = {
     errResidence: (n: number, side: string, field: string) => `区間${n}: ${side}（個人宅）の${field}をご入力ください。`,
     sideFrom: "発送元",
     sideTo: "お届け先",
+    errItemOther: (n: number) => `区間${n}: 品目で「その他」を選んだ場合は内容をご入力ください。`,
     rvGuest: "ご予約者",
     rvTour: "ツアー番号",
     rvLang: "バウチャー言語",
@@ -605,6 +620,7 @@ function validateLegs(
     resFieldLabels: Record<string, string>
     sideFrom: string
     sideTo: string
+    errItemOther: (n: number) => string
   },
 ): string[] {
   const today = todayYmd()
@@ -628,6 +644,7 @@ function validateLegs(
     // お届け先ホテルのチェックイン日は「予約名+チェックイン日」でホテルが照合するため必須。
     // 個人宅は照合が無いので不要。早期配達もあるため発送日との前後は縛らない。
     if (leg.toKind !== "residence" && !leg.fromCheckIn) errs.push(m.errMissingCheckIn(n))
+    if (leg.itemType === "other" && !leg.itemOther.trim()) errs.push(m.errItemOther(n))
     if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
     if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
       errs.push(m.errArrivalBeforeShip(n))
@@ -785,6 +802,8 @@ export default function AgencyNewBookingPage() {
           deliveryTime: "before-noon",
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
+          itemType: "suitcase" as const, // 旅程表からは判別不可 → 既定スーツケース。必要なら手動変更
+          itemOther: "",
           notes: "",
           noteTarget: "to" as const,
         })),
@@ -1141,6 +1160,10 @@ export default function AgencyNewBookingPage() {
                   const bld = r.building ? ` ${r.building}` : ""
                   return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
                 }
+                const itemDef = ITEM_TYPES.find((x) => x.key === leg.itemType)
+                const itemLabel = leg.itemType === "other"
+                  ? (leg.itemOther.trim() || (locale === "ja" ? "その他" : "Other"))
+                  : (itemDef ? (locale === "ja" ? itemDef.ja : itemDef.en) : leg.itemType)
                 return (
                 <div key={i} className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4">
                   <p className="text-[12px] font-bold text-[#334155] mb-2">{t.rvLeg} {i + 1}</p>
@@ -1150,6 +1173,7 @@ export default function AgencyNewBookingPage() {
                     {leg.toKind === "residence" ? <ReviewRow label={t.toHotel} value={resLine(leg.toResidence)} span /> : null}
                     <ReviewRow label={t.rvShip} value={leg.shipmentDate} />
                     <ReviewRow label={t.rvArrive} value={leg.expectedArrival} />
+                    <ReviewRow label={t.rvItem} value={itemLabel} />
                     <ReviewRow label={t.rvBags} value={String(leg.suitcaseCount)} />
                     <ReviewRow label={t.rvSlot} value={slotLabel(leg.deliveryTime, locale)} />
                     {leg.notes ? <ReviewRow label={t.rvNote} value={leg.notes} span /> : null}
@@ -1390,6 +1414,22 @@ export default function AgencyNewBookingPage() {
                     min={leg.shipmentDate || undefined}
                     onChange={(e) => updateLeg(i, { expectedArrival: e.target.value })} required />
                 </Field>
+                {/* 品目 (送り状の品名に反映)。既定スーツケース。その他は自由記述。 */}
+                <Field label={t.itemLabel} htmlFor={`it${i}`}>
+                  <select id={`it${i}`} className={inputCls} value={leg.itemType}
+                    onChange={(e) => updateLeg(i, { itemType: e.target.value as ItemTypeKey })}>
+                    {ITEM_TYPES.map((it) => (
+                      <option key={it.key} value={it.key}>{locale === "ja" ? it.ja : it.en}</option>
+                    ))}
+                  </select>
+                </Field>
+                {leg.itemType === "other" && (
+                  <Field label={t.itemOtherLabel} htmlFor={`io${i}`} required>
+                    <input id={`io${i}`} className={inputCls} value={leg.itemOther} maxLength={20}
+                      placeholder={t.itemOtherPlaceholder} autoComplete="off"
+                      onChange={(e) => updateLeg(i, { itemOther: e.target.value })} required />
+                  </Field>
+                )}
                 <Field label={t.suitcases} htmlFor={`sc${i}`} required>
                   <input id={`sc${i}`} type="number" min={1} max={50} className={inputCls}
                     value={leg.suitcaseCount}

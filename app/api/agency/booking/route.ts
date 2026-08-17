@@ -7,6 +7,7 @@ import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
 import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
+import { itemProductName } from "@/lib/item-types"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -47,6 +48,7 @@ interface LegInput {
   deliveryTime: string
   recipient: string
   suitcaseCount: number
+  itemType: string
   notes: string
   noteTarget: string
 }
@@ -59,6 +61,14 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   const recipient = s(o.recipient)
   const notes = s(o.notes)
   const suitcaseCount = Math.floor(Number(o.suitcaseCount))
+
+  // 品目 → 送り状の品名(日本語)を解決。その他は自由記述必須。
+  const itemTypeKey = s(o.itemType) || "suitcase"
+  const itemOther = s(o.itemOther)
+  if (itemTypeKey === "other" && !itemOther) {
+    return { error: "品目で「その他」を選んだ場合は内容をご入力ください。" }
+  }
+  const itemType = itemProductName(itemTypeKey, itemOther)
 
   // 個人宅（ホテル以外）の判定と検証。kind='residence' のとき構造化住所を必須項目チェック。
   const fromKind = o.fromKind === "residence" ? "residence" : "hotel"
@@ -107,6 +117,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     deliveryTime,
     recipient,
     suitcaseCount,
+    itemType,
     notes,
     noteTarget,
   }
@@ -195,6 +206,7 @@ export async function POST(req: NextRequest) {
       to_residence: leg.toResidence,
       recipient: leg.recipient || leg.toHotel,
       suitcase_count: leg.suitcaseCount,
+      item_type: leg.itemType,
       amount_yen: 0, // 依頼段階では未確定
       status: "requested",
       notes: leg.notes || null,
@@ -251,6 +263,7 @@ export async function POST(req: NextRequest) {
           deliveryDate: leg.expectedArrival,
           deliveryTime: leg.deliveryTime || "before-noon",
           suitcaseCount: leg.suitcaseCount,
+          productName: leg.itemType,
           from: { hotel: leg.fromHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.fromPlaceId, city: leg.fromCity, residence: leg.fromResidence },
           to: { hotel: leg.toHotel, recipient: leg.recipient || leg.toHotel, placeId: leg.toPlaceId, city: leg.toCity, residence: leg.toResidence },
           agency: agencyName,

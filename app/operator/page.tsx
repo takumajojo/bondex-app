@@ -518,12 +518,15 @@ interface RequestRow {
   to_residence: unknown
   recipient: string | null
   suitcase_count: number | null
+  item_type: string | null
   notes: string | null
 }
 
 // 編集可能な State: パース結果に suitcaseCount + 備考 + 予約者情報など
 interface EditableShipment extends ParsedShipment {
   suitcaseCount: number
+  /** 送り状の品名 (DBの item_type。再発行時に productName として渡す)。 */
+  productName?: string
   specialNote: string
   /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon)。 */
   deliveryTime?: string
@@ -757,6 +760,7 @@ export default function OperatorPage() {
           },
           recipient: r.recipient ?? "",
           suitcaseCount: r.suitcase_count ?? 1,
+          productName: r.item_type ?? undefined,
           specialNote: r.notes ?? "",
           deliveryTime: r.delivery_time ?? undefined,
           bookingName: r.booking_name ?? undefined,
@@ -1038,6 +1042,7 @@ export default function OperatorPage() {
             deliveryDate: s.expectedArrival,
             deliveryTime: s.deliveryTime || "before-noon",
             suitcaseCount: s.suitcaseCount,
+            productName: s.productName || "",
             from: {
               hotel: s.from.hotel,
               recipient: s.recipient,

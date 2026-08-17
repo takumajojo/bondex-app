@@ -44,6 +44,8 @@ export interface ShipmentRecord {
   to_residence: ResidenceAddress | null
   recipient: string
   suitcase_count: number
+  /** 送り状の品名 (解決済み日本語。null/空=スーツケース扱い)。 */
+  item_type: string | null
   amount_yen: number
   yamato_tracking: string[] | null
   yamato_label_url: string | null
@@ -126,6 +128,7 @@ export async function saveShipment(
     to_residence: input.to_residence ?? null,
     recipient: input.recipient ?? "",
     suitcase_count: input.suitcase_count ?? 1,
+    item_type: input.item_type ?? null,
     amount_yen: input.amount_yen ?? 0,
     yamato_tracking: input.yamato_tracking ?? null,
     yamato_label_url: input.yamato_label_url ?? null,
