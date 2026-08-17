@@ -20,6 +20,7 @@ import {
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
+import { TrackingStepper, carrierTrackUrl, TRACK_STEPS } from "@/components/tracking-stepper"
 
 interface Shipment {
   id: string
@@ -40,6 +41,7 @@ interface Shipment {
   yamato_tracking: string[] | null
   yamato_label_url: string | null
   status: string
+  carrier: string | null
   charged_at: string | null
   created_at: string
 }
@@ -601,7 +603,15 @@ export default function AgencyDashboard() {
                       <td className="p-3 text-right tabular-nums">{it.suitcase_count}</td>
                       <td className="p-3">
                         {it.yamato_tracking && it.yamato_tracking.length > 0 ? (
-                          <span className="text-[11px] font-mono">{it.yamato_tracking[0]}</span>
+                          <a
+                            href={carrierTrackUrl(it.carrier ?? "sagawa", it.yamato_tracking[0])}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-mono text-[#C8102E] hover:underline"
+                          >
+                            {it.yamato_tracking[0]}
+                            <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
+                          </a>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -610,6 +620,15 @@ export default function AgencyDashboard() {
                         <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${STATUS_META[it.status]?.cls || "bg-zinc-100"}`}>
                           {t.status[it.status] || it.status}
                         </span>
+                        {(TRACK_STEPS as readonly string[]).includes(it.status) && (
+                          <div className="mt-2 w-44 max-w-full">
+                            <TrackingStepper
+                              status={it.status}
+                              steps={[t.status.issued, t.status.picked_up, t.status.in_transit, t.status.delivered] as [string, string, string, string]}
+                              compact
+                            />
+                          </div>
+                        )}
                       </td>
                       <td className="p-3">
                         <div className="flex flex-col items-start gap-1.5">

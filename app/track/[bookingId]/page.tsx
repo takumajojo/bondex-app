@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
+import { TrackingStepper, carrierTrackUrl } from "@/components/tracking-stepper"
 
 interface TrackingNumberStatus {
   number: string
@@ -155,44 +156,6 @@ function carrierName(carrier: string, lang: Lang): string {
   const c = CARRIER_NAME[carrier] ?? CARRIER_NAME.sagawa
   return lang === "ja" ? c.ja : c.en
 }
-function carrierTrackUrl(carrier: string, num: string): string {
-  return carrier === "yamato"
-    ? `https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?init=on&number00=1&number01=${num}`
-    : `https://k2k.sagawa-exp.co.jp/p/web/okurijoinput.do?okurijoNo=${num}`
-}
-
-const PIECE_KEYS = ["issued", "picked_up", "in_transit", "delivered"]
-
-function TrackingStepper({ status, steps }: { status: string | null; steps: [string, string, string, string] }) {
-  const idx = PIECE_KEYS.findIndex((s) => s === status)
-  const activeIndex = idx === -1 ? 0 : idx
-  return (
-    <div>
-      <div className="flex items-center">
-        {steps.map((_, i) => (
-          <div key={i} className="flex items-center flex-1 last:flex-none">
-            <div className={`w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center ${i <= activeIndex ? "bg-emerald-500 border-emerald-500" : "bg-white border-border"}`}>
-              {i <= activeIndex && (
-                <svg viewBox="0 0 10 10" className="w-2 h-2" fill="none">
-                  <path d="M2 5.2 L4.2 7.4 L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </div>
-            {i < steps.length - 1 && <div className={`flex-1 h-0.5 mx-0.5 ${i < activeIndex ? "bg-emerald-500" : "bg-border"}`} />}
-          </div>
-        ))}
-      </div>
-      <div className="flex mt-1">
-        {steps.map((label, i) => (
-          <p key={i} className={`flex-1 text-[9px] leading-tight ${i === 0 ? "text-left" : i === steps.length - 1 ? "text-right" : "text-center"} ${i === activeIndex ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-            {label}
-          </p>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 async function fetchTrack(bookingId: string): Promise<TrackData | null> {
   const h = await headers()
   const host = h.get("host") || "localhost:3000"
@@ -229,17 +192,17 @@ export default async function TrackPage({
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-border">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between gap-4">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-12 w-auto object-contain shrink-0" />
+            <img src="/bondex-logo.png" alt="BondEx" className="h-10 sm:h-12 w-auto object-contain shrink-0" />
             <div className="border-l border-border pl-3 sm:pl-4 min-w-0">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">{tr.title}</p>
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium truncate">{tr.title}</p>
               <h1 className="text-lg font-semibold text-foreground mt-0.5 truncate">{data.bookingId}</h1>
             </div>
           </div>
-          {/* 言語切替 */}
-          <div className="flex flex-wrap gap-1 justify-end shrink-0">
+          {/* 言語切替: スマホは下段に全幅・左寄せ、sm以上は右寄せ */}
+          <div className="flex flex-wrap gap-1 justify-start sm:justify-end w-full sm:w-auto sm:shrink-0">
             {LANGS.map((l) => (
               <a
                 key={l}
