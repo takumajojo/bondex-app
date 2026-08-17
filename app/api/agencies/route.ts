@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await sb
       .from("agencies")
-      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, payment_method, status, card_on_file, created_via, created_at")
+      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, payment_method, status, contract_status, card_on_file, billing_exempt, created_via, created_at")
       .order("created_at", { ascending: false })
 
     if (error) {

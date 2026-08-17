@@ -335,6 +335,9 @@ export default function DashboardPage() {
           ))}
         </section>
 
+        {/* 代理店ステータス（承認待ち＝あなたの判断待ちを最上部に） */}
+        <AgencyStatusCard />
+
         {/* Ship&co 接続状況 (本番化=SHIPANDCO_LIVE の前チェック) */}
         <ShipandcoStatusCard />
 
@@ -1228,6 +1231,239 @@ function StripeStatusCard() {
             差し替えて再デプロイ。カードへの実課金はさらに別スイッチ CHARGE_LIVE が必要です。
           </p>
         </>
+      )}
+    </section>
+  )
+}
+
+// ── 代理店ステータスカード（承認待ち＝あなたの判断待ちを最上部に表示・承認/停止も可） ──
+type AgencyRow = {
+  id: string
+  name: string
+  status: string | null
+  contract_status: string | null
+  payment_method: string | null
+  card_on_file: boolean | null
+  billing_exempt: boolean | null
+  contact_email: string | null
+  created_at: string | null
+}
+
+/** 代理店1件の「現在の状況」と「誰の対応待ちか」を返す。 */
+function agencySituation(a: AgencyRow): { label: string; who: string; cls: string; needsMe: boolean } {
+  if (a.status === "suspended") {
+    return { label: "停止中", who: "—", cls: "bg-red-100 text-red-800", needsMe: false }
+  }
+  if (a.status === "pending") {
+    return { label: "承認待ち", who: "あなたの承認待ち", cls: "bg-amber-100 text-amber-800", needsMe: true }
+  }
+  // active
+  if (a.contract_status !== "signed") {
+    return { label: "契約署名待ち", who: "代理店の署名待ち", cls: "bg-sky-100 text-sky-800", needsMe: false }
+  }
+  return { label: "稼働中", who: "対応不要", cls: "bg-emerald-100 text-emerald-800", needsMe: false }
+}
+
+function AgencyStatusCard() {
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState("")
+  const [rows, setRows] = useState<AgencyRow[]>([])
+  const [busyId, setBusyId] = useState("")
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr("")
+    try {
+      const res = await fetch("/api/agencies", { cache: "no-store" })
+      const d = (await res.json().catch(() => ({}))) as { agencies?: AgencyRow[]; error?: string }
+      if (!res.ok) {
+        setErr(d.error || `HTTP ${res.status}`)
+        return
+      }
+      setRows(Array.isArray(d.agencies) ? d.agencies : [])
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "取得に失敗しました")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const setStatus = async (id: string, status: string) => {
+    setBusyId(id)
+    try {
+      const res = await fetch("/api/agencies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      })
+      if (res.ok) {
+        setRows((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
+      } else {
+        const d = (await res.json().catch(() => ({}))) as { error?: string }
+        setErr(d.error || "更新に失敗しました")
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "更新に失敗しました")
+    } finally {
+      setBusyId("")
+    }
+  }
+
+  const pendingCount = rows.filter((a) => a.status === "pending").length
+
+  return (
+    <section className="rounded-2xl border border-border bg-white p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-foreground" strokeWidth={1.5} />
+          <h3 className="text-sm font-medium text-foreground">代理店 ステータス</h3>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/operator/agencies" className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2">
+            代理店管理へ
+          </Link>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} strokeWidth={1.5} />
+            更新
+          </button>
+        </div>
+      </div>
+
+      {/* あなたの判断待ちバナー */}
+      <div
+        className={`mb-3 rounded-lg px-3 py-2 text-[12px] font-medium ${
+          pendingCount > 0
+            ? "bg-amber-50 text-amber-900 border border-amber-300"
+            : "bg-slate-100 text-slate-600"
+        }`}
+      >
+        {pendingCount > 0
+          ? `あなたの承認待ち: ${pendingCount}件（下の「承認」で有効化してください）`
+          : "承認待ちの代理店はありません（判断待ちなし）"}
+      </div>
+
+      {loading && (
+        <p className="text-[12px] text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+          読み込み中…
+        </p>
+      )}
+
+      {!loading && err && (
+        <p className="text-[12px] text-amber-700 flex items-start gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={1.6} />
+          取得できませんでした（{err}）
+        </p>
+      )}
+
+      {!loading && !err && rows.length === 0 && (
+        <p className="text-[12px] text-muted-foreground">代理店がまだありません。</p>
+      )}
+
+      {!loading && !err && rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border">
+                <th className="py-2 pr-3 font-medium">代理店</th>
+                <th className="py-2 pr-3 font-medium">状況</th>
+                <th className="py-2 pr-3 font-medium">対応待ち</th>
+                <th className="py-2 pr-3 font-medium">契約</th>
+                <th className="py-2 pr-3 font-medium">支払い</th>
+                <th className="py-2 pr-0 font-medium text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((a) => {
+                const s = agencySituation(a)
+                const signed = a.contract_status === "signed"
+                return (
+                  <tr key={a.id} className={`border-b border-border/60 ${s.needsMe ? "bg-amber-50/40" : ""}`}>
+                    <td className="py-2.5 pr-3">
+                      <span className="font-medium text-foreground">{a.name}</span>
+                      {a.billing_exempt && (
+                        <span className="ml-1.5 inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
+                          テスト・非課金
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${s.cls}`}>
+                        {s.label}
+                      </span>
+                    </td>
+                    <td className={`py-2.5 pr-3 ${s.needsMe ? "text-amber-800 font-medium" : "text-muted-foreground"}`}>
+                      {s.who}
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className={signed ? "text-emerald-700" : "text-muted-foreground"}>
+                        {signed ? "署名済" : "未署名"}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-3 text-muted-foreground">
+                      {a.payment_method === "card"
+                        ? `カード（${a.card_on_file ? "登録済" : "未登録"}）`
+                        : "請求書"}
+                    </td>
+                    <td className="py-2.5 pr-0 text-right whitespace-nowrap">
+                      {a.status === "pending" && (
+                        <span className="inline-flex gap-1.5">
+                          <button
+                            type="button"
+                            disabled={busyId === a.id}
+                            onClick={() => void setStatus(a.id, "active")}
+                            className="rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            承認
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === a.id}
+                            onClick={() => void setStatus(a.id, "suspended")}
+                            className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          >
+                            却下
+                          </button>
+                        </span>
+                      )}
+                      {a.status === "active" && (
+                        <button
+                          type="button"
+                          disabled={busyId === a.id}
+                          onClick={() => void setStatus(a.id, "suspended")}
+                          className="rounded-md border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        >
+                          停止
+                        </button>
+                      )}
+                      {a.status === "suspended" && (
+                        <button
+                          type="button"
+                          disabled={busyId === a.id}
+                          onClick={() => void setStatus(a.id, "active")}
+                          className="rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
+                        >
+                          再開
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+            「承認待ち」＝あなたの承認が必要です（承認で有効化）。「契約署名待ち」＝代理店側が契約書に署名するのを待っている状態（あなたの対応は不要）。「稼働中」＝署名まで完了し発行依頼を受けられます。
+          </p>
+        </div>
       )}
     </section>
   )
