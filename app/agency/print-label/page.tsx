@@ -8,9 +8,15 @@ import { useSearchParams } from "next/navigation"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { LabelPrintView } from "@/components/label-print-view"
 
+function filenameFromCD(cd: string | null): string {
+  const m = (cd || "").match(/filename="?([^";]+)"?/)
+  return m?.[1] || ""
+}
+
 function AgencyPrintInner() {
   const sp = useSearchParams()
   const [bytes, setBytes] = useState<Uint8Array | null>(null)
+  const [downloadName, setDownloadName] = useState("")
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
 
@@ -32,8 +38,12 @@ function AgencyPrintInner() {
           { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
         )
         if (!res.ok) throw new Error(`label fetch ${res.status}`)
+        const name = filenameFromCD(res.headers.get("Content-Disposition"))
         const b = new Uint8Array(await res.arrayBuffer())
-        if (!cancelled) setBytes(b)
+        if (!cancelled) {
+          setBytes(b)
+          setDownloadName(name || `BondEx_${bookingId}_L${Number(legIndex) + 1}_Label.pdf`)
+        }
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : "fetch failed")
       } finally {
@@ -44,7 +54,7 @@ function AgencyPrintInner() {
   }, [bookingId, legIndex])
 
   const legNo = legIndex !== "" ? `L${Number(legIndex) + 1}` : ""
-  return <LabelPrintView bytes={bytes} title={`${bookingId}${legNo ? ` ・ ${legNo}` : ""}`} fetchError={err} fetchLoading={loading} />
+  return <LabelPrintView bytes={bytes} title={`${bookingId}${legNo ? ` ・ ${legNo}` : ""}`} downloadName={downloadName} fetchError={err} fetchLoading={loading} />
 }
 
 export default function AgencyPrintLabelPage() {

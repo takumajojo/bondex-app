@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
+import { buildVoucherFileName, carrierFileLabel } from "@/lib/utils"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -35,10 +36,10 @@ export async function GET(req: NextRequest) {
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
 
-  // 自社の予約に限定して送り状URLを引く
+  // 自社の予約に限定して送り状URL＋ファイル名用メタを引く
   const { data, error } = await sb
     .from("shipments")
-    .select("yamato_label_url, agency")
+    .select("yamato_label_url, agency, tour_number, representative, carrier")
     .eq("booking_id", bookingId)
     .eq("leg_index", legIndex)
     .eq("agency", auth.agency.name)
@@ -47,6 +48,16 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const url = data?.yamato_label_url
   if (!url) return NextResponse.json({ error: "送り状がまだありません。" }, { status: 404 })
+
+  // ファイル名: 既存ルール(buildVoucherFileName) + 区間 + キャリア。旅程番号を必ず含める。
+  //   例: BondEx_<旅程番号>_<予約番号>_<代表者>_Label_L1_Sagawa.pdf
+  const base = buildVoucherFileName({
+    bookingId,
+    tourNumber: (data.tour_number as string | null) ?? undefined,
+    representativeLabel: (data.representative as string | null) ?? "",
+    kind: "label",
+  }).replace(/\.pdf$/, "")
+  const fileName = `${base}_L${legIndex + 1}_${carrierFileLabel(data.carrier as string | undefined)}.pdf`
 
   let parsed: URL
   try {
@@ -67,7 +78,8 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": "inline",
+      // inline(印刷ページで表示) だが、DLボタン用にファイル名も入れておく
+      "Content-Disposition": `inline; filename="${fileName}"`,
       "Cache-Control": "no-store",
     },
   })

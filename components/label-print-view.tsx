@@ -18,11 +18,14 @@ import { useEffect, useRef, useState } from "react"
 export function LabelPrintView({
   bytes,
   title,
+  downloadName,
   fetchError,
   fetchLoading,
 }: {
   bytes: Uint8Array | null
   title: string
+  /** ダウンロードボタンのファイル名 (旅程番号込み)。未指定ならDLボタン非表示。 */
+  downloadName?: string
   fetchError?: string
   fetchLoading?: boolean
 }) {
@@ -122,14 +125,35 @@ export function LabelPrintView({
           <span className="font-semibold">送り状 A5印刷</span>
           {title ? <span className="text-slate-500 ml-2">{title}</span> : null}
         </div>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          disabled={state !== "ready"}
-          className="rounded-lg bg-[#C8102E] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#a60d26] disabled:opacity-50"
-        >
-          印刷（A5）
-        </button>
+        <div className="flex items-center gap-2">
+          {downloadName && bytes && state === "ready" && (
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob([bytes as BlobPart], { type: "application/pdf" })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement("a")
+                a.href = url
+                a.download = downloadName
+                document.body.appendChild(a)
+                a.click()
+                a.remove()
+                setTimeout(() => URL.revokeObjectURL(url), 1000)
+              }}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              PDFをダウンロード
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={state !== "ready"}
+            className="rounded-lg bg-[#C8102E] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#a60d26] disabled:opacity-50"
+          >
+            印刷（A5）
+          </button>
+        </div>
       </div>
 
       <div className="no-print px-4 pt-3 text-center text-[12px] text-slate-500">

@@ -43,30 +43,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "failed to fetch label" }, { status: 502 })
   }
 
-  // ファイル名にはこの区間の実際のキャリア (佐川/ヤマト) を反映する。DB から引けなければ
-  // 既定 (佐川) にフォールバック。leg は "L1" 形式なので leg_index=番号-1 に変換して照合。
+  // ファイル名用に、この区間のキャリア・旅程番号・代表者を DB から引く (印刷ページ経由では
+  // クエリに乗らないため)。引けなければクエリ値/既定(佐川)にフォールバック。
+  // leg は "L1" 形式なので leg_index=番号-1 に変換して照合。
   let carrier: string | null = null
+  let dbTour: string | null = null
+  let dbRep: string | null = null
   try {
     const legIndex = /^L(\d+)$/i.exec(legLabel)?.[1]
     const sb = getSupabase()
     if (sb && legIndex) {
       const { data } = await sb
         .from("shipments")
-        .select("carrier")
+        .select("carrier, tour_number, representative")
         .eq("booking_id", bookingId)
         .eq("leg_index", Number(legIndex) - 1)
         .maybeSingle()
       carrier = (data?.carrier as string | undefined) ?? null
+      dbTour = (data?.tour_number as string | undefined) ?? null
+      dbRep = (data?.representative as string | undefined) ?? null
     }
   } catch {
-    /* 取得失敗時は既定(佐川)にフォールバック */
+    /* 取得失敗時はクエリ値/既定にフォールバック */
   }
   const carrierName = carrierFileLabel(carrier)
 
+  // 旅程番号は必ず含める: クエリ優先、無ければ DB 値。
   const baseName = buildVoucherFileName({
     bookingId,
-    tourNumber,
-    representativeLabel,
+    tourNumber: tourNumber || dbTour || undefined,
+    representativeLabel: representativeLabel || dbRep || "",
     kind: "label",
   }).replace(/\.pdf$/, "")
   const fileName = legLabel ? `${baseName}_${legLabel}_${carrierName}.pdf` : `${baseName}_${carrierName}.pdf`

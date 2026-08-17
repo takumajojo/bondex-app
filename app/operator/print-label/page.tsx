@@ -7,9 +7,15 @@ import { LabelPrintView } from "@/components/label-print-view"
 
 const ALLOWED_LABEL_HOST = "storage.googleapis.com"
 
+function filenameFromCD(cd: string | null): string {
+  const m = (cd || "").match(/filename="?([^";]+)"?/)
+  return m?.[1] || ""
+}
+
 function OperatorPrintInner() {
   const sp = useSearchParams()
   const [bytes, setBytes] = useState<Uint8Array | null>(null)
+  const [downloadName, setDownloadName] = useState("")
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
 
@@ -27,8 +33,9 @@ function OperatorPrintInner() {
         const proxy = `/api/voucher/label?url=${encodeURIComponent(url)}&bookingId=${encodeURIComponent(bookingId)}${leg ? `&leg=${encodeURIComponent(leg)}` : ""}`
         const res = await fetch(proxy, { cache: "no-store" })
         if (!res.ok) throw new Error(`label fetch ${res.status}`)
+        const name = filenameFromCD(res.headers.get("Content-Disposition"))
         const b = new Uint8Array(await res.arrayBuffer())
-        if (!cancelled) setBytes(b)
+        if (!cancelled) { setBytes(b); setDownloadName(name || `BondEx_${bookingId}_${leg || "L1"}_Label.pdf`) }
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : "fetch failed")
       } finally {
@@ -38,7 +45,7 @@ function OperatorPrintInner() {
     return () => { cancelled = true }
   }, [url, bookingId, leg])
 
-  return <LabelPrintView bytes={bytes} title={`${bookingId}${leg ? ` ・ ${leg}` : ""}`} fetchError={err} fetchLoading={loading} />
+  return <LabelPrintView bytes={bytes} title={`${bookingId}${leg ? ` ・ ${leg}` : ""}`} downloadName={downloadName} fetchError={err} fetchLoading={loading} />
 }
 
 export default function OperatorPrintLabelPage() {
