@@ -124,6 +124,7 @@ const messages = {
     newBooking: "Start a new booking",
     generationFailed: "Document generation failed",
     yamatoLabelsHeading: "Shipping labels",
+    labelPrintHint: "Labels are A5 (landscape). Print on A5 paper, landscape, at 100% / actual size — turn off “fit to page”.",
     yamatoLegLabel: (n: number) => `Leg ${n}`,
     yamatoTracking: "Tracking",
     yamatoLabelFailed: "Label issuance failed",
@@ -287,6 +288,7 @@ const messages = {
     newBooking: "新しい予約を開始",
     generationFailed: "書類の生成に失敗しました",
     yamatoLabelsHeading: "配送伝票",
+    labelPrintHint: "送り状は A5・横向き です。印刷は「用紙サイズ=A5／向き=横／倍率=100%（実寸）」で。「用紙に合わせる」はOFFにしてください。",
     yamatoLegLabel: (n: number) => `区間 ${n}`,
     yamatoTracking: "追跡番号",
     yamatoLabelFailed: "送り状発行に失敗",
@@ -2850,6 +2852,9 @@ function GeneratedView({
         <section className="space-y-3">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
             {t.yamatoLabelsHeading}
+          </p>
+          <p className="text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 leading-relaxed">
+            🖨 {t.labelPrintHint}
           </p>
           {docs.yamatoLabels.map((y) => (
             <div
