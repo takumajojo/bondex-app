@@ -338,6 +338,9 @@ export default function DashboardPage() {
         {/* Ship&co 接続状況 (本番化=SHIPANDCO_LIVE の前チェック) */}
         <ShipandcoStatusCard />
 
+        {/* Stripe カード登録モード (テスト=実カード拒否 / 本番=実カード可) */}
+        <StripeStatusCard />
+
         {/* Contract generator */}
         <section className="rounded-2xl border border-border bg-white p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -1101,6 +1104,128 @@ function ShipandcoStatusCard() {
             テストのときだけ付きます。本番化は Vercel の環境変数 SHIPANDCO_LIVE=true で切り替えます
             （切替後は実集荷・課金が発生します）。
             {sagawa && sagawa.state !== "disabled" ? "" : " ※佐川が「有効」で表示されていることをご確認ください。"}
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
+
+// ── Stripe カード登録モードカード (テスト=実カード拒否 / 本番=実カード可・読み取り専用) ──
+type StripeMode = "live" | "test" | "unset" | "unknown"
+
+const MODE_JA: Record<StripeMode, string> = {
+  live: "本番（実カード可）",
+  test: "テスト（実カードは拒否）",
+  unset: "未設定",
+  unknown: "不明",
+}
+
+function StripeStatusCard() {
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState("")
+  const [secretMode, setSecretMode] = useState<StripeMode>("unknown")
+  const [publishableMode, setPublishableMode] = useState<StripeMode>("unknown")
+  const [chargeLive, setChargeLive] = useState(false)
+  const [mismatch, setMismatch] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr("")
+    try {
+      const res = await fetch("/api/operator/stripe-status", { cache: "no-store" })
+      const d = (await res.json().catch(() => ({}))) as {
+        ok?: boolean; error?: string; secretMode?: StripeMode; publishableMode?: StripeMode
+        chargeLive?: boolean; mismatch?: boolean
+      }
+      if (!res.ok || !d.ok) {
+        setErr(d.error || `HTTP ${res.status}`)
+        return
+      }
+      setSecretMode(d.secretMode ?? "unknown")
+      setPublishableMode(d.publishableMode ?? "unknown")
+      setChargeLive(!!d.chargeLive)
+      setMismatch(!!d.mismatch)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "取得に失敗しました")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const isLive = secretMode === "live" && publishableMode === "live"
+
+  return (
+    <section className="rounded-2xl border border-border bg-white p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-foreground" strokeWidth={1.5} />
+          <h3 className="text-sm font-medium text-foreground">Stripe カード登録モード</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} strokeWidth={1.5} />
+          再確認
+        </button>
+      </div>
+
+      <div
+        className={`mb-3 rounded-lg px-3 py-2 text-[12px] font-medium ${
+          isLive ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"
+        }`}
+      >
+        {isLive
+          ? "カード登録: 本番（新規代理店の実カードを登録できます）"
+          : "カード登録: テスト（実カードは登録エラーになります）"}
+      </div>
+
+      {loading && (
+        <p className="text-[12px] text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+          確認中…
+        </p>
+      )}
+
+      {!loading && err && (
+        <p className="text-[12px] text-amber-700 flex items-start gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={1.6} />
+          確認できませんでした（{err}）
+        </p>
+      )}
+
+      {!loading && !err && (
+        <>
+          <ul className="space-y-1.5">
+            <li className="flex items-center justify-between text-[12px]">
+              <span className="text-foreground">秘密キー（STRIPE_SECRET_KEY）</span>
+              <span className="text-muted-foreground">{MODE_JA[secretMode]}</span>
+            </li>
+            <li className="flex items-center justify-between text-[12px]">
+              <span className="text-foreground">公開キー（PUBLISHABLE_KEY）</span>
+              <span className="text-muted-foreground">{MODE_JA[publishableMode]}</span>
+            </li>
+            <li className="flex items-center justify-between text-[12px]">
+              <span className="text-foreground">カード自動課金（CHARGE_LIVE）</span>
+              <span className="text-muted-foreground">{chargeLive ? "ON（課金あり）" : "OFF（課金なし）"}</span>
+            </li>
+          </ul>
+          {mismatch && (
+            <p className="text-[11px] text-red-700 mt-2 flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" strokeWidth={1.6} />
+              秘密キーと公開キーのモードが不一致です（両方 test か両方 live に揃えてください）。
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+            カード登録の可否は Stripe キーの種別だけで決まります。本番化は Vercel で
+            STRIPE_SECRET_KEY と NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY を本番キー（sk_live / pk_live）に
+            差し替えて再デプロイ。カードへの実課金はさらに別スイッチ CHARGE_LIVE が必要です。
           </p>
         </>
       )}
