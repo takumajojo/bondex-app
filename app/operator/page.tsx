@@ -1790,38 +1790,14 @@ function ReviewView({
           />
         </div>
 
-        {/* 配送キャリア (既定=佐川、料金/ルートでヤマトに切替) */}
+        {/* 配送キャリアは佐川に固定 (選択不可)。onUpdateCarrier は使わない。 */}
         <div className="mt-3 space-y-1">
           <label className="text-[11px] text-muted-foreground">
             {locale === "ja" ? "配送キャリア" : "Carrier"}
           </label>
-          <div className="inline-flex rounded-md border border-border overflow-hidden">
-            {(
-              [
-                ["sagawa", locale === "ja" ? "佐川急便" : "Sagawa"],
-                ["yamato", locale === "ja" ? "ヤマト運輸" : "Yamato"],
-              ] as const
-            ).map(([val, lbl]) => {
-              const active = (itinerary.carrier ?? "sagawa") === val
-              return (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => onUpdateCarrier(val)}
-                  className={`h-9 px-4 text-sm font-medium transition-colors ${
-                    active ? "bg-foreground text-background" : "bg-white text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {lbl}
-                </button>
-              )
-            })}
+          <div className="inline-flex items-center h-9 px-4 rounded-md border border-border bg-muted/40 text-sm font-medium text-foreground">
+            {locale === "ja" ? "佐川急便" : "Sagawa"}
           </div>
-          <p className="text-[10px] text-muted-foreground">
-            {locale === "ja"
-              ? "スーツケースは佐川が安め。ルート/料金でヤマトに切替可（発行可能: 佐川50日前・ヤマト30日前）。"
-              : "Sagawa is usually cheaper for suitcases; switch to Yamato per route/price (issuable window: Sagawa 50d / Yamato 30d)."}
-          </p>
         </div>
 
         {/* ゲスト用ページの言語 (ホテルスタッフ用ページは常に日本語) */}
