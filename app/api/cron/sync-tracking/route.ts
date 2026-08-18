@@ -64,7 +64,7 @@ function progressionRank(status: ShipmentStatus): number {
 const EXCEPTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /遅延|delay/i, label: "遅延中 (delayed)" },
   { pattern: /調査|investigat/i, label: "調査中 (under investigation)" },
-  { pattern: /持戻|bring.?back|attempt.*fail|absence/i, label: "持戻 (delivery attempted / brought back)" },
+  { pattern: /持戻|持ち戻|不在|ご不在|持ち帰り|bring.?back|attempt|redeliver|undeliverable|undelivered|absence/i, label: "持戻・不在・再配達 (delivery attempted / undeliverable)" },
   { pattern: /返品|return/i, label: "返品 (being returned)" },
   { pattern: /経路修正|reroute|misroute|wrong.?route/i, label: "輸送経路修正 (rerouted)" },
   { pattern: /伝票番号誤り|伝票番号未登録|not.?found|invalid.*number|unregistered/i, label: "伝票番号エラー (tracking number issue)" },
@@ -106,7 +106,10 @@ function mapTrackingStatus(raw: string): ShipmentStatus | null {
   }
 
   // -- 配達完了系 --
-  if (s.includes("配達完了") || /deliver/.test(s)) return "delivered"
+  // delivered は完了を示す語だけを厳格一致で採用する。貪欲な /deliver/ は
+  // "undeliverable" / "delivery attempted" 等を誤って配達完了にするため使わない
+  // (不在・再配達系は detectException 側で異常として先に捕捉している)。
+  if (s.includes("配達完了") || s.includes("お届け完了") || /\bdelivered\b/.test(s)) return "delivered"
 
   // -- 輸送中系 (ヤマト語彙: 輸送中 / 作業店通過 / 配達店到着 / 配達準備中 /
   //    転送 / 保管中系は「持ち出し前の正常な中間状態」として扱う) --
@@ -330,6 +333,7 @@ export async function GET(req: NextRequest) {
 
     let bestRank = -1
     let bestStatus: ShipmentStatus | null = null
+    let mappedCount = 0
     let sawUnmapped: string | null = null
     let anySuccess = false
     const newExceptions: Array<{ number: string; label: string; raw: string; location?: string }> = []
@@ -367,6 +371,7 @@ export async function GET(req: NextRequest) {
 
       const mapped = mapTrackingStatus(rawStatus)
       if (mapped) {
+        mappedCount++
         const rank = progressionRank(mapped)
         if (bestRank === -1 || rank < bestRank) {
           bestRank = rank
@@ -423,8 +428,12 @@ export async function GET(req: NextRequest) {
     }
 
     const currentRank = progressionRank(row.status as ShipmentStatus)
-    // 後退は絶対にしない。現在より前進している場合のみ status を更新。
-    const statusAdvances = bestStatus !== null && bestRank > currentRank
+    // leg 内の全口が「進捗ステータスを返した」場合のみ代表ステータスを採用する。
+    // データ無し / 異常 / 未マップの口が1つでもあれば前進させない — 一部の口だけで
+    // 配達完了・課金へ進む事故を防ぐ (bestStatus は最も遅れた口 = 最小ランク)。
+    const allPiecesMapped = resultsForRow.length > 0 && mappedCount === resultsForRow.length
+    // 後退は絶対にしない。全口把握済みで現在より前進している場合のみ status を更新。
+    const statusAdvances = allPiecesMapped && bestStatus !== null && bestRank > currentRank
     if (statusAdvances) {
       updatePayload.status = bestStatus
     }
