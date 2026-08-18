@@ -147,7 +147,21 @@ export async function PATCH(req: NextRequest) {
     if (!Number.isFinite(n) || n < 1 || n > 99) {
       return NextResponse.json({ error: "invalid suitcaseCount" }, { status: 400 })
     }
-    patch.suitcase_count = n
+    // 個数は「発行済み送り状(送り状の口数)」と「amount_yen(請求額)」に直結する。
+    // ここで書き換えると請求額が再計算されず、送り状とも食い違うため変更は禁止する
+    // (ホテル・氏名と同じ「削除して再発行」運用)。フロントが現在値をそのまま
+    // 送ってくる場合は no-op として許容し、実際に変わる場合だけ 409 で拒否する。
+    const current = await getShipment(id)
+    if (current && n !== current.suitcase_count) {
+      return NextResponse.json(
+        {
+          error:
+            "個数は変更できません。送り状の口数・請求額と食い違うため、この区間を削除して再発行してください。",
+        },
+        { status: 409 },
+      )
+    }
+    // 一致(または対象なし)の場合は書き込まない — suitcase_count は PATCH で更新しない。
   }
   if (body.notes !== undefined) {
     if (typeof body.notes !== "string" || body.notes.length > 500) {
