@@ -74,6 +74,18 @@ export interface ShipmentRecord {
   charge_amount_yen: number | null
   /** 課金失敗時のエラー文言 (成功で null に戻す)。 */
   charge_error: string | null
+  /** 返金が記録された日時 (Stripe charge.refunded)。 */
+  refunded_at: string | null
+  /** 返金累計額 (税込・円)。 */
+  refund_amount_yen: number | null
+  /** チャージバック(係争)開始日時 (Stripe charge.dispute.created)。 */
+  disputed_at: string | null
+  /** Stripe Dispute のステータス (needs_response / under_review / won / lost 等)。 */
+  dispute_status: string | null
+  /** PaymentIntent の決済失敗日時 (Stripe payment_intent.payment_failed)。 */
+  payment_failed_at: string | null
+  /** 決済失敗の理由 (Stripe last_payment_error.message)。 */
+  payment_failure_message: string | null
   created_at: string
   updated_at: string
 }
@@ -424,6 +436,60 @@ export async function recordShipmentChargeError(id: string, message: string): Pr
     .update({ charge_error: message.slice(0, 500) })
     .eq("id", id)
   if (error) console.error("[shipments-db] recordShipmentChargeError failed", error.message)
+}
+
+/**
+ * Stripe PaymentIntent ID から shipment を1件引く (webhook の逆引き用)。
+ * 課金成功時に stripe_payment_intent_id を保存しているので、返金/係争の
+ * イベントはこの列で shipment を特定できる。
+ */
+export async function getShipmentByPaymentIntentId(
+  paymentIntentId: string,
+): Promise<ShipmentRecord | null> {
+  const sb = getSupabase()
+  if (!sb) return null
+  const { data, error } = await sb
+    .from("shipments")
+    .select("*")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle()
+  if (error) {
+    console.error("[shipments-db] getShipmentByPaymentIntentId failed", error.message)
+    return null
+  }
+  return (data as ShipmentRecord) ?? null
+}
+
+/**
+ * 課金後の状態 (返金/係争/決済失敗) を shipment に同期する (Stripe webhook 用)。
+ * 検知＋DB状態同期のみ — 返金や再課金などの副作用はここでは行わない。
+ * 列が未マイグレーションの環境では update がエラーになるが、握って false を返す
+ * (webhook 本体は 200 を返し続け、Stripe のリトライ嵐を避ける)。
+ */
+export async function updateShipmentChargeState(
+  id: string,
+  patch: {
+    refunded_at?: string | null
+    refund_amount_yen?: number | null
+    disputed_at?: string | null
+    dispute_status?: string | null
+    payment_failed_at?: string | null
+    payment_failure_message?: string | null
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: "Supabase not configured" }
+  const update: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch)) {
+    if (v !== undefined) update[k] = v
+  }
+  if (Object.keys(update).length === 0) return { ok: true }
+  const { error } = await sb.from("shipments").update(update).eq("id", id)
+  if (error) {
+    console.error("[shipments-db] updateShipmentChargeState failed", error.message)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
 }
 
 /**
