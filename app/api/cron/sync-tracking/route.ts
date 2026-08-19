@@ -5,6 +5,7 @@ import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
+import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -477,6 +478,17 @@ export async function GET(req: NextRequest) {
             toHotel: (row.to_hotel as string) ?? "",
             tracking: (row.yamato_tracking as string[] | null) ?? null,
             english: agencyForeignByName.get(row.agency as string) ?? false,
+          })
+          // 社内通知(Slack集約)
+          await notifyBondEx({
+            kind: "delivery",
+            title: `${row.booking_id as string}-L${(row.leg_index as number) + 1}（${row.agency as string}）`,
+            lines: [
+              `お届け先: ${(row.to_hotel as string) ?? ""}`,
+              `代表者: ${(row.representative as string) ?? ""}`,
+            ],
+            link: `/track/${row.booking_id as string}`,
+            linkLabel: "追跡ページで確認",
           })
           deliveryNotified++
         } catch (e) {

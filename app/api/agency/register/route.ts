@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { ensureAgencyFolder } from "@/lib/google-drive"
 import { sendMail } from "@/lib/mailer"
+import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
 
@@ -203,6 +204,19 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("[agency/register] 通知メール失敗:", e instanceof Error ? e.message : e)
   }
+
+  // 社内通知(Slack集約) — 承認待ちの新規代理店を1部屋に流す(承認漏れ防止)。
+  await notifyBondEx({
+    kind: "agency",
+    title: `${agencyName}（承認待ち）`,
+    lines: [
+      `連絡先: ${email}`,
+      contactPerson ? `ご担当者: ${contactPerson}` : "",
+      `区分: ${isDomestic ? "国内" : "海外"} ／ 決済: ${paymentMethod}`,
+    ],
+    link: `/operator/agencies`,
+    linkLabel: "承認画面を開く",
+  })
 
   return NextResponse.json({ ok: true, paymentMethod, status: "pending" })
 }

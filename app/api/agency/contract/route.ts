@@ -7,6 +7,7 @@ import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { ContractDocument, CONTRACT_VERSION, type ContractInput } from "@/lib/contract-pdf"
 import { sendMail, mailerConfigured } from "@/lib/mailer"
 import { putContractDocument } from "@/lib/google-drive"
+import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -320,6 +321,15 @@ export async function POST(req: NextRequest) {
     signerName,
     signedDate,
     pdfBase64: signedPdfBase64,
+  })
+
+  // 社内通知(Slack集約) — 受注契約が締結されたことを1部屋に流す。
+  await notifyBondEx({
+    kind: "contract",
+    title: `${agencyName} が契約締結`,
+    lines: [`署名者: ${signerName}`, `締結日: ${signedDate}`],
+    link: `/operator/agencies`,
+    linkLabel: "代理店一覧で確認",
   })
 
   return NextResponse.json({

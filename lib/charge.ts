@@ -8,6 +8,7 @@ import {
 } from "@/lib/shipments-db"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { sendMail } from "@/lib/mailer"
+import { notifyBondEx } from "@/lib/notify"
 import { buildChargeInvoice } from "@/lib/invoice-build"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -226,6 +227,18 @@ async function sendChargeInvoice(
       if (r.sent) anySent = true
       else errs.push(`${to}: ${r.error}`)
     }
+
+    // 社内通知(Slack集約) — 集荷完了→カード決済が成立したことを1部屋に流す。
+    await notifyBondEx({
+      kind: "charge",
+      title: `${legRef}（${shipment.agency}）決済完了`,
+      lines: [
+        `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
+        `金額(税込): ¥${(built.totalYen ?? 0).toLocaleString()}`,
+      ],
+      link: `/track/${shipment.booking_id}`,
+      linkLabel: "追跡ページで確認",
+    })
 
     // 代理店宛が送れなかった (メール未登録 or 送信失敗) 場合は必須要件が未達なのでアラート
     if (!agencyEmail || !anySent || errs.some((e) => agencyEmail && e.startsWith(agencyEmail))) {

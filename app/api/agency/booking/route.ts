@@ -5,6 +5,7 @@ import { saveShipment, deleteBooking } from "@/lib/shipments-db"
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
+import { notifyBondEx } from "@/lib/notify"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
 import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
 import { itemProductName } from "@/lib/item-types"
@@ -339,6 +340,29 @@ export async function POST(req: NextRequest) {
     })
     noticeEmailSent = mail.sent
   }
+
+  // 社内通知(Slack集約) — 新規予約が入ったことを1部屋にまとめて流す。best-effort。
+  const issueSummary = allIssued
+    ? "全区間 即発行済"
+    : anyIssued
+      ? "一部発行済"
+      : needsLabelWait
+        ? "1ヶ月前になったら発行予定"
+        : "未発行"
+  const firstLeg = legs[0]
+  await notifyBondEx({
+    kind: "booking",
+    title: `${bookingId}（${agencyName}）`,
+    lines: [
+      `代表者: ${representative}`,
+      tourNumber ? `ツアー番号: ${tourNumber}` : "",
+      `区間: ${legs.length}件（${firstLeg.fromHotel} → ${firstLeg.toHotel}${legs.length > 1 ? " ほか" : ""}）`,
+      `発行状況: ${issueSummary}`,
+      issueFailures.length ? `⚠️ 発行失敗 ${issueFailures.length}件（要確認）` : "",
+    ],
+    link: `/track/${bookingId}`,
+    linkLabel: "追跡ページで確認",
+  })
 
   return NextResponse.json({
     ok: true,

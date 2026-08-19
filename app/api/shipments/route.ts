@@ -12,6 +12,7 @@ import {
 import { isSupabaseConfigured, getSupabase } from "@/lib/supabase"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
+import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -199,6 +200,20 @@ export async function PATCH(req: NextRequest) {
             toHotel: ship.to_hotel,
             tracking: ship.yamato_tracking,
             english,
+          })
+          // 社内通知(Slack集約)
+          await notifyBondEx({
+            kind: "delivery",
+            title: `${ship.booking_id}-L${ship.leg_index + 1}（${ship.agency}）`,
+            lines: [
+              `お届け先: ${ship.to_hotel}`,
+              `代表者: ${ship.representative}`,
+              (ship.yamato_tracking ?? []).filter(Boolean).length
+                ? `追跡番号: ${(ship.yamato_tracking ?? []).filter(Boolean).join(", ")}`
+                : "",
+            ],
+            link: `/track/${ship.booking_id}`,
+            linkLabel: "追跡ページで確認",
           })
         }
       } catch (e) {

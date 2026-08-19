@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
+import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
 
@@ -42,6 +43,17 @@ async function notify(input: {
     ].join("\n"),
   })
   if (!r.sent) console.log("[contact] 通知メール未送信:", r.error, "(DB保存済み)")
+
+  // 社内通知(Slack集約)
+  await notifyBondEx({
+    kind: "contact",
+    title: input.company || input.name || input.email,
+    lines: [
+      input.name ? `お名前: ${input.name}` : "",
+      `メール: ${input.email}`,
+      `内容: ${input.message.length > 200 ? input.message.slice(0, 200) + "…" : input.message}`,
+    ],
+  })
 }
 
 export async function POST(req: NextRequest) {
