@@ -37,6 +37,16 @@ export function LangSwitcher({
   const ref = useRef<HTMLDivElement | null>(null)
   const currentLabel = LOCALES.find((l) => l.code === current)?.label ?? current
 
+  // TOP で表示中の言語を記憶し、認証側（契約・カード登録＝ja/en）の既定言語に引き継ぐ。
+  // 非日本語はすべて英語に集約される（agency-i18n 側でマッピング）。
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("bondex_lang", current)
+    } catch {
+      /* localStorage 不可でも致命的でない */
+    }
+  }, [current])
+
   // 外側クリック / Esc で閉じる
   useEffect(() => {
     if (!open) return

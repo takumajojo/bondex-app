@@ -374,6 +374,8 @@ function HeroDemo({ lang }: { lang: Locale }) {
 
 export function Landing({ lang }: { lang: Locale }) {
   const t = messages[lang]
+  // 導入ご相談は選択中の言語を引き継ぐ（/contact 側で ?lang を読んで出し分け）
+  const contactHref = lang === "ja" ? CONTACT_FORM_URL : `${CONTACT_FORM_URL}?lang=${lang}`
   // デスクトップの上部ナビは 5 本に絞ってヘッダーを軽く保つ (安心の理由はモバイルメニューへ)。
   const navItems = [
     { href: NAV_HREFS[0], label: t.nav.flow },
@@ -423,7 +425,7 @@ export function Landing({ lang }: { lang: Locale }) {
             <span className="hidden lg:block h-5 w-px bg-[#E5E7EB]" aria-hidden="true" />
             {/* 主 CTA (常時・ひとつだけ強調) */}
             <a
-              href={CONTACT_FORM_URL}
+              href={contactHref}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium px-4 py-2 rounded-md bg-[#C8102E] text-white hover:bg-[#A00D25]"
@@ -511,7 +513,7 @@ export function Landing({ lang }: { lang: Locale }) {
           ))}
         </ul>
         <a
-          href={CONTACT_FORM_URL}
+          href={contactHref}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 w-full h-[52px] rounded-xl bg-[#C8102E] text-white text-[15px] font-bold hover:bg-[#A00D25]"
@@ -599,7 +601,7 @@ export function Landing({ lang }: { lang: Locale }) {
           <div className="flex flex-col items-start gap-3">
             <div className="flex items-center gap-3">
               <a
-                href={CONTACT_FORM_URL}
+                href={contactHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-7 py-4 rounded-md bg-[#C8102E] text-white text-[15px] font-medium hover:bg-[#A00D25]"
@@ -1168,7 +1170,7 @@ export function Landing({ lang }: { lang: Locale }) {
           </p>
           <div className="flex flex-col items-center gap-3">
             <a
-              href={CONTACT_FORM_URL}
+              href={contactHref}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-3 px-8 py-4 rounded-md bg-white text-[#C8102E] text-[15px] font-bold hover:bg-white/95"

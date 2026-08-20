@@ -27,6 +27,17 @@ function readStored(): Locale | null {
 }
 
 function detectDefault(): Locale {
+  // ① TOP（ランディング）で選んだ言語を引き継ぐ。認証側は ja/en の2言語なので、
+  //    日本語以外（en/es/fr/zh/it）はすべて英語に集約する。
+  if (typeof window !== "undefined") {
+    try {
+      const carried = window.localStorage.getItem("bondex_lang")
+      if (carried) return carried === "ja" ? "ja" : "en"
+    } catch {
+      /* localStorage 不可時は下のブラウザ判定にフォールバック */
+    }
+  }
+  // ② 引き継ぎが無ければブラウザ言語で判定
   if (typeof navigator === "undefined") return "en"
   return navigator.language?.toLowerCase().startsWith("ja") ? "ja" : "en"
 }
