@@ -1059,7 +1059,7 @@ function EditShipmentModal({
 }) {
   const [shipmentDate, setShipmentDate] = useState(shipment.shipment_date || "")
   const [expectedArrival, setExpectedArrival] = useState(shipment.expected_arrival || "")
-  const [suitcaseCount, setSuitcaseCount] = useState(shipment.suitcase_count)
+  // 個数は変更不可 (送り状の口数・請求額と直結)。表示のみ。
   const [notes, setNotes] = useState(shipment.notes || "")
   const [driveUrl, setDriveUrl] = useState(shipment.drive_url || "")
   const [busy, setBusy] = useState(false)
@@ -1085,7 +1085,6 @@ function EditShipmentModal({
           id: shipment.id,
           shipmentDate,
           expectedArrival,
-          suitcaseCount,
           notes,
         }),
       })
@@ -1144,15 +1143,10 @@ function EditShipmentModal({
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">個数</label>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={suitcaseCount}
-              onChange={(e) => setSuitcaseCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-center"
-            />
+            <label className="text-[11px] text-muted-foreground">個数 (変更不可)</label>
+            <div className="h-10 w-full rounded-md border border-border bg-muted/40 px-3 text-sm text-center flex items-center justify-center text-muted-foreground">
+              {shipment.suitcase_count}
+            </div>
           </div>
           <div className="space-y-1 col-span-2">
             <label className="text-[11px] text-muted-foreground">備考 (ホテル向け特記)</label>
@@ -1195,7 +1189,7 @@ function EditShipmentModal({
           <p className="text-[11px] text-amber-800 leading-relaxed">
             発行済みのバウチャー PDF と配送伝票（送り状）は自動更新されません。
             {dateChanged ? "日付を変更した場合は、Voucher を再発行して差し替え、送り状は Ship&co で作り直してください。" : ""}
-            ホテル・氏名を変更したい場合は、この予約を削除して新規発行してください (送り状との食い違い防止)。
+            ホテル・氏名・個数を変更したい場合は、この予約を削除して新規発行してください (送り状の口数・請求額との食い違い防止)。
           </p>
         </div>
 
