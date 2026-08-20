@@ -60,6 +60,7 @@ interface Shipment {
   created_at: string
   charged_at: string | null
   charge_error: string | null
+  charge_amount_yen: number | null
 }
 
 // 今日 (ローカル日付) を YYYY-MM-DD で。shipment_date / expected_arrival と同じ粒度で比較する。
@@ -133,8 +134,10 @@ export default function DashboardPage() {
   const [pendingAgencies, setPendingAgencies] = useState(0)
   // 要対応タイルからのクライアント側フィルタ (サーバー側の status フィルタとは別レイヤ)。
   const [viewFilter, setViewFilter] = useState<
-    "" | "delay-pickup" | "delay-delivery" | "charge-failed" | "failed"
+    "" | "delay-pickup" | "delay-delivery" | "charge-failed" | "failed" | "pay-paid" | "pay-unpaid"
   >("")
+  // 決済再試行の実行中 shipment id
+  const [chargingId, setChargingId] = useState<string | null>(null)
 
   const loadBoard = useCallback(async () => {
     try {
@@ -198,6 +201,51 @@ export default function DashboardPage() {
       setError(err instanceof Error ? err.message : "Update failed")
     }
   }
+
+  // 課金失敗の区間を手動で再試行する (chargeShipmentIfDue を operator 権限で叩く)。
+  const retryCharge = useCallback(
+    async (id: string) => {
+      setChargingId(id)
+      try {
+        const res = await fetch("/api/operator/charge-retry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        })
+        const d = (await res.json().catch(() => ({}))) as {
+          error?: string
+          result?: { charged?: boolean; skipped?: boolean; reason?: string; amountYen?: number; error?: string }
+        }
+        if (!res.ok) {
+          alert(`再試行に失敗しました:\n${d.error || res.statusText}`)
+          return
+        }
+        const r = d.result ?? {}
+        if (r.charged) {
+          alert(`カード決済に成功しました（¥${(r.amountYen ?? 0).toLocaleString()}）。`)
+        } else if (r.skipped && r.reason === "disabled") {
+          alert(
+            "現在カード自動課金は OFF です（STRIPE_CHARGE_LIVE 未設定）。実際の課金は行われていません。",
+          )
+        } else if (r.skipped && r.reason === "already_charged") {
+          alert("この区間は既に課金済みです。")
+        } else if (r.skipped) {
+          alert(`課金はスキップされました（理由: ${r.reason}）。`)
+        } else if (r.error) {
+          alert(`課金できませんでした:\n${r.error}`)
+        } else {
+          alert("処理は完了しましたが、課金は成立しませんでした。")
+        }
+        await load()
+        void loadBoard()
+      } catch (e) {
+        alert(`通信エラー: ${e instanceof Error ? e.message : "network"}`)
+      } finally {
+        setChargingId(null)
+      }
+    },
+    [load, loadBoard],
+  )
 
   // 予約の書類 (バウチャー+送り状) を共有ドライブの予約番号フォルダに格納
   const [syncingId, setSyncingId] = useState<string | null>(null)
@@ -333,7 +381,11 @@ export default function DashboardPage() {
             ? isChargeFailed(s)
             : viewFilter === "failed"
               ? s.status === "failed"
-              : true,
+              : viewFilter === "pay-paid"
+                ? !!s.charged_at
+                : viewFilter === "pay-unpaid"
+                  ? !s.charged_at && !s.charge_error
+                  : true,
     )
   }, [viewFilter, items, board])
 
@@ -675,13 +727,36 @@ export default function DashboardPage() {
               検索
             </button>
           </div>
-          {(filterAgency || filterStatus || search) && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">決済:</span>
+            {(
+              [
+                ["pay-paid", "課金済"],
+                ["charge-failed", "失敗"],
+                ["pay-unpaid", "未課金"],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => setViewFilter(viewFilter === v ? "" : v)}
+                className={`h-7 px-2.5 rounded-full text-xs border transition-colors ${
+                  viewFilter === v
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-white text-muted-foreground hover:border-foreground/40"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {(filterAgency || filterStatus || search || viewFilter) && (
             <button
               onClick={() => {
                 setFilterAgency("")
                 setFilterStatus("")
                 setSearch("")
                 setSearchInput("")
+                setViewFilter("")
               }}
               className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
             >
@@ -689,7 +764,7 @@ export default function DashboardPage() {
             </button>
           )}
           <span className="ml-auto text-xs text-muted-foreground">
-            表示 {items.length} 件
+            表示 {rows.length} 件
           </span>
         </section>
 
@@ -724,6 +799,7 @@ export default function DashboardPage() {
                     <th className="text-left p-3 font-medium">区間</th>
                     <th className="text-right p-3 font-medium">点数</th>
                     <th className="text-left p-3 font-medium">追跡番号</th>
+                    <th className="text-left p-3 font-medium">決済</th>
                     <th className="text-left p-3 font-medium">ステータス</th>
                   </tr>
                 </thead>
@@ -859,6 +935,36 @@ export default function DashboardPage() {
                           </a>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="p-3 align-top">
+                        {it.charged_at ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800">
+                            課金済 ¥{(it.charge_amount_yen ?? it.amount_yen).toLocaleString()}
+                          </span>
+                        ) : isChargeFailed(it) ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">
+                              <CreditCard className="w-2.5 h-2.5" strokeWidth={2} />
+                              課金失敗
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => retryCharge(it.id)}
+                              disabled={chargingId === it.id}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2 disabled:opacity-50"
+                              title="カード決済を今すぐ再試行します（カード登録済みなら課金・未登録なら再度失敗します）"
+                            >
+                              {chargingId === it.id ? "再試行中…" : "再試行 →"}
+                            </button>
+                            {it.charge_error && (
+                              <p className="max-w-[160px] text-[10px] text-red-700 line-clamp-2">
+                                {it.charge_error}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">未課金</span>
                         )}
                       </td>
                       <td className="p-3 align-top">
