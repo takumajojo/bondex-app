@@ -24,6 +24,7 @@ export type NotifyKind =
   | "agency" // 🏢 新規代理店(承認待ち)
   | "contact" // 💬 お問い合わせ
   | "charge" // 💳 課金
+  | "adjust" // ✏️ 個数修正(受付≠実個数・区間キャンセル)
 
 const KIND_META: Record<NotifyKind, { emoji: string; label: string }> = {
   booking: { emoji: "🆕", label: "新規予約" },
@@ -32,6 +33,7 @@ const KIND_META: Record<NotifyKind, { emoji: string; label: string }> = {
   agency: { emoji: "🏢", label: "新規代理店" },
   contact: { emoji: "💬", label: "お問い合わせ" },
   charge: { emoji: "💳", label: "課金" },
+  adjust: { emoji: "✏️", label: "個数修正" },
 }
 
 export interface NotifyInput {

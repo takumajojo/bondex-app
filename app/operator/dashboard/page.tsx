@@ -61,6 +61,26 @@ interface Shipment {
   charged_at: string | null
   charge_error: string | null
   charge_amount_yen: number | null
+  count_change_log?: CountChange[] | null
+}
+
+interface CountChange {
+  at: string
+  from: number
+  to: number
+  reason: string
+  note: string | null
+  cancelled: boolean
+  old_amount: number
+  new_amount: number
+  was_charged: boolean
+}
+
+const REASON_LABEL: Record<string, string> = {
+  mismatch: "個数相違",
+  not_collected: "集荷不可",
+  customer_change: "お客様都合",
+  other: "その他",
 }
 
 // 今日 (ローカル日付) を YYYY-MM-DD で。shipment_date / expected_arrival と同じ粒度で比較する。
@@ -129,6 +149,7 @@ export default function DashboardPage() {
   // 編集 / 削除モーダル
   const [editTarget, setEditTarget] = useState<Shipment | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Shipment | null>(null)
+  const [adjustTarget, setAdjustTarget] = useState<Shipment | null>(null)
   // 「状態の一望」用スナップショット (フィルタ非依存・全件)。要対応の集計と遅延の判定に使う。
   const [board, setBoard] = useState<Shipment[]>([])
   const [pendingAgencies, setPendingAgencies] = useState(0)
@@ -913,6 +934,21 @@ export default function DashboardPage() {
                         <p className="text-[10px] text-muted-foreground tabular-nums">
                           ¥{it.amount_yen.toLocaleString()}
                         </p>
+                        {it.count_change_log && it.count_change_log.length > 0 && (
+                          <div className="mt-1 space-y-0.5 text-left">
+                            {it.count_change_log.map((c, i) => (
+                              <p
+                                key={i}
+                                className="text-[9px] leading-tight text-amber-700"
+                                title={`${new Date(c.at).toLocaleString("ja-JP")}｜${REASON_LABEL[c.reason] ?? c.reason}${c.note ? "：" + c.note : ""}`}
+                              >
+                                <Pencil className="inline w-2 h-2 mr-0.5" strokeWidth={2} />
+                                {c.cancelled ? `${c.from}個→キャンセル` : `${c.from}→${c.to}個`}（
+                                {REASON_LABEL[c.reason] ?? c.reason}）
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="p-3 align-top">
                         {it.yamato_tracking && it.yamato_tracking.length > 0 ? (
@@ -995,6 +1031,14 @@ export default function DashboardPage() {
                             編集
                           </button>
                           <button
+                            onClick={() => setAdjustTarget(it)}
+                            className="inline-flex items-center gap-1 text-[10px] text-amber-700 hover:text-amber-900 underline underline-offset-2"
+                            title="集荷時に受付個数と実個数が違った場合の修正（理由必須・ランオペへ通知）"
+                          >
+                            <Package className="w-2.5 h-2.5" strokeWidth={1.5} />
+                            個数を修正
+                          </button>
+                          <button
                             onClick={() => setDeleteTarget(it)}
                             className="inline-flex items-center gap-1 text-[10px] text-red-600 hover:text-red-700 underline underline-offset-2"
                           >
@@ -1039,6 +1083,17 @@ export default function DashboardPage() {
           }}
         />
       )}
+      {adjustTarget && (
+        <AdjustCountModal
+          shipment={adjustTarget}
+          onClose={() => setAdjustTarget(null)}
+          onSaved={() => {
+            setAdjustTarget(null)
+            void load()
+            void loadBoard()
+          }}
+        />
+      )}
     </main>
   )
 }
@@ -1059,7 +1114,6 @@ function EditShipmentModal({
 }) {
   const [shipmentDate, setShipmentDate] = useState(shipment.shipment_date || "")
   const [expectedArrival, setExpectedArrival] = useState(shipment.expected_arrival || "")
-  const [suitcaseCount, setSuitcaseCount] = useState(shipment.suitcase_count)
   const [notes, setNotes] = useState(shipment.notes || "")
   const [driveUrl, setDriveUrl] = useState(shipment.drive_url || "")
   const [busy, setBusy] = useState(false)
@@ -1085,7 +1139,6 @@ function EditShipmentModal({
           id: shipment.id,
           shipmentDate,
           expectedArrival,
-          suitcaseCount,
           notes,
         }),
       })
@@ -1143,17 +1196,6 @@ function EditShipmentModal({
               className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-[11px] text-muted-foreground">個数</label>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={suitcaseCount}
-              onChange={(e) => setSuitcaseCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-center"
-            />
-          </div>
           <div className="space-y-1 col-span-2">
             <label className="text-[11px] text-muted-foreground">備考 (ホテル向け特記)</label>
             <input
@@ -1197,6 +1239,9 @@ function EditShipmentModal({
             {dateChanged ? "日付を変更した場合は、Voucher を再発行して差し替え、送り状は Ship&co で作り直してください。" : ""}
             ホテル・氏名を変更したい場合は、この予約を削除して新規発行してください (送り状との食い違い防止)。
           </p>
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            個数の修正は一覧の「個数を修正」から行ってください（理由の記録と依頼元ランオペへの通知が必要なため、ここでは変更できません）。
+          </p>
         </div>
 
         {err && <p className="text-xs text-red-700">{err}</p>}
@@ -1215,6 +1260,186 @@ function EditShipmentModal({
           >
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
             保存
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 個数修正モーダル — 集荷時の「受付個数 ≠ 実個数」を理由付きで修正する。
+// 気軽な変更を防ぐため理由を必須にし、依頼元ランオペへ自動通知する。
+// 0個（＝集荷不可）は区間キャンセル・請求なしとして扱う。
+// ---------------------------------------------------------------------------
+function AdjustCountModal({
+  shipment,
+  onClose,
+  onSaved,
+}: {
+  shipment: Shipment
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const PRICE = 5000
+  const [reasonCode, setReasonCode] = useState<
+    "mismatch" | "not_collected" | "customer_change" | "other"
+  >("mismatch")
+  const [newCount, setNewCount] = useState<number>(shipment.suitcase_count)
+  const [note, setNote] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+
+  const cancel = reasonCode === "not_collected" || Number(newCount) === 0
+  const effCount = cancel ? 0 : Number(newCount)
+  const newAmount = cancel ? 0 : effCount * PRICE
+  const charged = !!shipment.charged_at
+  const noteRequired = reasonCode === "other"
+  const unchanged = !cancel && effCount === shipment.suitcase_count
+
+  const onSubmit = async () => {
+    setErr("")
+    if (noteRequired && !note.trim()) {
+      setErr("「その他」は理由の記述が必要です。")
+      return
+    }
+    if (unchanged) {
+      setErr("個数が変わっていません。")
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await fetch("/api/operator/adjust-count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: shipment.id, newCount: effCount, reasonCode, reasonNote: note.trim() }),
+      })
+      const d = (await res.json().catch(() => ({}))) as {
+        error?: string
+        cancelled?: boolean
+        mailSent?: boolean
+        agencyEmailKnown?: boolean
+      }
+      if (!res.ok) throw new Error(d.error || `保存失敗 (${res.status})`)
+      const notice = !d.agencyEmailKnown
+        ? "（ランオペのメール未登録のため通知は送られていません）"
+        : d.mailSent
+          ? "ランオペへ通知メールを送信しました。"
+          : "（ランオペへの通知メール送信に失敗しました。設定をご確認ください）"
+      alert((d.cancelled ? "区間をキャンセルしました。" : "個数を修正しました。") + "\n" + notice)
+      onSaved()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "保存失敗")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">個数を修正</h2>
+            <p className="text-xs text-muted-foreground mt-1 font-mono">
+              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {shipment.from_hotel} → {shipment.to_hotel}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">理由（必須）</label>
+          <select
+            value={reasonCode}
+            onChange={(e) => setReasonCode(e.target.value as typeof reasonCode)}
+            className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+          >
+            <option value="mismatch">個数相違（受付と実際が違った）</option>
+            <option value="not_collected">集荷不可（お客様から預かれず＝区間キャンセル）</option>
+            <option value="customer_change">お客様都合の変更</option>
+            <option value="other">その他（下に記述）</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">受付個数</label>
+            <div className="h-10 flex items-center px-3 rounded-md border border-border bg-muted/40 text-sm tabular-nums">
+              {shipment.suitcase_count} 個
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">実際の個数</label>
+            <input
+              type="number"
+              min={0}
+              max={99}
+              value={cancel ? 0 : newCount}
+              disabled={reasonCode === "not_collected"}
+              onChange={(e) => setNewCount(Math.max(0, Math.min(99, Math.floor(Number(e.target.value) || 0))))}
+              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-center disabled:bg-muted/40 disabled:text-muted-foreground"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">
+            補足{noteRequired ? "（必須）" : "（任意）"}
+          </label>
+          <input
+            type="text"
+            value={note}
+            maxLength={500}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="例: 集荷時にお客様が1個のみお持ちだった"
+            className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+          />
+        </div>
+
+        {/* 反映プレビュー */}
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-[12px] space-y-1">
+          {cancel ? (
+            <p className="text-foreground">
+              → <span className="font-medium text-red-700">区間キャンセル</span>・ご請求なし
+            </p>
+          ) : (
+            <p className="text-foreground">
+              個数 {shipment.suitcase_count} → <span className="font-medium">{effCount}</span> 個 ／ ご請求{" "}
+              ¥{shipment.amount_yen.toLocaleString()} →{" "}
+              <span className="font-medium">¥{newAmount.toLocaleString()}</span>
+            </p>
+          )}
+          <p className="text-muted-foreground">
+            依頼元ランオペ（{shipment.agency}）へ自動で通知メールを送ります。
+          </p>
+          {charged && (
+            <p className="flex items-start gap-1 text-amber-800">
+              <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" strokeWidth={2} />
+              既に課金済みです。金額は自動修正されません — Stripe で
+              {cancel ? "全額" : "差額"}返金が必要です（通知にも明記されます）。
+            </p>
+          )}
+        </div>
+
+        {err && <p className="text-xs text-red-700">{err}</p>}
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="h-10 px-4 rounded-lg border border-border bg-white text-sm hover:bg-muted/40"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={() => void onSubmit()}
+            disabled={busy || unchanged}
+            className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+            修正して通知
           </button>
         </div>
       </div>
