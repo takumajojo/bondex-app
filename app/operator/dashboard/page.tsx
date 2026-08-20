@@ -19,6 +19,9 @@ import {
   Pencil,
   Trash2,
   X,
+  Clock,
+  Truck,
+  CreditCard,
 } from "lucide-react"
 
 type ShipmentStatus =
@@ -55,6 +58,38 @@ interface Shipment {
   notes: string | null
   drive_url: string | null
   created_at: string
+  charged_at: string | null
+  charge_error: string | null
+}
+
+// 今日 (ローカル日付) を YYYY-MM-DD で。shipment_date / expected_arrival と同じ粒度で比較する。
+function todayYmd(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+// 遅延判定 — 日付とステータスから導出（新しいデータは不要）。
+//   集荷遅れ: 発送日を過ぎても未集荷 (requested / pending / issued のまま)
+//   配送遅れ: 到着予定日を過ぎても未配達 (picked_up / in_transit のまま)
+function deriveDelay(s: {
+  shipment_date: string
+  expected_arrival: string | null
+  status: ShipmentStatus
+}): "pickup" | "delivery" | null {
+  if (s.status === "delivered" || s.status === "cancelled" || s.status === "failed") return null
+  const today = todayYmd()
+  if ((s.status === "picked_up" || s.status === "in_transit") && s.expected_arrival && s.expected_arrival < today) {
+    return "delivery"
+  }
+  if ((s.status === "requested" || s.status === "pending" || s.status === "issued") && s.shipment_date < today) {
+    return "pickup"
+  }
+  return null
+}
+
+// 未回収の課金失敗: charge_error があり、まだ課金成立していない (charged_at 未セット)。
+function isChargeFailed(s: { charged_at: string | null; charge_error: string | null }): boolean {
+  return !!s.charge_error && !s.charged_at
 }
 
 const STATUS_LABELS: Record<ShipmentStatus, { ja: string; cls: string }> = {
@@ -93,6 +128,26 @@ export default function DashboardPage() {
   // 編集 / 削除モーダル
   const [editTarget, setEditTarget] = useState<Shipment | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Shipment | null>(null)
+  // 「状態の一望」用スナップショット (フィルタ非依存・全件)。要対応の集計と遅延の判定に使う。
+  const [board, setBoard] = useState<Shipment[]>([])
+  const [pendingAgencies, setPendingAgencies] = useState(0)
+  // 要対応タイルからのクライアント側フィルタ (サーバー側の status フィルタとは別レイヤ)。
+  const [viewFilter, setViewFilter] = useState<
+    "" | "delay-pickup" | "delay-delivery" | "charge-failed" | "failed"
+  >("")
+
+  const loadBoard = useCallback(async () => {
+    try {
+      const res = await fetch("/api/shipments?limit=500")
+      const d = (await res.json()) as { shipments?: Shipment[] }
+      setBoard(Array.isArray(d.shipments) ? d.shipments : [])
+    } catch {
+      /* best-effort — 要対応が出せなくても一覧は動く */
+    }
+  }, [])
+  useEffect(() => {
+    void loadBoard()
+  }, [loadBoard])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -137,6 +192,7 @@ export default function DashboardPage() {
         body: JSON.stringify({ id, status }),
       })
       if (!res.ok) throw new Error("Update failed")
+      void loadBoard() // 要対応（遅延/失敗）の集計を最新化
     } catch (err) {
       setItems(before)
       setError(err instanceof Error ? err.message : "Update failed")
@@ -185,7 +241,9 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then((d) => {
         if (!alive || !Array.isArray(d.agencies)) return
-        setAgencies(d.agencies.map((a: { name: string }) => a.name).filter(Boolean))
+        const list = d.agencies as { name: string; status?: string }[]
+        setAgencies(list.map((a) => a.name).filter(Boolean))
+        setPendingAgencies(list.filter((a) => a.status === "pending").length)
       })
       .catch(() => {})
     return () => {
@@ -247,6 +305,38 @@ export default function DashboardPage() {
     return c
   }, [items])
 
+  // 要対応（あなたの判断待ち）— フィルタ非依存の全件スナップショットから集計する。
+  const attention = useMemo(() => {
+    const pickup = board.filter((s) => deriveDelay(s) === "pickup").length
+    const delivery = board.filter((s) => deriveDelay(s) === "delivery").length
+    const chargeFailed = board.filter(isChargeFailed).length
+    const failed = board.filter((s) => s.status === "failed").length
+    return {
+      pickup,
+      delivery,
+      chargeFailed,
+      failed,
+      total: pendingAgencies + pickup + delivery + chargeFailed + failed,
+    }
+  }, [board, pendingAgencies])
+
+  // 一覧に表示する行。要対応タイルが選択されている間は全件スナップショットを
+  // クライアント側で絞り込む（遅延・課金失敗はサーバー側フィルタが無いため）。
+  const rows = useMemo(() => {
+    if (!viewFilter) return items
+    return board.filter((s) =>
+      viewFilter === "delay-pickup"
+        ? deriveDelay(s) === "pickup"
+        : viewFilter === "delay-delivery"
+          ? deriveDelay(s) === "delivery"
+          : viewFilter === "charge-failed"
+            ? isChargeFailed(s)
+            : viewFilter === "failed"
+              ? s.status === "failed"
+              : true,
+    )
+  }, [viewFilter, items, board])
+
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
@@ -291,7 +381,10 @@ export default function DashboardPage() {
               問い合わせ
             </Link>
             <button
-              onClick={() => void load()}
+              onClick={() => {
+                void load()
+                void loadBoard()
+              }}
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <RotateCcw className="w-4 h-4" strokeWidth={1.5} />
@@ -314,6 +407,122 @@ export default function DashboardPage() {
             </p>
           </div>
         ) : null}
+
+        {/* 要対応（あなたの判断待ち）— 状態の一望。解消するまで残り続ける。 */}
+        {attention.total > 0 && (
+          <section className="rounded-2xl border border-red-200 bg-red-50/70 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-4 h-4 text-red-600" strokeWidth={2} />
+              <h2 className="text-sm font-semibold text-red-900">
+                要対応 — あなたの判断待ち{" "}
+                <span className="tabular-nums">{attention.total}</span>件
+              </h2>
+              {viewFilter && (
+                <button
+                  onClick={() => setViewFilter("")}
+                  className="ml-auto inline-flex items-center gap-1 text-xs text-red-700 hover:text-red-900 underline underline-offset-2"
+                >
+                  <X className="w-3 h-3" strokeWidth={2} />
+                  フィルタ解除
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {pendingAgencies > 0 && (
+                <Link
+                  href="/operator/agencies"
+                  className="rounded-xl border border-blue-200 bg-blue-50 p-3 hover:border-blue-400 transition-colors"
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-blue-800">
+                    {pendingAgencies}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-blue-800">
+                    <Building2 className="w-3 h-3" strokeWidth={2} />
+                    新規代理店 承認待ち
+                  </p>
+                </Link>
+              )}
+              {attention.delivery > 0 && (
+                <button
+                  onClick={() =>
+                    setViewFilter(viewFilter === "delay-delivery" ? "" : "delay-delivery")
+                  }
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "delay-delivery"
+                      ? "border-red-500 ring-1 ring-red-400 bg-red-100"
+                      : "border-red-200 bg-red-50 hover:border-red-400"
+                  }`}
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-red-800">
+                    {attention.delivery}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-red-800">
+                    <Clock className="w-3 h-3" strokeWidth={2} />
+                    配送遅れ（到着超過）
+                  </p>
+                </button>
+              )}
+              {attention.pickup > 0 && (
+                <button
+                  onClick={() =>
+                    setViewFilter(viewFilter === "delay-pickup" ? "" : "delay-pickup")
+                  }
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "delay-pickup"
+                      ? "border-amber-500 ring-1 ring-amber-400 bg-amber-100"
+                      : "border-amber-200 bg-amber-50 hover:border-amber-400"
+                  }`}
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-amber-900">
+                    {attention.pickup}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-900">
+                    <Truck className="w-3 h-3" strokeWidth={2} />
+                    集荷遅れ（発送超過）
+                  </p>
+                </button>
+              )}
+              {attention.chargeFailed > 0 && (
+                <button
+                  onClick={() =>
+                    setViewFilter(viewFilter === "charge-failed" ? "" : "charge-failed")
+                  }
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "charge-failed"
+                      ? "border-red-500 ring-1 ring-red-400 bg-red-100"
+                      : "border-red-200 bg-red-50 hover:border-red-400"
+                  }`}
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-red-800">
+                    {attention.chargeFailed}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-red-800">
+                    <CreditCard className="w-3 h-3" strokeWidth={2} />
+                    課金失敗（未回収）
+                  </p>
+                </button>
+              )}
+              {attention.failed > 0 && (
+                <button
+                  onClick={() => setViewFilter(viewFilter === "failed" ? "" : "failed")}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "failed"
+                      ? "border-amber-500 ring-1 ring-amber-400 bg-amber-100"
+                      : "border-amber-200 bg-amber-50 hover:border-amber-400"
+                  }`}
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-amber-900">
+                    {attention.failed}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-900">
+                    <AlertTriangle className="w-3 h-3" strokeWidth={2} />
+                    送り状 発行失敗
+                  </p>
+                </button>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Status summary */}
         <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -497,7 +706,7 @@ export default function DashboardPage() {
               <Loader2 className="w-6 h-6 animate-spin" strokeWidth={1.5} />
               <span className="text-sm">読み込み中</span>
             </div>
-          ) : items.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
               <Package className="w-8 h-8" strokeWidth={1.5} />
               <span className="text-sm">該当する案件がありません</span>
@@ -519,7 +728,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((it) => (
+                  {rows.map((it) => (
                     <tr key={it.id} className="border-t border-border hover:bg-muted/20">
                       <td className="p-3 align-top">
                         <p className="text-xs text-foreground">
@@ -538,6 +747,16 @@ export default function DashboardPage() {
                           <span className="text-muted-foreground">到着</span>{" "}
                           {it.expected_arrival || "—"}
                         </p>
+                        {(() => {
+                          const d = deriveDelay(it)
+                          if (!d) return null
+                          return (
+                            <span className="mt-1 inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                              <Clock className="w-2.5 h-2.5" strokeWidth={2} />
+                              {d === "delivery" ? "配送遅れ" : "集荷遅れ"}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="p-3 align-top">
                         <p className="text-foreground font-medium">{it.agency || "—"}</p>
@@ -694,17 +913,23 @@ export default function DashboardPage() {
           onSaved={() => {
             setEditTarget(null)
             void load()
+            void loadBoard()
           }}
         />
       )}
       {deleteTarget && (
         <DeleteBookingModal
           shipment={deleteTarget}
-          legCount={items.filter((x) => x.booking_id === deleteTarget.booking_id).length}
+          legCount={
+            (board.length ? board : items).filter(
+              (x) => x.booking_id === deleteTarget.booking_id,
+            ).length
+          }
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => {
             setDeleteTarget(null)
             void load()
+            void loadBoard()
           }}
         />
       )}
