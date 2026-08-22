@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Loader2, Check, Ban, RotateCcw } from "lucide-react"
+import {
+  HOTEL_NOTIFICATION_MODES,
+  HOTEL_NOTIFICATION_MODE_LABEL,
+  DEFAULT_HOTEL_NOTIFICATION_MODE,
+  isHotelNotificationMode,
+  type HotelNotificationMode,
+} from "@/lib/hotel-notification"
 
 interface Agency {
   id: string
@@ -15,6 +22,7 @@ interface Agency {
   payment_method: string | null
   status: string | null
   card_on_file: boolean | null
+  hotel_notification_mode: string | null
   created_via: string | null
   created_at: string
 }
@@ -79,6 +87,26 @@ export default function OperatorAgenciesPage() {
     setBusyId(null)
   }
 
+  const setMode = async (id: string, mode: HotelNotificationMode) => {
+    setBusyId(id)
+    try {
+      const res = await fetch("/api/agencies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, hotelNotificationMode: mode }),
+      })
+      if (res.ok) {
+        setAgencies((prev) => prev.map((a) => (a.id === id ? { ...a, hotel_notification_mode: mode } : a)))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || "更新に失敗しました")
+      }
+    } catch {
+      alert("更新に失敗しました")
+    }
+    setBusyId(null)
+  }
+
   const pendingCount = useMemo(
     () => agencies.filter((a) => a.status === "pending").length,
     [agencies],
@@ -133,6 +161,7 @@ export default function OperatorAgenciesPage() {
                     <th className="text-left p-3 font-medium">代理店</th>
                     <th className="text-left p-3 font-medium">地域</th>
                     <th className="text-left p-3 font-medium">決済</th>
+                    <th className="text-left p-3 font-medium">通知 (申し送り)</th>
                     <th className="text-left p-3 font-medium">状態</th>
                     <th className="text-right p-3 font-medium">操作</th>
                   </tr>
@@ -162,6 +191,26 @@ export default function OperatorAgenciesPage() {
                               {a.card_on_file ? "カード登録済み" : "カード未登録"}
                             </span>
                           )}
+                        </td>
+                        <td className="p-3 align-top">
+                          <select
+                            value={
+                              isHotelNotificationMode(a.hotel_notification_mode)
+                                ? a.hotel_notification_mode
+                                : DEFAULT_HOTEL_NOTIFICATION_MODE
+                            }
+                            disabled={busy}
+                            onChange={(e) => void setMode(a.id, e.target.value as HotelNotificationMode)}
+                            className="rounded-md border border-border bg-white px-2 py-1 text-xs disabled:opacity-50"
+                            aria-label={`${a.name} のホテル通知モード`}
+                          >
+                            {HOTEL_NOTIFICATION_MODES.map((m) => (
+                              <option key={m} value={m}>
+                                {HOTEL_NOTIFICATION_MODE_LABEL[m]}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">既定。区間ごとに上書き可</p>
                         </td>
                         <td className="p-3 align-top">
                           <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${st.cls}`}>

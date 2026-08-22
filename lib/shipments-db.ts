@@ -56,6 +56,10 @@ export interface ShipmentRecord {
   notes: string | null
   /** ホテルへの申し送りの掲載先: from=発送元のみ / to=お届け先のみ(既定) / both=両方。 */
   note_target: string | null
+  /** 発送元ホテルへの通知(申し送り引き渡し)完了日時。null=未送信。 */
+  pickup_hotel_notified_at: string | null
+  /** お届け先ホテルへの通知(申し送り引き渡し)完了日時。null=未送信。 */
+  guest_hotel_notified_at: string | null
   /** 書類一式を格納した Google Drive フォルダの共有 URL (BondEx が発行後に登録)。 */
   drive_url: string | null
   /** ヤマトお届け時間帯 (DELIVERY_TIME_SLOTS の値)。代理店の希望。 */
@@ -490,6 +494,45 @@ export async function updateShipmentChargeState(
     return { ok: false, error: error.message }
   }
   return { ok: true }
+}
+
+/**
+ * ホテル通知(申し送り引き渡し)の送信済み/未送信フラグを設定する。
+ * route: 'pickup'=発送元ホテル / 'guest'=お届け先ホテル。
+ * notified=true で現在時刻をセット、false で null に戻す(未送信へ)。
+ * どちらのルートも明示フラグ(timestamptz)なので DB=画面表示が常に一致する。
+ */
+export async function setHotelNotified(
+  id: string,
+  route: "pickup" | "guest",
+  notified: boolean,
+): Promise<{ ok: boolean; at: string | null; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, at: null, error: "Supabase not configured" }
+  const at = notified ? new Date().toISOString() : null
+  const col = route === "pickup" ? "pickup_hotel_notified_at" : "guest_hotel_notified_at"
+  const { error } = await sb.from("shipments").update({ [col]: at }).eq("id", id)
+  if (error) {
+    console.error("[shipments-db] setHotelNotified failed", error.message)
+    return { ok: false, at: null, error: error.message }
+  }
+  return { ok: true, at }
+}
+
+/**
+ * 代理店名から hotel_notification_mode を引く (発行時の note_target 解決に使う)。
+ * 見つからない/未設定なら null (呼び出し側 resolveNoteTarget が既定にフォールバック)。
+ */
+export async function getAgencyNotificationMode(agencyName: string): Promise<string | null> {
+  const sb = getSupabase()
+  if (!sb || !agencyName) return null
+  const { data, error } = await sb
+    .from("agencies")
+    .select("hotel_notification_mode")
+    .eq("name", agencyName)
+    .maybeSingle()
+  if (error || !data) return null
+  return (data as { hotel_notification_mode?: string | null }).hotel_notification_mode ?? null
 }
 
 /**

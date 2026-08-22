@@ -20,6 +20,12 @@ import {
   Trash2,
   X,
 } from "lucide-react"
+import {
+  applicableRoutes,
+  HOTEL_ROUTE_LABEL,
+  type NoteTarget,
+  type HotelRoute,
+} from "@/lib/hotel-notification"
 
 type ShipmentStatus =
   | "requested"
@@ -53,6 +59,9 @@ interface Shipment {
   error_message: string | null
   tour_number: string | null
   notes: string | null
+  note_target: string | null
+  pickup_hotel_notified_at: string | null
+  guest_hotel_notified_at: string | null
   drive_url: string | null
   created_at: string
 }
@@ -610,6 +619,7 @@ export default function DashboardPage() {
                         <p className="text-foreground text-xs">{it.from_hotel}</p>
                         <p className="text-[10px] text-muted-foreground">↓</p>
                         <p className="text-foreground text-xs">{it.to_hotel}</p>
+                        <HotelNotifyBadges shipment={it} />
                       </td>
                       <td className="p-3 align-top text-right">
                         <p className="font-medium text-foreground tabular-nums">
@@ -690,7 +700,11 @@ export default function DashboardPage() {
       {editTarget && (
         <EditShipmentModal
           shipment={editTarget}
-          onClose={() => setEditTarget(null)}
+          onClose={() => {
+            setEditTarget(null)
+            // モーダル内でホテル通知トグルを操作した場合を一覧へ反映するため再読込。
+            void load()
+          }}
           onSaved={() => {
             setEditTarget(null)
             void load()
@@ -709,6 +723,105 @@ export default function DashboardPage() {
         />
       )}
     </main>
+  )
+}
+
+// note_target を実効値に正規化 (from/to/both 以外は既定 'to')。
+function effectiveNoteTarget(raw: string | null): NoteTarget {
+  return raw === "from" || raw === "to" || raw === "both" ? raw : "to"
+}
+
+// 一覧行の読み取り専用バッジ。掲載対象ルートだけ、送信済み/未送信を色で示す。
+function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
+  const routes = applicableRoutes(effectiveNoteTarget(shipment.note_target))
+  const active = (["pickup", "guest"] as HotelRoute[]).filter((r) => routes[r])
+  if (active.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {active.map((r) => {
+        const sent = Boolean(r === "pickup" ? shipment.pickup_hotel_notified_at : shipment.guest_hotel_notified_at)
+        return (
+          <span
+            key={r}
+            className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium ${
+              sent ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+            }`}
+            title={`${HOTEL_ROUTE_LABEL[r]}: ${sent ? "通知済み" : "未通知"}`}
+          >
+            {HOTEL_ROUTE_LABEL[r]}{sent ? "✓" : "・未"}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+// 編集モーダル内の「ホテル通知(申し送り)送信状況」— 両ルートをトグルで即時更新。
+function HotelNotifySection({ shipment }: { shipment: Shipment }) {
+  const target = effectiveNoteTarget(shipment.note_target)
+  const routes = applicableRoutes(target)
+  const active = (["pickup", "guest"] as HotelRoute[]).filter((r) => routes[r])
+  const [pickupAt, setPickupAt] = useState<string | null>(shipment.pickup_hotel_notified_at)
+  const [guestAt, setGuestAt] = useState<string | null>(shipment.guest_hotel_notified_at)
+  const [busy, setBusy] = useState<HotelRoute | null>(null)
+
+  const toggle = async (route: HotelRoute, next: boolean) => {
+    setBusy(route)
+    try {
+      const body: Record<string, unknown> = { id: shipment.id }
+      body[route === "pickup" ? "pickupHotelNotified" : "guestHotelNotified"] = next
+      const res = await fetch("/api/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(d?.error || "更新に失敗しました")
+      const at = next ? (d?.[route === "pickup" ? "pickupAt" : "guestAt"] ?? new Date().toISOString()) : null
+      if (route === "pickup") setPickupAt(at)
+      else setGuestAt(at)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "更新に失敗しました")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const targetLabel = target === "both" ? "両方" : target === "from" ? "発送元のみ" : "お届け先のみ"
+
+  return (
+    <div className="rounded-xl border border-border p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-medium text-foreground">ホテル通知 (申し送り) の送信状況</p>
+        <span className="text-[10px] text-muted-foreground">掲載先: {targetLabel}</span>
+      </div>
+      {active.map((r) => {
+        const at = r === "pickup" ? pickupAt : guestAt
+        const sent = Boolean(at)
+        return (
+          <div key={r} className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className="text-xs text-foreground">{HOTEL_ROUTE_LABEL[r]}</span>
+              <span className={`ml-2 text-[10px] ${sent ? "text-emerald-700" : "text-amber-700"}`}>
+                {sent ? `送信済み (${new Date(at as string).toLocaleDateString("ja-JP")})` : "未送信"}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={busy === r}
+              onClick={() => void toggle(r, !sent)}
+              className={`text-xs rounded-md px-2.5 py-1 border transition-colors disabled:opacity-50 ${
+                sent
+                  ? "border-border text-muted-foreground hover:bg-muted"
+                  : "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+              }`}
+            >
+              {busy === r ? "…" : sent ? "未送信に戻す" : "送信済みにする"}
+            </button>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -851,6 +964,9 @@ function EditShipmentModal({
         {driveInvalid && (
           <p className="text-xs text-red-700">Drive の URL は https://drive.google.com/… 形式でご入力ください。</p>
         )}
+
+        {/* ホテル通知(申し送り)の両ルート送信状況 — 掲載対象ルートのみ表示・即時トグル */}
+        <HotelNotifySection shipment={shipment} />
 
         {/* 事故防止の注意 — 何が自動で変わり、何が変わらないかを明示する */}
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1">

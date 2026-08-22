@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
+import { isHotelNotificationMode } from "@/lib/hotel-notification"
 
 export const runtime = "nodejs"
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await sb
       .from("agencies")
-      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, payment_method, status, contract_status, card_on_file, billing_exempt, created_via, created_at")
+      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, payment_method, status, contract_status, card_on_file, billing_exempt, hotel_notification_mode, created_via, created_at")
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -40,8 +41,10 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * PATCH /api/agencies — 代理店の承認 / 却下 / 停止
- *   body: { id, status: 'active' | 'suspended' | 'pending' }
+ * PATCH /api/agencies — 代理店の承認 / 却下 / 停止、およびホテル通知モードの更新
+ *   body: { id, status?: 'active' | 'suspended' | 'pending',
+ *           hotelNotificationMode?: 'guest_only' | 'pickup_only' | 'dual' }
+ * status と hotelNotificationMode はどちらか一方でも両方でも可 (最低1つ必須)。
  * (却下 = suspended として扱う。完全削除は行わない)
  */
 const ALLOWED_STATUS = ["active", "suspended", "pending"] as const
@@ -55,25 +58,46 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
   }
 
-  let body: { id?: unknown; status?: unknown }
+  let body: { id?: unknown; status?: unknown; hotelNotificationMode?: unknown }
   try {
-    body = (await req.json()) as { id?: unknown; status?: unknown }
+    body = (await req.json()) as { id?: unknown; status?: unknown; hotelNotificationMode?: unknown }
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
   const id = typeof body.id === "string" ? body.id.trim() : ""
-  const status = typeof body.status === "string" ? body.status.trim() : ""
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
-  if (!(ALLOWED_STATUS as readonly string[]).includes(status)) {
-    return NextResponse.json({ error: "status must be active / suspended / pending" }, { status: 400 })
+
+  const update: Record<string, unknown> = {}
+
+  if (body.status !== undefined) {
+    const status = typeof body.status === "string" ? body.status.trim() : ""
+    if (!(ALLOWED_STATUS as readonly string[]).includes(status)) {
+      return NextResponse.json({ error: "status must be active / suspended / pending" }, { status: 400 })
+    }
+    update.status = status
+  }
+
+  if (body.hotelNotificationMode !== undefined) {
+    const mode = body.hotelNotificationMode
+    if (!isHotelNotificationMode(mode)) {
+      return NextResponse.json(
+        { error: "hotelNotificationMode must be guest_only / pickup_only / dual" },
+        { status: 400 },
+      )
+    }
+    update.hotel_notification_mode = mode
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "nothing to update (status or hotelNotificationMode required)" }, { status: 400 })
   }
 
   const { data, error } = await sb
     .from("agencies")
-    .update({ status })
+    .update(update)
     .eq("id", id)
-    .select("id, name, status, contact_email")
+    .select("id, name, status, contact_email, hotel_notification_mode")
     .single()
 
   if (error) {
@@ -81,7 +105,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   // 承認(active化)時は代理店へ「承認されました」通知。best-effort(失敗しても承認は成立)。
-  if (status === "active" && data?.contact_email) {
+  if (update.status === "active" && data?.contact_email) {
     try {
       await sendMail({
         to: data.contact_email,
