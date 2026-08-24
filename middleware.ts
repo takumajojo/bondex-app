@@ -24,14 +24,14 @@ const COOKIE_NAME = "bondex_op_auth"
 //  - /api/stripe/*  代理店 JWT
 //  - /api/cron/*    CRON_SECRET で自前認証
 //  - /api/demo/*    登録前デモ (公開)
-//  - /api/photos/*  レガシー(プロト /wireframes 用)
+// ※ /api/photos/* と /api/analyze-luggage はレガシー(プロト /wireframes 用)。未認証アップロードXSS/
+//    有料API濫用の懸念があり本番導線外のため、公開から外して既定(operator認証必須)に戻した(2026-08-24)。
 const PUBLIC_PREFIXES = [
   "/api/agency/",
   "/api/track/",
   "/api/stripe/",
   "/api/cron/",
   "/api/demo/",
-  "/api/photos/",
 ]
 const PUBLIC_EXACT = new Set<string>([
   "/operator/login", // ログイン画面自体は公開(無限ループ防止)
@@ -40,7 +40,6 @@ const PUBLIC_EXACT = new Set<string>([
   "/api/contact", // LPの問い合わせ
   "/api/howto", // 公開ガイドPDF
   "/api/email", // レガシー(プロト用)
-  "/api/analyze-luggage", // レガシー(プロト用)
   "/api/places", // レガシー(プロト用)
   "/api/places/staticmap", // レガシー(プロト用)
 ])
