@@ -52,23 +52,40 @@ export async function POST(req: NextRequest) {
   const rawPayment = s(body.paymentMethod)
   const paymentMethod = rawPayment === "card" ? "card" : rawPayment === "invoice" ? "invoice" : ""
 
-  // --- バリデーション ---
+  // --- バリデーション --- (エラーは登録時に選ばれた言語で返す)
+  const en = locale === "en"
   if (!EMAIL_RE.test(email)) {
-    return NextResponse.json({ error: "有効なメールアドレスをご入力ください。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Please enter a valid email address." : "有効なメールアドレスをご入力ください。" },
+      { status: 400 },
+    )
   }
   if (password.length < 8) {
-    return NextResponse.json({ error: "パスワードは 8 文字以上でご設定ください。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Password must be at least 8 characters." : "パスワードは 8 文字以上でご設定ください。" },
+      { status: 400 },
+    )
   }
   if (!agencyName) {
-    return NextResponse.json({ error: "貴社名をご入力ください。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Please enter your company name." : "貴社名をご入力ください。" },
+      { status: 400 },
+    )
   }
   if (!paymentMethod) {
-    return NextResponse.json({ error: "お支払い方法をお選びください。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Please choose a payment method." : "お支払い方法をお選びください。" },
+      { status: 400 },
+    )
   }
   // 地域ルール: 海外は card のみ
   if (!isDomestic && paymentMethod === "invoice") {
     return NextResponse.json(
-      { error: "海外のお客様は請求書払いをご選択いただけません。カード払いをお選びください。" },
+      {
+        error: en
+          ? "Overseas customers cannot select invoice payment. Please choose card payment."
+          : "海外のお客様は請求書払いをご選択いただけません。カード払いをお選びください。",
+      },
       { status: 400 },
     )
   }
@@ -76,7 +93,11 @@ export async function POST(req: NextRequest) {
   const sb = getSupabase()
   if (!sb) {
     return NextResponse.json(
-      { error: "登録機能は現在準備中です。BondEx サポートまでご連絡ください。" },
+      {
+        error: en
+          ? "Registration is being set up. Please contact BondEx support."
+          : "登録機能は現在準備中です。BondEx サポートまでご連絡ください。",
+      },
       { status: 503 },
     )
   }
@@ -89,7 +110,11 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (existing) {
     return NextResponse.json(
-      { error: "同名の代理店が既に登録されています。別の表記か BondEx サポートにご確認ください。" },
+      {
+        error: en
+          ? "An agency with this name is already registered. Please use a different name or contact BondEx support."
+          : "同名の代理店が既に登録されています。別の表記か BondEx サポートにご確認ください。",
+      },
       { status: 409 },
     )
   }
@@ -102,10 +127,15 @@ export async function POST(req: NextRequest) {
     user_metadata: { agency_name: agencyName },
   })
   if (authErr || !created?.user) {
-    const msg = authErr?.message || "アカウント作成に失敗しました。"
+    const msg = authErr?.message || (en ? "Failed to create the account." : "アカウント作成に失敗しました。")
     // メール重複などは 409 相当
     const status = /already|exist|registered/i.test(msg) ? 409 : 400
-    const friendly = status === 409 ? "このメールアドレスは既に登録されています。" : msg
+    const friendly =
+      status === 409
+        ? en
+          ? "This email address is already registered."
+          : "このメールアドレスは既に登録されています。"
+        : msg
     return NextResponse.json({ error: friendly }, { status })
   }
   const userId = created.user.id

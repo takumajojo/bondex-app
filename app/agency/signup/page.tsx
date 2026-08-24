@@ -152,13 +152,18 @@ export default function AgencySignupPage() {
         return
       }
       // 登録成功 → 自動ログインを試みる (承認待ちでもログインはできる)
+      let signedIn = false
       const sb = getBrowserSupabase()
       if (sb) {
-        await sb.auth.signInWithPassword({ email: email.trim(), password }).catch(() => {})
+        const { error: signInErr } = await sb.auth
+          .signInWithPassword({ email: email.trim(), password })
+          .catch(() => ({ error: new Error("sign-in failed") }))
+        signedIn = !signInErr
       }
       setStatus("done")
-      // カード払いなら、ログイン後の /agency でカード登録バナーが出る
-      setTimeout(() => router.replace("/agency"), 1800)
+      // 自動ログイン成功→ポータル(カード払いはカード登録バナー)。失敗→未ログインで迷子に
+      // ならないよう、登録済みのメール/パスワードでログインできるログイン画面へ誘導する。
+      setTimeout(() => router.replace(signedIn ? "/agency" : "/agency/login"), 1800)
     } catch {
       setError(t.errNetwork)
       setStatus("error")

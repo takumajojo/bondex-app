@@ -131,20 +131,42 @@ export async function POST(req: NextRequest) {
   const auth = await resolveAgencyFromRequest(req)
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  // エラーは代理店の言語で返す
+  const en = auth.agency.locale === "en"
+
   // 契約書が未署名なら運用不可 (register→contract→agree→operate)。UIゲートのサーバー側担保。
   if (auth.agency.contract_status !== "signed") {
     return NextResponse.json(
-      { error: "ご利用には契約書への署名が必要です。ポータルの「契約書に署名」から締結してください。", code: "CONTRACT_UNSIGNED" },
+      {
+        error: en
+          ? "You need to sign the service agreement first. Please conclude it from “Sign the contract” in the portal."
+          : "ご利用には契約書への署名が必要です。ポータルの「契約書に署名」から締結してください。",
+        code: "CONTRACT_UNSIGNED",
+      },
       { status: 403 },
     )
   }
 
   // 承認待ち・停止中は登録不可
   if (auth.agency.status === "pending") {
-    return NextResponse.json({ error: "アカウントは承認待ちです。承認後にご利用いただけます。" }, { status: 403 })
+    return NextResponse.json(
+      {
+        error: en
+          ? "Your account is awaiting approval. You can use the service once it is approved."
+          : "アカウントは承認待ちです。承認後にご利用いただけます。",
+      },
+      { status: 403 },
+    )
   }
   if (auth.agency.status === "suspended") {
-    return NextResponse.json({ error: "アカウントは停止中です。BondEx サポートにご連絡ください。" }, { status: 403 })
+    return NextResponse.json(
+      {
+        error: en
+          ? "Your account is suspended. Please contact BondEx support."
+          : "アカウントは停止中です。BondEx サポートにご連絡ください。",
+      },
+      { status: 403 },
+    )
   }
 
   let body: Record<string, unknown>
@@ -161,14 +183,23 @@ export async function POST(req: NextRequest) {
   const guestLanguage = normalizeGuestLanguage(body.guestLanguage)
   const travelerCount = Math.max(1, Math.floor(Number(body.travelerCount) || 1))
   if (!representative) {
-    return NextResponse.json({ error: "代表者名をご入力ください。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Please enter the representative's name." : "代表者名をご入力ください。" },
+      { status: 400 },
+    )
   }
   const rawLegs = Array.isArray(body.legs) ? body.legs : []
   if (rawLegs.length === 0) {
-    return NextResponse.json({ error: "区間を 1 つ以上ご入力ください。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Please add at least one leg." : "区間を 1 つ以上ご入力ください。" },
+      { status: 400 },
+    )
   }
   if (rawLegs.length > 10) {
-    return NextResponse.json({ error: "区間は 10 件までです。" }, { status: 400 })
+    return NextResponse.json(
+      { error: en ? "Up to 10 legs are allowed." : "区間は 10 件までです。" },
+      { status: 400 },
+    )
   }
   const legs: LegInput[] = []
   for (const raw of rawLegs) {
