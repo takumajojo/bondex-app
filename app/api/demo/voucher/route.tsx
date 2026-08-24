@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
+import { WHATSAPP_URL } from "@/lib/contact-links"
 import {
   VoucherDocument,
   SUPPORT_DEFAULTS,
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
   // 問い合わせQR: WhatsApp(env)優先、未設定はメールにフォールバック。
   // 本番バウチャーと同じ「QRだけ」表示を見本でも再現する。
   try {
-    const wa = process.env.BONDEX_WHATSAPP_URL?.trim()
+    const wa = WHATSAPP_URL.trim()
     const target = wa || `mailto:${SUPPORT_DEFAULTS.email}`
     input.supportQrDataUri = await QRCode.toDataURL(target, {
       margin: 0,

@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName } from "@/lib/utils"
+import { WHATSAPP_URL } from "@/lib/contact-links"
 import {
   VoucherDocument,
   OperationsDocument,
@@ -76,7 +77,7 @@ function asString(v: unknown): string {
  * WhatsApp 番号が決まったら Vercel の環境変数を設定するだけで切り替わる。
  */
 async function buildSupportQr(): Promise<{ uri?: string; kind: "whatsapp" | "email" }> {
-  const wa = process.env.BONDEX_WHATSAPP_URL?.trim()
+  const wa = WHATSAPP_URL.trim()
   const target = wa || `mailto:${SUPPORT_DEFAULTS.email}`
   try {
     const uri = await QRCode.toDataURL(target, {
