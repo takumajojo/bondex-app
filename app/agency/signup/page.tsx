@@ -34,6 +34,8 @@ const messages = {
     invoiceDomesticOnly: "Domestic only",
     card: "Card payment",
     cardSub: "Charged per shipment",
+    cardTiming:
+      "Registering a card does not charge you right away. You are charged only when the luggage is actually picked up — never at the time of booking.",
     overseasCardNote: "Overseas customers can use card payment only.",
     email: "Email",
     password: "Password",
@@ -77,6 +79,8 @@ const messages = {
     invoiceDomesticOnly: "国内のみ",
     card: "カード払い",
     cardSub: "1 件ごとに決済",
+    cardTiming:
+      "カードを登録しても、その場では決済されません。実際の決済は荷物が集荷されたタイミングで発生します（ご予約の時点では課金されません）。",
     overseasCardNote: "海外のお客様はカード払いのみご利用いただけます。",
     email: "メールアドレス",
     password: "パスワード",
@@ -268,6 +272,11 @@ export default function AgencySignupPage() {
             </div>
             {region === "overseas" && (
               <p className="text-[11px] text-[#94A3B8]">{t.overseasCardNote}</p>
+            )}
+            {payment === "card" && (
+              <p className="rounded-lg bg-[#F0FDF4] border border-[#BBF7D0] px-3 py-2 text-[11px] text-[#166534] leading-relaxed">
+                {t.cardTiming}
+              </p>
             )}
           </div>
 

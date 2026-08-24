@@ -26,6 +26,8 @@ const messages = {
     prepareFailed: "Failed to prepare card registration.",
     unavailable: "Card registration is being set up. We'll guide you again at voucher issuance.",
     onFile: "Card on file",
+    timing:
+      "Registering a card does not charge you now. You are charged only when the luggage is actually picked up — never at booking.",
   },
   ja: {
     registerCard: "カードを登録する",
@@ -35,6 +37,8 @@ const messages = {
     prepareFailed: "カード登録の準備に失敗しました。",
     unavailable: "カード登録は現在準備中です。バウチャー発行時に改めてご案内します。",
     onFile: "カード登録済み",
+    timing:
+      "カードを登録しても、その場では決済されません。実際の決済は荷物が集荷されたタイミングで発生します（ご予約の時点では課金されません）。",
   },
 } as const
 
@@ -99,6 +103,9 @@ function CardForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () => v
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      <p className="rounded-lg bg-[#F0FDF4] border border-[#BBF7D0] px-3 py-2 text-[12px] text-[#166534] leading-relaxed">
+        {t.timing}
+      </p>
       <PaymentElement />
       {error && <p className="text-[13px] text-red-600" role="alert">{error}</p>}
       <div className="flex gap-2">
