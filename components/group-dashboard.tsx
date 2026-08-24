@@ -72,6 +72,16 @@ const T = {
       cancelled: "キャンセル",
     } as Record<string, string>,
     // 編集モーダル
+    shareBtn: "共有リンク（添乗員用）",
+    shareTitle: "添乗員向け共有リンク",
+    shareHint: "この団体だけを閲覧できる期限付きリンクを発行します（料金・請求は表示されません・閲覧のみ）。LINE / WhatsApp でそのまま送れます。",
+    shareDays: "有効期間",
+    shareDaysUnit: "日間",
+    shareIssue: "リンクを発行",
+    shareCopy: "コピー",
+    shareCopied: "コピーしました",
+    shareExpires: "有効期限",
+    shareFailed: "発行に失敗しました",
     editTitle: "荷物を編集",
     guestName: "ゲスト名",
     trackingNumber: "追跡番号（貼り替えた場合のみ上書き）",
@@ -129,6 +139,16 @@ const T = {
       issue: "Needs attention",
       cancelled: "Cancelled",
     } as Record<string, string>,
+    shareBtn: "Share link (tour leader)",
+    shareTitle: "Tour leader share link",
+    shareHint: "Creates a time-limited link that shows this group only (no pricing or billing, read-only). Send it via LINE / WhatsApp.",
+    shareDays: "Valid for",
+    shareDaysUnit: "days",
+    shareIssue: "Create link",
+    shareCopy: "Copy",
+    shareCopied: "Copied",
+    shareExpires: "Expires",
+    shareFailed: "Failed to create the link",
     editTitle: "Edit luggage",
     guestName: "Guest name",
     trackingNumber: "Tracking number (override only if relabeled)",
@@ -174,20 +194,27 @@ export function GroupDashboard({
   data,
   locale,
   canOperate,
+  readOnly = false,
   onPatch,
   onReload,
+  onCreateShare,
 }: {
   data: GroupViewPayload
   locale: Locale
   /** true=運営 (追跡番号の付け替え・状態の手動上書きが可能)。代理店はゲスト名/メモのみ。 */
   canOperate: boolean
-  onPatch: (id: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+  /** true=添乗員の共有ビュー (閲覧のみ・編集UIを一切出さない)。 */
+  readOnly?: boolean
+  onPatch?: (id: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
   onReload: () => void
+  /** 指定時、ヘッダーに「共有リンク発行」ボタンを表示 (運営/代理店)。 */
+  onCreateShare?: (days: number) => Promise<{ ok: boolean; url?: string; expiresAt?: string; error?: string }>
 }) {
   const t = T[locale]
   const [filter, setFilter] = useState<Filter>("all")
   const [q, setQ] = useState("")
   const [editTarget, setEditTarget] = useState<LuggageView | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const issues = data.luggage.filter((l) => l.status === "issue")
 
@@ -263,6 +290,14 @@ export function GroupDashboard({
                 )}
               </p>
             )}
+            {onCreateShare && (
+              <button
+                onClick={() => setShareOpen(true)}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
+              >
+                {t.shareBtn}
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -278,8 +313,8 @@ export function GroupDashboard({
             {issues.map((l) => (
               <button
                 key={l.id}
-                onClick={() => setEditTarget(l)}
-                className="w-full text-left rounded-lg bg-white border border-red-200 px-3 py-2 hover:border-red-400 transition-colors"
+                onClick={() => !readOnly && setEditTarget(l)}
+                className={`w-full text-left rounded-lg bg-white border border-red-200 px-3 py-2 transition-colors ${readOnly ? "cursor-default" : "hover:border-red-400"}`}
               >
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
                   <span className="font-mono text-xs text-muted-foreground">BG-{String(l.luggageNo).padStart(3, "0")}</span>
@@ -392,13 +427,15 @@ export function GroupDashboard({
                       <td className="p-3 text-xs text-muted-foreground tabular-nums">{fmtTime(l.lastUpdate)}</td>
                       <td className="p-3 font-mono text-[11px] text-muted-foreground">{l.trackingNumber ?? "—"}</td>
                       <td className="p-3 text-right">
-                        <button
-                          onClick={() => setEditTarget(l)}
-                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                        >
-                          <Pencil className="w-3 h-3" strokeWidth={1.5} />
-                          {t.edit}
-                        </button>
+                        {!readOnly && (
+                          <button
+                            onClick={() => setEditTarget(l)}
+                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                          >
+                            <Pencil className="w-3 h-3" strokeWidth={1.5} />
+                            {t.edit}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -410,8 +447,8 @@ export function GroupDashboard({
               {filtered.map((l) => (
                 <button
                   key={l.id}
-                  onClick={() => setEditTarget(l)}
-                  className={`w-full text-left p-3.5 ${l.status === "issue" ? "bg-red-50/60" : ""}`}
+                  onClick={() => !readOnly && setEditTarget(l)}
+                  className={`w-full text-left p-3.5 ${l.status === "issue" ? "bg-red-50/60" : ""} ${readOnly ? "cursor-default" : ""}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-medium text-foreground text-sm">{l.guestName || t.unnamed}</p>
@@ -433,7 +470,7 @@ export function GroupDashboard({
         )}
       </section>
 
-      {editTarget && (
+      {editTarget && !readOnly && onPatch && (
         <LuggageEditModal
           luggage={editTarget}
           t={t}
@@ -449,6 +486,112 @@ export function GroupDashboard({
           }}
         />
       )}
+
+      {shareOpen && onCreateShare && (
+        <ShareLinkModal t={t} onClose={() => setShareOpen(false)} onCreate={onCreateShare} />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 共有リンク発行モーダル (添乗員用・期限付き)
+// ---------------------------------------------------------------------------
+function ShareLinkModal({
+  t,
+  onClose,
+  onCreate,
+}: {
+  t: (typeof T)["ja"] | (typeof T)["en"]
+  onClose: () => void
+  onCreate: (days: number) => Promise<{ ok: boolean; url?: string; expiresAt?: string; error?: string }>
+}) {
+  const [days, setDays] = useState(14)
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState("")
+  const [expiresAt, setExpiresAt] = useState("")
+  const [copied, setCopied] = useState(false)
+  const [err, setErr] = useState("")
+
+  const issue = async () => {
+    setBusy(true)
+    setErr("")
+    const r = await onCreate(days)
+    if (r.ok && r.url) {
+      setUrl(r.url)
+      setExpiresAt(r.expiresAt ?? "")
+    } else {
+      setErr(r.error || t.shareFailed)
+    }
+    setBusy(false)
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard 不可の環境では手動コピー */
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-start justify-between">
+          <h2 className="text-lg font-semibold text-foreground">{t.shareTitle}</h2>
+          <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{t.shareHint}</p>
+
+        {!url ? (
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">{t.shareDays}</label>
+              <select
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value))}
+                className="h-10 rounded-md border border-border bg-white px-3 text-sm"
+              >
+                {[7, 14, 30, 60].map((d) => (
+                  <option key={d} value={d}>
+                    {d} {t.shareDaysUnit}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {err && <p className="text-xs text-red-700">{err}</p>}
+            <button
+              onClick={() => void issue()}
+              disabled={busy}
+              className="w-full h-10 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            >
+              {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+              {t.shareIssue}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="font-mono text-[11px] text-foreground break-all">{url}</p>
+              {expiresAt && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {t.shareExpires}: {new Date(expiresAt).toLocaleDateString("ja-JP")}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => void copy()}
+              className="w-full h-10 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90"
+            >
+              {copied ? t.shareCopied : t.shareCopy}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

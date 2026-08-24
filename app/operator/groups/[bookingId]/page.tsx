@@ -81,7 +81,27 @@ export default function OperatorGroupPage({
         ) : error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
         ) : data ? (
-          <GroupDashboard data={data} locale="ja" canOperate onPatch={patch} onReload={load} />
+          <GroupDashboard
+            data={data}
+            locale="ja"
+            canOperate
+            onPatch={patch}
+            onReload={load}
+            onCreateShare={async (days) => {
+              try {
+                const res = await fetch(`/api/groups/${encodeURIComponent(bookingId)}/share`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ days }),
+                })
+                const d = await res.json().catch(() => ({}))
+                if (!res.ok) return { ok: false, error: d.error }
+                return { ok: true, url: d.url, expiresAt: d.expiresAt }
+              } catch {
+                return { ok: false, error: "network error" }
+              }
+            }}
+          />
         ) : null}
       </div>
     </main>

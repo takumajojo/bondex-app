@@ -32,6 +32,7 @@ const PUBLIC_PREFIXES = [
   "/api/stripe/",
   "/api/cron/",
   "/api/demo/",
+  "/api/g/", // 添乗員向け共有ビュー (期限付きトークンで自己認証・読み取り専用)
 ]
 const PUBLIC_EXACT = new Set<string>([
   "/operator/login", // ログイン画面自体は公開(無限ループ防止)
