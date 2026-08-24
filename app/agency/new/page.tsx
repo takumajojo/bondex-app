@@ -82,7 +82,9 @@ const messages = {
     title: "Register a booking",
     lead: "Enter the trip details. BondEx will prepare the voucher and shipping labels and share a Google Drive folder link here — no label is issued (or charged) at this step.",
     autoHeading: "Auto-fill from an itinerary",
-    autoBody: "Upload the itinerary (PDF or image) and we'll read the hotels, dates and lead traveler into the form below. You can edit anything afterward.",
+    autoBody: "Upload an itinerary or guest roster (PDF, image, Excel, or CSV). We'll read hotels, dates and the lead traveler into the form — and if it's a roster with luggage-request marks, we'll fill the group luggage list with the requesting guests. You can edit anything afterward.",
+    autoRosterDone: (n: number) =>
+      `Loaded ${n} luggage request(s) from the roster into the luggage list (booking type set to Group). Please enter the hotels and dates below.`,
     autoButton: "Upload itinerary",
     autoParsing: "Reading the itinerary…",
     autoDone: "Loaded — please review the fields below.",
@@ -260,8 +262,10 @@ const messages = {
     badge: "新規発行依頼",
     title: "発行依頼を登録",
     lead: "旅程をご入力ください。BondEx がバウチャーと配送伝票を用意し、Google Drive フォルダのリンクをこちらでご案内します。この段階では送り状は発行されません（課金もありません）。",
-    autoHeading: "旅程表から自動入力",
-    autoBody: "旅程表（PDF・画像）をアップロードすると、ホテル・日付・代表者を読み取って下のフォームに反映します。読み取り後は自由に修正できます。",
+    autoHeading: "旅程表・名簿から自動入力",
+    autoBody: "旅程表または名簿（PDF・画像・Excel・CSV）をアップロードすると、ホテル・日付・代表者を読み取って下のフォームに反映します。配送依頼の印（YES等）が付いた名簿なら、依頼者だけを団体の荷物リストに自動反映します。読み取り後は自由に修正できます。",
+    autoRosterDone: (n: number) =>
+      `名簿から配送依頼 ${n} 名分を荷物リストに反映しました（予約タイプを「団体」にしました）。ホテル・日付は下のフォームでご入力ください。`,
     autoButton: "旅程表を読み込む",
     autoParsing: "旅程表を読み取り中…",
     autoDone: "読み込みました。下の内容をご確認ください。",
@@ -807,24 +811,45 @@ export default function AgencyNewBookingPage() {
           to?: { hotel?: string; city?: string; checkIn?: string; checkOut?: string }
           recipient?: string
         }>
+        luggageRoster?: Array<{ name?: string; bags?: number }>
       }
       if (!res.ok) {
         setParseError(data.error || t.autoErr)
         return
       }
       const ships = Array.isArray(data.shipments) ? data.shipments : []
-      if (ships.length === 0) {
+      // 名簿ドキュメント対応: 配送依頼のあるゲストのリスト (YES行のみ)。
+      const roster = (Array.isArray(data.luggageRoster) ? data.luggageRoster : []).filter(
+        (r): r is { name: string; bags?: number } => typeof r?.name === "string" && r.name.trim().length > 0,
+      )
+      if (ships.length === 0 && roster.length === 0) {
         setParseError(t.autoErr)
         return
+      }
+      // 名簿 → 荷物リスト(1行=1個・bags分繰り返し)へ反映し、予約タイプを団体に切替
+      if (roster.length > 0) {
+        const lines: string[] = []
+        for (const r of roster) {
+          const bags = Math.max(1, Math.min(5, Math.floor(Number(r.bags) || 1)))
+          for (let k = 0; k < bags; k++) lines.push(r.name.trim())
+        }
+        setLuggageText(lines.join("\n"))
+        setBookingType("group")
       }
       const ymd = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "")
       const firstTraveler = data.guest?.travelers?.[0]
       const rep =
         ships[0]?.recipient ||
-        (firstTraveler ? [firstTraveler.title, firstTraveler.name].filter(Boolean).join(" ").trim() : "")
+        (firstTraveler ? [firstTraveler.title, firstTraveler.name].filter(Boolean).join(" ").trim() : "") ||
+        (roster.length > 0 ? roster[0].name.trim() : "")
       if (rep) setRepresentative(rep)
       const tc = Number(data.guest?.travelerCount) || (data.guest?.travelers?.length ?? 0)
       if (tc >= 1) setTravelerCount(tc)
+      // 名簿のみ (行程なし) の場合は区間を触らずに完了
+      if (ships.length === 0) {
+        setParseNote(t.autoRosterDone(roster.length))
+        return
+      }
       setLegs(
         ships.map((s) => ({
           // 旅程表はホテル前提。個人宅は手動でトグルして入力する。
@@ -1393,7 +1418,7 @@ export default function AgencyNewBookingPage() {
                   {parsing ? t.autoParsing : t.autoButton}
                   <input
                     type="file"
-                    accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                    accept="application/pdf,image/jpeg,image/png,image/webp,image/gif,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                     className="hidden"
                     disabled={parsing}
                     onChange={(e) => {

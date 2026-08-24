@@ -1426,7 +1426,7 @@ export default function OperatorPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="application/pdf,image/jpeg,image/png,image/webp"
+                accept="application/pdf,image/jpeg,image/png,image/webp,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]

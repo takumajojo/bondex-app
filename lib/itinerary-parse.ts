@@ -1,14 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk"
+import * as XLSX from "xlsx"
 import { saveParseLog, sha256Hex } from "@/lib/parse-log-db"
 
 /**
- * 旅程表 (PDF/画像) を AI で解析して { guest, shipments } を返す共有ロジック。
+ * 旅程表 (PDF/画像/Excel/CSV) を AI で解析して { guest, shipments } を返す共有ロジック。
  *
  * 運営 (/api/itinerary/parse) と代理店 (/api/agency/itinerary/parse) の両方から使う。
  * 認証は各ルート側で行う (運営=OPERATOR_PASSWORD / 代理店=Supabase JWT)。
+ *
+ * Excel/CSV は Claude API が直接受け取れないため、サーバー側で CSV テキストに
+ * 変換してテキストブロックとして渡す (全シートをシート名付きで連結)。
  */
 
 export const MAX_ITINERARY_BYTES = 10 * 1024 * 1024 // 10MB
+const MAX_SPREADSHEET_TEXT = 150_000 // 変換後テキストの上限 (トークン暴発防止)
 
 export const ACCEPTED_MEDIA_TYPES = [
   "application/pdf",
@@ -17,6 +22,36 @@ export const ACCEPTED_MEDIA_TYPES = [
   "image/webp",
   "image/gif",
 ] as const
+
+// スプレッドシート系 (Excel / CSV)。ブラウザが type を空で送ることがあるため拡張子でも判定。
+const SPREADSHEET_MEDIA_TYPES = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+  "application/vnd.ms-excel", // .xls
+  "text/csv",
+] as const
+const SPREADSHEET_EXTS = ["xlsx", "xls", "csv"] as const
+
+function fileExt(name: string | undefined): string {
+  const n = (name ?? "").toLowerCase()
+  const i = n.lastIndexOf(".")
+  return i >= 0 ? n.slice(i + 1) : ""
+}
+
+/** Excel/CSV のバッファを CSV テキストに変換 (全シート・シート名付き)。 */
+function spreadsheetToText(buf: Buffer, ext: string): string {
+  if (ext === "csv") {
+    return buf.toString("utf8")
+  }
+  const wb = XLSX.read(buf, { type: "buffer" })
+  const parts: string[] = []
+  for (const name of wb.SheetNames.slice(0, 10)) {
+    const ws = wb.Sheets[name]
+    if (!ws) continue
+    const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false })
+    if (csv.trim()) parts.push(`=== Sheet: ${name} ===\n${csv}`)
+  }
+  return parts.join("\n\n")
+}
 
 const SYSTEM_PROMPT = `You are an expert itinerary parser for BondEx, a luggage forwarding service for inbound tourists in Japan.
 
@@ -63,6 +98,17 @@ Rules for "recipient" (重要):
 - If no title is given, use just the full name (e.g. "Michael Johnson")
 - NEVER write "Johnson Family", "The Smith Group", "Tanaka Sama" etc. — always one person
 - The same representative is used for ALL shipment legs in the itinerary
+
+Rules for GUEST ROSTER documents (名簿・重要):
+- The document may be a GUEST ROSTER / name list (e.g. columns like No / Guest Name / Gender /
+  "Luggage Request" / Bags) instead of an itinerary. This is a VALID input.
+- In that case, extract the roster into "luggageRoster": one entry per guest who REQUESTS luggage
+  delivery. Respect request marks: include only rows marked YES / ○ / ✓ / 1+ bags; EXCLUDE rows
+  marked NO / × / 0 bags. If there is no request column at all, include every listed guest.
+- "bags" = the number of bags for that guest if a Bags/個数 column exists (default 1).
+- Set guest.travelerCount to the TOTAL number of people on the roster (including non-requesters).
+- A roster has no hotels/dates — in that case return shipments as an EMPTY array []. Do NOT invent
+  hotels or dates. (If the document contains BOTH a roster and an itinerary, extract both.)
 
 Rules for hotel names (重要):
 - Output ONLY the hotel's own name. NEVER include the OTA/booking-channel name as a prefix or suffix.
@@ -167,6 +213,19 @@ const TOOL_SCHEMA = {
           required: ["shipmentDate", "expectedArrival", "from", "to", "recipient"],
         },
       },
+      luggageRoster: {
+        type: "array",
+        description:
+          "Only for guest-roster documents: guests who REQUEST luggage delivery (rows marked YES/○/1+ bags). Empty array if the document is a normal itinerary without a roster.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Guest full name" },
+            bags: { type: "integer", minimum: 1, description: "Number of bags (default 1)" },
+          },
+          required: ["name"],
+        },
+      },
     },
     required: ["guest", "shipments"],
   },
@@ -236,11 +295,18 @@ export async function parseItineraryFile(
     return { ok: false, status: 500, error: "ANTHROPIC_API_KEY not configured" }
   }
   const mediaType = file.type || ""
-  if (!ACCEPTED_MEDIA_TYPES.includes(mediaType as (typeof ACCEPTED_MEDIA_TYPES)[number])) {
+  const ext = fileExt(opts?.fileName)
+  const isSpreadsheet =
+    (SPREADSHEET_MEDIA_TYPES as readonly string[]).includes(mediaType) ||
+    (SPREADSHEET_EXTS as readonly string[]).includes(ext)
+  if (
+    !isSpreadsheet &&
+    !ACCEPTED_MEDIA_TYPES.includes(mediaType as (typeof ACCEPTED_MEDIA_TYPES)[number])
+  ) {
     return {
       ok: false,
       status: 400,
-      error: `Unsupported media type: ${mediaType}. Accepted: PDF, JPEG, PNG, WEBP, GIF`,
+      error: `Unsupported media type: ${mediaType}. Accepted: PDF, JPEG, PNG, WEBP, GIF, Excel (.xlsx/.xls), CSV`,
     }
   }
   if (file.size > MAX_ITINERARY_BYTES) {
@@ -248,22 +314,44 @@ export async function parseItineraryFile(
   }
 
   const buf = Buffer.from(await file.arrayBuffer())
-  const base64 = buf.toString("base64")
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  const isPdf = mediaType === "application/pdf"
-  const documentBlock = isPdf
-    ? {
-        type: "document" as const,
-        source: { type: "base64" as const, media_type: "application/pdf" as const, data: base64 },
-      }
-    : {
-        type: "image" as const,
-        source: {
-          type: "base64" as const,
-          media_type: mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-          data: base64,
-        },
-      }
+
+  let documentBlock:
+    | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } }
+    | { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } }
+    | { type: "text"; text: string }
+  if (isSpreadsheet) {
+    // Excel/CSV → CSV テキストに変換して渡す (Claude API はスプレッドシートを直接受けない)
+    let text = ""
+    try {
+      text = spreadsheetToText(buf, ext === "csv" || mediaType === "text/csv" ? "csv" : ext || "xlsx")
+    } catch {
+      return { ok: false, status: 400, error: "Could not read the spreadsheet file" }
+    }
+    if (!text.trim()) {
+      return { ok: false, status: 400, error: "The spreadsheet appears to be empty" }
+    }
+    documentBlock = {
+      type: "text",
+      text: `Itinerary / roster spreadsheet content (converted to CSV):\n\n${text.slice(0, MAX_SPREADSHEET_TEXT)}`,
+    }
+  } else {
+    const base64 = buf.toString("base64")
+    const isPdf = mediaType === "application/pdf"
+    documentBlock = isPdf
+      ? {
+          type: "document" as const,
+          source: { type: "base64" as const, media_type: "application/pdf" as const, data: base64 },
+        }
+      : {
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+            data: base64,
+          },
+        }
+  }
 
   try {
     const message = await client.messages.create({
