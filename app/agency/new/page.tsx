@@ -752,6 +752,43 @@ export default function AgencyNewBookingPage() {
 
   const updateLeg = (i: number, patch: Partial<Leg>) =>
     setLegs((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+
+  // 発送日の変更に、依存する日付(到着日・お届け先チェックイン/アウト)を必ず連動させる。
+  // 発送日だけ変えて他が据え置きになるケースは業務上あり得ない(谷口さん指示)。
+  //  - 既に発送日が入っていた場合: 変更差分(日数)だけ全日付をスライド(手動調整のオフセット維持)
+  //  - 初回入力(または旧値が不正)の場合: 到着=翌日 / チェックイン=発送日(お客様は同日移動が標準) /
+  //    チェックアウトは値がある時だけ発送日に合わせる(任意項目のため空は空のまま)
+  const DATE_RE_LOCAL = /^\d{4}-\d{2}-\d{2}$/
+  const addDaysYmd = (ymd: string, days: number): string => {
+    const d = new Date(`${ymd}T00:00:00Z`)
+    if (isNaN(d.getTime())) return ymd
+    d.setUTCDate(d.getUTCDate() + days)
+    return d.toISOString().slice(0, 10)
+  }
+  const onShipDateChange = (i: number, value: string) =>
+    setLegs((prev) =>
+      prev.map((leg, idx) => {
+        if (idx !== i) return leg
+        const patch: Partial<Leg> = { shipmentDate: value }
+        if (DATE_RE_LOCAL.test(value)) {
+          const delta = DATE_RE_LOCAL.test(leg.shipmentDate)
+            ? Math.round((Date.parse(`${value}T00:00:00Z`) - Date.parse(`${leg.shipmentDate}T00:00:00Z`)) / 86_400_000)
+            : null
+          patch.expectedArrival =
+            delta !== null && DATE_RE_LOCAL.test(leg.expectedArrival)
+              ? addDaysYmd(leg.expectedArrival, delta)
+              : addDaysYmd(value, 1)
+          patch.fromCheckIn =
+            delta !== null && DATE_RE_LOCAL.test(leg.fromCheckIn)
+              ? addDaysYmd(leg.fromCheckIn, delta)
+              : value
+          if (DATE_RE_LOCAL.test(leg.toCheckOut)) {
+            patch.toCheckOut = delta !== null ? addDaysYmd(leg.toCheckOut, delta) : value
+          }
+        }
+        return { ...leg, ...patch }
+      }),
+    )
   // 個人宅住所は関数型で最新状態にマージ (郵便番号の非同期補完が古い state を上書きしないように)。
   const patchResidence = (i: number, side: "from" | "to", patch: Partial<ResidenceAddress>) =>
     setLegs((prev) =>
@@ -1569,7 +1606,7 @@ export default function AgencyNewBookingPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label={t.shipmentDate} htmlFor={`sd${i}`} required>
                   <input id={`sd${i}`} type="date" className={inputCls} value={leg.shipmentDate}
-                    onChange={(e) => updateLeg(i, { shipmentDate: e.target.value })} required />
+                    onChange={(e) => onShipDateChange(i, e.target.value)} required />
                 </Field>
                 <Field label={t.expectedArrival} htmlFor={`ea${i}`} required>
                   <input id={`ea${i}`} type="date" className={inputCls} value={leg.expectedArrival}
