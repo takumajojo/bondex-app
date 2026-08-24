@@ -22,6 +22,7 @@ import {
   Clock,
   Truck,
   CreditCard,
+  MoreHorizontal,
 } from "lucide-react"
 
 type ShipmentStatus =
@@ -150,6 +151,10 @@ export default function DashboardPage() {
   const [editTarget, setEditTarget] = useState<Shipment | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Shipment | null>(null)
   const [adjustTarget, setAdjustTarget] = useState<Shipment | null>(null)
+  // ステータス変更は即時 select をやめ、確認モーダル経由に (誤操作防止・課金/通知の副作用を明示)
+  const [statusTarget, setStatusTarget] = useState<Shipment | null>(null)
+  // 行の「⋯」操作メニュー (開いている行の id)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   // 「状態の一望」用スナップショット (フィルタ非依存・全件)。要対応の集計と遅延の判定に使う。
   const [board, setBoard] = useState<Shipment[]>([])
   const [pendingAgencies, setPendingAgencies] = useState(0)
@@ -226,6 +231,8 @@ export default function DashboardPage() {
   // 課金失敗の区間を手動で再試行する (chargeShipmentIfDue を operator 権限で叩く)。
   const retryCharge = useCallback(
     async (id: string) => {
+      // 実カードへの課金アクションのため、ワンクリック実行を避けて確認を挟む
+      if (!confirm("カード決済を今すぐ再試行します。よろしいですか？\n（課金済みの場合は二重課金されません）")) return
       setChargingId(id)
       try {
         const res = await fetch("/api/operator/charge-retry", {
@@ -870,51 +877,20 @@ export default function DashboardPage() {
                             ツアー: <span className="font-mono">{it.tour_number}</span>
                           </p>
                         )}
-                        <div className="mt-1 flex flex-col gap-0.5">
-                          {it.status === "requested" || it.status === "failed" ? (
-                            <a
-                              href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
-                              title={
-                                it.status === "failed"
-                                  ? "前回の送り状発行が失敗しています。内容を確認して再発行します"
-                                  : "代理店の発行依頼を発行画面に読み込み、レビューして発行します"
-                              }
-                            >
-                              {it.status === "failed" ? "再発行を試す →" : "この依頼を発行 →"}
-                            </a>
-                          ) : (
-                            <>
-                              <a
-                                href={`/api/voucher/regenerate?booking_id=${encodeURIComponent(it.booking_id)}`}
-                                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                                title="Voucher PDF を再ダウンロード (発行時の言語で出ます)"
-                              >
-                                <RefreshCw className="w-2.5 h-2.5" strokeWidth={1.5} />
-                                Voucher 再発行
-                              </a>
-                              {it.yamato_label_url && (
-                                <a
-                                  href={`/api/voucher/labels?booking_id=${encodeURIComponent(it.booking_id)}`}
-                                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                                  title="この予約の全区間の送り状を 1 つの PDF で"
-                                >
-                                  <Download className="w-2.5 h-2.5" strokeWidth={1.5} />
-                                  送り状一括
-                                </a>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => syncDrive(it.booking_id)}
-                                disabled={syncingId === it.booking_id}
-                                className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 underline underline-offset-2 disabled:opacity-50 text-left"
-                                title="バウチャー+送り状を共有ドライブの予約番号フォルダに格納し、フォルダURLを保存します"
-                              >
-                                {syncingId === it.booking_id ? "格納中…" : "Driveへ格納"}
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        {/* 主要アクション(発行)だけを行内に残し、他は「⋯」メニューに集約 */}
+                        {(it.status === "requested" || it.status === "failed") && (
+                          <a
+                            href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+                            title={
+                              it.status === "failed"
+                                ? "前回の送り状発行が失敗しています。内容を確認して再発行します"
+                                : "代理店の発行依頼を発行画面に読み込み、レビューして発行します"
+                            }
+                          >
+                            {it.status === "failed" ? "再発行を試す →" : "この依頼を発行 →"}
+                          </a>
+                        )}
                       </td>
                       <td className="p-3 align-top">
                         <p className="text-foreground">{it.representative}</p>
@@ -1004,48 +980,103 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className="p-3 align-top">
-                        <select
-                          value={it.status}
-                          onChange={(e) =>
-                            void handleStatusChange(it.id, e.target.value as ShipmentStatus)
-                          }
-                          className={`h-7 px-2 rounded-md text-xs font-medium border-0 ${STATUS_LABELS[it.status].cls}`}
-                        >
-                          {STATUS_OPTIONS.map((st) => (
-                            <option key={st} value={st}>
-                              {STATUS_LABELS[st].ja}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-start gap-1.5">
+                          {/* 即時変更の select を廃止し、バッジ表示＋メニュー経由の確認モーダルに */}
+                          <span
+                            className={`inline-block px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${STATUS_LABELS[it.status].cls}`}
+                          >
+                            {STATUS_LABELS[it.status].ja}
+                          </span>
+                          <div className="relative">
+                            <button
+                              onClick={() => setOpenMenuId(openMenuId === it.id ? null : it.id)}
+                              className="p-1 rounded-md border border-border bg-white text-muted-foreground hover:text-foreground hover:border-foreground/40"
+                              title="操作メニュー"
+                            >
+                              <MoreHorizontal className="w-4 h-4" strokeWidth={1.5} />
+                            </button>
+                            {openMenuId === it.id && (
+                              <>
+                                {/* 外側クリックで閉じる透明オーバーレイ */}
+                                <div
+                                  className="fixed inset-0 z-40"
+                                  onClick={() => setOpenMenuId(null)}
+                                />
+                                <div className="absolute right-0 z-50 mt-1 w-52 rounded-xl border border-border bg-white shadow-lg py-1 text-left">
+                                  <button
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setStatusTarget(it)
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/40"
+                                  >
+                                    ステータスを変更…
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setEditTarget(it)
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/40"
+                                  >
+                                    日付・備考を編集…
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setAdjustTarget(it)
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs text-amber-800 hover:bg-muted/40"
+                                  >
+                                    個数を修正…
+                                  </button>
+                                  <div className="my-1 border-t border-border" />
+                                  <a
+                                    href={`/api/voucher/regenerate?booking_id=${encodeURIComponent(it.booking_id)}`}
+                                    className="block px-3 py-2 text-xs text-foreground hover:bg-muted/40"
+                                    onClick={() => setOpenMenuId(null)}
+                                  >
+                                    Voucher 再発行
+                                  </a>
+                                  {it.yamato_label_url && (
+                                    <a
+                                      href={`/api/voucher/labels?booking_id=${encodeURIComponent(it.booking_id)}`}
+                                      className="block px-3 py-2 text-xs text-foreground hover:bg-muted/40"
+                                      onClick={() => setOpenMenuId(null)}
+                                    >
+                                      送り状 一括DL
+                                    </a>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      void syncDrive(it.booking_id)
+                                    }}
+                                    disabled={syncingId === it.booking_id}
+                                    className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/40 disabled:opacity-50"
+                                  >
+                                    {syncingId === it.booking_id ? "Drive 格納中…" : "Drive へ格納"}
+                                  </button>
+                                  <div className="my-1 border-t border-border" />
+                                  <button
+                                    onClick={() => {
+                                      setOpenMenuId(null)
+                                      setDeleteTarget(it)
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
+                                  >
+                                    予約を削除…
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
                         {it.error_message && (
                           <p className="text-[10px] text-red-700 mt-1 max-w-[180px] line-clamp-2">
                             {it.error_message}
                           </p>
                         )}
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <button
-                            onClick={() => setEditTarget(it)}
-                            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                          >
-                            <Pencil className="w-2.5 h-2.5" strokeWidth={1.5} />
-                            編集
-                          </button>
-                          <button
-                            onClick={() => setAdjustTarget(it)}
-                            className="inline-flex items-center gap-1 text-[10px] text-amber-700 hover:text-amber-900 underline underline-offset-2"
-                            title="集荷時に受付個数と実個数が違った場合の修正（理由必須・ランオペへ通知）"
-                          >
-                            <Package className="w-2.5 h-2.5" strokeWidth={1.5} />
-                            個数を修正
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(it)}
-                            className="inline-flex items-center gap-1 text-[10px] text-red-600 hover:text-red-700 underline underline-offset-2"
-                          >
-                            <Trash2 className="w-2.5 h-2.5" strokeWidth={1.5} />
-                            削除
-                          </button>
-                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1091,6 +1122,16 @@ export default function DashboardPage() {
             setAdjustTarget(null)
             void load()
             void loadBoard()
+          }}
+        />
+      )}
+      {statusTarget && (
+        <StatusChangeModal
+          shipment={statusTarget}
+          onClose={() => setStatusTarget(null)}
+          onConfirm={async (st) => {
+            await handleStatusChange(statusTarget.id, st)
+            setStatusTarget(null)
           }}
         />
       )}
@@ -1260,6 +1301,109 @@ function EditShipmentModal({
           >
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
             保存
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ステータス変更モーダル — 一覧の即時 select を廃止し、変更内容と副作用
+// (課金処理・配達完了メール) を確認してから適用する (誤操作防止・谷口さん要望)。
+// ---------------------------------------------------------------------------
+function StatusChangeModal({
+  shipment,
+  onClose,
+  onConfirm,
+}: {
+  shipment: Shipment
+  onClose: () => void
+  onConfirm: (st: ShipmentStatus) => Promise<void>
+}) {
+  const [next, setNext] = useState<ShipmentStatus>(shipment.status)
+  const [busy, setBusy] = useState(false)
+
+  const changed = next !== shipment.status
+  // 副作用の予告 — 何が自動で起きるかを適用前に明示する
+  const effects: string[] = []
+  if (["picked_up", "in_transit", "delivered"].includes(next) && !shipment.charged_at) {
+    effects.push("カード払いの代理店は課金処理が実行されます（課金ON時・未課金の場合）")
+  }
+  if (next === "delivered") {
+    effects.push("代理店へ配達完了メールが自動送信されます")
+  }
+  if (next === "cancelled") {
+    effects.push("発行済みの送り状は自動では無効になりません（集荷事故防止に破棄が必要）")
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">ステータスを変更</h2>
+            <p className="text-xs text-muted-foreground mt-1 font-mono">
+              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {shipment.from_hotel} → {shipment.to_hotel}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-block px-2 py-1 rounded-md text-xs font-medium ${STATUS_LABELS[shipment.status].cls}`}
+          >
+            {STATUS_LABELS[shipment.status].ja}
+          </span>
+          <span className="text-muted-foreground text-sm">→</span>
+          <select
+            value={next}
+            onChange={(e) => setNext(e.target.value as ShipmentStatus)}
+            className="h-10 flex-1 rounded-md border border-border bg-white px-3 text-sm"
+          >
+            {STATUS_OPTIONS.map((st) => (
+              <option key={st} value={st}>
+                {STATUS_LABELS[st].ja}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {changed && effects.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1">
+            <p className="text-[11px] font-medium text-amber-900">適用すると自動で実行されるもの</p>
+            {effects.map((e, i) => (
+              <p key={i} className="text-[11px] text-amber-800 leading-relaxed">
+                ・{e}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="h-10 px-4 rounded-lg border border-border bg-white text-sm hover:bg-muted/40"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await onConfirm(next)
+              } finally {
+                setBusy(false)
+              }
+            }}
+            disabled={busy || !changed}
+            className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+            変更を適用
           </button>
         </div>
       </div>
