@@ -42,7 +42,7 @@ export async function regenerateVoucherPdf(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, from_residence, to_hotel, to_city, to_check_out, to_residence, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en",
+      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, from_residence, to_hotel, to_city, to_check_out, to_residence, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en, booking_type, tour_leader_name",
     )
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
@@ -118,11 +118,39 @@ export async function regenerateVoucherPdf(
     }),
   )
 
+  // 団体: 添乗員 + 個荷リスト(名前ごとに個数集約)を末尾のマニフェストページ用に取得 (best-effort)
+  let tourLeader: string | undefined
+  let groupLuggage: Array<{ name: string; bags: number }> | undefined
+  const firstRow = data[0] as { booking_type?: string | null; tour_leader_name?: string | null }
+  if (firstRow.booking_type === "group") {
+    tourLeader = firstRow.tour_leader_name ?? undefined
+    try {
+      const { data: lugs } = await sb
+        .from("group_luggage")
+        .select("guest_name, luggage_no")
+        .eq("booking_id", bookingId)
+        .eq("leg_index", 0)
+        .order("luggage_no", { ascending: true })
+      if (lugs && lugs.length > 0) {
+        const byName = new Map<string, number>()
+        for (const l of lugs) {
+          const nm = ((l.guest_name as string) || "").trim() || "—"
+          byName.set(nm, (byName.get(nm) ?? 0) + 1)
+        }
+        groupLuggage = Array.from(byName.entries()).map(([name, bags]) => ({ name, bags }))
+      }
+    } catch {
+      /* 個荷リスト取得失敗はバウチャー本体を止めない */
+    }
+  }
+
   const input: VoucherInput = {
     bookingId,
     issuedDate: formatIssuedDate(),
     representativeLabel,
     groupName,
+    tourLeader,
+    groupLuggage,
     tourCompany: agencyName,
     carrier: (data[0] as { carrier?: string }).carrier ?? "sagawa",
     tourNumber,

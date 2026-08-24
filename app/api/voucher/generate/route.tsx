@@ -4,6 +4,7 @@ import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName } from "@/lib/utils"
 import { WHATSAPP_URL } from "@/lib/contact-links"
+import { getSupabase } from "@/lib/supabase"
 import {
   VoucherDocument,
   OperationsDocument,
@@ -235,6 +236,43 @@ export async function POST(req: NextRequest) {
   const groupName = asString(body.groupName).trim() || undefined
   const tourNumber = asString(body.tourNumber).trim() || undefined
 
+  // 団体 (booking_type='group') のとき: 添乗員と個荷リスト(名前ごとに個数集約)を
+  // DB から引いてバウチャー末尾の「団体お荷物リスト」ページに載せる。best-effort。
+  let tourLeader: string | undefined
+  let groupLuggage: Array<{ name: string; bags: number }> | undefined
+  try {
+    const sbg = getSupabase()
+    if (sbg && bookingId) {
+      const { data: legRow } = await sbg
+        .from("shipments")
+        .select("booking_type, tour_leader_name")
+        .eq("booking_id", bookingId)
+        .order("leg_index", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (legRow?.booking_type === "group") {
+        tourLeader = (legRow.tour_leader_name as string | null) ?? undefined
+        const { data: lugs } = await sbg
+          .from("group_luggage")
+          .select("guest_name, leg_index, luggage_no")
+          .eq("booking_id", bookingId)
+          .eq("leg_index", 0)
+          .order("luggage_no", { ascending: true })
+        if (lugs && lugs.length > 0) {
+          // 同名は個数に集約 (Amit Patel が2行 → ×2)。名前の初出順を維持。
+          const byName = new Map<string, number>()
+          for (const l of lugs) {
+            const nm = ((l.guest_name as string) || "").trim() || "—"
+            byName.set(nm, (byName.get(nm) ?? 0) + 1)
+          }
+          groupLuggage = Array.from(byName.entries()).map(([name, bags]) => ({ name, bags }))
+        }
+      }
+    }
+  } catch {
+    /* 団体リスト取得失敗はバウチャー本体を止めない */
+  }
+
   // Voucher のみ QR を埋め込む — ops シートは内部用途で不要。
   // react-pdf は canvas/JS を実行できないため、事前に画像化しておく。
   let trackingQrDataUri: string | undefined
@@ -278,6 +316,8 @@ export async function POST(req: NextRequest) {
     guestLanguage: normalizeGuestLanguage(body.guestLanguage),
     // ガイドはバウチャー末尾に同梱 (既定 ON)。複数区間でも 1 枚。
     includeHowto: body.includeHowto !== false,
+    tourLeader,
+    groupLuggage,
   }
 
   try {

@@ -207,6 +207,11 @@ export interface VoucherInput {
    *  既定 = 同梱する (undefined/true)。false のときだけ省く。
    *  区間が何本でもガイドは常に 1 枚 (区間ごとには増えない)。 */
   includeHowto?: boolean
+  /** 団体 (booking_type='group') のとき: 添乗員 (ツアーリーダー) 氏名。 */
+  tourLeader?: string
+  /** 団体のとき: 配送依頼ゲストの一覧 (名前ごとに個数を集約)。
+   *  1件以上あるとバウチャー末尾に「団体お荷物リスト」ページを1枚追加する。 */
+  groupLuggage?: Array<{ name: string; bags: number }>
 }
 
 function resolveContactMode(data: VoucherInput): ContactDisplayMode {
@@ -1170,6 +1175,146 @@ function VoucherPage({
 // Public components
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 団体お荷物リスト (GROUP LUGGAGE MANIFEST) — 団体予約のとき末尾に1枚追加。
+// 誰の荷物か・各何個かをホテル担当者様がチェックできる一覧。2列で最大50件想定。
+// ---------------------------------------------------------------------------
+function GroupManifestPage({ data }: { data: VoucherInput }) {
+  const list = data.groupLuggage ?? []
+  const totalBags = list.reduce((s, g) => s + Math.max(1, g.bags), 0)
+  const first = data.shipments[0]
+  const route = first ? `${first.from.hotel} → ${first.to.hotel}` : ""
+  // 2列に分割 (左=前半・右=後半)
+  const mid = Math.ceil(list.length / 2)
+  const cols = [list.slice(0, mid), list.slice(mid)]
+  return (
+    <Page size="A4" style={vs.page} wrap={false}>
+      {/* masthead */}
+      <View style={vs.masthead}>
+        <View>
+          <Image style={logoSize(8.5)} src={LOGO_PATH} />
+          <Text style={[vs.copyTag, { color: RED }]}>GROUP LUGGAGE MANIFEST / 団体お荷物リスト</Text>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={vs.refLabel}>REF</Text>
+          <Text style={vs.refValue}>{data.bookingId}</Text>
+        </View>
+      </View>
+
+      {/* 団体情報 */}
+      <View style={{ borderWidth: mm(0.4), borderColor: INK, padding: mm(3), marginTop: mm(3) }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <View style={{ flex: 1 }}>
+            <Text style={vs.dk}>GROUP / 団体名</Text>
+            <Text style={[vs.dv, { fontSize: 11 }]}>{jb(data.groupName || data.tourCompany)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={vs.dk}>TOUR LEADER / 添乗員</Text>
+            <Text style={[vs.dv, { fontSize: 11 }]}>{jb(data.tourLeader || "—")}</Text>
+          </View>
+          <View style={{ width: "22%" }}>
+            <Text style={vs.dk}>TOTAL / 合計</Text>
+            <Text style={[vs.dv, { fontSize: 11 }]}>
+              {list.length} guests ・ {totalBags} bags
+            </Text>
+          </View>
+        </View>
+        {route ? (
+          <Text style={{ fontSize: 8, color: MUTED, marginTop: mm(1.5) }}>{jb(route)}</Text>
+        ) : null}
+      </View>
+
+      {/* リスト (2列) */}
+      <View style={{ flexDirection: "row", marginTop: mm(3), gap: mm(4) }}>
+        {cols.map((col, ci) => (
+          <View key={ci} style={{ flex: 1 }}>
+            {/* ヘッダ行 */}
+            <View
+              style={{
+                flexDirection: "row",
+                borderBottomWidth: mm(0.4),
+                borderBottomColor: INK,
+                paddingBottom: mm(1),
+                marginBottom: mm(0.5),
+              }}
+            >
+              <Text style={{ width: mm(9), fontSize: 6.5, color: MUTED }}>NO.</Text>
+              <Text style={{ flex: 1, fontSize: 6.5, color: MUTED }}>GUEST NAME / ご予約者名</Text>
+              <Text style={{ width: mm(12), fontSize: 6.5, color: MUTED, textAlign: "right" }}>BAGS</Text>
+              <Text style={{ width: mm(9), fontSize: 6.5, color: MUTED, textAlign: "right" }}>✓</Text>
+            </View>
+            {col.map((g, i) => {
+              const no = ci === 0 ? i + 1 : mid + i + 1
+              const bags = Math.max(1, g.bags)
+              return (
+                <View
+                  key={i}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: mm(1.15),
+                    borderBottomWidth: mm(0.2),
+                    borderBottomColor: GRAY_LINE,
+                  }}
+                >
+                  <Text style={{ width: mm(9), fontSize: 8, color: MUTED }}>
+                    {String(no).padStart(3, "0")}
+                  </Text>
+                  <Text style={{ flex: 1, fontSize: 9 }}>{jb(g.name || "—")}</Text>
+                  <Text
+                    style={{
+                      width: mm(12),
+                      fontSize: 9,
+                      textAlign: "right",
+                      ...(bags > 1 ? { color: RED } : {}),
+                    }}
+                  >
+                    ×{bags}
+                  </Text>
+                  {/* ホテル担当者様のチェック欄 */}
+                  <View
+                    style={{
+                      width: mm(4),
+                      height: mm(4),
+                      marginLeft: mm(5),
+                      borderWidth: mm(0.3),
+                      borderColor: MUTED,
+                    }}
+                  />
+                </View>
+              )
+            })}
+          </View>
+        ))}
+      </View>
+
+      {/* 注記 */}
+      <Text style={{ fontSize: 7.5, color: MUTED, marginTop: mm(3), lineHeight: 1.5 }}>
+        {jb(
+          "ホテルご担当者様へ: お預かり・お渡しの際に本リストでご確認ください。×2 以上のゲストは複数個お預かりします。/ For hotel staff: please use this list to check bags at drop-off and pick-up. Guests marked ×2 or more have multiple bags.",
+        )}
+      </Text>
+
+      {/* footer */}
+      <View
+        style={{
+          marginTop: "auto",
+          paddingTop: mm(2),
+          borderTopWidth: mm(0.3),
+          borderTopColor: GRAY_LINE,
+          flexDirection: "row",
+          justifyContent: "space-between",
+        }}
+      >
+        <Text style={{ fontSize: 6.5, color: MUTED }}>
+          {jb(`${data.companyName} ／ BondEx — bondex.express`)}
+        </Text>
+        <Text style={{ fontSize: 6.5, color: MUTED }}>REFERENCE: {data.bookingId}</Text>
+      </View>
+    </Page>
+  )
+}
+
 export function VoucherDocument({ data }: { data: VoucherInput }) {
   const totalLegs = data.shipments.length
   return (
@@ -1187,6 +1332,8 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
       {data.shipments.map((shipment, i) => (
         <VoucherPage key={i} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />
       ))}
+      {/* 団体: 誰の荷物か・各何個かの一覧 (ホテル担当者様のチェック用) を 1 枚追加 */}
+      {(data.groupLuggage?.length ?? 0) > 0 ? <GroupManifestPage data={data} /> : null}
       {/* How to use ガイドを末尾に 1 枚だけ同梱 (複数区間でも 1 枚)。既定 ON。 */}
       {data.includeHowto !== false ? (
         <HowToShipPage
