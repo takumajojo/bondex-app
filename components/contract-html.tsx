@@ -13,30 +13,37 @@ export function ContractHtml({
   bankInfo = BONDEX_PARTY.bankInfo,
   companyName = BONDEX_PARTY.companyName,
   brand = "BondEx",
+  locale = "ja",
 }: {
   agencyName: string
   price?: number
   bankInfo?: string
   companyName?: string
   brand?: string
+  locale?: "ja" | "en"
 }) {
-  const articles = buildArticles(price, bankInfo)
+  const en = locale === "en"
+  const articles = buildArticles(price, bankInfo, locale)
   const agencyLabel = agencyName?.trim() || "＿＿＿＿＿＿＿＿"
 
   return (
     <div className="text-[13px] leading-7 text-foreground">
       <div className="text-center mb-4">
-        <p className="text-lg font-semibold tracking-[0.25em]">業務委託契約書</p>
-        <p className="text-[10px] tracking-widest text-muted-foreground mt-1">AGENCY SERVICE AGREEMENT</p>
+        <p className="text-lg font-semibold tracking-[0.25em]">
+          {en ? "AGENCY SERVICE AGREEMENT" : "業務委託契約書"}
+        </p>
+        {!en && (
+          <p className="text-[10px] tracking-widest text-muted-foreground mt-1">AGENCY SERVICE AGREEMENT</p>
+        )}
       </div>
 
-      <p className="mb-4">{contractPreamble(companyName, agencyLabel, brand)}</p>
+      <p className="mb-4">{contractPreamble(companyName, agencyLabel, brand, locale)}</p>
 
       <div className="space-y-3">
         {articles.map((a) => (
           <section key={a.num}>
             <h3 className="font-semibold text-foreground">
-              第{a.num}条（{a.title}）
+              {en ? `Article ${a.num}. ${a.title}` : `第${a.num}条（${a.title}）`}
             </h3>
             <div className="mt-0.5 space-y-0.5">
               {a.blocks.map((b, i) =>
@@ -56,11 +63,16 @@ export function ContractHtml({
 
       <div className="mt-6 pt-3 border-t border-border text-[12px] text-muted-foreground space-y-0.5">
         <p>
-          甲：{companyName}（{BONDEX_PARTY.representativeTitle} {BONDEX_PARTY.representativeName}）／{" "}
+          {en ? "Party A: " : "甲："}
+          {companyName}（{BONDEX_PARTY.representativeTitle} {BONDEX_PARTY.representativeName}）／{" "}
           {BONDEX_PARTY.address}
         </p>
-        <p>乙：{agencyLabel}</p>
-        <p className="pt-1">本契約は、下の欄で同意・署名することにより電子的に締結されます。</p>
+        <p>{en ? "Party B: " : "乙："}{agencyLabel}</p>
+        <p className="pt-1">
+          {en
+            ? "This Agreement is concluded electronically by agreeing and signing in the field below."
+            : "本契約は、下の欄で同意・署名することにより電子的に締結されます。"}
+        </p>
       </div>
     </div>
   )

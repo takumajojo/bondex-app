@@ -184,11 +184,11 @@ export async function PATCH(req: NextRequest) {
           if (sb) {
             const { data: ag } = await sb
               .from("agencies")
-              .select("contact_email, is_domestic")
+              .select("contact_email, locale")
               .eq("name", ship.agency)
               .maybeSingle()
             agencyEmail = ag?.contact_email ?? null
-            english = ag?.is_domestic === false
+            english = ag?.locale === "en"
           }
           await sendDeliveryCompleteEmail({
             agencyEmail,

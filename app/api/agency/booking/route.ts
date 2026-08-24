@@ -327,7 +327,7 @@ export async function POST(req: NextRequest) {
     // 1ヶ月超先(far)の区間のうち最も早い発送日を「最短の出荷予定日」として案内する。
     const farShipDates = farLegs.map((r) => legs[r.legIndex].shipmentDate)
     const earliestShipDate = farShipDates.reduce((min, d) => (d < min ? d : min), farShipDates[0])
-    const locale: "ja" | "en" = auth.agency.is_domestic === false ? "en" : "ja"
+    const locale: "ja" | "en" = auth.agency.locale === "en" ? "en" : "ja"
     const mail = await sendBookingRequestEmail({
       agencyEmail: auth.agency.contact_email,
       agencyName,

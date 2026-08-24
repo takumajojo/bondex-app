@@ -11,6 +11,7 @@ import { PdfPreview } from "@/components/pdf-preview"
 interface Status {
   status: string
   agencyName?: string
+  locale?: "ja" | "en"
   currentVersion: string
   signed: boolean
   signedAt: string | null
@@ -273,11 +274,11 @@ export default function AgencyContractPage() {
                   // 実PDFをcanvas描画(デザイン一致)。pdf.js失敗時はHTML全文にフォールバック。
                   <PdfPreview
                     bytes={previewBytes}
-                    fallback={<ContractHtml agencyName={status?.agencyName || ""} />}
+                    fallback={<ContractHtml agencyName={status?.agencyName || ""} locale={status?.locale === "en" ? "en" : "ja"} />}
                   />
                 ) : (
                   // プレビューPDFの取得自体に失敗した場合も、必ず全文を表示してから署名させる
-                  <ContractHtml agencyName={status?.agencyName || ""} />
+                  <ContractHtml agencyName={status?.agencyName || ""} locale={status?.locale === "en" ? "en" : "ja"} />
                 )}
               </div>
             </div>

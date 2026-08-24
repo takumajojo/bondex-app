@@ -35,6 +35,20 @@ function jpDate(d: Date): string {
   return `${y}年${m}月${dd}日`
 }
 
+// 締結日の英語表記（例: August 4, 2026）。JST 基準。
+function enDate(d: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(d)
+}
+
+function fmtSignedDate(d: Date, locale: "ja" | "en"): string {
+  return locale === "en" ? enDate(d) : jpDate(d)
+}
+
 // 署名済み契約書を登録会社(+BondEx控え)へメール送信する。ベストエフォート(失敗しても署名は成立)。
 // ※ onboarding@resend.dev(共有ドメイン)では Resend 登録メール宛しか届かない。任意の代理店宛に
 //    送るには bondex.express のドメイン認証(Plan B)が必要。
@@ -44,33 +58,56 @@ async function sendSignedContract(opts: {
   signerName: string
   signedDate: string
   pdfBase64: string
+  locale?: "ja" | "en"
 }): Promise<{ agencySent: boolean; bondexSent: boolean; to?: string; note?: string }> {
   if (!mailerConfigured()) return { agencySent: false, bondexSent: false, note: "メール未設定" }
-  const subject = `【BondEx】業務委託契約 締結完了のご連絡（${opts.agencyName} 御中）`
-  const text = [
-    `${opts.agencyName} 御中`,
-    "",
-    "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
-    "",
-    "このたびは業務委託契約にご同意・ご署名を賜り、誠にありがとうございます。",
-    `下記のとおり ${opts.signedDate} 付で本契約が締結されましたので、署名済みの契約書（PDF）を添付のうえご送付申し上げます。`,
-    "控えとして大切に保管くださいますようお願い申し上げます。",
-    "",
-    "───────────────────",
-    "　契約名　：業務委託契約書",
-    `　締結日　：${opts.signedDate}`,
-    `　署名者　：${opts.signerName}`,
-    "───────────────────",
-    "",
-    "ご不明な点がございましたら、本メールへのご返信、または support@bondex.express までお気軽にお問い合わせください。",
-    "今後とも何卒よろしくお願い申し上げます。",
-    "",
-    "━━━━━━━━━━━━━━━━━━",
-    "BondEx（手荷物配送手配サービス）／ 株式会社JOJO",
-    "Web  : https://bondex.express",
-    "Mail : support@bondex.express",
-    "━━━━━━━━━━━━━━━━━━",
-  ].join("\n")
+  const en = opts.locale === "en"
+  const subject = en
+    ? `[BondEx] Your service agreement is signed (${opts.agencyName})`
+    : `【BondEx】業務委託契約 締結完了のご連絡（${opts.agencyName} 御中）`
+  const text = en
+    ? [
+        `Dear ${opts.agencyName},`,
+        "",
+        "Thank you for reviewing and signing the service agreement.",
+        `The agreement was concluded as of ${opts.signedDate}. Please find the signed contract (PDF) attached and keep it for your records.`,
+        "",
+        "───────────────────",
+        "  Contract : Agency Service Agreement",
+        `  Date     : ${opts.signedDate}`,
+        `  Signer   : ${opts.signerName}`,
+        "───────────────────",
+        "",
+        "If you have any questions, reply to this email or contact support@bondex.express.",
+        "",
+        "— BondEx (luggage-forwarding coordination) / JOJO Inc.",
+        "Web  : https://bondex.express",
+        "Mail : support@bondex.express",
+      ].join("\n")
+    : [
+        `${opts.agencyName} 御中`,
+        "",
+        "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
+        "",
+        "このたびは業務委託契約にご同意・ご署名を賜り、誠にありがとうございます。",
+        `下記のとおり ${opts.signedDate} 付で本契約が締結されましたので、署名済みの契約書（PDF）を添付のうえご送付申し上げます。`,
+        "控えとして大切に保管くださいますようお願い申し上げます。",
+        "",
+        "───────────────────",
+        "　契約名　：業務委託契約書",
+        `　締結日　：${opts.signedDate}`,
+        `　署名者　：${opts.signerName}`,
+        "───────────────────",
+        "",
+        "ご不明な点がございましたら、本メールへのご返信、または support@bondex.express までお気軽にお問い合わせください。",
+        "今後とも何卒よろしくお願い申し上げます。",
+        "",
+        "━━━━━━━━━━━━━━━━━━",
+        "BondEx（手荷物配送手配サービス）／ 株式会社JOJO",
+        "Web  : https://bondex.express",
+        "Mail : support@bondex.express",
+        "━━━━━━━━━━━━━━━━━━",
+      ].join("\n")
   const attachments = [{ filename: "bondex-contract-signed.pdf", contentBase64: opts.pdfBase64 }]
   const replyTo = "support@bondex.express"
 
@@ -106,10 +143,12 @@ function buildData(
   agencyName: string,
   signature?: ContractInput["signature"] & { effectiveDate?: string },
   agencyAddress?: string,
+  locale: "ja" | "en" = "ja",
 ): ContractInput {
   return {
     contractNumber: contractNumberFor(agencyName),
-    effectiveDate: signature?.signedDate ?? "　　　　年　　月　　日",
+    locale,
+    effectiveDate: signature?.signedDate ?? (locale === "en" ? "____________, 20__" : "　　　　年　　月　　日"),
     agency: { name: agencyName, address: agencyAddress || undefined },
     bondex: BONDEX,
     pricePerSuitcaseYen: 5000,
@@ -127,10 +166,14 @@ function buildData(
   }
 }
 
-// 署名対象(条項)の版ハッシュ: 署名を含まないテンプレを描画して SHA-256。版が同じなら決定的。
-async function termsHash(agencyName: string): Promise<string> {
-  const buf = await renderToBuffer(ContractDocument({ data: buildData(agencyName) }))
+// 署名対象(条項)の版ハッシュ: 署名を含まないテンプレを描画して SHA-256。版+言語が同じなら決定的。
+async function termsHash(agencyName: string, locale: "ja" | "en" = "ja"): Promise<string> {
+  const buf = await renderToBuffer(ContractDocument({ data: buildData(agencyName, undefined, undefined, locale) }))
   return createHash("sha256").update(buf).digest("hex")
+}
+
+function agencyLocaleOf(a: { locale?: string | null }): "ja" | "en" {
+  return a.locale === "en" ? "en" : "ja"
 }
 
 /**
@@ -145,12 +188,13 @@ export async function GET(req: NextRequest) {
   const resolved = await resolveAgencyFromRequest(req)
   if (!resolved) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const agencyName = resolved.agency.name
+  const locale = agencyLocaleOf(resolved.agency)
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ error: "Supabase unavailable" }, { status: 500 })
 
   // 署名前プレビュー: 代理店名を差し込んだ未署名の契約書(=これから同意する内容)を返す
   if (req.nextUrl.searchParams.get("preview") === "1") {
-    const buf = await renderToBuffer(ContractDocument({ data: buildData(agencyName) }))
+    const buf = await renderToBuffer(ContractDocument({ data: buildData(agencyName, undefined, undefined, locale) }))
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {
@@ -172,15 +216,20 @@ export async function GET(req: NextRequest) {
   const wantDownload = req.nextUrl.searchParams.get("download") === "1"
   if (wantDownload) {
     if (!sig) return NextResponse.json({ error: "未署名です" }, { status: 404 })
-    const signedDate = jpDate(new Date(sig.signed_at))
-    const data = buildData(agencyName, {
-      signerName: sig.signer_name,
-      signerTitle: sig.signer_title ?? undefined,
-      signedDate,
-      signatureImageDataUrl: sig.signature_image ?? undefined,
-      auditId: sig.id,
-      docHashShort: (sig.contract_hash ?? "").slice(0, 16),
-    })
+    const signedDate = fmtSignedDate(new Date(sig.signed_at), locale)
+    const data = buildData(
+      agencyName,
+      {
+        signerName: sig.signer_name,
+        signerTitle: sig.signer_title ?? undefined,
+        signedDate,
+        signatureImageDataUrl: sig.signature_image ?? undefined,
+        auditId: sig.id,
+        docHashShort: (sig.contract_hash ?? "").slice(0, 16),
+      },
+      undefined,
+      locale,
+    )
     const buf = await renderToBuffer(ContractDocument({ data }))
     const fileName = `bondex-contract-signed-${agencyName.replace(/\s+/g, "_")}.pdf`
     return new NextResponse(new Uint8Array(buf), {
@@ -196,6 +245,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     status: resolved.agency.contract_status ?? "unsigned",
     agencyName,
+    locale,
     currentVersion: CONTRACT_VERSION,
     signed: !!sig,
     signedAt: sig?.signed_at ?? null,
@@ -249,9 +299,10 @@ export async function POST(req: NextRequest) {
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ error: "Supabase unavailable" }, { status: 500 })
 
+  const locale = agencyLocaleOf(resolved.agency)
   const auditId = randomUUID()
-  const docHash = await termsHash(agencyName)
-  const signedDate = jpDate(new Date())
+  const docHash = await termsHash(agencyName, locale)
+  const signedDate = fmtSignedDate(new Date(), locale)
 
   // 署名済みPDFを生成 (即時ダウンロード用に base64 で返す)
   const data = buildData(
@@ -265,6 +316,7 @@ export async function POST(req: NextRequest) {
       docHashShort: docHash.slice(0, 16),
     },
     companyAddress,
+    locale,
   )
   const buf = await renderToBuffer(ContractDocument({ data }))
   const signedPdfBase64 = Buffer.from(buf).toString("base64")
@@ -321,6 +373,7 @@ export async function POST(req: NextRequest) {
     signerName,
     signedDate,
     pdfBase64: signedPdfBase64,
+    locale,
   })
 
   // 社内通知(Slack集約) — 受注契約が締結されたことを1部屋に流す。

@@ -40,6 +40,7 @@ try {
 
 export interface ContractInput {
   contractNumber?: string      // BDX-CONTRACT-2026-001 形式
+  locale?: "ja" | "en"          // 契約書の言語。既定 ja。en は参考訳(第17条で日本語版優先を明記)
   effectiveDate: string         // 2026年7月1日 (契約締結日)
   agency: {
     name: string                // 代理店名 (My Japan Planner 等)
@@ -250,15 +251,19 @@ const styles = StyleSheet.create({
 function Article({
   num,
   title,
+  locale = "ja",
   children,
 }: {
   num: number
   title: string
+  locale?: "ja" | "en"
   children: React.ReactNode
 }) {
   return (
     <View style={styles.article} wrap={false}>
-      <Text style={styles.articleTitle}>第{num}条（{title}）</Text>
+      <Text style={styles.articleTitle}>
+        {locale === "en" ? `Article ${num}. ${title}` : `第${num}条（${title}）`}
+      </Text>
       {children}
     </View>
   )
@@ -284,6 +289,39 @@ function Para({ children }: { children: React.ReactNode }) {
 export function ContractDocument({ data }: { data: ContractInput }) {
   const price = data.pricePerSuitcaseYen ?? 5000
   const brand = data.serviceBrandName ?? "BondEx"
+  const locale = data.locale === "en" ? "en" : "ja"
+  const L =
+    locale === "en"
+      ? {
+          witness:
+            "IN WITNESS WHEREOF, to evidence the conclusion of this Agreement, two copies of this document are prepared; each party affixes its name and seal and retains one copy.",
+          partyA: "Party A",
+          partyB: "Party B",
+          address: "Address: ",
+          company: "Company: ",
+          rep: "Representative: ",
+          sigCaption: "Signature (electronic)",
+          seal: "Seal",
+          audit: (d: string, id?: string, h?: string) =>
+            `This Agreement was concluded on ${d}, when the authorized representative of Party B above reviewed the contents on BondEx (bondex.express) and agreed to and signed it electronically.` +
+            (id ? ` Audit ID: ${id}` : "") +
+            (h ? ` / Document hash (SHA-256 prefix): ${h}` : ""),
+        }
+      : {
+          witness:
+            "以上、本契約の成立を証するため、本書2通を作成し、両当事者が記名押印の上、それぞれ1通を保有する。",
+          partyA: "甲",
+          partyB: "乙",
+          address: "住所：",
+          company: "会社名：",
+          rep: "代表者：",
+          sigCaption: "署名（電子）",
+          seal: "印",
+          audit: (d: string, id?: string, h?: string) =>
+            `本契約は${d}に、上記乙の担当者が BondEx（bondex.express）上で契約内容を確認し、電子的に同意・署名して締結したものです。` +
+            (id ? ` 監査ID: ${id}` : "") +
+            (h ? ` ／ 文書ハッシュ(SHA-256先頭): ${h}` : ""),
+        }
 
   return (
     <Document
@@ -295,10 +333,13 @@ export function ContractDocument({ data }: { data: ContractInput }) {
         {/* Cover */}
         <View style={styles.coverHeader}>
           <Image src={LOGO_PATH} style={styles.coverLogo} />
-          <Text style={styles.coverTitle}>業 務 委 託 契 約 書</Text>
+          <Text style={styles.coverTitle}>
+            {locale === "en" ? "AGENCY SERVICE AGREEMENT" : "業 務 委 託 契 約 書"}
+          </Text>
           <Text style={styles.coverSubtitle}>
-            AGENCY SERVICE AGREEMENT
-            {data.contractNumber ? `  ·  ${data.contractNumber}` : ""}
+            {locale === "en"
+              ? (data.contractNumber ?? "")
+              : `AGENCY SERVICE AGREEMENT${data.contractNumber ? `  ·  ${data.contractNumber}` : ""}`}
           </Text>
         </View>
 
@@ -307,12 +348,13 @@ export function ContractDocument({ data }: { data: ContractInput }) {
             data.bondex.companyName,
             data.agency.name?.trim() ? data.agency.name : "＿＿＿＿＿＿＿＿＿＿＿＿",
             brand,
+            locale,
           )}
         </Text>
 
         {/* 各条文 (唯一の情報源 = lib/contract-content.ts。PDF/HTML双方がここから描画) */}
-        {buildArticles(price, data.bondex.bankInfo).map((a) => (
-          <Article key={a.num} num={a.num} title={a.title}>
+        {buildArticles(price, data.bondex.bankInfo, locale).map((a) => (
+          <Article key={a.num} num={a.num} title={a.title} locale={locale}>
             {a.blocks.map((b, i) =>
               b.kind === "item" ? (
                 <Item key={i} num={b.num ?? ""}>
@@ -329,21 +371,19 @@ export function ContractDocument({ data }: { data: ContractInput }) {
 
         {/* 契約成立文・締結日・署名欄はページ跨ぎで分断しない */}
         <View wrap={false}>
-        <Text style={[styles.intro, { textAlign: "center" }]}>
-          以上、本契約の成立を証するため、本書2通を作成し、両当事者が記名押印の上、それぞれ1通を保有する。
-        </Text>
+        <Text style={[styles.intro, { textAlign: "center" }]}>{L.witness}</Text>
 
         <Text style={styles.effectiveDate}>{data.effectiveDate}</Text>
 
         {/* 署名欄 — 甲(BondEx)は記入済み、乙(代理店)は署名・押印用に空欄 */}
         <View style={styles.signatureBlock}>
           <View style={styles.signatureRow}>
-            <Text style={styles.signatureLabel}>甲</Text>
+            <Text style={styles.signatureLabel}>{L.partyA}</Text>
             <View style={styles.signatureCol}>
-              <Text style={styles.signatureLine}>住所：{data.bondex.address}</Text>
-              <Text style={styles.signatureLine}>会社名：{data.bondex.companyName}</Text>
+              <Text style={styles.signatureLine}>{L.address}{data.bondex.address}</Text>
+              <Text style={styles.signatureLine}>{L.company}{data.bondex.companyName}</Text>
               <Text style={styles.signatureLine}>
-                代表者：{data.bondex.representativeTitle}　{data.bondex.representativeName}
+                {L.rep}{data.bondex.representativeTitle}　{data.bondex.representativeName}
               </Text>
               {/* 甲(株式会社JOJO)の社印を常備で押印 */}
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
@@ -352,12 +392,12 @@ export function ContractDocument({ data }: { data: ContractInput }) {
           </View>
 
           <View style={styles.signatureRow}>
-            <Text style={styles.signatureLabel}>乙</Text>
+            <Text style={styles.signatureLabel}>{L.partyB}</Text>
             <View style={styles.signatureCol}>
-              <Text style={styles.signatureLine}>住所：{data.agency.address ?? ""}</Text>
-              <Text style={styles.signatureLine}>会社名：{data.agency.name ?? ""}</Text>
+              <Text style={styles.signatureLine}>{L.address}{data.agency.address ?? ""}</Text>
+              <Text style={styles.signatureLine}>{L.company}{data.agency.name ?? ""}</Text>
               <Text style={styles.signatureLine}>
-                代表者：
+                {L.rep}
                 {data.signature
                   ? [data.signature.signerTitle, data.signature.signerName].filter(Boolean).join("　")
                   : [data.agency.representativeTitle, data.agency.representativeName].filter(Boolean).join("　")}
@@ -366,10 +406,10 @@ export function ContractDocument({ data }: { data: ContractInput }) {
                 <View style={styles.signatureImageWrap}>
                   {/* eslint-disable-next-line jsx-a11y/alt-text */}
                   <Image src={data.signature.signatureImageDataUrl} style={styles.signatureImage} />
-                  <Text style={styles.signatureImageCaption}>署名（電子）</Text>
+                  <Text style={styles.signatureImageCaption}>{L.sigCaption}</Text>
                 </View>
               ) : (
-                <Text style={styles.signatureSeal}>印</Text>
+                <Text style={styles.signatureSeal}>{L.seal}</Text>
               )}
             </View>
           </View>
@@ -377,9 +417,7 @@ export function ContractDocument({ data }: { data: ContractInput }) {
 
         {data.signature && (
           <Text style={styles.auditNote}>
-            本契約は{data.signature.signedDate}に、上記乙の担当者が BondEx（bondex.express）上で契約内容を確認し、電子的に同意・署名して締結したものです。
-            {data.signature.auditId ? ` 監査ID: ${data.signature.auditId}` : ""}
-            {data.signature.docHashShort ? ` ／ 文書ハッシュ(SHA-256先頭): ${data.signature.docHashShort}` : ""}
+            {L.audit(data.signature.signedDate, data.signature.auditId, data.signature.docHashShort)}
           </Text>
         )}
         </View>

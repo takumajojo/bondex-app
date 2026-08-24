@@ -109,11 +109,11 @@ export async function POST(req: NextRequest) {
   // 依頼元ランオペの連絡先
   const { data: ag } = await sb
     .from("agencies")
-    .select("contact_email, is_domestic")
+    .select("contact_email, locale")
     .eq("name", shipment.agency)
     .maybeSingle()
   const agencyEmail: string | null = ag?.contact_email ?? null
-  const english = ag?.is_domestic === false
+  const english = ag?.locale === "en"
 
   const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
   const route = `${shipment.from_hotel} → ${shipment.to_hotel}`

@@ -268,10 +268,10 @@ export async function GET(req: NextRequest) {
   const agencyEmailByName = new Map<string, string>()
   const agencyForeignByName = new Map<string, boolean>()
   {
-    const { data: agencies } = await sb.from("agencies").select("name, contact_email, is_domestic")
+    const { data: agencies } = await sb.from("agencies").select("name, contact_email, locale")
     for (const a of agencies ?? []) {
       if (a.name && a.contact_email) agencyEmailByName.set(a.name, a.contact_email)
-      if (a.name) agencyForeignByName.set(a.name, a.is_domestic === false)
+      if (a.name) agencyForeignByName.set(a.name, a.locale === "en")
     }
   }
 
