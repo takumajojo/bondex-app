@@ -64,7 +64,7 @@ export function ContractHtml({
       <div className="mt-6 pt-3 border-t border-border text-[12px] text-muted-foreground space-y-0.5">
         <p>
           {en ? "Party A: " : "甲："}
-          {companyName}（{BONDEX_PARTY.representativeTitle} {BONDEX_PARTY.representativeName}）／{" "}
+          {companyName}（{en ? "Representative Director" : BONDEX_PARTY.representativeTitle} {BONDEX_PARTY.representativeName}）／{" "}
           {BONDEX_PARTY.address}
         </p>
         <p>{en ? "Party B: " : "乙："}{agencyLabel}</p>

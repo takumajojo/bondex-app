@@ -17,6 +17,12 @@ const REASON_LABEL_JA: Record<ReasonCode, string> = {
   customer_change: "お客様都合の変更",
   other: "その他",
 }
+const REASON_LABEL_EN: Record<ReasonCode, string> = {
+  mismatch: "Piece-count discrepancy (received vs. actual differed)",
+  not_collected: "Could not be collected (luggage not handed over)",
+  customer_change: "Change at the customer's request",
+  other: "Other",
+}
 
 /**
  * POST /api/operator/adjust-count
@@ -158,23 +164,31 @@ export async function POST(req: NextRequest) {
 
   let mailSent = false
   if (agencyEmail) {
-    const text = english
-      ? [
-          `Dear ${shipment.agency},`,
-          "",
-          cancel
-            ? `We were unable to collect the luggage for the leg below (${REASON_LABEL_JA[reasonCode]}). This leg is cancelled and will not be charged.`
-            : `The piece count for the leg below was corrected: ${oldCount} → ${newCount}. Your charge will be adjusted ${yen(oldAmount)} → ${yen(newAmount)}.`,
-          "",
-          `Booking: ${legRef}`,
-          `Route: ${route}`,
-          reasonNote ? `Note: ${reasonNote}` : "",
-          "",
-          "— BondEx / JOJO Inc.",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : jaLines.join("\n")
+    const enLines: string[] = [`Dear ${shipment.agency},`, ""]
+    if (cancel) {
+      enLines.push(
+        `We were unable to collect the luggage for the leg below (${REASON_LABEL_EN[reasonCode]}).`,
+        `This leg is cancelled and will not be charged.`,
+      )
+      if (wasCharged) enLines.push(`* If it was already charged, we will refund the full amount (${yen(oldAmount)}).`)
+    } else {
+      enLines.push(
+        `There was a piece-count discrepancy for the leg below (${REASON_LABEL_EN[reasonCode]}).`,
+        `Corrected: ${oldCount} → ${newCount} item(s).`,
+      )
+      if (wasCharged) {
+        const diff = oldAmount - newCount * PRICE_PER
+        enLines.push(
+          `Your charge of ${yen(oldAmount)} was already processed, so we will ${diff >= 0 ? "refund" : "additionally charge"} the difference of ${yen(Math.abs(diff))}.`,
+        )
+      } else {
+        enLines.push(`Your charge will be adjusted ${yen(oldAmount)} → ${yen(newAmount)}.`)
+      }
+    }
+    if (reasonNote) enLines.push("", `Note: ${reasonNote}`)
+    enLines.push("", `Booking: ${legRef}`, `Route: ${route}`, `Shipment date: ${shipment.shipment_date}`, "", "— BondEx / JOJO Inc.")
+
+    const text = english ? enLines.join("\n") : jaLines.join("\n")
     const r = await sendMail({ to: agencyEmail, subject, text, replyTo: "support@bondex.express" })
     mailSent = r.sent
   }

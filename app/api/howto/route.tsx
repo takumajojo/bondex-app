@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { WHATSAPP_URL } from "@/lib/contact-links"
 import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   const asDownload = req.nextUrl.searchParams.get("dl") === "1"
 
   try {
-    const wa = process.env.BONDEX_WHATSAPP_URL?.trim()
+    const wa = WHATSAPP_URL.trim()
     let supportQrDataUri: string | undefined
     try {
       supportQrDataUri = await QRCode.toDataURL(wa || `mailto:${SUPPORT_DEFAULTS.email}`, {

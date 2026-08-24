@@ -127,16 +127,18 @@ export async function POST(req: NextRequest) {
     user_metadata: { agency_name: agencyName },
   })
   if (authErr || !created?.user) {
-    const msg = authErr?.message || (en ? "Failed to create the account." : "アカウント作成に失敗しました。")
-    // メール重複などは 409 相当
-    const status = /already|exist|registered/i.test(msg) ? 409 : 400
-    const friendly =
-      status === 409
-        ? en
-          ? "This email address is already registered."
-          : "このメールアドレスは既に登録されています。"
-        : msg
-    return NextResponse.json({ error: friendly }, { status })
+    const msg = authErr?.message || "auth create failed"
+    if (authErr) console.error("[agency/register] auth.createUser 失敗:", msg)
+    // メール重複などは 409 相当。生のDB/認証メッセージはクライアントに返さない(内部情報の漏洩防止)。
+    const dup = /already|exist|registered/i.test(msg)
+    const friendly = dup
+      ? en
+        ? "This email address is already registered."
+        : "このメールアドレスは既に登録されています。"
+      : en
+        ? "Failed to create the account. Please try again later."
+        : "アカウント作成に失敗しました。時間をおいて再度お試しください。"
+    return NextResponse.json({ error: friendly }, { status: dup ? 409 : 400 })
   }
   const userId = created.user.id
 
@@ -159,10 +161,15 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (agErr || !agency) {
+    console.error("[agency/register] agencies insert 失敗:", agErr?.message ?? "unknown")
     // 作成した auth ユーザーを掃除 (孤児防止)
     try { await sb.auth.admin.deleteUser(userId) } catch { /* best-effort */ }
     return NextResponse.json(
-      { error: `代理店情報の登録に失敗しました (${agErr?.message ?? "unknown"})` },
+      {
+        error: en
+          ? "Registration failed. Please try again later or contact BondEx support."
+          : "登録に失敗しました。時間をおいて再度お試しいただくか、BondEx サポートにご連絡ください。",
+      },
       { status: 500 },
     )
   }
@@ -172,11 +179,16 @@ export async function POST(req: NextRequest) {
     .from("user_agencies")
     .insert({ user_id: userId, agency_id: agency.id })
   if (linkErr) {
+    console.error("[agency/register] user_agencies link 失敗:", linkErr.message)
     // 掃除 (agency + auth user)
     try { await sb.from("agencies").delete().eq("id", agency.id) } catch { /* best-effort */ }
     try { await sb.auth.admin.deleteUser(userId) } catch { /* best-effort */ }
     return NextResponse.json(
-      { error: `アカウントの紐付けに失敗しました (${linkErr.message})` },
+      {
+        error: en
+          ? "Registration failed. Please try again later or contact BondEx support."
+          : "登録に失敗しました。時間をおいて再度お試しいただくか、BondEx サポートにご連絡ください。",
+      },
       { status: 500 },
     )
   }

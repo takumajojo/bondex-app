@@ -71,7 +71,7 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
     // 代理店の決済情報を引く
     const { data: agency } = await sb
       .from("agencies")
-      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt")
+      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt, locale")
       .eq("name", shipment.agency)
       .maybeSingle()
 
@@ -146,6 +146,7 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
             charge_amount_yen: amountYen,
           },
           agency.contact_email,
+          agency.locale === "en" ? "en" : "ja",
         )
         return { charged: true, paymentIntentId: pi.id, amountYen }
       }
@@ -178,8 +179,10 @@ async function sendChargeInvoice(
   sb: SupabaseClient,
   shipment: ShipmentRecord,
   agencyEmail?: string | null,
+  locale: "ja" | "en" = "ja",
 ): Promise<void> {
   const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
+  const en = locale === "en"
   try {
     const built = await buildChargeInvoice(sb, shipment)
     if (!built.ok || !built.buffer) {
@@ -198,22 +201,41 @@ async function sendChargeInvoice(
     const attachments = [
       { filename: built.fileName!, contentBase64: built.buffer.toString("base64") },
     ]
-    const subject = `【BondEx】請求書 兼 領収書（${legRef}）クレジットカード決済`
-    const body = [
-      `${shipment.agency} 御中`,
-      "",
-      `下記区間の集荷が完了し、ご登録のクレジットカードにて決済いたしました。`,
-      `請求書 兼 領収書（適格請求書）を添付いたします。`,
-      "",
-      `予約番号: ${legRef}`,
-      `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
-      `ご請求金額（税込・お支払い済み）: ¥${(built.totalYen ?? 0).toLocaleString()}`,
-      "",
-      `本書は代理店ポータル（ログイン後の一覧）からもいつでもダウンロードいただけます。`,
-      `ご不明な点は support@bondex.express までお問い合わせください。`,
-      "",
-      "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
-    ].join("\n")
+    const amount = `¥${(built.totalYen ?? 0).toLocaleString()}`
+    const subject = en
+      ? `[BondEx] Invoice / Receipt (${legRef}) — card payment`
+      : `【BondEx】請求書 兼 領収書（${legRef}）クレジットカード決済`
+    const body = en
+      ? [
+          `Dear ${shipment.agency},`,
+          "",
+          "The luggage for the leg below has been collected and charged to your registered card.",
+          "The invoice / receipt (a Japanese qualified invoice) is attached.",
+          "",
+          `Booking: ${legRef}`,
+          `Route: ${shipment.from_hotel} → ${shipment.to_hotel}`,
+          `Amount (tax incl., paid): ${amount}`,
+          "",
+          "You can also download it anytime from your agency portal (the list after signing in).",
+          "Questions? Contact support@bondex.express.",
+          "",
+          "— BondEx / JOJO Inc. | support@bondex.express",
+        ].join("\n")
+      : [
+          `${shipment.agency} 御中`,
+          "",
+          `下記区間の集荷が完了し、ご登録のクレジットカードにて決済いたしました。`,
+          `請求書 兼 領収書（適格請求書）を添付いたします。`,
+          "",
+          `予約番号: ${legRef}`,
+          `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
+          `ご請求金額（税込・お支払い済み）: ${amount}`,
+          "",
+          `本書は代理店ポータル（ログイン後の一覧）からもいつでもダウンロードいただけます。`,
+          `ご不明な点は support@bondex.express までお問い合わせください。`,
+          "",
+          "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
+        ].join("\n")
 
     const bondexCopy = process.env.ALERT_EMAIL || "support@bondex.express"
     const recipients: string[] = []

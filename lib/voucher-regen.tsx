@@ -1,4 +1,5 @@
 import { renderToBuffer } from "@react-pdf/renderer"
+import { WHATSAPP_URL } from "@/lib/contact-links"
 import QRCode from "qrcode"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { buildVoucherFileName } from "@/lib/utils"
@@ -70,7 +71,7 @@ export async function regenerateVoucherPdf(
   // react-pdf は canvas/JS を実行できないため、QR は事前に画像化しておく。
   let trackingQrDataUri: string | undefined
   let supportQrDataUri: string | undefined
-  const waUrl = process.env.BONDEX_WHATSAPP_URL?.trim()
+  const waUrl = WHATSAPP_URL.trim()
   try {
     supportQrDataUri = await QRCode.toDataURL(waUrl || `mailto:${SUPPORT_DEFAULTS.email}`, {
       margin: 0,

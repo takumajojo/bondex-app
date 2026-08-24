@@ -383,7 +383,7 @@ export function ContractDocument({ data }: { data: ContractInput }) {
               <Text style={styles.signatureLine}>{L.address}{data.bondex.address}</Text>
               <Text style={styles.signatureLine}>{L.company}{data.bondex.companyName}</Text>
               <Text style={styles.signatureLine}>
-                {L.rep}{data.bondex.representativeTitle}　{data.bondex.representativeName}
+                {L.rep}{locale === "en" ? "Representative Director" : data.bondex.representativeTitle}　{data.bondex.representativeName}
               </Text>
               {/* 甲(株式会社JOJO)の社印を常備で押印 */}
               {/* eslint-disable-next-line jsx-a11y/alt-text */}

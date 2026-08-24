@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { WHATSAPP_URL } from "@/lib/contact-links"
 import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
   const previewId = "PREVIEW"
   let trackingQrDataUri: string | undefined
   let supportQrDataUri: string | undefined
-  const waUrl = process.env.BONDEX_WHATSAPP_URL?.trim()
+  const waUrl = WHATSAPP_URL.trim()
   try {
     supportQrDataUri = await QRCode.toDataURL(waUrl || `mailto:${SUPPORT_DEFAULTS.email}`, {
       margin: 0,
