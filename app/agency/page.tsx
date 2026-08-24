@@ -21,6 +21,7 @@ import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { TrackingStepper, carrierTrackUrl, TRACK_STEPS } from "@/components/tracking-stepper"
+import { AgencyContactFab } from "@/components/agency-contact-fab"
 
 interface Shipment {
   id: string
@@ -720,6 +721,7 @@ export default function AgencyDashboard() {
           )}
         </section>
       </div>
+      <AgencyContactFab />
     </main>
   )
 }
