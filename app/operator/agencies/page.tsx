@@ -12,6 +12,7 @@ interface Agency {
   contact_phone: string | null
   country: string | null
   is_domestic: boolean | null
+  locale: string | null
   payment_method: string | null
   status: string | null
   card_on_file: boolean | null
@@ -69,6 +70,27 @@ export default function OperatorAgenciesPage() {
       })
       if (res.ok) {
         setAgencies((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || "更新に失敗しました")
+      }
+    } catch {
+      alert("更新に失敗しました")
+    }
+    setBusyId(null)
+  }
+
+  // やり取り言語（契約書・案内・請求の言語）を変更する。
+  const setAgencyLocale = async (id: string, locale: string) => {
+    setBusyId(id)
+    try {
+      const res = await fetch("/api/agencies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, locale }),
+      })
+      if (res.ok) {
+        setAgencies((prev) => prev.map((a) => (a.id === id ? { ...a, locale } : a)))
       } else {
         const d = await res.json().catch(() => ({}))
         alert(d.error || "更新に失敗しました")
@@ -154,6 +176,29 @@ export default function OperatorAgenciesPage() {
                         </td>
                         <td className="p-3 align-top text-xs">
                           {a.is_domestic === false ? `海外${a.country ? ` (${a.country})` : ""}` : "国内"}
+                          <div className="mt-1.5">
+                            <span className="block text-[9px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                              やり取り言語
+                            </span>
+                            <div className="inline-flex rounded-md border border-border overflow-hidden">
+                              {(["ja", "en"] as const).map((lc) => (
+                                <button
+                                  key={lc}
+                                  type="button"
+                                  onClick={() => setAgencyLocale(a.id, lc)}
+                                  disabled={busyId === a.id}
+                                  className={`px-2 py-0.5 text-[10px] transition-colors disabled:opacity-50 ${
+                                    (a.locale || "ja") === lc
+                                      ? "bg-foreground text-background"
+                                      : "text-muted-foreground hover:bg-muted/40"
+                                  }`}
+                                  title="契約書・案内・請求をこの言語で出します"
+                                >
+                                  {lc === "ja" ? "日本語" : "English"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         </td>
                         <td className="p-3 align-top text-xs">
                           {PAYMENT_LABEL[a.payment_method || "invoice"] || a.payment_method}

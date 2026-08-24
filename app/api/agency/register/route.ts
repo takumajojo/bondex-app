@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
   const country = s(body.country)
   const phone = s(body.phone)
   const isDomestic = body.isDomestic !== false // 明示 false 以外は国内扱い
+  // やり取り言語（契約書・案内・請求の出力言語）。未指定は国内=日本語/海外=英語で初期化。
+  const locale = body.locale === "en" ? "en" : body.locale === "ja" ? "ja" : isDomestic ? "ja" : "en"
   const rawPayment = s(body.paymentMethod)
   const paymentMethod = rawPayment === "card" ? "card" : rawPayment === "invoice" ? "invoice" : ""
 
@@ -118,6 +120,7 @@ export async function POST(req: NextRequest) {
       contact_phone: phone || null,
       country: country || (isDomestic ? "JP" : null),
       is_domestic: isDomestic,
+      locale,
       payment_method: paymentMethod,
       status: "pending",
       created_via: "self_signup",

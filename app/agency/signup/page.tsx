@@ -15,6 +15,8 @@ const messages = {
     badge: "Agency Sign-up",
     title: "Create your agency account",
     lead: "A luggage-forwarding coordination service for inbound-travel agencies and land operators.",
+    commLang: "Communication language",
+    langNote: "All documents and communications — including the contract, guidance, and invoices — will be in the language you choose here.",
     agencyName: "Company name",
     agencyNamePlaceholder: "e.g. ABC Travel Co. / ○○ Travel Inc.",
     contactPerson: "Contact person",
@@ -56,6 +58,8 @@ const messages = {
     badge: "Agency Sign-up",
     title: "代理店アカウント登録",
     lead: "訪日旅行代理店・ランドオペレーターさま向けの荷物配送手配サービスです。",
+    commLang: "やり取りの言語",
+    langNote: "ここで選んだ言語で、契約書・ご案内・ご請求などの書類とご連絡をすべてお送りします。",
     agencyName: "貴社名",
     agencyNamePlaceholder: "例: ○○トラベル株式会社 / ABC Travel Co.",
     contactPerson: "ご担当者名",
@@ -132,6 +136,7 @@ export default function AgencySignupPage() {
           contactPerson,
           country: isDomestic ? "JP" : country,
           isDomestic,
+          locale,
           paymentMethod: payment,
           phone,
         }),
@@ -194,6 +199,20 @@ export default function AgencySignupPage() {
           method="post"
           className="rounded-2xl border border-[#E5E7EB] bg-white p-6 md:p-7 space-y-5"
         >
+          {/* やり取りの言語（＝契約書・案内・請求の出力言語）。選ぶとフォーム全体もその言語に切替。 */}
+          <div className="space-y-1.5">
+            <span className="text-[12px] font-medium text-[#334155]">
+              {t.commLang} <span className="text-[#C8102E]">*</span>
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <RadioCard active={locale === "ja"} onClick={() => setLocale("ja")} title="日本語" sub="Japanese" />
+              <RadioCard active={locale === "en"} onClick={() => setLocale("en")} title="English" sub="英語" />
+            </div>
+            <p className="rounded-lg bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-[11px] text-[#991B1B] leading-relaxed">
+              {t.langNote}
+            </p>
+          </div>
+
           <Field label={t.agencyName} htmlFor="agencyName" required>
             <input id="agencyName" type="text" autoComplete="organization" value={agencyName}
               onChange={(e) => setAgencyName(e.target.value)} required className={inputCls}
