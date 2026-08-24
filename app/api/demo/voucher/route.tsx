@@ -87,6 +87,21 @@ export async function POST(req: NextRequest) {
     /* QR失敗は非致命 */
   }
 
+  // 問い合わせQR: WhatsApp(env)優先、未設定はメールにフォールバック。
+  // 本番バウチャーと同じ「QRだけ」表示を見本でも再現する。
+  try {
+    const wa = process.env.BONDEX_WHATSAPP_URL?.trim()
+    const target = wa || `mailto:${SUPPORT_DEFAULTS.email}`
+    input.supportQrDataUri = await QRCode.toDataURL(target, {
+      margin: 0,
+      width: 200,
+      color: { dark: "#1A1A1A", light: "#FFFFFF" },
+    })
+    input.supportQrKind = wa ? "whatsapp" : "email"
+  } catch {
+    /* QR失敗は非致命 */
+  }
+
   try {
     const buf = await renderToBuffer(<VoucherDocument data={input} />)
     return new NextResponse(new Uint8Array(buf), {

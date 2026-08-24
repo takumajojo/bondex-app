@@ -1004,23 +1004,24 @@ function VoucherPage({
           </View>
         </View>
         <View style={vs.detailRow}>
-          {contactCell && (
-            <View style={[vs.detailCell, { width: "50%", flexDirection: "row", alignItems: "center" }]}>
-              <View style={{ flex: 1 }}>
+          {contactCell &&
+            (data.supportQrDataUri ? (
+              // 問い合わせは QR のみ (電話/メール/担当者の文字は載せない・欧米ゲスト向け WhatsApp)。
+              <View style={[vs.detailCell, { width: "50%", flexDirection: "row", alignItems: "center" }]}>
+                <Image style={{ width: mm(13), height: mm(13) }} src={data.supportQrDataUri} />
+                <View style={{ flex: 1, marginLeft: mm(2.5) }}>
+                  <Text style={vs.dk}>{contactCell.label}</Text>
+                  <Text style={vs.dv}>{data.supportQrKind === "whatsapp" ? "WhatsApp" : "Email"}</Text>
+                  <Text style={vs.dvSmall}>Scan to chat ・ スキャンで問い合わせ</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={[vs.detailCell, { width: "50%" }]}>
                 <Text style={vs.dk}>{contactCell.label}</Text>
                 <Text style={vs.dv}>{contactCell.value}</Text>
                 {contactCell.small !== "" && <Text style={vs.dvSmall}>{contactCell.small}</Text>}
               </View>
-              {data.supportQrDataUri ? (
-                <View style={{ alignItems: "center", marginLeft: mm(2) }}>
-                  <Image style={{ width: mm(10), height: mm(10) }} src={data.supportQrDataUri} />
-                  <Text style={{ fontSize: 4.5, color: MUTED, marginTop: mm(0.5), letterSpacing: 0.3 }}>
-                    {data.supportQrKind === "whatsapp" ? "WhatsApp" : "Email"}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          )}
+            ))}
           <View style={[vs.detailCell, { width: contactCell ? "50%" : "100%" }]}>
             <Text style={vs.dk}>SUPPLIER / 配送業者</Text>
             <Text style={vs.dv}>{jb(carrierConfig(data.carrier).voucherLabel)}</Text>
