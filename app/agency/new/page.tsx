@@ -127,6 +127,23 @@ const messages = {
     bookingNamePlaceholder: "Same as representative if blank",
     groupName: "Group name (optional)",
     groupNamePlaceholder: "e.g. Johnson Family",
+    bookingTypeLabel: "Booking type",
+    btFit: "FIT",
+    btFitDesc: "Individual travelers or small parties of up to 9 guests.",
+    btGroup: "Group",
+    btGroupDesc: "Group tours with 10 or more guests.",
+    grpSection: "Group details",
+    leaderName: "Tour leader / guide name",
+    leaderPhone: "Tour leader phone",
+    leaderWhatsapp: "Tour leader WhatsApp",
+    luggageList: "Luggage list (one line = one bag)",
+    luggageListHint:
+      "Paste guest names, one per line. The number of lines becomes the number of bags for every leg. Use “-” for unnamed bags — you can edit names later on the group dashboard.",
+    luggageCountNote: (n: number) => `${n} bag(s) — applied to every leg`,
+    grpCountLocked: "Set by the luggage list",
+    grpLuggageRequired: "Please enter at least one line in the luggage list.",
+    grpLeaderRequired: "Please enter the tour leader's name.",
+    grpDashboardLink: "Open group dashboard",
     fromCheckIn: "Check-in date at the delivery hotel",
     toCheckOut: "Check-out at delivery hotel (optional)",
     deliveryTime: "Delivery time slot",
@@ -289,6 +306,23 @@ const messages = {
     bookingNamePlaceholder: "空欄なら代表者と同じ",
     groupName: "団体名（任意）",
     groupNamePlaceholder: "例: 山田ご一行",
+    bookingTypeLabel: "予約タイプ",
+    btFit: "FIT",
+    btFitDesc: "個人のお客様・9名までの小グループ",
+    btGroup: "団体",
+    btGroupDesc: "10名以上の団体ツアー",
+    grpSection: "団体情報",
+    leaderName: "添乗員（ツアーリーダー）氏名",
+    leaderPhone: "添乗員 電話番号",
+    leaderWhatsapp: "添乗員 WhatsApp",
+    luggageList: "荷物リスト（1行 = 1個）",
+    luggageListHint:
+      "ゲスト名を1行に1名ずつ貼り付けてください。行数がそのまま全区間の個数になります。名前未定の荷物は「-」でOK（後から団体ダッシュボードで編集できます）。",
+    luggageCountNote: (n: number) => `${n} 個 — 全区間に適用されます`,
+    grpCountLocked: "荷物リストで確定",
+    grpLuggageRequired: "荷物リストを1行以上ご入力ください。",
+    grpLeaderRequired: "添乗員のお名前をご入力ください。",
+    grpDashboardLink: "団体ダッシュボードを開く",
     fromCheckIn: "お届け先ホテルのチェックイン日（お客様の到着日）",
     toCheckOut: "お届け先ホテルのチェックアウト日（任意）",
     deliveryTime: "配達時間帯",
@@ -663,6 +697,17 @@ export default function AgencyNewBookingPage() {
   const [groupName, setGroupName] = useState("")
   const [travelerCount, setTravelerCount] = useState(1)
   const [guestLanguage, setGuestLanguage] = useState("en")
+  // 団体 (Group) — FIT が既定。group のとき添乗員情報と荷物リスト(1行=1個)を追加入力。
+  const [bookingType, setBookingType] = useState<"fit" | "group">("fit")
+  const [leaderName, setLeaderName] = useState("")
+  const [leaderPhone, setLeaderPhone] = useState("")
+  const [leaderWhatsapp, setLeaderWhatsapp] = useState("")
+  const [luggageText, setLuggageText] = useState("")
+  const luggageNames = luggageText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 50)
   const [legs, setLegs] = useState<Leg[]>([emptyLeg()])
   const [dupMatches, setDupMatches] = useState<
     Array<{ booking_id: string; representative: string; shipment_date: string }>
@@ -840,6 +885,15 @@ export default function AgencyNewBookingPage() {
           travelerCount,
           guestLanguage,
           legs,
+          bookingType,
+          ...(bookingType === "group"
+            ? {
+                tourLeaderName: leaderName,
+                tourLeaderPhone: leaderPhone,
+                tourLeaderWhatsapp: leaderWhatsapp,
+                luggageNames,
+              }
+            : {}),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -937,6 +991,11 @@ export default function AgencyNewBookingPage() {
     setDupMatches([])
     // 入力検証 (過去日・到着<発送・ホテル未入力) — 誤りは確定前に必ず止める
     const errs = validateLegs(legs, t)
+    // 団体の追加検証: 添乗員名と荷物リスト
+    if (bookingType === "group") {
+      if (!leaderName.trim()) errs.push(t.grpLeaderRequired)
+      if (luggageNames.length === 0) errs.push(t.grpLuggageRequired)
+    }
     setValErrors(errs)
     if (errs.length > 0) {
       window.scrollTo({ top: 0, behavior: "smooth" })
@@ -997,6 +1056,14 @@ export default function AgencyNewBookingPage() {
             <h1 className="text-[18px] font-bold text-[#0F172A]">{t.doneTitle}</h1>
             <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
+            {bookingType === "group" && (
+              <a
+                href={`/agency/groups/${encodeURIComponent(result.bookingId)}`}
+                className="inline-flex items-center justify-center mt-4 h-10 px-5 rounded-xl bg-[#0F172A] text-white text-[13px] font-bold hover:bg-[#1E293B]"
+              >
+                {t.grpDashboardLink} →
+              </a>
+            )}
           </div>
 
           {/* 1ヶ月以内なのに送り状を発行できなかった区間があるときの明示 (無言で「待ち」にしない) */}
@@ -1347,6 +1414,39 @@ export default function AgencyNewBookingPage() {
             </div>
           </div>
 
+          {/* 予約タイプ (FIT / 団体) */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6">
+            <p className="text-[12px] font-medium text-[#334155] mb-2">
+              {t.bookingTypeLabel} <span className="text-[#C8102E]">*</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBookingType("fit")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  bookingType === "fit"
+                    ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                    : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                }`}
+              >
+                <p className="text-[14px] font-bold text-[#0F172A]">{t.btFit}</p>
+                <p className="text-[11px] text-[#64748B] mt-0.5">{t.btFitDesc}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingType("group")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  bookingType === "group"
+                    ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                    : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                }`}
+              >
+                <p className="text-[14px] font-bold text-[#0F172A]">{t.btGroup}</p>
+                <p className="text-[11px] text-[#64748B] mt-0.5">{t.btGroupDesc}</p>
+              </button>
+            </div>
+          </div>
+
           {/* 予約全体の情報 */}
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6 grid md:grid-cols-2 gap-4">
             {/* 配送会社(佐川)の氏名欄上限に合わせ、氏名系は 40 文字までに制限。
@@ -1380,6 +1480,43 @@ export default function AgencyNewBookingPage() {
               </select>
             </Field>
           </div>
+
+          {/* 団体情報 (bookingType='group' のときのみ) */}
+          {bookingType === "group" && (
+            <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6 space-y-4">
+              <p className="text-[13px] font-semibold text-[#334155]">{t.grpSection}</p>
+              <div className="grid md:grid-cols-3 gap-4">
+                <Field label={t.leaderName} htmlFor="ldName" required>
+                  <input id="ldName" className={inputCls} value={leaderName} maxLength={60}
+                    onChange={(e) => setLeaderName(e.target.value)} autoComplete="off" />
+                </Field>
+                <Field label={t.leaderPhone} htmlFor="ldPhone">
+                  <input id="ldPhone" type="tel" className={inputCls} value={leaderPhone} maxLength={40}
+                    onChange={(e) => setLeaderPhone(e.target.value)} autoComplete="off" />
+                </Field>
+                <Field label={t.leaderWhatsapp} htmlFor="ldWa">
+                  <input id="ldWa" className={inputCls} value={leaderWhatsapp} maxLength={60}
+                    onChange={(e) => setLeaderWhatsapp(e.target.value)} autoComplete="off" />
+                </Field>
+              </div>
+              <Field label={t.luggageList} htmlFor="lugList" required>
+                <textarea
+                  id="lugList"
+                  value={luggageText}
+                  onChange={(e) => setLuggageText(e.target.value)}
+                  rows={8}
+                  placeholder={"Rahul Patel\nAmit Sharma\nPriya Singh\n-"}
+                  className={`${inputCls} resize-y min-h-[140px] py-3 font-mono text-[13px]`}
+                />
+              </Field>
+              <p className="text-[11px] text-[#64748B] leading-relaxed">{t.luggageListHint}</p>
+              {luggageNames.length > 0 && (
+                <p className="text-[12px] font-medium text-[#0F172A]">
+                  {t.luggageCountNote(luggageNames.length)}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* 区間 */}
           {legs.map((leg, i) => (
@@ -1431,10 +1568,17 @@ export default function AgencyNewBookingPage() {
                   </Field>
                 )}
                 <Field label={t.suitcases} htmlFor={`sc${i}`} required>
-                  <input id={`sc${i}`} type="number" min={1} max={50} className={inputCls}
-                    value={leg.suitcaseCount}
-                    onChange={(e) => updateLeg(i, { suitcaseCount: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
-                    required />
+                  {bookingType === "group" ? (
+                    // 団体は個数=荷物リストの行数で確定 (手入力させない)
+                    <div className={`${inputCls} flex items-center bg-[#F8FAFC] text-[#64748B]`}>
+                      {luggageNames.length || "—"}（{t.grpCountLocked}）
+                    </div>
+                  ) : (
+                    <input id={`sc${i}`} type="number" min={1} max={50} className={inputCls}
+                      value={leg.suitcaseCount}
+                      onChange={(e) => updateLeg(i, { suitcaseCount: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
+                      required />
+                  )}
                 </Field>
                 {/* お届け先ホテルのチェックイン日 (=お客様の到着日)。受取ホテルが「予約名+
                     チェックイン日」で照合するため必須。早期配達を希望する人もいるので発送日

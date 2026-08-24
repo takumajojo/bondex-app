@@ -8,6 +8,7 @@ import { sendBookingRequestEmail } from "@/lib/agency-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
 import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
+import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
 
 export const runtime = "nodejs"
@@ -208,6 +209,34 @@ export async function POST(req: NextRequest) {
     legs.push(parsed)
   }
 
+  // ── 団体 (Group) 対応: bookingType='group' のときは添乗員情報と
+  //    ゲスト名リスト (luggageNames) を受け取り、個数はリスト長で確定する。
+  //    FIT (既定) はこれまでと完全に同一のパス。
+  const bookingType = body.bookingType === "group" ? "group" : "fit"
+  const tourLeaderName = s(body.tourLeaderName).slice(0, 60)
+  const tourLeaderPhone = s(body.tourLeaderPhone).slice(0, 40)
+  const tourLeaderWhatsapp = s(body.tourLeaderWhatsapp).slice(0, 60)
+  let luggageNames: string[] = []
+  if (bookingType === "group") {
+    if (!tourLeaderName) {
+      return NextResponse.json(
+        { error: en ? "Please enter the tour leader's name." : "添乗員（ツアーリーダー）のお名前をご入力ください。" },
+        { status: 400 },
+      )
+    }
+    luggageNames = Array.isArray(body.luggageNames)
+      ? (body.luggageNames as unknown[]).filter((n): n is string => typeof n === "string").map((n) => n.trim().slice(0, 80))
+      : []
+    if (luggageNames.length < 1 || luggageNames.length > 50) {
+      return NextResponse.json(
+        { error: en ? "Please add 1–50 luggage items." : "荷物リストは 1〜50 件でご入力ください。" },
+        { status: 400 },
+      )
+    }
+    // 団体は全区間の個数をゲスト名リスト長に統一 (料金 = 個数 × ¥5,000 は不変)
+    for (const leg of legs) leg.suitcaseCount = luggageNames.length
+  }
+
   const bookingId = generateBookingId()
   const agencyName = auth.agency.name // 自社名に強制固定
 
@@ -243,6 +272,10 @@ export async function POST(req: NextRequest) {
       status: "requested",
       notes: leg.notes || null,
       guest_language: guestLanguage,
+      booking_type: bookingType,
+      tour_leader_name: tourLeaderName || null,
+      tour_leader_phone: tourLeaderPhone || null,
+      tour_leader_whatsapp: tourLeaderWhatsapp || null,
     })
     if (!saved.ok) {
       // 途中失敗 → この予約の保存済み区間を掃除して失敗を返す (中途半端な予約を残さない)
@@ -255,6 +288,28 @@ export async function POST(req: NextRequest) {
         { error: `発行依頼の登録に失敗しました (${saved.error ?? "unknown"})` },
         { status: 500 },
       )
+    }
+  }
+
+  // 団体: 個荷 (誰の荷物か) を全区間分登録。失敗は予約ごと掃除して 500。
+  if (bookingType === "group") {
+    for (let i = 0; i < legs.length; i++) {
+      const r = await bulkInsertLuggage(bookingId, i, luggageNames)
+      if (!r.ok) {
+        try {
+          await deleteBooking(bookingId)
+        } catch {
+          /* best-effort */
+        }
+        return NextResponse.json(
+          {
+            error: en
+              ? "Failed to register the luggage list. Please try again."
+              : "荷物リストの登録に失敗しました。再度お試しください。",
+          },
+          { status: 500 },
+        )
+      }
     }
   }
 

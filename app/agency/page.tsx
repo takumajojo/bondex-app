@@ -44,6 +44,7 @@ interface Shipment {
   status: string
   carrier: string | null
   charged_at: string | null
+  booking_type?: string | null
   created_at: string
 }
 
@@ -583,6 +584,14 @@ export default function AgencyDashboard() {
                           <span className="font-mono text-xs text-muted-foreground">
                             {it.booking_id}-L{it.leg_index + 1}
                           </span>
+                        )}
+                        {it.booking_type === "group" && (
+                          <a
+                            href={`/agency/groups/${encodeURIComponent(it.booking_id)}`}
+                            className="mt-1 inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-200"
+                          >
+                            {locale === "ja" ? "団体 →" : "Group →"}
+                          </a>
                         )}
                       </td>
                       <td className="p-3">{it.representative}</td>

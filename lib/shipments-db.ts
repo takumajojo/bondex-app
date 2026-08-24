@@ -48,6 +48,8 @@ export interface ShipmentRecord {
   item_type: string | null
   amount_yen: number
   yamato_tracking: string[] | null
+  /** 追跡番号ごとの明細 (sync-tracking cron が更新)。shape は lib/group-luggage-db.ts の TrackingDetailEntry。 */
+  yamato_tracking_detail: unknown[] | null
   yamato_label_url: string | null
   yamato_issuable_from: string | null
   ship_ref_number: string | null
@@ -74,6 +76,12 @@ export interface ShipmentRecord {
   charge_amount_yen: number | null
   /** 課金失敗時のエラー文言 (成功で null に戻す)。 */
   charge_error: string | null
+  /** 予約タイプ: fit=個人(1-9名・既定) / group=団体(10名以上)。 */
+  booking_type: string
+  /** 団体の添乗員 (booking_type='group' のとき)。 */
+  tour_leader_name: string | null
+  tour_leader_phone: string | null
+  tour_leader_whatsapp: string | null
   created_at: string
   updated_at: string
 }
@@ -142,7 +150,13 @@ export async function saveShipment(
     delivery_time: input.delivery_time ?? null,
     carrier: input.carrier ?? "sagawa",
     guest_language: input.guest_language ?? null,
-  }
+  } as Record<string, unknown>
+  // 団体フィールドは「渡された時だけ」含める。upsert は含めたカラムしか更新しないため、
+  // 既存の団体予約を(これらを渡さない)再発行フローが 'fit' に巻き戻す事故を防ぐ。
+  if (input.booking_type !== undefined) row.booking_type = input.booking_type
+  if (input.tour_leader_name !== undefined) row.tour_leader_name = input.tour_leader_name
+  if (input.tour_leader_phone !== undefined) row.tour_leader_phone = input.tour_leader_phone
+  if (input.tour_leader_whatsapp !== undefined) row.tour_leader_whatsapp = input.tour_leader_whatsapp
   // booking_id + leg_index で同一区間を update (再発行対応)
   const { error } = await sb
     .from("shipments")
@@ -271,6 +285,12 @@ export async function deleteBooking(
     .eq("booking_id", bookingId)
     .select("id")
   if (error) return { ok: false, deleted: 0, error: error.message }
+  // 団体の個荷も掃除 (FIT は該当行なし・best-effort)
+  try {
+    await sb.from("group_luggage").delete().eq("booking_id", bookingId)
+  } catch {
+    /* best-effort */
+  }
   return { ok: true, deleted: data?.length ?? 0 }
 }
 

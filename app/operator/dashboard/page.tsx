@@ -63,6 +63,7 @@ interface Shipment {
   charge_error: string | null
   charge_amount_yen: number | null
   count_change_log?: CountChange[] | null
+  booking_type?: string | null
 }
 
 interface CountChange {
@@ -876,6 +877,15 @@ export default function DashboardPage() {
                           <p className="text-[10px] text-muted-foreground mt-0.5">
                             ツアー: <span className="font-mono">{it.tour_number}</span>
                           </p>
+                        )}
+                        {it.booking_type === "group" && (
+                          <a
+                            href={`/operator/groups/${encodeURIComponent(it.booking_id)}`}
+                            className="mt-1 inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-200"
+                            title="団体ダッシュボード（荷物ごとの状況）を開く"
+                          >
+                            団体 →
+                          </a>
                         )}
                         {/* 主要アクション(発行)だけを行内に残し、他は「⋯」メニューに集約 */}
                         {(it.status === "requested" || it.status === "failed") && (
