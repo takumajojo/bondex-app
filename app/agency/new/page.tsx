@@ -85,6 +85,27 @@ const messages = {
     autoBody: "Upload an itinerary or guest roster (PDF, image, Excel, or CSV). We'll read hotels, dates and the lead traveler into the form — and if it's a roster with luggage-request marks, we'll fill the group luggage list with the requesting guests. You can edit anything afterward.",
     autoRosterDone: (n: number) =>
       `Loaded ${n} luggage request(s) from the roster into the luggage list (booking type set to Group). Please enter the hotels and dates below.`,
+    autoChipsTitle: "If your file shows these, you don't need to type them:",
+    chipWho: "WHO (guest names)",
+    chipWhen: "WHEN (ship date)",
+    chipWhere: "WHERE (hotels)",
+    chipCount: "HOW MANY (bags)",
+    autoMissingTitle: (n: number) => `${n} item(s) still need your input — please fill them in the form below:`,
+    missingLeader: "Tour leader name (Group details)",
+    missingLuggage: "Luggage list (Group details)",
+    missingRep: "Lead traveler name",
+    rosterPasteLabel: "Guest names (paste, one per line)",
+    rosterPastePh: "Rahul Patel\nAmit Sharma\nPriya Singh",
+    rosterBuildBtn: "Create luggage list",
+    lugListTitle: "Luggage list — set bags per guest",
+    lugColGuest: "Guest",
+    lugColBags: "Bags",
+    lugAddRow: "Add guest",
+    lugClear: "Start over",
+    lugTotal: (g: number, b: number) => `${g} guest(s) ・ ${b} bag(s) total — applied to every leg`,
+    rvGroupHeading: "Group",
+    rvLeader: "Tour leader",
+    rvLuggage: "Luggage list",
     autoButton: "Upload itinerary",
     autoParsing: "Reading the itinerary…",
     autoDone: "Loaded — please review the fields below.",
@@ -266,6 +287,27 @@ const messages = {
     autoBody: "旅程表または名簿（PDF・画像・Excel・CSV）をアップロードすると、ホテル・日付・代表者を読み取って下のフォームに反映します。配送依頼の印（YES等）が付いた名簿なら、依頼者だけを団体の荷物リストに自動反映します。読み取り後は自由に修正できます。",
     autoRosterDone: (n: number) =>
       `名簿から配送依頼 ${n} 名分を荷物リストに反映しました（予約タイプを「団体」にしました）。ホテル・日付は下のフォームでご入力ください。`,
+    autoChipsTitle: "ファイルにこれが書いてあれば、手入力は不要です:",
+    chipWho: "誰が（お名前）",
+    chipWhen: "いつ（発送日）",
+    chipWhere: "どこへ（ホテル）",
+    chipCount: "何個（個数）",
+    autoMissingTitle: (n: number) => `あと ${n} 箇所の入力が必要です — 下のフォームでご入力ください:`,
+    missingLeader: "添乗員のお名前（団体情報）",
+    missingLuggage: "荷物リスト（団体情報）",
+    missingRep: "代表者名",
+    rosterPasteLabel: "ゲスト名（1行に1名ずつ貼り付け）",
+    rosterPastePh: "Rahul Patel\nAmit Sharma\nPriya Singh",
+    rosterBuildBtn: "荷物リストを作成",
+    lugListTitle: "荷物リスト — ゲストごとに個数を設定",
+    lugColGuest: "ゲスト",
+    lugColBags: "個数",
+    lugAddRow: "1名追加",
+    lugClear: "やり直す",
+    lugTotal: (g: number, b: number) => `${g} 名 ・ 合計 ${b} 個 — 全区間に適用されます`,
+    rvGroupHeading: "団体",
+    rvLeader: "添乗員",
+    rvLuggage: "荷物リスト",
     autoButton: "旅程表を読み込む",
     autoParsing: "旅程表を読み取り中…",
     autoDone: "読み込みました。下の内容をご確認ください。",
@@ -701,17 +743,28 @@ export default function AgencyNewBookingPage() {
   const [groupName, setGroupName] = useState("")
   const [travelerCount, setTravelerCount] = useState(1)
   const [guestLanguage, setGuestLanguage] = useState("en")
-  // 団体 (Group) — FIT が既定。group のとき添乗員情報と荷物リスト(1行=1個)を追加入力。
+  // 団体 (Group) — FIT が既定。group のとき添乗員情報と荷物リストを追加入力。
+  // 荷物リストは2段階UX: ①名簿(名前)を貼り付け → ②「荷物リストを作成」で構造化し、
+  // ゲストごとの個数を手入力できる (名簿に個数が無いのが普通のため・谷口さん指示)。
   const [bookingType, setBookingType] = useState<"fit" | "group">("fit")
   const [leaderName, setLeaderName] = useState("")
   const [leaderPhone, setLeaderPhone] = useState("")
   const [leaderWhatsapp, setLeaderWhatsapp] = useState("")
-  const [luggageText, setLuggageText] = useState("")
-  const luggageNames = luggageText
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    .slice(0, 50)
+  const [rosterText, setRosterText] = useState("") // 貼り付け用ステージング
+  const [luggageEntries, setLuggageEntries] = useState<Array<{ name: string; bags: number }>>([])
+  const buildEntriesFromRoster = () => {
+    const names = rosterText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .slice(0, 50)
+    if (names.length > 0) setLuggageEntries(names.map((name) => ({ name, bags: 1 })))
+  }
+  // API へは「1要素=1個」のフラット配列で送る (名前の繰り返し=複数個。API/DB/バウチャー集約は既存のまま)
+  const luggageNames = luggageEntries.flatMap((e) =>
+    Array.from({ length: Math.max(1, Math.min(9, e.bags)) }, () => e.name.trim()),
+  ).slice(0, 50)
+
   const [legs, setLegs] = useState<Leg[]>([emptyLeg()])
   const [dupMatches, setDupMatches] = useState<
     Array<{ booking_id: string; representative: string; shipment_date: string }>
@@ -749,6 +802,19 @@ export default function AgencyNewBookingPage() {
       else setAuthChecked(true)
     })
   }, [router])
+
+  // AI 読み込み後の「不足している情報」チェックリスト。入力が埋まるとリアルタイムで消える。
+  // (validateLegs の項目 + 代表者名 + 団体の必須項目)
+  const missingAfterParse = useMemo(() => {
+    const list = validateLegs(legs, t)
+    if (!representative.trim()) list.unshift(t.missingRep)
+    if (bookingType === "group") {
+      if (!leaderName.trim()) list.push(t.missingLeader)
+      if (luggageNames.length === 0) list.push(t.missingLuggage)
+    }
+    return list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legs, representative, bookingType, leaderName, luggageNames.length, locale])
 
   const updateLeg = (i: number, patch: Partial<Leg>) =>
     setLegs((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
@@ -863,14 +929,15 @@ export default function AgencyNewBookingPage() {
         setParseError(t.autoErr)
         return
       }
-      // 名簿 → 荷物リスト(1行=1個・bags分繰り返し)へ反映し、予約タイプを団体に切替
+      // 名簿 → 構造化荷物リスト(名前＋個数)へ反映し、予約タイプを団体に切替。
+      // 個数は名簿に書いてあれば採用、無ければ1(あとで画面のステッパーで手修正可)。
       if (roster.length > 0) {
-        const lines: string[] = []
-        for (const r of roster) {
-          const bags = Math.max(1, Math.min(5, Math.floor(Number(r.bags) || 1)))
-          for (let k = 0; k < bags; k++) lines.push(r.name.trim())
-        }
-        setLuggageText(lines.join("\n"))
+        setLuggageEntries(
+          roster.slice(0, 50).map((r) => ({
+            name: r.name.trim(),
+            bags: Math.max(1, Math.min(9, Math.floor(Number(r.bags) || 1))),
+          })),
+        )
         setBookingType("group")
       }
       const ymd = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "")
@@ -1276,6 +1343,36 @@ export default function AgencyNewBookingPage() {
               {tourNumber ? <ReviewRow label={t.rvTour} value={tourNumber} /> : null}
               <ReviewRow label={t.rvLang} value={(GUEST_LANGS.find(([c]) => c === guestLanguage)?.[1]) || guestLanguage} />
             </div>
+
+            {/* 団体: 添乗員と荷物リストも確認画面で必ず見せる */}
+            {bookingType === "group" && (
+              <div className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4 mt-3">
+                <p className="text-[12px] font-bold text-[#334155] mb-2">
+                  {t.rvGroupHeading}
+                  {groupName ? ` — ${groupName}` : ""}
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px] mb-3">
+                  <ReviewRow label={t.rvLeader} value={[leaderName, leaderPhone].filter(Boolean).join(" ・ ") || "—"} span />
+                </div>
+                <p className="text-[11px] uppercase tracking-wider text-[#94A3B8] mb-1">{t.rvLuggage}</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+                  {luggageEntries.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between text-[12px] border-b border-[#F1F5F9] py-1">
+                      <span className="text-[#0F172A] truncate">
+                        <span className="font-mono text-[10px] text-[#94A3B8] mr-1.5">{String(i + 1).padStart(2, "0")}</span>
+                        {e.name || "—"}
+                      </span>
+                      <span className={`tabular-nums font-bold ${e.bags > 1 ? "text-[#C8102E]" : "text-[#334155]"}`}>
+                        ×{e.bags}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[12px] font-bold text-[#0F172A] mt-2 text-right">
+                  {t.lugTotal(luggageEntries.length, luggageNames.length)}
+                </p>
+              </div>
+            )}
             <div className="space-y-3 pt-1">
               {legs.map((leg, i) => {
                 const fromLabel = leg.fromKind === "residence"
@@ -1433,7 +1530,40 @@ export default function AgencyNewBookingPage() {
         )}
 
         <form onSubmit={onSubmit} className="space-y-5">
-          {/* 旅程表の AI 自動読み込み (任意) */}
+          {/* 予約タイプ (FIT / 団体) — 最優先の選択なので最上部 (谷口さん指示) */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6">
+            <p className="text-[12px] font-medium text-[#334155] mb-2">
+              {t.bookingTypeLabel} <span className="text-[#C8102E]">*</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBookingType("fit")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  bookingType === "fit"
+                    ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                    : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                }`}
+              >
+                <p className="text-[14px] font-bold text-[#0F172A]">{t.btFit}</p>
+                <p className="text-[11px] text-[#64748B] mt-0.5">{t.btFitDesc}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingType("group")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  bookingType === "group"
+                    ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                    : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                }`}
+              >
+                <p className="text-[14px] font-bold text-[#0F172A]">{t.btGroup}</p>
+                <p className="text-[11px] text-[#64748B] mt-0.5">{t.btGroupDesc}</p>
+              </button>
+            </div>
+          </div>
+
+          {/* 旅程表・名簿の AI 自動読み込み (任意) */}
           <div className="rounded-2xl border border-dashed border-[#C8102E]/40 bg-[#FFF5F6] p-5">
             <div className="flex items-start gap-3">
               <div className="shrink-0 w-9 h-9 rounded-full bg-[#C8102E]/10 flex items-center justify-center">
@@ -1442,6 +1572,19 @@ export default function AgencyNewBookingPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-bold text-[#0F172A]">{t.autoHeading}</p>
                 <p className="text-[12px] text-[#64748B] mt-1 leading-relaxed">{t.autoBody}</p>
+                {/* 何が読み取れるかを視覚化: 誰が・いつ・どこへ・何個 */}
+                <p className="text-[11px] font-medium text-[#334155] mt-3">{t.autoChipsTitle}</p>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {[t.chipWho, t.chipWhen, t.chipWhere, t.chipCount].map((c) => (
+                    <span
+                      key={c}
+                      className="inline-flex items-center gap-1 rounded-full bg-white border border-[#C8102E]/30 px-2.5 py-1 text-[11px] font-medium text-[#C8102E]"
+                    >
+                      <Check className="w-3 h-3" strokeWidth={2.5} />
+                      {c}
+                    </span>
+                  ))}
+                </div>
                 <label
                   className={`inline-flex items-center gap-2 mt-3 h-10 px-4 rounded-xl text-[13px] font-bold text-white ${
                     parsing ? "bg-[#94A3B8] cursor-wait" : "bg-[#0F172A] hover:bg-[#1E293B] cursor-pointer"
@@ -1472,40 +1615,23 @@ export default function AgencyNewBookingPage() {
                   </p>
                 )}
                 {parseError && <p className="text-[12px] text-red-600 mt-2">{parseError}</p>}
+                {/* 読み込み後の不足情報チェックリスト — 埋まると自動で消える */}
+                {parseNote && missingAfterParse.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                    <p className="text-[12px] font-bold text-amber-900">
+                      {t.autoMissingTitle(missingAfterParse.length)}
+                    </p>
+                    <ul className="mt-1.5 space-y-0.5">
+                      {missingAfterParse.map((m, i) => (
+                        <li key={i} className="text-[12px] text-amber-800 flex items-start gap-1.5">
+                          <span className="mt-[3px] w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                          {m}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-
-          {/* 予約タイプ (FIT / 団体) */}
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6">
-            <p className="text-[12px] font-medium text-[#334155] mb-2">
-              {t.bookingTypeLabel} <span className="text-[#C8102E]">*</span>
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setBookingType("fit")}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  bookingType === "fit"
-                    ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
-                    : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
-                }`}
-              >
-                <p className="text-[14px] font-bold text-[#0F172A]">{t.btFit}</p>
-                <p className="text-[11px] text-[#64748B] mt-0.5">{t.btFitDesc}</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBookingType("group")}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  bookingType === "group"
-                    ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
-                    : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
-                }`}
-              >
-                <p className="text-[14px] font-bold text-[#0F172A]">{t.btGroup}</p>
-                <p className="text-[11px] text-[#64748B] mt-0.5">{t.btGroupDesc}</p>
-              </button>
             </div>
           </div>
 
@@ -1561,21 +1687,120 @@ export default function AgencyNewBookingPage() {
                     onChange={(e) => setLeaderWhatsapp(e.target.value)} autoComplete="off" />
                 </Field>
               </div>
-              <Field label={t.luggageList} htmlFor="lugList" required>
-                <textarea
-                  id="lugList"
-                  value={luggageText}
-                  onChange={(e) => setLuggageText(e.target.value)}
-                  rows={8}
-                  placeholder={"Rahul Patel\nAmit Sharma\nPriya Singh\n-"}
-                  className={`${inputCls} resize-y min-h-[140px] py-3 font-mono text-[13px]`}
-                />
-              </Field>
-              <p className="text-[11px] text-[#64748B] leading-relaxed">{t.luggageListHint}</p>
-              {luggageNames.length > 0 && (
-                <p className="text-[12px] font-medium text-[#0F172A]">
-                  {t.luggageCountNote(luggageNames.length)}
-                </p>
+              {luggageEntries.length === 0 ? (
+                // ── ステップ1: 名簿(名前だけ)を貼り付け → リスト化。個数はまだ入れない。
+                <>
+                  <Field label={t.rosterPasteLabel} htmlFor="lugList" required>
+                    <textarea
+                      id="lugList"
+                      value={rosterText}
+                      onChange={(e) => setRosterText(e.target.value)}
+                      rows={7}
+                      placeholder={t.rosterPastePh}
+                      className={`${inputCls} resize-y min-h-[130px] py-3 font-mono text-[13px]`}
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={buildEntriesFromRoster}
+                    disabled={rosterText.trim().length === 0}
+                    className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-[#0F172A] text-white text-[13px] font-bold hover:bg-[#1E293B] disabled:opacity-40"
+                  >
+                    {t.rosterBuildBtn} →
+                  </button>
+                </>
+              ) : (
+                // ── ステップ2: ゲストごとに個数を手入力 (＋名前修正・行追加/削除)
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[12px] font-medium text-[#334155]">{t.lugListTitle}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLuggageEntries([])
+                        setRosterText("")
+                      }}
+                      className="text-[11px] text-[#64748B] hover:text-[#0F172A] underline underline-offset-2"
+                    >
+                      {t.lugClear}
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-[#E5E7EB] overflow-hidden">
+                    <div className="grid grid-cols-[2rem_1fr_7.5rem_2rem] items-center gap-2 bg-slate-50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-[#94A3B8]">
+                      <span>No.</span>
+                      <span>{t.lugColGuest}</span>
+                      <span className="text-center">{t.lugColBags}</span>
+                      <span />
+                    </div>
+                    <div className="max-h-[340px] overflow-y-auto divide-y divide-[#F1F5F9]">
+                      {luggageEntries.map((e, i) => (
+                        <div key={i} className="grid grid-cols-[2rem_1fr_7.5rem_2rem] items-center gap-2 px-3 py-1.5">
+                          <span className="text-[11px] font-mono text-[#94A3B8]">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <input
+                            value={e.name}
+                            maxLength={80}
+                            onChange={(ev) =>
+                              setLuggageEntries((prev) =>
+                                prev.map((x, xi) => (xi === i ? { ...x, name: ev.target.value } : x)),
+                              )
+                            }
+                            className="h-9 rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#C8102E] px-2 text-[13px] outline-none"
+                          />
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLuggageEntries((prev) =>
+                                  prev.map((x, xi) => (xi === i ? { ...x, bags: Math.max(1, x.bags - 1) } : x)),
+                                )
+                              }
+                              className="w-7 h-7 rounded-lg border border-[#E5E7EB] text-[#334155] hover:bg-slate-50 text-[14px] leading-none"
+                            >
+                              −
+                            </button>
+                            <span className={`w-8 text-center text-[13px] tabular-nums font-bold ${e.bags > 1 ? "text-[#C8102E]" : "text-[#0F172A]"}`}>
+                              {e.bags}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLuggageEntries((prev) =>
+                                  prev.map((x, xi) => (xi === i ? { ...x, bags: Math.min(9, x.bags + 1) } : x)),
+                                )
+                              }
+                              className="w-7 h-7 rounded-lg border border-[#E5E7EB] text-[#334155] hover:bg-slate-50 text-[14px] leading-none"
+                            >
+                              ＋
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setLuggageEntries((prev) => prev.filter((_, xi) => xi !== i))}
+                            className="text-[#94A3B8] hover:text-red-600"
+                            title={t.removeLeg}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setLuggageEntries((prev) => [...prev, { name: "", bags: 1 }])}
+                      disabled={luggageEntries.length >= 50}
+                      className="text-[12px] text-[#0F172A] font-medium underline underline-offset-2 disabled:opacity-40"
+                    >
+                      ＋ {t.lugAddRow}
+                    </button>
+                    <p className="text-[12px] font-bold text-[#0F172A]">
+                      {t.lugTotal(luggageEntries.length, luggageNames.length)}
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
           )}
