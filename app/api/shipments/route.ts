@@ -13,6 +13,7 @@ import { isSupabaseConfigured, getSupabase } from "@/lib/supabase"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
 import { notifyBondEx } from "@/lib/notify"
+import { pushToAgency } from "@/lib/agency-push"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -201,6 +202,12 @@ export async function PATCH(req: NextRequest) {
             tracking: ship.yamato_tracking,
             english,
           })
+          // 代理店へのプッシュ通知 (WhatsApp/LINE・登録があれば。メールの補完)
+          await pushToAgency(
+            ship.agency,
+            `【BondEx】配達完了 ${ship.booking_id}-L${ship.leg_index + 1}\n${ship.representative} 様のお荷物が ${ship.to_hotel} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
+            `[BondEx] Delivered ${ship.booking_id}-L${ship.leg_index + 1}\nLuggage for ${ship.representative} has arrived at ${ship.to_hotel}.\nhttps://bondex.express/track/${ship.booking_id}`,
+          )
           // 社内通知(Slack集約)
           await notifyBondEx({
             kind: "delivery",

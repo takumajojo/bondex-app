@@ -106,6 +106,8 @@ const messages = {
     rvGroupHeading: "Group",
     rvLeader: "Tour leader",
     rvLuggage: "Luggage list",
+    dupFrom: (id: string) => `Duplicated from ${id}`,
+    dupNote: "Route and settings are pre-filled. Enter the new dates and traveler name below.",
     autoButton: "Upload itinerary",
     autoParsing: "Reading the itinerary…",
     autoDone: "Loaded — please review the fields below.",
@@ -308,6 +310,8 @@ const messages = {
     rvGroupHeading: "団体",
     rvLeader: "添乗員",
     rvLuggage: "荷物リスト",
+    dupFrom: (id: string) => `複製元: ${id}`,
+    dupNote: "行程と設定は入力済みです。新しい日付と代表者名をご入力ください。",
     autoButton: "旅程表を読み込む",
     autoParsing: "旅程表を読み取り中…",
     autoDone: "読み込みました。下の内容をご確認ください。",
@@ -802,6 +806,96 @@ export default function AgencyNewBookingPage() {
       else setAuthChecked(true)
     })
   }, [router])
+
+  // ── 予約の複製 (?dup=BDX-XXX): 元予約の行程・設定をプレフィルし、日付/代表者/Refは空に。
+  //    「どの旅か」はバナー (複製元 + 代表者 + 行程) で常時見えるようにする。
+  const [dupInfo, setDupInfo] = useState<{ bookingId: string; rep: string; route: string } | null>(null)
+  useEffect(() => {
+    const dup = new URLSearchParams(window.location.search).get("dup")?.trim()
+    if (!dup) return
+    ;(async () => {
+      const sb = getBrowserSupabase()
+      if (!sb) return
+      const { data: rows } = await sb
+        .from("shipments")
+        .select("*")
+        .eq("booking_id", dup)
+        .order("leg_index", { ascending: true })
+      if (!rows || rows.length === 0) return
+      const first = rows[0] as Record<string, unknown>
+      // 品目の逆引き: DBは解決済み日本語品名 → key へ (見つからなければ「その他」)
+      const itemKeyOf = (stored: unknown): { itemType: ItemTypeKey; itemOther: string } => {
+        const s = typeof stored === "string" ? stored.trim() : ""
+        if (!s) return { itemType: "suitcase", itemOther: "" }
+        const hit = ITEM_TYPES.find((x) => x.ja === s)
+        return hit ? { itemType: hit.key, itemOther: "" } : { itemType: "other", itemOther: s.slice(0, 20) }
+      }
+      setLegs(
+        (rows as Record<string, unknown>[]).map((r) => {
+          const it = itemKeyOf(r.item_type)
+          const fromRes = (r.from_residence as ResidenceAddress | null) ?? null
+          const toRes = (r.to_residence as ResidenceAddress | null) ?? null
+          return {
+            fromKind: (fromRes ? "residence" : "hotel") as "hotel" | "residence",
+            fromHotel: fromRes ? "" : ((r.from_hotel as string) ?? ""),
+            fromPlaceId: (r.from_place_id as string) ?? "",
+            fromCity: (r.from_city as string) ?? "",
+            fromResidence: { ...EMPTY_RESIDENCE, ...(fromRes ?? {}) },
+            toKind: (toRes ? "residence" : "hotel") as "hotel" | "residence",
+            toHotel: toRes ? "" : ((r.to_hotel as string) ?? ""),
+            toPlaceId: (r.to_place_id as string) ?? "",
+            toCity: (r.to_city as string) ?? "",
+            toResidence: { ...EMPTY_RESIDENCE, ...(toRes ?? {}) },
+            // 日付は新しい旅なので全て空 (発送日入力で連動オートフィル)
+            shipmentDate: "",
+            expectedArrival: "",
+            fromCheckIn: "",
+            toCheckOut: "",
+            deliveryTime: ((r.delivery_time as string) || "before-noon"),
+            recipient: "",
+            suitcaseCount: (r.suitcase_count as number) ?? 1,
+            itemType: it.itemType,
+            itemOther: it.itemOther,
+            notes: (r.notes as string) ?? "",
+            noteTarget: (["from", "to", "both"].includes(r.note_target as string)
+              ? (r.note_target as "from" | "to" | "both")
+              : "to"),
+          }
+        }),
+      )
+      // 予約レベル: 行程系は引き継ぎ、個人情報系 (代表者/Ref) は空に
+      setGroupName((first.group_name as string) ?? "")
+      setBookingName((first.booking_name as string) ?? "")
+      setGuestLanguage((first.guest_language as string) || "en")
+      const tc = Number(first.traveler_count)
+      if (tc >= 1) setTravelerCount(tc)
+      if (first.booking_type === "group") {
+        setBookingType("group")
+        setLeaderName((first.tour_leader_name as string) ?? "")
+        setLeaderPhone((first.tour_leader_phone as string) ?? "")
+        setLeaderWhatsapp((first.tour_leader_whatsapp as string) ?? "")
+        const { data: lugs } = await sb
+          .from("group_luggage")
+          .select("guest_name, luggage_no")
+          .eq("booking_id", dup)
+          .eq("leg_index", 0)
+          .order("luggage_no", { ascending: true })
+        if (lugs && lugs.length > 0) {
+          const byName = new Map<string, number>()
+          for (const l of lugs) {
+            const nm = ((l.guest_name as string) || "").trim() || "—"
+            byName.set(nm, (byName.get(nm) ?? 0) + 1)
+          }
+          setLuggageEntries(Array.from(byName.entries()).map(([name, bags]) => ({ name, bags })))
+        }
+      }
+      const routeChain = (rows as Record<string, unknown>[])
+        .map((r) => `${r.from_hotel} → ${r.to_hotel}`)
+        .join(" ／ ")
+      setDupInfo({ bookingId: dup, rep: (first.representative as string) ?? "", route: routeChain })
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // AI 読み込み後の「不足している情報」チェックリスト。入力が埋まるとリアルタイムで消える。
   // (validateLegs の項目 + 代表者名 + 団体の必須項目)
@@ -1530,6 +1624,18 @@ export default function AgencyNewBookingPage() {
         )}
 
         <form onSubmit={onSubmit} className="space-y-5">
+          {/* 複製バナー: どの旅の複製か常に見えるように (代表者 + 行程チェーン) */}
+          {dupInfo && (
+            <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] p-4">
+              <p className="text-[12px] font-bold text-[#1E40AF]">
+                {t.dupFrom(dupInfo.bookingId)}
+                {dupInfo.rep ? ` ・ ${dupInfo.rep}` : ""}
+              </p>
+              <p className="text-[12px] text-[#1D4ED8] mt-0.5 leading-relaxed">{dupInfo.route}</p>
+              <p className="text-[11px] text-[#3B82F6] mt-1">{t.dupNote}</p>
+            </div>
+          )}
+
           {/* 予約タイプ (FIT / 団体) — 最優先の選択なので最上部 (谷口さん指示) */}
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 md:p-6">
             <p className="text-[12px] font-medium text-[#334155] mb-2">
@@ -1615,8 +1721,8 @@ export default function AgencyNewBookingPage() {
                   </p>
                 )}
                 {parseError && <p className="text-[12px] text-red-600 mt-2">{parseError}</p>}
-                {/* 読み込み後の不足情報チェックリスト — 埋まると自動で消える */}
-                {parseNote && missingAfterParse.length > 0 && (
+                {/* 読み込み後の不足情報チェックリスト — 埋まると自動で消える (複製時も表示) */}
+                {(parseNote || dupInfo) && missingAfterParse.length > 0 && (
                   <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
                     <p className="text-[12px] font-bold text-amber-900">
                       {t.autoMissingTitle(missingAfterParse.length)}

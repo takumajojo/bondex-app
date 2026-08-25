@@ -128,6 +128,13 @@ const messages = {
     actCancelDone: "The leg has been cancelled. BondEx has been notified.",
     actFailed: "Update failed. Please try again.",
     urgentWa: "Urgent? WhatsApp",
+    rules: "Service rules",
+    actDuplicate: "Duplicate this booking",
+    dupTitle: "Duplicate booking",
+    dupBody: "Creates a new request with the same route and settings. Dates, traveler name and your ref start blank — the new-request form opens pre-filled.",
+    dupLegLabel: (n: number) => `Leg ${n}`,
+    dupOriginalShip: "Original ship date",
+    dupGo: "Open pre-filled form →",
     muTitle: "Monthly usage & invoices",
     muHint: "Tap a month to filter the list below. Amounts are fixed at label issuance (pieces × ¥5,000 excl. tax).",
     muMonth: "Month",
@@ -227,6 +234,13 @@ const messages = {
     actCancelDone: "区間を取り消しました。BondEx にも通知済みです。",
     actFailed: "変更に失敗しました。もう一度お試しください。",
     urgentWa: "緊急時 WhatsApp",
+    rules: "ご利用ルール",
+    actDuplicate: "この予約を複製",
+    dupTitle: "予約を複製",
+    dupBody: "同じ行程・設定で新しい依頼を作ります。日付・代表者名・貴社Refは空の状態で、入力済みのフォームが開きます。",
+    dupLegLabel: (n: number) => `区間 ${n}`,
+    dupOriginalShip: "元の発送日",
+    dupGo: "入力済みフォームを開く →",
     muTitle: "月別ご利用状況・請求書",
     muHint: "月をタップすると下の一覧をその月に絞り込みます。金額は送り状発行時に確定（個数×¥5,000 税抜）。",
     muMonth: "月",
@@ -294,6 +308,8 @@ export default function AgencyDashboard() {
     action: "dates" | "count" | "cancel" | "locked"
   } | null>(null)
   const [actNote, setActNote] = useState("")
+  // 複製: どの旅か確認できるサマリモーダル → /agency/new?dup=ID を開く
+  const [dupTarget, setDupTarget] = useState<Shipment | null>(null)
 
   const patchShipment = useCallback(
     async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
@@ -619,6 +635,15 @@ export default function AgencyDashboard() {
               <MessageCircle className="w-4 h-4" strokeWidth={2.2} />
               <span className="hidden sm:inline">{t.urgentWa}</span>
             </a>
+            {/* ご利用ルール (変更期限・課金タイミング) — 常設 */}
+            <Link
+              href="/agency/policy"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm text-foreground hover:bg-slate-50"
+              title={t.rules}
+            >
+              <Info className="w-4 h-4" strokeWidth={1.6} />
+              <span className="hidden md:inline">{t.rules}</span>
+            </Link>
             <a
               href="/api/howto?lang=en"
               target="_blank"
@@ -913,30 +938,37 @@ export default function AgencyDashboard() {
                             />
                           </div>
                         )}
-                        {/* アクション: プルダウンで選択 → 必ず確認画面を挟んで適用 */}
-                        {it.status !== "cancelled" && it.status !== "delivered" && (
-                          <select
-                            value=""
-                            onChange={(e) => {
-                              const v = e.target.value as "dates" | "count" | "cancel" | ""
-                              e.target.value = ""
-                              if (!v) return
-                              const editable = it.status === "requested" || it.status === "pending"
-                              setActNote("")
-                              if (!editable) {
-                                setActionTarget({ shipment: it, action: "locked" })
-                                return
-                              }
-                              setActionTarget({ shipment: it, action: v })
-                            }}
-                            className="mt-2 h-8 w-40 max-w-full rounded-lg border border-border bg-white px-2 text-xs text-muted-foreground hover:border-foreground/40"
-                          >
-                            <option value="">{t.actPlaceholder}</option>
-                            <option value="dates">{t.actDates}</option>
-                            {it.booking_type !== "group" && <option value="count">{t.actCount}</option>}
-                            <option value="cancel">{t.actCancel}</option>
-                          </select>
-                        )}
+                        {/* アクション: プルダウンで選択 → 必ず確認画面を挟んで適用。複製は全ステータスで可 */}
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const v = e.target.value as "dates" | "count" | "cancel" | "duplicate" | ""
+                            e.target.value = ""
+                            if (!v) return
+                            setActNote("")
+                            if (v === "duplicate") {
+                              setDupTarget(it)
+                              return
+                            }
+                            const editable = it.status === "requested" || it.status === "pending"
+                            if (!editable) {
+                              setActionTarget({ shipment: it, action: "locked" })
+                              return
+                            }
+                            setActionTarget({ shipment: it, action: v })
+                          }}
+                          className="mt-2 h-8 w-40 max-w-full rounded-lg border border-border bg-white px-2 text-xs text-muted-foreground hover:border-foreground/40"
+                        >
+                          <option value="">{t.actPlaceholder}</option>
+                          <option value="duplicate">{t.actDuplicate}</option>
+                          {it.status !== "cancelled" && it.status !== "delivered" && (
+                            <>
+                              <option value="dates">{t.actDates}</option>
+                              {it.booking_type !== "group" && <option value="count">{t.actCount}</option>}
+                              <option value="cancel">{t.actCancel}</option>
+                            </>
+                          )}
+                        </select>
                       </td>
                       <td className="p-3">
                         <div className="flex flex-col items-start gap-1.5">
@@ -1028,6 +1060,13 @@ export default function AgencyDashboard() {
           )}
         </section>
       </div>
+      {dupTarget && (
+        <DuplicateModal
+          t={t}
+          booking={shipments.filter((s) => s.booking_id === dupTarget.booking_id)}
+          onClose={() => setDupTarget(null)}
+        />
+      )}
       {actionTarget && (
         <AgencyActionModal
           t={t}
@@ -1043,6 +1082,83 @@ export default function AgencyDashboard() {
       )}
       <AgencyContactFab />
     </main>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 複製モーダル — 「どの旅か」を一目で確認してから複製フォームへ。
+// 予約全体 (全区間) を行程チェーン + 元の日付 + 代表者で見せる (谷口さん指示のUX)。
+// ---------------------------------------------------------------------------
+function DuplicateModal({
+  t,
+  booking,
+  onClose,
+}: {
+  t: (typeof messages)[keyof typeof messages]
+  booking: Shipment[]
+  onClose: () => void
+}) {
+  if (booking.length === 0) return null
+  const legs = [...booking].sort((a, b) => a.leg_index - b.leg_index)
+  const first = legs[0]
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">{t.dupTitle}</h2>
+            <p className="text-xs text-muted-foreground mt-1 font-mono">{first.booking_id}</p>
+          </div>
+          <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+        </div>
+
+        {/* 旅の識別カード: 代表者 + 行程チェーン + 元の日付 */}
+        <div className="rounded-xl border border-border bg-slate-50/60 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-foreground">{first.representative}</p>
+            {first.tour_number && (
+              <span className="text-[11px] font-mono text-muted-foreground">
+                {t.yourRef}: {first.tour_number}
+              </span>
+            )}
+          </div>
+          <div className="space-y-2">
+            {legs.map((l) => (
+              <div key={l.id} className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 rounded bg-white border border-border px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                  L{l.leg_index + 1}
+                </span>
+                <div className="min-w-0 text-[13px] leading-snug">
+                  <p className="text-foreground truncate">
+                    {l.from_hotel} <span className="text-muted-foreground">→</span> {l.to_hotel}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t.dupOriginalShip}: {l.shipment_date} ・ {l.suitcase_count}
+                    {l.booking_type === "group" ? " (Group)" : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground leading-relaxed">{t.dupBody}</p>
+
+        <div className="flex items-center justify-end gap-2">
+          <button onClick={onClose} className="h-10 px-4 rounded-lg border border-border bg-white text-sm hover:bg-muted/40">
+            {t.lockedClose}
+          </button>
+          <a
+            href={`/agency/new?dup=${encodeURIComponent(first.booking_id)}`}
+            className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 inline-flex items-center"
+          >
+            {t.dupGo}
+          </a>
+        </div>
+      </div>
+    </div>
   )
 }
 

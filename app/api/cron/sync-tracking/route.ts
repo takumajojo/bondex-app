@@ -6,6 +6,7 @@ import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
 import { notifyBondEx } from "@/lib/notify"
+import { pushToAgency } from "@/lib/agency-push"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -494,6 +495,12 @@ export async function GET(req: NextRequest) {
             tracking: (row.yamato_tracking as string[] | null) ?? null,
             english: agencyForeignByName.get(row.agency as string) ?? false,
           })
+          // 代理店へのプッシュ通知 (WhatsApp/LINE・登録があれば。メールの補完)
+          await pushToAgency(
+            row.agency as string,
+            `【BondEx】配達完了 ${row.booking_id}-L${(row.leg_index as number) + 1}\n${(row.representative as string) ?? ""} 様のお荷物が ${(row.to_hotel as string) ?? ""} に到着しました。\nhttps://bondex.express/track/${row.booking_id}`,
+            `[BondEx] Delivered ${row.booking_id}-L${(row.leg_index as number) + 1}\nLuggage for ${(row.representative as string) ?? ""} has arrived at ${(row.to_hotel as string) ?? ""}.\nhttps://bondex.express/track/${row.booking_id}`,
+          )
           // 社内通知(Slack集約)
           await notifyBondEx({
             kind: "delivery",
