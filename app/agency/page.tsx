@@ -19,12 +19,14 @@ import {
   X,
   Check,
   AlertTriangle,
+  MessageCircle,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { TrackingStepper, carrierTrackUrl, TRACK_STEPS } from "@/components/tracking-stepper"
 import { AgencyContactFab } from "@/components/agency-contact-fab"
+import { WHATSAPP_URL } from "@/lib/contact-links"
 
 interface Shipment {
   id: string
@@ -125,6 +127,18 @@ const messages = {
     actDone: "Updated. BondEx has been notified.",
     actCancelDone: "The leg has been cancelled. BondEx has been notified.",
     actFailed: "Update failed. Please try again.",
+    urgentWa: "Urgent? WhatsApp",
+    muTitle: "Monthly usage & invoices",
+    muHint: "Tap a month to filter the list below. Amounts are fixed at label issuance (pieces × ¥5,000 excl. tax).",
+    muMonth: "Month",
+    muLegs: "Shipments",
+    muPieces: "Pieces",
+    muAmount: "Amount (tax incl.)",
+    muInvoice: "Invoice PDF",
+    muInvoiceNone: "No billable shipments in this month.",
+    muFiltering: (m: string) => `Showing ${m} only`,
+    muShowAll: "Show all",
+    yourRef: "Your ref",
     shipPrefix: "Ship",
     arrivePrefix: "Arrive",
     status: {
@@ -212,6 +226,18 @@ const messages = {
     actDone: "変更しました。BondEx にも通知済みです。",
     actCancelDone: "区間を取り消しました。BondEx にも通知済みです。",
     actFailed: "変更に失敗しました。もう一度お試しください。",
+    urgentWa: "緊急時 WhatsApp",
+    muTitle: "月別ご利用状況・請求書",
+    muHint: "月をタップすると下の一覧をその月に絞り込みます。金額は送り状発行時に確定（個数×¥5,000 税抜）。",
+    muMonth: "月",
+    muLegs: "件数",
+    muPieces: "個数",
+    muAmount: "金額（税込）",
+    muInvoice: "請求書PDF",
+    muInvoiceNone: "この月のご請求対象がありません。",
+    muFiltering: (m: string) => `${m} のみ表示中`,
+    muShowAll: "すべて表示",
+    yourRef: "貴社Ref",
     shipPrefix: "発送",
     arrivePrefix: "到着",
     status: {
@@ -285,6 +311,47 @@ export default function AgencyDashboard() {
         return { ok: true }
       } catch {
         return { ok: false, error: "network" }
+      }
+    },
+    [locale],
+  )
+
+  // 月別ご利用状況: shipment_date の月で集計 (キャンセル除く)。月クリックで一覧を絞り込み=過去履歴。
+  const [monthFilter, setMonthFilter] = useState<string | null>(null)
+  const [invBusy, setInvBusy] = useState<string | null>(null)
+
+  const downloadMonthlyInvoice = useCallback(
+    async (month: string) => {
+      setInvBusy(month)
+      setDlError("")
+      try {
+        const sb = getBrowserSupabase()
+        const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+        if (!token) {
+          setDlError(messages[locale].dlError)
+          return
+        }
+        const res = await fetch(`/api/agency/invoice-monthly?month=${encodeURIComponent(month)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string }
+          setDlError(d.error || messages[locale].dlError)
+          return
+        }
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `bondex-invoice-${month}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 4000)
+      } catch {
+        setDlError(messages[locale].dlError)
+      } finally {
+        setInvBusy(null)
       }
     },
     [locale],
@@ -461,6 +528,29 @@ export default function AgencyDashboard() {
     }
   }, [locale])
 
+  // 月別集計 (キャンセル除く・発送日の月・新しい月が上)。金額は発行時確定の amount_yen 合計。
+  const monthlyUsage = useMemo(() => {
+    const byMonth = new Map<string, { legs: number; pieces: number; amount: number }>()
+    for (const s of shipments) {
+      if (s.status === "cancelled" || !s.shipment_date) continue
+      const m = s.shipment_date.slice(0, 7)
+      const cur = byMonth.get(m) ?? { legs: 0, pieces: 0, amount: 0 }
+      cur.legs += 1
+      cur.pieces += s.suitcase_count ?? 0
+      cur.amount += s.amount_yen ?? 0
+      byMonth.set(m, cur)
+    }
+    return Array.from(byMonth.entries())
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([month, v]) => ({ month, ...v }))
+  }, [shipments])
+
+  // 一覧の表示行 (月フィルタ=過去履歴の絞り込み)
+  const visibleShipments = useMemo(
+    () => (monthFilter ? shipments.filter((s) => s.shipment_date?.startsWith(monthFilter)) : shipments),
+    [shipments, monthFilter],
+  )
+
   const counts = useMemo(() => {
     const c: Record<string, number> = {
       issued: 0, picked_up: 0, in_transit: 0, delivered: 0,
@@ -518,6 +608,17 @@ export default function AgencyDashboard() {
             {/* お客様お渡し用ガイド。認証不要の /api/howto (静的PDF) を別タブで開く。
                 ゲスト向け資料なので日本語版は無く、既定は EN。他言語 (zh/it/fr/es) は
                 予約完了画面からその予約のバウチャー言語で出力する。 */}
+            {/* 緊急連絡先 (WhatsApp) — 常設 (谷口さん指示)。トラブル時に迷わせない。 */}
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#25D366] text-white text-sm font-semibold hover:opacity-90"
+              title={t.urgentWa}
+            >
+              <MessageCircle className="w-4 h-4" strokeWidth={2.2} />
+              <span className="hidden sm:inline">{t.urgentWa}</span>
+            </a>
             <a
               href="/api/howto?lang=en"
               target="_blank"
@@ -622,6 +723,78 @@ export default function AgencyDashboard() {
           ))}
         </section>
 
+        {/* 月別ご利用状況・請求書 (月クリックで一覧を絞り込み=過去履歴) */}
+        {monthlyUsage.length > 0 && (
+          <section className="rounded-2xl border border-border bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <p className="text-sm font-semibold text-foreground">{t.muTitle}</p>
+              {monthFilter ? (
+                <button
+                  onClick={() => setMonthFilter(null)}
+                  className="inline-flex items-center gap-1 text-xs text-[#C8102E] font-medium underline underline-offset-2"
+                >
+                  {t.muFiltering(monthFilter)} ・ {t.muShowAll}
+                </button>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">{t.muHint}</p>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px]">
+                <thead className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 pr-3 font-medium">{t.muMonth}</th>
+                    <th className="text-right py-2 px-3 font-medium">{t.muLegs}</th>
+                    <th className="text-right py-2 px-3 font-medium">{t.muPieces}</th>
+                    <th className="text-right py-2 px-3 font-medium">{t.muAmount}</th>
+                    <th className="text-right py-2 pl-3 font-medium">{t.muInvoice}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyUsage.map((m) => (
+                    <tr
+                      key={m.month}
+                      className={`border-b border-border/60 ${monthFilter === m.month ? "bg-[#FFF5F6]" : "hover:bg-slate-50"}`}
+                    >
+                      <td className="py-2 pr-3">
+                        <button
+                          onClick={() => setMonthFilter(monthFilter === m.month ? null : m.month)}
+                          className={`font-medium underline-offset-2 ${monthFilter === m.month ? "text-[#C8102E] underline" : "text-foreground hover:underline"}`}
+                        >
+                          {m.month}
+                        </button>
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums">{m.legs}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{m.pieces}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">
+                        {m.amount > 0 ? `¥${m.amount.toLocaleString()}` : "—"}
+                      </td>
+                      <td className="py-2 pl-3 text-right">
+                        {m.amount > 0 ? (
+                          <button
+                            onClick={() => void downloadMonthlyInvoice(m.month)}
+                            disabled={invBusy === m.month}
+                            className="inline-flex items-center gap-1 text-xs text-[#C8102E] font-medium hover:underline disabled:opacity-50"
+                          >
+                            {invBusy === m.month ? (
+                              <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />
+                            ) : (
+                              <FileDown className="w-3 h-3" strokeWidth={2} />
+                            )}
+                            PDF
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         {dlError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
             {dlError}
@@ -665,7 +838,7 @@ export default function AgencyDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shipments.map((it) => (
+                  {visibleShipments.map((it) => (
                     <tr key={it.id} className="border-t border-border hover:bg-muted/20">
                       <td className="p-3">
                         {new Date(it.created_at).toLocaleDateString(t.dateLocale)}
@@ -673,7 +846,10 @@ export default function AgencyDashboard() {
                       <td className="p-3">
                         {it.tour_number ? (
                           <div className="leading-tight">
-                            <span className="text-sm text-foreground">{it.tour_number}</span>
+                            <span className="block text-[9px] uppercase tracking-wider text-muted-foreground">
+                              {t.yourRef}
+                            </span>
+                            <span className="text-sm font-medium text-foreground">{it.tour_number}</span>
                             <span className="block font-mono text-[10px] text-muted-foreground mt-0.5">
                               {it.booking_id}-L{it.leg_index + 1}
                             </span>
