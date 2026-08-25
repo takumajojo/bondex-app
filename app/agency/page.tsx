@@ -16,6 +16,9 @@ import {
   Info,
   BookOpen,
   FileSignature,
+  X,
+  Check,
+  AlertTriangle,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
@@ -94,6 +97,34 @@ const messages = {
       "Requests with a ship date more than a month away: shipping labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
     downloading: "Preparing…",
     dlError: "Download failed. Please try again.",
+    actPlaceholder: "Actions…",
+    actDates: "Change dates",
+    actCount: "Change pieces",
+    actCancel: "Cancel this leg",
+    lockedTitle: "This leg is already issued",
+    lockedBody:
+      "The shipping label has been issued, so it can't be changed here (the label and the actual shipment must match). Please contact BondEx via the Contact button — we'll handle it for you.",
+    lockedClose: "Close",
+    dcTitle: "Change dates",
+    dcShip: "Ship date",
+    dcArrive: "Arrival date",
+    ccTitle: "Change pieces",
+    ccPieces: "Pieces",
+    ccFeeNote: "The fee is fixed at issuance: pieces × ¥5,000 (excl. tax).",
+    ccGroupNote: "For group bookings, edit the luggage list on the group dashboard.",
+    cxTitle: "Cancel this leg",
+    cxBody: "This leg will be cancelled. No label has been issued and nothing will be charged.",
+    cxWarn: "This can't be undone from the portal.",
+    confirmHeading: "Please confirm",
+    confirmFrom: "Before",
+    confirmTo: "After",
+    confirmNext: "Review →",
+    confirmBack: "← Back",
+    confirmApply: "Apply",
+    confirmCancelLeg: "Cancel the leg",
+    actDone: "Updated. BondEx has been notified.",
+    actCancelDone: "The leg has been cancelled. BondEx has been notified.",
+    actFailed: "Update failed. Please try again.",
     shipPrefix: "Ship",
     arrivePrefix: "Arrive",
     status: {
@@ -153,6 +184,34 @@ const messages = {
       "発送日が1ヶ月以上先の依頼は、送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
     downloading: "準備中…",
     dlError: "ダウンロードに失敗しました。もう一度お試しください。",
+    actPlaceholder: "アクション…",
+    actDates: "日程を変更",
+    actCount: "個数を変更",
+    actCancel: "この区間を取り消し",
+    lockedTitle: "この区間は発行済みです",
+    lockedBody:
+      "送り状が発行済みのため、こちらから変更できません（送り状と実際のお荷物を一致させる必要があるため）。お手数ですが「お問い合わせ」ボタンから BondEx にご連絡ください。こちらで対応いたします。",
+    lockedClose: "閉じる",
+    dcTitle: "日程を変更",
+    dcShip: "発送日",
+    dcArrive: "到着日",
+    ccTitle: "個数を変更",
+    ccPieces: "個数",
+    ccFeeNote: "料金は発行時に「個数 × ¥5,000（税抜）」で確定します。",
+    ccGroupNote: "団体予約の個数は、団体ダッシュボードの荷物リストから変更してください。",
+    cxTitle: "この区間を取り消し",
+    cxBody: "この区間を取り消します。送り状は未発行のため、課金は発生しません。",
+    cxWarn: "ポータルからは元に戻せません。",
+    confirmHeading: "内容のご確認",
+    confirmFrom: "変更前",
+    confirmTo: "変更後",
+    confirmNext: "確認へ →",
+    confirmBack: "← 戻る",
+    confirmApply: "確定する",
+    confirmCancelLeg: "区間を取り消す",
+    actDone: "変更しました。BondEx にも通知済みです。",
+    actCancelDone: "区間を取り消しました。BondEx にも通知済みです。",
+    actFailed: "変更に失敗しました。もう一度お試しください。",
     shipPrefix: "発送",
     arrivePrefix: "到着",
     status: {
@@ -201,6 +260,35 @@ export default function AgencyDashboard() {
   const [labelBusy, setLabelBusy] = useState<string | null>(null) // shipment id being fetched (送り状DL)
   const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null) // shipment_id being fetched
   const [dlError, setDlError] = useState("")
+
+  // 一覧のアクション (プルダウンから選択): 日程変更 / 個数変更 / 取り消し。
+  // 未発行(requested/pending)のみ直接変更可。発行済みは locked モーダルで案内。
+  const [actionTarget, setActionTarget] = useState<{
+    shipment: Shipment
+    action: "dates" | "count" | "cancel" | "locked"
+  } | null>(null)
+  const [actNote, setActNote] = useState("")
+
+  const patchShipment = useCallback(
+    async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const sb = getBrowserSupabase()
+        const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+        if (!token) return { ok: false, error: messages[locale].dlError }
+        const res = await fetch(`/api/agency/shipment/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        const d = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) return { ok: false, error: d.error }
+        return { ok: true }
+      } catch {
+        return { ok: false, error: "network" }
+      }
+    },
+    [locale],
+  )
 
   const load = useCallback(async () => {
     const sb = getBrowserSupabase()
@@ -540,6 +628,16 @@ export default function AgencyDashboard() {
           </div>
         )}
 
+        {actNote && (
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+            <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+            {actNote}
+            <button onClick={() => setActNote("")} className="ml-auto text-emerald-700 hover:text-emerald-900">
+              <X className="w-3.5 h-3.5" strokeWidth={2} />
+            </button>
+          </div>
+        )}
+
         <section className="rounded-2xl border border-border bg-white overflow-hidden">
           {loading ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
@@ -639,6 +737,30 @@ export default function AgencyDashboard() {
                             />
                           </div>
                         )}
+                        {/* アクション: プルダウンで選択 → 必ず確認画面を挟んで適用 */}
+                        {it.status !== "cancelled" && it.status !== "delivered" && (
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const v = e.target.value as "dates" | "count" | "cancel" | ""
+                              e.target.value = ""
+                              if (!v) return
+                              const editable = it.status === "requested" || it.status === "pending"
+                              setActNote("")
+                              if (!editable) {
+                                setActionTarget({ shipment: it, action: "locked" })
+                                return
+                              }
+                              setActionTarget({ shipment: it, action: v })
+                            }}
+                            className="mt-2 h-8 w-40 max-w-full rounded-lg border border-border bg-white px-2 text-xs text-muted-foreground hover:border-foreground/40"
+                          >
+                            <option value="">{t.actPlaceholder}</option>
+                            <option value="dates">{t.actDates}</option>
+                            {it.booking_type !== "group" && <option value="count">{t.actCount}</option>}
+                            <option value="cancel">{t.actCancel}</option>
+                          </select>
+                        )}
                       </td>
                       <td className="p-3">
                         <div className="flex flex-col items-start gap-1.5">
@@ -730,7 +852,260 @@ export default function AgencyDashboard() {
           )}
         </section>
       </div>
+      {actionTarget && (
+        <AgencyActionModal
+          t={t}
+          target={actionTarget}
+          onClose={() => setActionTarget(null)}
+          onApply={(body) => patchShipment(actionTarget.shipment.id, body)}
+          onDone={(msg) => {
+            setActionTarget(null)
+            setActNote(msg)
+            void load()
+          }}
+        />
+      )}
       <AgencyContactFab />
     </main>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 一覧アクションのモーダル — 日程変更/個数変更は「入力 → 確認画面 → 適用」の2段階、
+// 取り消しは確認画面のみ、発行済み(locked)は案内のみ。誤操作防止 (谷口さん指示)。
+// ---------------------------------------------------------------------------
+function AgencyActionModal({
+  t,
+  target,
+  onClose,
+  onApply,
+  onDone,
+}: {
+  t: (typeof messages)[keyof typeof messages]
+  target: { shipment: Shipment; action: "dates" | "count" | "cancel" | "locked" }
+  onClose: () => void
+  onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+  onDone: (msg: string) => void
+}) {
+  const { shipment: s, action } = target
+  const [phase, setPhase] = useState<"edit" | "confirm">(
+    action === "cancel" || action === "locked" ? "confirm" : "edit",
+  )
+  const [ship, setShip] = useState(s.shipment_date)
+  const [arr, setArr] = useState(s.expected_arrival || s.shipment_date)
+  const [count, setCount] = useState(s.suitcase_count)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+
+  const legRef = `${s.booking_id}-L${s.leg_index + 1}`
+  const route = `${s.from_hotel} → ${s.to_hotel}`
+  const DATE_OK = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v)
+  const addDays = (ymd: string, days: number) => {
+    const d = new Date(`${ymd}T00:00:00Z`)
+    if (isNaN(d.getTime())) return ymd
+    d.setUTCDate(d.getUTCDate() + days)
+    return d.toISOString().slice(0, 10)
+  }
+  // 発送日を動かしたら到着日もオフセット維持で連動 (据え置き防止)
+  const onShipChange = (v: string) => {
+    if (DATE_OK(v) && DATE_OK(ship) && DATE_OK(arr)) {
+      const delta = Math.round((Date.parse(`${v}T00:00:00Z`) - Date.parse(`${ship}T00:00:00Z`)) / 86_400_000)
+      setArr(addDays(arr, delta))
+    }
+    setShip(v)
+  }
+
+  const datesChanged = ship !== s.shipment_date || arr !== (s.expected_arrival || s.shipment_date)
+  const countChanged = count !== s.suitcase_count
+  const invalid =
+    action === "dates"
+      ? !DATE_OK(ship) || !DATE_OK(arr) || arr < ship || !datesChanged
+      : action === "count"
+        ? count < 1 || count > 50 || !countChanged
+        : false
+
+  const apply = async () => {
+    setBusy(true)
+    setErr("")
+    const body: Record<string, unknown> =
+      action === "cancel"
+        ? { cancel: true }
+        : action === "dates"
+          ? { shipmentDate: ship, expectedArrival: arr }
+          : { suitcaseCount: count }
+    const r = await onApply(body)
+    if (r.ok) {
+      onDone(action === "cancel" ? t.actCancelDone : t.actDone)
+    } else {
+      setErr(r.error || t.actFailed)
+      setBusy(false)
+    }
+  }
+
+  const title =
+    action === "dates" ? t.dcTitle : action === "count" ? t.ccTitle : action === "cancel" ? t.cxTitle : t.lockedTitle
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+            <p className="text-xs text-muted-foreground mt-1 font-mono">
+              {legRef} ・ {route}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" strokeWidth={1.5} />
+          </button>
+        </div>
+
+        {action === "locked" ? (
+          <>
+            <p className="text-sm text-foreground leading-relaxed">{t.lockedBody}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={onClose}
+                className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90"
+              >
+                {t.lockedClose}
+              </button>
+            </div>
+          </>
+        ) : action === "cancel" ? (
+          <>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-1">
+              <p className="text-sm text-red-900">{t.cxBody}</p>
+              <p className="text-xs font-medium text-red-800 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2} />
+                {t.cxWarn}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-slate-50/60 p-3 text-sm">
+              <p className="text-foreground">{route}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t.dcShip}: {s.shipment_date} ・ {t.ccPieces}: {s.suitcase_count}
+              </p>
+            </div>
+            {err && <p className="text-xs text-red-700">{err}</p>}
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={onClose} className="h-10 px-4 rounded-lg border border-border bg-white text-sm hover:bg-muted/40">
+                {t.confirmBack}
+              </button>
+              <button
+                onClick={() => void apply()}
+                disabled={busy}
+                className="h-10 px-4 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+                {t.confirmCancelLeg}
+              </button>
+            </div>
+          </>
+        ) : phase === "edit" ? (
+          <>
+            {action === "dates" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">{t.dcShip}</label>
+                  <input
+                    type="date"
+                    value={ship}
+                    onChange={(e) => onShipChange(e.target.value)}
+                    className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">{t.dcArrive}</label>
+                  <input
+                    type="date"
+                    value={arr}
+                    min={ship || undefined}
+                    onChange={(e) => setArr(e.target.value)}
+                    className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">{t.ccPieces}</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={count}
+                    onChange={(e) => setCount(Math.max(1, Math.min(50, Math.floor(Number(e.target.value) || 1))))}
+                    className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-center"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">{t.ccFeeNote}</p>
+              </div>
+            )}
+            {err && <p className="text-xs text-red-700">{err}</p>}
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={onClose} className="h-10 px-4 rounded-lg border border-border bg-white text-sm hover:bg-muted/40">
+                {t.lockedClose}
+              </button>
+              <button
+                onClick={() => setPhase("confirm")}
+                disabled={invalid}
+                className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50"
+              >
+                {t.confirmNext}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-medium text-muted-foreground">{t.confirmHeading}</p>
+            <div className="rounded-xl border border-border overflow-hidden text-sm">
+              <div className="grid grid-cols-2 divide-x divide-border">
+                <div className="p-3 bg-slate-50/60">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{t.confirmFrom}</p>
+                  {action === "dates" ? (
+                    <>
+                      <p className="text-foreground">{s.shipment_date}</p>
+                      <p className="text-xs text-muted-foreground">→ {s.expected_arrival || s.shipment_date}</p>
+                    </>
+                  ) : (
+                    <p className="text-foreground tabular-nums">{s.suitcase_count}</p>
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{t.confirmTo}</p>
+                  {action === "dates" ? (
+                    <>
+                      <p className="font-medium text-foreground">{ship}</p>
+                      <p className="text-xs text-muted-foreground">→ {arr}</p>
+                    </>
+                  ) : (
+                    <p className="font-medium text-foreground tabular-nums">{count}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            {action === "count" && <p className="text-[11px] text-muted-foreground">{t.ccFeeNote}</p>}
+            {err && <p className="text-xs text-red-700">{err}</p>}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setPhase("edit")}
+                className="h-10 px-4 rounded-lg border border-border bg-white text-sm hover:bg-muted/40"
+              >
+                {t.confirmBack}
+              </button>
+              <button
+                onClick={() => void apply()}
+                disabled={busy}
+                className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+                {t.confirmApply}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
