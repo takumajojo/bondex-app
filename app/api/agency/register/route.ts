@@ -224,27 +224,47 @@ export async function POST(req: NextRequest) {
         .filter(Boolean)
         .join("\n"),
     })
+    // 受付確認は登録時に選ばれた言語で送る (英語登録の会社には英語で・谷口さん指示)
     await sendMail({
       to: email,
       replyTo: opsTo,
-      subject: "【BondEx】ご登録ありがとうございます（承認をお待ちください）",
-      text: [
-        `${agencyName} 御中`,
-        "",
-        "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
-        "このたびはBondExへのご登録、誠にありがとうございます。",
-        "",
-        "内容を確認のうえ、担当者が承認いたします。承認完了後、ログインして発行依頼をご利用いただけます。",
-        "（初回のご利用前に、契約書へのご署名をお願いしております。）",
-        "",
-        "ご不明な点は support@bondex.express までお気軽にお問い合わせください。",
-        "",
-        "━━━━━━━━━━━━━━━━━━",
-        "BondEx（手荷物配送手配サービス）／ 株式会社JOJO",
-        "Web  : https://bondex.express",
-        "Mail : support@bondex.express",
-        "━━━━━━━━━━━━━━━━━━",
-      ].join("\n"),
+      subject:
+        locale === "en"
+          ? "[BondEx] Thanks for signing up — approval pending"
+          : "【BondEx】ご登録ありがとうございます（承認をお待ちください）",
+      text:
+        locale === "en"
+          ? [
+              `Dear ${agencyName},`,
+              "",
+              "Thank you for signing up with BondEx (JOJO Inc.).",
+              "",
+              "Our team will review and approve your account. Once approved, you can sign in and submit issuance requests.",
+              "(Before your first use, we'll ask you to sign the service agreement.)",
+              "",
+              "Questions? Contact us anytime at support@bondex.express.",
+              "",
+              "— BondEx (luggage-forwarding coordination) / JOJO Inc.",
+              "Web  : https://bondex.express",
+              "Mail : support@bondex.express",
+            ].join("\n")
+          : [
+              `${agencyName} 御中`,
+              "",
+              "平素より大変お世話になっております。BondEx（株式会社JOJO）でございます。",
+              "このたびはBondExへのご登録、誠にありがとうございます。",
+              "",
+              "内容を確認のうえ、担当者が承認いたします。承認完了後、ログインして発行依頼をご利用いただけます。",
+              "（初回のご利用前に、契約書へのご署名をお願いしております。）",
+              "",
+              "ご不明な点は support@bondex.express までお気軽にお問い合わせください。",
+              "",
+              "━━━━━━━━━━━━━━━━━━",
+              "BondEx（手荷物配送手配サービス）／ 株式会社JOJO",
+              "Web  : https://bondex.express",
+              "Mail : support@bondex.express",
+              "━━━━━━━━━━━━━━━━━━",
+            ].join("\n"),
     })
   } catch (e) {
     console.error("[agency/register] 通知メール失敗:", e instanceof Error ? e.message : e)

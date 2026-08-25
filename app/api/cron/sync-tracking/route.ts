@@ -386,9 +386,10 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // 新規の異常があれば BondEx + ランドオペレーターへ即時通知
+    // 新規の異常があれば BondEx + ランドオペレーターへ即時通知 (代理店は言語設定で出し分け)
     if (newExceptions.length > 0) {
       const agencyEmail = agencyEmailByName.get(row.agency as string) ?? null
+      const agencyEn = agencyForeignByName.get(row.agency as string) ?? false
       const legLabel = `${row.booking_id}-L${(row.leg_index as number) + 1}`
       await sendOpsAlert({
         subject: `【要確認】配送異常を検知 — ${legLabel}`,
@@ -402,6 +403,20 @@ export async function GET(req: NextRequest) {
           `お客様向け: https://bondex.express/track/${row.booking_id}`,
         ],
         agencyEmail,
+        ...(agencyEn
+          ? {
+              agencySubject: `[BondEx] Delivery alert — ${legLabel}`,
+              agencyLines: [
+                `Booking: ${legLabel} (${row.agency})`,
+                ...newExceptions.map(
+                  (e) =>
+                    `Tracking ${e.number}: ${e.label}${e.location ? ` @ ${e.location}` : ""}`,
+                ),
+                `We are checking with the carrier and will keep you posted.`,
+                `Track: https://bondex.express/track/${row.booking_id}`,
+              ],
+            }
+          : {}),
       })
       for (const e of newExceptions) {
         alertsSent.push({ bookingId: row.booking_id, leg: row.leg_index, exception: e.label })
@@ -516,6 +531,7 @@ export async function GET(req: NextRequest) {
     const alertedIds: string[] = []
     for (const s of due) {
       const agencyEmail = agencyEmailByName.get(s.agency) ?? null
+      const agencyEn = agencyForeignByName.get(s.agency) ?? false
       await sendOpsAlert({
         subject: `【集荷漏れの可能性】${s.booking_id}-L${s.leg_index + 1} ${s.from_hotel}`,
         lines: [
@@ -527,6 +543,18 @@ export async function GET(req: NextRequest) {
           `対応: 発送元ホテルへ荷物の有無を確認し、必要なら集荷を再手配してください。`,
         ],
         agencyEmail,
+        ...(agencyEn
+          ? {
+              agencySubject: `[BondEx] Possible missed pickup — ${s.booking_id}-L${s.leg_index + 1}`,
+              agencyLines: [
+                `Booking: ${s.booking_id} (leg ${s.leg_index + 1})`,
+                `Traveler: ${s.representative}`,
+                `The ship date ${s.shipment_date} has passed but pickup is not confirmed yet.`,
+                `Route: ${s.from_hotel} → ${s.to_hotel}`,
+                `We are checking with the origin hotel and the carrier, and will re-arrange pickup if needed.`,
+              ],
+            }
+          : {}),
       })
       alertedIds.push(s.id)
       pickupAlertsSent++

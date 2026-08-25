@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   // 対象代理店: 請求書払い & 稼働中。テスト代理店 (billing_exempt) は請求しない。
   const { data: agencies, error } = await sb
     .from("agencies")
-    .select("name, contact_email, payment_method, status")
+    .select("name, contact_email, payment_method, status, locale")
     .eq("payment_method", "invoice")
     .eq("status", "active")
     .neq("billing_exempt", true)
@@ -86,19 +86,37 @@ export async function GET(req: NextRequest) {
     const attachments = [
       { filename: built.fileName!, contentBase64: built.buffer.toString("base64") },
     ]
-    const bodyLines = [
-      `${ag.name} 御中`,
-      "",
-      `${built.period} のご請求書 (${built.invoiceNumber}) をお送りいたします。`,
-      `件数: ${built.itemCount}件 / ご請求金額(税込): ¥${(built.totalYen ?? 0).toLocaleString()}`,
-      `お支払期限: ${built.dueDate}`,
-      "",
-      "詳細は添付の PDF をご確認ください。",
-      "ご不明な点は support@bondex.express までお問い合わせください。",
-      "",
-      "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
-    ]
-    const subject = `【BondEx】${built.period} ご請求書（${built.invoiceNumber}）`
+    // 代理店の言語設定で出し分け (英語登録の会社には英語で・谷口さん指示)。
+    // 添付の適格請求書PDFは日本の税書類のため日本語のまま。
+    const en = (ag as { locale?: string | null }).locale === "en"
+    const bodyLines = en
+      ? [
+          `Dear ${ag.name},`,
+          "",
+          `Please find attached your invoice for ${built.period} (${built.invoiceNumber}).`,
+          `Items: ${built.itemCount} / Amount due (tax incl.): ¥${(built.totalYen ?? 0).toLocaleString()}`,
+          `Payment due: ${built.dueDate}`,
+          "",
+          "See the attached PDF for details (a Japanese qualified invoice).",
+          "Questions? Contact support@bondex.express.",
+          "",
+          "— BondEx / JOJO Inc. | support@bondex.express",
+        ]
+      : [
+          `${ag.name} 御中`,
+          "",
+          `${built.period} のご請求書 (${built.invoiceNumber}) をお送りいたします。`,
+          `件数: ${built.itemCount}件 / ご請求金額(税込): ¥${(built.totalYen ?? 0).toLocaleString()}`,
+          `お支払期限: ${built.dueDate}`,
+          "",
+          "詳細は添付の PDF をご確認ください。",
+          "ご不明な点は support@bondex.express までお問い合わせください。",
+          "",
+          "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
+        ]
+    const subject = en
+      ? `[BondEx] Invoice for ${built.period} (${built.invoiceNumber})`
+      : `【BondEx】${built.period} ご請求書（${built.invoiceNumber}）`
 
     const sentTo: string[] = []
     const errs: string[] = []

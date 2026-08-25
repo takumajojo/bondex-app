@@ -23,6 +23,9 @@ export interface OpsAlertInput {
   lines: string[]
   /** ランドオペレーター側の通知先 (agencies.contact_email)。無ければ BondEx のみ。 */
   agencyEmail?: string | null
+  /** 代理店宛だけ別文面にする場合 (英語代理店への英語アラート等)。未指定は subject/lines を共用。 */
+  agencySubject?: string
+  agencyLines?: string[]
 }
 
 export interface OpsAlertResult {
@@ -51,13 +54,21 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
   // メール: 共通 mailer (SMTP優先→Resendフォールバック)。BondEx運用 + 代理店(任意)。
   // 宛先ごとに送るので、片方が失敗しても他方には届く。
   if (mailerConfigured()) {
-    const text = [...input.lines, "", "— BondEx 配送監視（自動送信）"].join("\n")
-    const recipients = [BONDEX_OPS_EMAIL, ...(input.agencyEmail ? [input.agencyEmail] : [])]
+    const opsText = [...input.lines, "", "— BondEx 配送監視（自動送信）"].join("\n")
+    // 代理店宛は agencyLines があればそれを使う (英語代理店への英語アラート)。無ければ共用。
+    const agencyText = input.agencyLines
+      ? [...input.agencyLines, "", "— BondEx delivery monitoring (automated)"].join("\n")
+      : opsText
+    const agencySubject = input.agencySubject ?? input.subject
+    const targets: Array<{ to: string; subject: string; text: string }> = [
+      { to: BONDEX_OPS_EMAIL, subject: input.subject, text: opsText },
+      ...(input.agencyEmail ? [{ to: input.agencyEmail, subject: agencySubject, text: agencyText }] : []),
+    ]
     let anySent = false
-    for (const to of recipients) {
-      const r = await sendMail({ to, subject: input.subject, text })
+    for (const tgt of targets) {
+      const r = await sendMail({ to: tgt.to, subject: tgt.subject, text: tgt.text })
       if (r.sent) anySent = true
-      else result.errors.push(`email(${to}): ${r.error}`)
+      else result.errors.push(`email(${tgt.to}): ${r.error}`)
     }
     result.emailSent = anySent
   }
