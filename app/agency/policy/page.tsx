@@ -32,6 +32,7 @@ const M = {
       "金額は送り状の発行時に「個数 × ¥5,000」で確定します。",
       "カード払い: 集荷が完了したタイミングで決済されます（ご予約時点では課金されません）。決済後、請求書兼領収書（適格請求書）をメールでお送りします。",
       "請求書払い（国内のみ）: 月末締めで翌月に月次請求書をお送りします。ポータルの「月別ご利用状況」からもダウンロードできます。",
+      "料金は改定されることがあります。改定時は適用開始の 30 日前までにご連絡し、適用日より前に登録済みのご依頼には従前の料金を適用します。",
     ],
     s4t: "補償",
     s4: [
@@ -66,6 +67,7 @@ const M = {
       "The amount is fixed at label issuance: pieces × ¥5,000.",
       "Card payment: charged when pickup is completed (never at booking). A combined invoice/receipt (Japanese qualified invoice) is emailed after the charge.",
       "Monthly invoice (domestic only): closed at month-end and invoiced the following month. Also downloadable from “Monthly usage” in the portal.",
+      "Fees may be revised. We notify you at least 30 days before the effective date; requests registered before that date keep the previous fees.",
     ],
     s4t: "Compensation",
     s4: [

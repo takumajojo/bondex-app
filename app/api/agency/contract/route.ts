@@ -230,6 +230,8 @@ export async function GET(req: NextRequest) {
       undefined,
       locale,
     )
+    // 署名済み契約は「署名した時点の条文」で再現する (条文改定後も過去契約の内容を変えない)
+    data.termsVersion = sig.contract_version ?? undefined
     const buf = await renderToBuffer(ContractDocument({ data }))
     const fileName = `bondex-contract-signed-${agencyName.replace(/\s+/g, "_")}.pdf`
     return new NextResponse(new Uint8Array(buf), {

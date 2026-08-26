@@ -41,6 +41,8 @@ try {
 export interface ContractInput {
   contractNumber?: string      // BDX-CONTRACT-2026-001 形式
   locale?: "ja" | "en"          // 契約書の言語。既定 ja。en は参考訳(第17条で日本語版優先を明記)
+  /** 条文の版。署名済み契約の再ダウンロード時に署名時の版(v1=固定額第4条)を再現する。省略=現行版。 */
+  termsVersion?: string
   effectiveDate: string         // 2026年7月1日 (契約締結日)
   agency: {
     name: string                // 代理店名 (My Japan Planner 等)
@@ -353,7 +355,7 @@ export function ContractDocument({ data }: { data: ContractInput }) {
         </Text>
 
         {/* 各条文 (唯一の情報源 = lib/contract-content.ts。PDF/HTML双方がここから描画) */}
-        {buildArticles(price, data.bondex.bankInfo, locale).map((a) => (
+        {buildArticles(price, data.bondex.bankInfo, locale, data.termsVersion).map((a) => (
           <Article key={a.num} num={a.num} title={a.title} locale={locale}>
             {a.blocks.map((b, i) =>
               b.kind === "item" ? (
