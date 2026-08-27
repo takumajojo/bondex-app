@@ -229,7 +229,10 @@ export async function POST(req: NextRequest) {
 
   const contactPersonName =
     asString(body.contactPersonName).trim() || SUPPORT_DEFAULTS.contactPersonName
-  const contactPersonPhone = asString(body.contactPersonPhone).trim() || SUPPORT_DEFAULTS.phone
+  // ランドオペレーター欄は代理店自身の番号のみ。BondEx サポート番号を代入すると
+  // 「ランドオペレーター = BondEx の番号」と誤読されるためフォールバックしない
+  // (BONDEX_SUPPORT_PHONE 設定時に露見・2026-08-27 修正)。
+  const contactPersonPhone = asString(body.contactPersonPhone).trim()
   const companyName = asString(body.companyName).trim() || SUPPORT_DEFAULTS.companyName
   const companyAddress = asString(body.companyAddress).trim() || SUPPORT_DEFAULTS.companyAddress
 

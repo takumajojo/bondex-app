@@ -35,9 +35,14 @@ export { normalizeGuestLanguage } from "./guest-language"
 
 const FONT_DIR = path.join(process.cwd(), "public", "fonts")
 const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
-// How to Ship の4ステップイラスト (2026-08-27 谷口さん支給・1536×1024)。
-// ページはこのイラストが主役 —「10秒見ればやることが分かる」ガイド。
-const HOWTO_STEPS_PATH = path.join(process.cwd(), "public", "howto-steps.jpg")
+// How to Ship 全面イラスト (2026-08-27 谷口さん支給 howto.png・1054×1492 = A4比)。
+// 支給版に含まれていたロゴは生成物 (実ブランドロゴではない) だったため、
+// マストヘッド / THAT'S IT 帯 / 下部赤帯 の3箇所を public/bondex-logo.png で差し替え済み。
+// NEED HELP の QR も生成物でデコード不能だったため画像側では消去し、
+// 実 QR (WHATSAPP_URL 由来・env で変更可) を PDF 側で重ねる。
+const HOWTO_PAGE_PATH = path.join(process.cwd(), "public", "howto-page.jpg")
+// 消去した QR 枠の位置 (元画像 1054×1492 上の 741,1213 / 106×108 を A4 210×297mm 換算・単位mm)
+const HOWTO_QR_BOX_MM = { left: 147.6, top: 241.5, size: 21.2 }
 
 const BONDEX_SUPPORT_EMAIL = "support@bondex.express"
 
@@ -312,8 +317,10 @@ const logoSize = (heightMm: number) => ({
 
 const vs = StyleSheet.create({
   page: {
-    paddingTop: mm(8),
-    paddingBottom: mm(5.5),
+    // 3区間以上でも A4 (297mm) に収まるよう余白を詰めてある。
+    // 実測で 297mm を超えると等倍印刷で下端 (連絡先ストリップ・フッター) が切れる。
+    paddingTop: mm(5.5),
+    paddingBottom: mm(4),
     paddingHorizontal: mm(14),
     fontFamily: "NotoSansJP",
     fontSize: 9,
@@ -357,74 +364,18 @@ const vs = StyleSheet.create({
     color: "#f2b8c2",
   },
   lbLeg: { fontSize: 16, fontWeight: 700, color: "#ffffff", marginTop: mm(0.4) },
-  lbMain: {
-    marginLeft: mm(4.5),
-    paddingLeft: mm(4.5),
-    borderLeftWidth: mm(0.4),
-    borderLeftColor: "#e08a99",
-    flex: 1,
-  },
-  lbRoute: { fontSize: 11.5, fontWeight: 700, color: "#ffffff" },
-  lbDates: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: mm(1),
-  },
-  lbDateText: { fontSize: 7.5, color: "#f4cdd4" },
-  lbDateStrong: { fontSize: 7.5, fontWeight: 700, color: "#ffffff" },
-  lbSep: {
-    width: mm(1.4),
-    height: mm(1.4),
-    backgroundColor: "#e08a99",
-    marginHorizontal: mm(2.2),
-  },
 
   // ---------------- doc title + tracking module ----------------
-  docTitle: {
-    marginTop: mm(2.4),
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
   h1: { fontSize: 14, fontWeight: 700, lineHeight: 1.12 },
   h1Sub: { fontSize: 9, color: INK_SOFT, marginTop: mm(1.2) },
-  trackingModule: {
-    width: mm(40),
-    borderWidth: mm(0.5),
-    borderColor: INK,
-    paddingBottom: mm(1.4),
-    alignItems: "center",
-  },
-  tmHead: {
-    alignSelf: "stretch",
-    backgroundColor: RED,
-    color: "#ffffff",
-    fontSize: 6.5,
-    fontWeight: 700,
-    letterSpacing: 1.4,
-    paddingVertical: mm(1),
-    textAlign: "center",
-    marginBottom: mm(1.2),
-  },
-  tmQr: { width: mm(10), height: mm(10) },
-  tmCaption: { fontSize: 6.5, fontWeight: 700, marginTop: mm(1), textAlign: "center" },
-  tmCaptionEn: { fontSize: 5.5, color: INK_SOFT, marginTop: mm(0.3), textAlign: "center" },
-  tmNote: {
-    fontSize: 4.4,
-    color: MUTED,
-    marginTop: mm(0.7),
-    lineHeight: 1.3,
-    textAlign: "center",
-    paddingHorizontal: mm(1.5),
-  },
 
   // ---------------- present strip ----------------
   presentStrip: {
-    marginTop: mm(1.4),
+    marginTop: mm(3),
     borderWidth: mm(0.5),
     borderColor: INK,
-    paddingVertical: mm(1.3),
-    paddingHorizontal: mm(5),
+    paddingVertical: mm(1.6),
+    paddingHorizontal: mm(3.5),
     flexDirection: "row",
     alignItems: "center",
   },
@@ -433,7 +384,7 @@ const vs = StyleSheet.create({
   psJa: { fontSize: 7, color: INK_SOFT, marginTop: mm(0.4) },
 
   // ---------------- journey ----------------
-  journey: { marginTop: mm(2.2), flexDirection: "row", alignItems: "stretch" },
+  journey: { marginTop: mm(1.8), flexDirection: "row", alignItems: "stretch" },
   legCard: {
     flex: 1,
     borderWidth: mm(0.5),
@@ -499,137 +450,212 @@ const vs = StyleSheet.create({
 
   // ---------------- route list ----------------
   routeList: {
-    marginTop: mm(1.6),
+    marginTop: mm(1.2),
     borderWidth: mm(0.4),
     borderColor: GRAY_LINE,
-    paddingVertical: mm(1),
+    paddingVertical: mm(0.7),
     paddingHorizontal: mm(3),
   },
   rlHead: { fontSize: 6, fontWeight: 700, letterSpacing: 1.1, color: MUTED },
+  // 区間数に比例して伸びる唯一のブロック。A4 に収めるため行を詰めてある。
   rlRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: mm(0.4),
-    paddingBottom: mm(0.3),
+    paddingTop: mm(0.25),
+    paddingBottom: mm(0.15),
   },
   rlRowBorder: { borderTopWidth: mm(0.3), borderTopColor: GRAY_LINE },
-  rlLeg: { width: mm(15), fontSize: 6.5, fontWeight: 700, color: MUTED },
-  rlDate: { width: mm(11), fontSize: 6.5, fontWeight: 700, color: MUTED, marginLeft: mm(3) },
-  rlRoute: { flex: 1, fontSize: 6.5, color: MUTED, marginLeft: mm(3) },
+  rlCols: { flexDirection: "row" },
+  rlCol: { flex: 1 },
+  rlColR: { marginLeft: mm(3), paddingLeft: mm(3), borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
+  rlLeg: { width: mm(14), fontSize: 6, fontWeight: 700, color: MUTED },
+  rlDate: { width: mm(10), fontSize: 6, fontWeight: 700, color: MUTED, marginLeft: mm(2) },
+  rlRoute: { flex: 1, fontSize: 6, color: MUTED, marginLeft: mm(2) },
   rlChip: {
     backgroundColor: RED,
     color: "#ffffff",
     fontSize: 5.5,
     fontWeight: 700,
     letterSpacing: 0.5,
-    paddingVertical: mm(0.5),
+    paddingVertical: mm(0.35),
     paddingHorizontal: mm(1.8),
   },
 
   // ---------------- guest→hotel-staff 区切りバー (1枚化) ----------------
+  // ホテルは BondEx がご対応を「お願いする」相手。依頼状の見出しとして太く大きく。
   staffDivider: {
     marginTop: mm(1.8),
     backgroundColor: INK,
-    paddingVertical: mm(1.2),
+    paddingVertical: mm(1.8),
     paddingHorizontal: mm(4),
   },
-  sdLabel: { fontSize: 8, fontWeight: 700, color: "#ffffff", letterSpacing: 0.5 },
-  sdLabelEn: { fontWeight: 700, color: "#c4c4cb", letterSpacing: 0.8 },
 
-  // ---------------- flow ----------------
-  flowTitle: {
+  // 「到着先へ電話しなくてよい」ことを強く伝える警告ボックス。
+  // 小さな補足文にしていた時期は実際にお電話をいただいてしまったため、
+  // 赤地・太字・受話器アイコン付きで最も目立つ扱いにする (谷口さん 2026-08-27)。
+  noCallBox: {
     marginTop: mm(2),
-    fontSize: 7.5,
-    fontWeight: 700,
-    letterSpacing: 1.3,
-    color: MUTED,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fdeaed",
+    borderWidth: mm(0.5),
+    borderColor: RED,
+    borderRadius: 3,
+    paddingVertical: mm(1.3),
+    paddingHorizontal: mm(2.4),
   },
-  flowCols: { marginTop: mm(1.6), flexDirection: "row" },
-  flowCol: {
+  ncWords: { flex: 1, marginLeft: mm(2.4) },
+  ncTitle: { fontSize: 8.6, fontWeight: 700, color: RED_DARK, lineHeight: 1.3 },
+  ncSub: { fontSize: 7, color: INK_SOFT, lineHeight: 1.4, marginTop: mm(0.6) },
+
+  // 区間が多い予約はホテル向けを2ページ目へ送る。その2ページ目の見出し。
+  contMast: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    borderBottomWidth: mm(0.6),
+    borderBottomColor: INK,
+    paddingBottom: mm(1.6),
+  },
+  contLeg: { fontSize: 9, fontWeight: 700, color: INK },
+  contRef: { fontSize: 6.5, letterSpacing: 1.2, color: MUTED, textAlign: "right" },
+
+  // ---------------- ホテル別カード (2026-08-27 再設計) ----------------
+  // 旧構成は「ご対応の流れ(01/02)」と「予約検索パネル(01/02)」が別ブロックに分かれ、
+  // 担当者が自分のホテルの情報を2箇所から拾う必要があった。
+  // ホテル1軒 = カード1枚に統合し、上から読めば完結するようにした。
+  hotelCols: { marginTop: mm(1.6), flexDirection: "row", alignItems: "stretch" },
+  hotelCard: {
     flex: 1,
     borderWidth: mm(0.4),
     borderColor: GRAY_LINE,
+  },
+  hcHead: {
+    fontSize: 8.6,
+    fontWeight: 700,
+    color: "#ffffff",
     paddingVertical: mm(1.5),
     paddingHorizontal: mm(3),
   },
-  flowColHead: {
-    alignSelf: "flex-start",
-    fontSize: 7.5,
+  hcBody: { paddingVertical: mm(2), paddingHorizontal: mm(3), flexGrow: 1 },
+  // ホテル名は1行/2行で高さが変わるため下限を2行分に固定 (左右カードの以降のセクションを揃える)
+  hcHotel: { fontSize: 10.5, fontWeight: 700, lineHeight: 1.25, minHeight: mm(9) },
+  // 「ご対応の流れ」ブロックの下限高さ。左右で手順の行数が違っても
+  // 次の「ご予約の照合」が同じ位置から始まるようにする。
+  hcSteps: { minHeight: mm(27) },
+  hcSection: {
+    marginTop: mm(2.6),
+    marginBottom: mm(1.6),
+    paddingBottom: mm(0.8),
+    borderBottomWidth: mm(0.3),
+    borderBottomColor: GRAY_LINE,
+    fontSize: 7.6,
     fontWeight: 700,
-    color: "#ffffff",
-    paddingVertical: mm(0.9),
-    paddingHorizontal: mm(3),
-    marginBottom: mm(1.4),
+    letterSpacing: 1,
+    color: INK,
   },
+  sdLabel: { fontSize: 10, fontWeight: 700, color: "#ffffff", letterSpacing: 0.8 },
+  // 依頼の挨拶文 (ご対応をお願いする旨)
+  staffGreeting: {
+    marginTop: mm(1.6),
+    marginBottom: mm(0.6),
+    fontSize: 7.6,
+    lineHeight: 1.6,
+    color: INK,
+  },
+  sdLabelEn: { fontSize: 7.5, fontWeight: 700, color: "#c4c4cb", letterSpacing: 0.8 },
+
+  // ---------------- flow ----------------
   flowColHeadNo: { letterSpacing: 0.6, color: "#f0c3cb" },
-  flowStep: { flexDirection: "row", marginBottom: mm(1) },
+  flowStep: { flexDirection: "row", marginBottom: mm(1.6) },
   flowNum: {
-    width: mm(5.2),
-    height: mm(5.2),
-    borderRadius: mm(2.6),
+    width: mm(5.6),
+    height: mm(5.6),
+    borderRadius: mm(2.8),
     alignItems: "center",
     justifyContent: "center",
     marginRight: mm(3.3),
   },
-  flowNumText: { fontSize: 7.5, fontWeight: 700, color: "#ffffff", lineHeight: 1 },
+  // 数字が丸の中で約4pt 下寄りに描画されるため上方向に補正 (300dpi 実測で上下余白を均等化)。
+  // 値を変えたら必ず再レンダリングして上下余白が揃うか確認すること。
+  flowNumText: { fontSize: 8, fontWeight: 700, color: "#ffffff", lineHeight: 1, marginTop: -4.0 },
   flowStepBody: { flex: 1 },
-  flowStepMain: { fontSize: 7.2, fontWeight: 700, lineHeight: 1.3 },
-  flowStepSub: { fontSize: 6.5, color: INK_SOFT, lineHeight: 1.3 },
+  flowStepMain: { fontSize: 8.2, fontWeight: 700, lineHeight: 1.35 },
+  flowStepSub: { fontSize: 7.2, color: INK_SOFT, lineHeight: 1.35, marginTop: mm(0.3) },
 
-  roomNote: {
-    marginTop: mm(1.2),
-    backgroundColor: GRAY_BG,
-    borderLeftWidth: mm(0.8),
-    borderLeftColor: INK,
-    paddingVertical: mm(1),
-    paddingHorizontal: mm(2.5),
-  },
-  rnJa: { fontSize: 6.5, fontWeight: 700, lineHeight: 1.35 },
-  rnEn: { fontSize: 6, color: INK_SOFT, fontWeight: 400 },
+  // 「到着先へ連絡しなくてよい」ことを発送元ホテル様へ明示する注記 (谷口さん 2026-08-27)。
+  // ホテルから確認のお電話をいただく手間を先回りで無くす。
 
   // ---------------- hotel detail (予約検索パネル) ----------------
-  hotelDetail: { marginTop: mm(1.2), flexDirection: "row" },
-  hdBlock: {
-    flex: 1,
-    backgroundColor: GRAY_BG,
-    paddingVertical: mm(1.6),
-    paddingHorizontal: mm(3.2),
-  },
-  hdNo: { fontSize: 7, fontWeight: 700, letterSpacing: 0.8 },
-  hdHotel: { fontSize: 9, fontWeight: 700, marginTop: mm(0.5) },
+  // 予約照合はホテルが最初に照らす情報。氏名は必ずフル幅1行で最大サイズ、
+  // チェックイン日・部屋番号は2段目に置く (横3分割だと氏名も日付も折り返して読めなかった)。
   lookupGrid: {
     marginTop: mm(2),
     backgroundColor: "#ffffff",
     borderWidth: mm(0.4),
     borderColor: INK,
-    flexDirection: "row",
+    flexDirection: "column",
   },
+  lookupRow2: { flexDirection: "row", borderTopWidth: mm(0.3), borderTopColor: GRAY_LINE },
   lookupCell: {
-    paddingVertical: mm(0.8),
-    paddingHorizontal: mm(2.2),
+    paddingVertical: mm(1.2),
+    paddingHorizontal: mm(2.4),
   },
-  lookupCellName: { width: "42%" },
-  lookupCellNameWide: { width: "78%" }, // 日付欄が無い時 (発送元・チェックアウト日なし)
-  lookupCellCheckin: { width: "36%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
-  lookupCellRoom: { width: "22%", borderLeftWidth: mm(0.3), borderLeftColor: GRAY_LINE },
-  lk: { fontSize: 5.3, letterSpacing: 0.4, color: MUTED, lineHeight: 1.3 },
+  lookupCellName: { width: "100%" },
+  lookupCellNameWide: { width: "100%" }, // 日付欄が無い時 (発送元・チェックアウト日なし)
+  lookupCellCheckin: { flex: 1 },
+  lk: { fontSize: 6, letterSpacing: 0.4, color: MUTED, lineHeight: 1.3 },
   lkPrimary: { color: RED_DARK, fontWeight: 700 },
-  lv: { fontSize: 8.5, fontWeight: 700, marginTop: mm(0.5), lineHeight: 1.2 },
-  lvPrimary: { fontSize: 9, fontWeight: 700, marginTop: mm(0.5), lineHeight: 1.2 },
-  lvNights: { fontSize: 7, color: INK_SOFT, fontWeight: 700 },
+  lvPrimary: { fontSize: 10, fontWeight: 700, marginTop: mm(0.6), lineHeight: 1.25 },
   lvBlank: {
     marginTop: mm(0.5),
     minHeight: mm(3.5),
     borderBottomWidth: mm(0.3),
     borderBottomColor: MUTED,
   },
-  hdNote: { marginTop: mm(1), fontSize: 6.3, lineHeight: 1.35, color: INK_SOFT },
-  hdNoteStrong: { color: INK, fontWeight: 700 },
   hdSpecial: { marginTop: mm(1), fontSize: 7, color: RED_DARK, fontWeight: 700, lineHeight: 1.5 },
+
+  // ---------------- head block (2026-08-27 再設計) ----------------
+  // 旧 docTitle は alignItems:"flex-end" の横並びで、背の高い追跡ボックス(約28mm)と
+  // 2行のタイトル(約9mm)の差=約20mm がタイトル左上の死に余白になっていた。
+  // 左カラムにタイトル+ご提示のお願いを積んで高さを合わせ、右は QR 2枚 (追跡/問い合わせ)。
+  // 左カラム(タイトル+ご提示のお願い)と右のQR 2枚は下端を揃える (stretch)。
+  headBlock: { marginTop: mm(2), flexDirection: "row", alignItems: "stretch" },
+  headLeft: { flex: 1, paddingRight: mm(4) },
+  qrPair: { flexDirection: "row" },
+  qrModule: {
+    width: mm(33),
+    borderWidth: mm(0.5),
+    borderColor: INK,
+    alignItems: "center",
+  },
+  // 見出し帯は上端固定、QR とキャプションは残りの高さの中央に置く
+  qrBody: {
+    flexGrow: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: mm(1.3),
+  },
+  qrModuleR: { marginLeft: mm(2) },
+  qrHead: {
+    alignSelf: "stretch",
+    color: "#ffffff",
+    fontSize: 6,
+    fontWeight: 700,
+    letterSpacing: 1,
+    paddingVertical: mm(1),
+    textAlign: "center",
+    marginBottom: mm(1.2),
+  },
+  qrImg: { width: mm(11), height: mm(11) },
+  qrCaption: { fontSize: 6.3, fontWeight: 700, marginTop: mm(1), textAlign: "center" },
+  qrSub: { fontSize: 5.4, color: INK_SOFT, marginTop: mm(0.3), textAlign: "center" },
+  qrFallback: { fontSize: 5.2, color: INK_SOFT, textAlign: "center", paddingHorizontal: mm(1.5) },
 
   // ---------------- contact strip ----------------
   contactStrip: {
-    marginTop: mm(1.6),
+    marginTop: mm(1.2),
     borderWidth: mm(0.5),
     borderColor: INK,
     flexDirection: "row",
@@ -758,6 +784,20 @@ const GUEST_L10N = {
 // Page 1 — GUEST COPY (guest language primary / JP secondary)
 // ---------------------------------------------------------------------------
 
+// 受話器に斜線 = 「お電話不要」を一目で伝えるアイコン
+function NoCallIcon() {
+  return (
+    <Svg width={mm(8)} height={mm(8)} viewBox="0 0 24 24">
+      <Path
+        d="M6.6 3.5c.7 0 1.3.4 1.5 1l.9 2.4c.2.6 0 1.3-.5 1.7l-1.2 1a12.5 12.5 0 0 0 6.1 6.1l1-1.2c.4-.5 1.1-.7 1.7-.5l2.4.9c.6.2 1 .8 1 1.5v2.4c0 .9-.8 1.6-1.7 1.5C10.9 19.7 4.3 13.1 3.6 5.2 3.5 4.3 4.2 3.5 5.1 3.5z"
+        fill={RED}
+      />
+      <Path d="M3 21L21 3" stroke="#ffffff" strokeWidth={3.2} strokeLinecap="round" />
+      <Path d="M3 21L21 3" stroke={RED_DARK} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
 function FlowStep({ num, main, sub, color }: { num: string; main: string; sub?: string; color: string }) {
   return (
     <View style={vs.flowStep}>
@@ -778,7 +818,6 @@ function LookupGrid({
   dateJa,
   dateValue,
   alwaysShowDate,
-  hideRoom,
 }: {
   guestName: string
   // 日付欄。dateValue がある時に表示 (発送先のチェックアウト日など)。
@@ -788,8 +827,6 @@ function LookupGrid({
   // alwaysShowDate: 値が無くてもラベル+空欄で必ず日付列を出す (発送元のチェックイン日など、
   //   ホテルが「予約名+チェックイン日」で照会するため必須表示。2026-07 谷口さん指示)。
   alwaysShowDate?: boolean
-  // hideRoom: 部屋番号列を出さない (発送元は部屋番号が不明なので予約名+チェックイン日のみ)。
-  hideRoom?: boolean
 }) {
   const hasDateValue = !!(dateValue && dateEn)
   const showDate = hasDateValue || !!(alwaysShowDate && dateEn)
@@ -800,19 +837,15 @@ function LookupGrid({
         <Text style={vs.lvPrimary}>{guestName}</Text>
       </View>
       {showDate && (
-        <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
-          <Text style={[vs.lk, vs.lkPrimary]}>{dateEn}{"\n"}{dateJa}</Text>
-          {hasDateValue ? (
-            <Text style={vs.lvPrimary}>{formatJpDate(dateValue!)}</Text>
-          ) : (
-            <View style={vs.lvBlank} />
-          )}
-        </View>
-      )}
-      {!hideRoom && (
-        <View style={[vs.lookupCell, vs.lookupCellRoom]}>
-          <Text style={vs.lk}>ROOM NO.{"\n"}お部屋番号</Text>
-          <View style={vs.lvBlank} />
+        <View style={vs.lookupRow2}>
+          <View style={[vs.lookupCell, vs.lookupCellCheckin]}>
+            <Text style={[vs.lk, vs.lkPrimary]}>{dateEn}{"\n"}{dateJa}</Text>
+            {hasDateValue ? (
+              <Text style={vs.lvPrimary}>{jb(formatJpDate(dateValue!))}</Text>
+            ) : (
+              <View style={vs.lvBlank} />
+            )}
+          </View>
         </View>
       )}
     </View>
@@ -887,261 +920,8 @@ function VoucherPage({
     }
   })()
 
-  return (
-    <Page size="A4" style={vs.page} wrap={false}>
-      {/* masthead */}
-      <View style={vs.masthead}>
-        <View>
-          <Image style={logoSize(8.5)} src={LOGO_PATH} />
-          <Text style={[vs.copyTag, zf]}>{jb(L.copyTag)}</Text>
-        </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={vs.refLabel}>REF</Text>
-          <Text style={vs.refValue}>{ref}</Text>
-        </View>
-      </View>
-
-      {/* 区間バナー: 何番目の区間かだけを示す。経路(送付先)・日付は下の
-          DROP-OFF/PICK-UP ブロックが詳しく表示するため、ここでは重複を避けて出さない
-          (2026-07 谷口さんFB: ここで必要なのは LEG の数のみ)。 */}
-      <View style={vs.legBanner}>
-        <View>
-          <Text style={[vs.lbKicker, zf]}>{jb(L.kicker)}</Text>
-          <Text style={vs.lbLeg}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
-        </View>
-      </View>
-
-      {/* doc title + tracking module */}
-      <View style={vs.docTitle}>
-        <View>
-          <Text style={vs.h1}>LUGGAGE FORWARDING VOUCHER</Text>
-          <Text style={vs.h1Sub}>荷物配送引換証</Text>
-        </View>
-        <View style={vs.trackingModule}>
-          <Text style={vs.tmHead}>TRACKING / 追跡</Text>
-          {data.trackingQrDataUri ? (
-            <Image style={vs.tmQr} src={data.trackingQrDataUri} />
-          ) : (
-            <Text style={{ fontSize: 5.5, color: INK_SOFT }}>
-              bondex.express/track/{data.bookingId}
-            </Text>
-          )}
-          <Text style={vs.tmCaption}>{jb("配送状況を確認")}</Text>
-          <Text style={[vs.tmCaptionEn, zf]}>/ {jb(L.scanCaption)}</Text>
-          <Text style={[vs.tmNote, zf]}>{jb(L.tmNote)}</Text>
-        </View>
-      </View>
-
-      {/* present strip */}
-      <View style={vs.presentStrip}>
-        <CheckCircleIcon />
-        <View style={vs.psWords}>
-          <Text style={[vs.psEn, zf]}>{jb(L.present)}</Text>
-          <Text style={vs.psJa}>{jb("お荷物のお預け時・お受け取り時に、本バウチャーを受付にご提示ください")}</Text>
-        </View>
-      </View>
-
-      {/* journey */}
-      <View style={vs.journey}>
-        {/* DROP-OFF */}
-        <View style={vs.legCard}>
-          <Text style={[vs.legTab, { backgroundColor: RED }]}>DROP-OFF / お預け</Text>
-          <View style={vs.legDateRow}>
-            <Text style={vs.legDay}>{dayOfMonth(shipment.shipmentDate)}</Text>
-            <Text style={vs.legMy}>{monthYear(shipment.shipmentDate)}</Text>
-            <Text style={vs.legDow}>{dowLabel(shipment.shipmentDate)}</Text>
-          </View>
-          <Text style={vs.legHotelEn}>{fromHotelGuest}</Text>
-          {fromHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(fromHotelGuestJa)}</Text> : null}
-          {shipment.from.address ? <Text style={vs.legHotelSub}>{jb(shipment.from.address)}</Text> : null}
-          <View style={vs.legWhen}>
-            <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
-            <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
-          </View>
-        </View>
-
-        <View style={vs.journeyArrow}>
-          <JourneyArrowIcon />
-        </View>
-
-        {/* PICK-UP */}
-        <View style={vs.legCard}>
-          <Text style={[vs.legTab, { backgroundColor: INK }]}>PICK-UP / お受け取り</Text>
-          <View style={vs.legDateRow}>
-            <Text style={vs.legDay}>{dayOfMonth(shipment.expectedArrival)}</Text>
-            <Text style={vs.legMy}>{monthYear(shipment.expectedArrival)}</Text>
-            <Text style={vs.legDow}>{dowLabel(shipment.expectedArrival)}</Text>
-          </View>
-          <Text style={vs.legHotelEn}>{toHotelGuest}</Text>
-          {toHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(toHotelGuestJa)}</Text> : null}
-          {shipment.to.address ? <Text style={vs.legHotelSub}>{jb(shipment.to.address)}</Text> : null}
-          <View style={vs.legWhen}>
-            <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
-            <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* detail grid */}
-      <View style={vs.detailGrid}>
-        <View style={vs.detailRow}>
-          <View style={[vs.detailCell, { width: "25%" }]}>
-            <Text style={vs.dk}>GUEST / ご予約者</Text>
-            <Text style={vs.dv}>{guestName}</Text>
-            {data.groupName ? (
-              <Text style={vs.dvSmall}>{safeText(data.groupName)}</Text>
-            ) : null}
-          </View>
-          <View style={[vs.detailCell, { width: "25%" }]}>
-            <Text style={vs.dk}>LUGGAGE / お荷物</Text>
-            <Text style={vs.dv}>
-              {shipment.suitcaseCount} item{shipment.suitcaseCount === 1 ? "" : "s"}
-            </Text>
-            <Text style={vs.dvSmall}>Total {totalLuggage} item{totalLuggage === 1 ? "" : "s"}</Text>
-          </View>
-          <View style={[vs.detailCell, { width: "25%" }]}>
-            <Text style={vs.dk}>SERVICE TYPE / 種別</Text>
-            <Text style={vs.dv}>Hotel → Hotel</Text>
-            <Text style={vs.dvSmall}>
-              {totalLegs > 1 ? `Leg ${legIndex + 1} of ${totalLegs}` : jb("ホテル間配送")}
-            </Text>
-          </View>
-          <View style={[vs.detailCell, { width: "25%" }]}>
-            <Text style={vs.dk}>FORWARDED BY / 手配</Text>
-            <Text style={vs.dv}>BondEx</Text>
-          </View>
-        </View>
-        <View style={vs.detailRow}>
-          {contactCell &&
-            (data.supportQrDataUri ? (
-              // 問い合わせは QR のみ (電話/メール/担当者の文字は載せない・欧米ゲスト向け WhatsApp)。
-              <View style={[vs.detailCell, { width: "50%", flexDirection: "row", alignItems: "center" }]}>
-                <Image style={{ width: mm(13), height: mm(13) }} src={data.supportQrDataUri} />
-                <View style={{ flex: 1, marginLeft: mm(2.5) }}>
-                  <Text style={vs.dk}>{contactCell.label}</Text>
-                  <Text style={vs.dv}>{data.supportQrKind === "whatsapp" ? "WhatsApp" : "Email"}</Text>
-                  <Text style={vs.dvSmall}>Scan to chat ・ スキャンで問い合わせ</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={[vs.detailCell, { width: "50%" }]}>
-                <Text style={vs.dk}>{contactCell.label}</Text>
-                <Text style={vs.dv}>{contactCell.value}</Text>
-                {contactCell.small !== "" && <Text style={vs.dvSmall}>{contactCell.small}</Text>}
-              </View>
-            ))}
-          <View style={[vs.detailCell, { width: contactCell ? "50%" : "100%" }]}>
-            <Text style={vs.dk}>SUPPLIER / 配送業者</Text>
-            <Text style={vs.dv}>{jb(carrierConfig(data.carrier).voucherLabel)}</Text>
-            {/* Tel 行は実番号確定まで非表示 (仮番号 +81-XX-XXXX-XXXX を顧客/ホテルに出さない・谷口さん判断 2026-07-27) */}
-          </View>
-        </View>
-      </View>
-
-      {/* 旅程全体ミニ一覧 (複数区間のときのみ・補助情報) */}
-      {totalLegs > 1 && (
-        <View style={vs.routeList}>
-          <Text style={[vs.rlHead, zf]}>{jb(L.routeHead)}</Text>
-          {data.shipments.map((s, j) => {
-            const current = j === legIndex
-            const color = current ? RED_DARK : MUTED
-            return (
-              <View key={j} style={[vs.rlRow, ...(j > 0 ? [vs.rlRowBorder] : [])]}>
-                <Text style={[vs.rlLeg, { color }]}>{`LEG ${j + 1} / ${totalLegs}`}</Text>
-                <Text style={[vs.rlDate, { color }]}>{formatEnDateShort(s.shipmentDate)}</Text>
-                <Text
-                  style={[vs.rlRoute, { color }, ...(current ? [{ fontWeight: 700 as const }] : [])]}
-                >
-                  {`${jb(s.from.hotel)} → ${jb(s.to.hotel)}`}
-                </Text>
-                {current && <Text style={[vs.rlChip, zf]}>{jb(L.currentChip)}</Text>}
-              </View>
-            )
-          })}
-        </View>
-      )}
-
-      {/* guest → hotel-staff 区切りバー (1枚化) */}
-      <View style={vs.staffDivider}>
-        <Text style={vs.sdLabel}>
-          ここからホテルご担当者様へ <Text style={vs.sdLabelEn}>/ FOR HOTEL STAFF</Text>
-        </Text>
-      </View>
-
-      {/* flow */}
-      <Text style={vs.flowTitle}>ご対応の流れ</Text>
-      <View style={vs.flowCols}>
-        <View style={vs.flowCol}>
-          <Text style={[vs.flowColHead, { backgroundColor: RED }]}>
-            <Text style={vs.flowColHeadNo}>01  </Text>
-            {jb("発送元ホテル（ご出発ホテル）での対応")}
-          </Text>
-          <FlowStep color={RED} num="1" main="お客様がチェックアウト時に荷物をお持ち込み" sub="出荷する荷物として通常どおりお預かりください" />
-          <FlowStep color={RED} num="2" main="ドライバーが集荷に伺います" sub="バウチャー内容を確認します" />
-          <FlowStep color={RED} num="3" main="荷物をドライバーへお渡し" sub="確認後、お渡しください" />
-        </View>
-        <View style={[vs.flowCol, { marginLeft: mm(3.5) }]}>
-          <Text style={[vs.flowColHead, { backgroundColor: INK }]}>
-            <Text style={vs.flowColHeadNo}>02  </Text>
-            {jb("到着先ホテル（次のご宿泊ホテル）での対応")}
-          </Text>
-          <FlowStep color={INK} num="1" main="ドライバーが荷物をお届け" sub="到着荷物として通常どおりお預かりください" />
-          <FlowStep color={INK} num="2" main="お客様がチェックイン" />
-          <FlowStep color={INK} num="3" main="荷物をお客様へお渡し" sub="バウチャー記載のご予約名でお渡しください" />
-          <View style={vs.roomNote}>
-            <Text style={vs.rnJa}>
-              {jb("お部屋番号が確定している場合：可能であればお部屋までお運びください ")}
-              <Text style={vs.rnEn}>/ Room delivery when possible</Text>
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* 予約検索パネル */}
-      <View style={vs.hotelDetail}>
-        <View style={vs.hdBlock}>
-          <Text style={[vs.hdNo, { color: RED }]}>01 発送元</Text>
-          <Text style={vs.hdHotel}>{fromHotelJa}{jb(" 様")}</Text>
-          {/* 発送元では お客様が対面で荷物+バウチャーを渡すため予約照合日は不要。氏名のみ。 */}
-          <LookupGrid guestName={guestName} hideRoom />
-          <Text style={vs.hdNote}>
-            {jb("チェックアウト時にお客様が、本バウチャーと")}
-            <Text style={vs.hdNoteStrong}>{jb("お荷物と同じ枚数の印字済み送り状")}</Text>
-            {jb("をお持ちになります。")}
-            <Text style={vs.hdNoteStrong}>{jb("出荷する荷物")}</Text>
-            {jb("としてお預かりのうえ、送り状とあわせて集荷ドライバーへお渡しください。")}
-          </Text>
-          {/* 申し送り: 掲載先が発送元 or 両方 のとき発送元にも出す */}
-          {shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? (
-            <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
-          ) : null}
-        </View>
-        <View style={[vs.hdBlock, { marginLeft: mm(3.5) }]}>
-          <Text style={[vs.hdNo, { color: INK }]}>02 発送先</Text>
-          <Text style={vs.hdHotel}>{toHotelJa}{jb(" 様")}</Text>
-          {/* 到着(お届け先)ホテルは お客様来訪前に荷物を保管するため「予約名 + チェックイン日」で
-              照合する。fromCheckIn = お届け先ホテルのチェックイン日 (2026-07 谷口さん指示で
-              発送元→到着に意味変更・発送日以降の強制は撤廃=早期配達可)。 */}
-          <LookupGrid
-            guestName={guestName}
-            dateEn="CHECK-IN"
-            dateJa="チェックイン日"
-            dateValue={shipment.fromCheckIn}
-            alwaysShowDate
-          />
-          <Text style={vs.hdNote}>
-            <Text style={vs.hdNoteStrong}>{formatJpDate(shipment.expectedArrival)}</Text>
-            {jb(" にお荷物が届きます。")}
-            <Text style={vs.hdNoteStrong}>{jb("到着済み荷物")}</Text>
-            {jb("としてお預かりのうえ、チェックイン時にお客様へお渡しください。")}
-          </Text>
-          {/* 申し送り: 掲載先が お届け先(既定) or 両方 のとき発送先に出す */}
-          {shipment.specialNote && shipment.noteTarget !== "from" ? (
-            <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
-          ) : null}
-        </View>
-      </View>
-
+  const footerBlock = (
+    <>
       {/* contact strip */}
       <View style={vs.contactStrip}>
         <View style={vs.contactCell}>
@@ -1165,12 +945,342 @@ function VoucherPage({
 
       {/* footer */}
       <View style={vs.finalFooter}>
-        <Text style={vs.footerText}>
-          {jb(`${data.companyName} ／ ${data.companyAddress}`)}
-        </Text>
+        <Text style={vs.footerText}>{jb(`${data.companyName} ／ bondex.express`)}</Text>
         <Text style={vs.footerText}>REFERENCE: {ref}</Text>
       </View>
-    </Page>
+    </>
+  )
+
+  const guestBody = (
+    <>
+        {/* masthead */}
+        <View style={vs.masthead}>
+          <View>
+            <Image style={logoSize(8.5)} src={LOGO_PATH} />
+            <Text style={[vs.copyTag, zf]}>{jb(L.copyTag)}</Text>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={vs.refLabel}>REF</Text>
+            <Text style={vs.refValue}>{ref}</Text>
+          </View>
+        </View>
+
+        {/* 区間バナー: 何番目の区間かだけを示す。経路(送付先)・日付は下の
+            DROP-OFF/PICK-UP ブロックが詳しく表示するため、ここでは重複を避けて出さない
+            (2026-07 谷口さんFB: ここで必要なのは LEG の数のみ)。 */}
+        <View style={vs.legBanner}>
+          <View>
+            <Text style={[vs.lbKicker, zf]}>{jb(L.kicker)}</Text>
+            <Text style={vs.lbLeg}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
+          </View>
+        </View>
+
+        {/* head block: 左=タイトル+ご提示のお願い / 右=QR 2枚 (追跡・問い合わせ)
+            問い合わせ QR は以前 detail grid 内の小セルにあり気付かれなかったため、
+            追跡と同格で上部に昇格させた (2026-08-27 谷口さんFB)。 */}
+        <View style={vs.headBlock}>
+          <View style={vs.headLeft}>
+            <Text style={vs.h1}>LUGGAGE FORWARDING VOUCHER</Text>
+            <Text style={vs.h1Sub}>荷物配送引換証</Text>
+            <View style={vs.presentStrip}>
+              <CheckCircleIcon />
+              <View style={vs.psWords}>
+                <Text style={[vs.psEn, zf]}>{jb(L.present)}</Text>
+                <Text style={vs.psJa}>{jb("お荷物のお預け時・お受け取り時に、本バウチャーを受付にご提示ください")}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={vs.qrPair}>
+            <View style={vs.qrModule}>
+              <Text style={[vs.qrHead, { backgroundColor: RED }]}>TRACKING / 追跡</Text>
+              <View style={vs.qrBody}>
+                {data.trackingQrDataUri ? (
+                  <Image style={vs.qrImg} src={data.trackingQrDataUri} />
+                ) : (
+                  <Text style={vs.qrFallback}>bondex.express/track/{data.bookingId}</Text>
+                )}
+                <Text style={vs.qrCaption}>{jb("配送状況を確認")}</Text>
+                <Text style={[vs.qrSub, zf]}>{jb(L.scanCaption)}</Text>
+              </View>
+            </View>
+
+            {/* 問い合わせ先の表示モードを尊重する。
+                hidden → 出さない / 旅行会社・ランドオペレーター指定 → その連絡先を文字で出す。
+                WhatsApp QR は BondEx 宛なので、他社を指定しているときに出してはいけない
+                (2026-08-27 の上部格上げで一時的に効かなくなっていたのを修復)。 */}
+            {contactCell && (
+              <View style={[vs.qrModule, vs.qrModuleR]}>
+                <Text style={[vs.qrHead, { backgroundColor: INK }]}>
+                  {contactMode === "bondex_support" ? "NEED HELP / お困りのとき" : "CONTACT / お問い合わせ"}
+                </Text>
+                <View style={vs.qrBody}>
+                  {contactMode === "bondex_support" && data.supportQrDataUri ? (
+                    <>
+                      <Image style={vs.qrImg} src={data.supportQrDataUri} />
+                      <Text style={vs.qrCaption}>
+                        {data.supportQrKind === "whatsapp" ? "WhatsApp" : "Email"}
+                      </Text>
+                      <Text style={vs.qrSub}>Scan to chat</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={vs.qrCaption}>{jb(contactCell.value)}</Text>
+                      {contactCell.small !== "" && (
+                        <Text style={vs.qrSub}>{jb(contactCell.small)}</Text>
+                      )}
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* journey */}
+        <View style={vs.journey}>
+          {/* DROP-OFF */}
+          <View style={vs.legCard}>
+            <Text style={[vs.legTab, { backgroundColor: RED }]}>DROP-OFF / お預け</Text>
+            <View style={vs.legDateRow}>
+              <Text style={vs.legDay}>{dayOfMonth(shipment.shipmentDate)}</Text>
+              <Text style={vs.legMy}>{monthYear(shipment.shipmentDate)}</Text>
+              <Text style={vs.legDow}>{dowLabel(shipment.shipmentDate)}</Text>
+            </View>
+            <Text style={vs.legHotelEn}>{fromHotelGuest}</Text>
+            {fromHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(fromHotelGuestJa)}</Text> : null}
+            {shipment.from.address ? <Text style={vs.legHotelSub}>{jb(shipment.from.address)}</Text> : null}
+            <View style={vs.legWhen}>
+              <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
+              <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
+            </View>
+          </View>
+
+          <View style={vs.journeyArrow}>
+            <JourneyArrowIcon />
+          </View>
+
+          {/* PICK-UP */}
+          <View style={vs.legCard}>
+            <Text style={[vs.legTab, { backgroundColor: INK }]}>PICK-UP / お受け取り</Text>
+            <View style={vs.legDateRow}>
+              <Text style={vs.legDay}>{dayOfMonth(shipment.expectedArrival)}</Text>
+              <Text style={vs.legMy}>{monthYear(shipment.expectedArrival)}</Text>
+              <Text style={vs.legDow}>{dowLabel(shipment.expectedArrival)}</Text>
+            </View>
+            <Text style={vs.legHotelEn}>{toHotelGuest}</Text>
+            {toHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(toHotelGuestJa)}</Text> : null}
+            {shipment.to.address ? <Text style={vs.legHotelSub}>{jb(shipment.to.address)}</Text> : null}
+            <View style={vs.legWhen}>
+              <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
+              <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* detail grid */}
+        <View style={vs.detailGrid}>
+          <View style={vs.detailRow}>
+            <View style={[vs.detailCell, { width: "26%" }]}>
+              <Text style={vs.dk}>GUEST / ご予約者</Text>
+              <Text style={vs.dv}>{guestName}</Text>
+              {data.groupName ? (
+                <Text style={vs.dvSmall}>{jb(safeText(data.groupName))}</Text>
+              ) : null}
+            </View>
+            <View style={[vs.detailCell, { width: "18%" }]}>
+              <Text style={vs.dk}>LUGGAGE / お荷物</Text>
+              <Text style={vs.dv}>
+                {shipment.suitcaseCount} item{shipment.suitcaseCount === 1 ? "" : "s"}
+              </Text>
+              <Text style={vs.dvSmall}>Total {totalLuggage} item{totalLuggage === 1 ? "" : "s"}</Text>
+            </View>
+            <View style={[vs.detailCell, { width: "22%" }]}>
+              <Text style={vs.dk}>SERVICE TYPE / 種別</Text>
+              <Text style={vs.dv}>Hotel → Hotel</Text>
+              {/* 「Leg N of M」は上部の赤バナーと重複するため省略 (2026-08-27 文字量圧縮) */}
+              {totalLegs > 1 ? null : <Text style={vs.dvSmall}>{jb("ホテル間配送")}</Text>}
+            </View>
+            {/* 旧「FORWARDED BY / BondEx」はロゴ・フッターと重複のため削除し、配送業者を昇格。
+                問い合わせセルは上部の QR モジュールへ移動 → 2行目のグリッドごと削減。 */}
+            <View style={[vs.detailCell, { width: "34%" }]}>
+              <Text style={vs.dk}>SUPPLIER / 配送業者</Text>
+              <Text style={vs.dv}>{jb(carrierConfig(data.carrier).voucherLabel)}</Text>
+              {/* Tel 行は実番号確定まで非表示 (仮番号 +81-XX-XXXX-XXXX を顧客/ホテルに出さない・谷口さん判断 2026-07-27) */}
+            </View>
+          </View>
+        </View>
+
+        {/* 旅程全体ミニ一覧 (複数区間のときのみ・補助情報)。
+            区間数に比例して縦に伸び、3区間以上だとページが A4 を超えるため、
+            3区間以上は2列に折り返して高さを半分に抑える (2026-08-27 実測対応)。 */}
+        {totalLegs > 1 &&
+          (() => {
+            const twoCol = false // 2列は和名ホテルが折り返して逆に高くなるため無効
+            const perCol = twoCol ? Math.ceil(totalLegs / 2) : totalLegs
+            const cols = twoCol
+              ? [data.shipments.slice(0, perCol), data.shipments.slice(perCol)]
+              : [data.shipments]
+            const row = (s: VoucherShipment, j: number, first: boolean) => {
+              const current = j === legIndex
+              const color = current ? RED_DARK : MUTED
+              return (
+                <View key={j} style={[vs.rlRow, ...(first ? [] : [vs.rlRowBorder])]}>
+                  <Text style={[vs.rlLeg, { color }]}>{`LEG ${j + 1} / ${totalLegs}`}</Text>
+                  <Text style={[vs.rlDate, { color }]}>{formatEnDateShort(s.shipmentDate)}</Text>
+                  <Text
+                    style={[vs.rlRoute, { color }, ...(current ? [{ fontWeight: 700 as const }] : [])]}
+                  >
+                    {`${jb(s.from.hotel)} → ${jb(s.to.hotel)}`}
+                  </Text>
+                  {current && <Text style={[vs.rlChip, zf]}>{jb(L.currentChip)}</Text>}
+                </View>
+              )
+            }
+            return (
+              <View style={vs.routeList}>
+                <Text style={[vs.rlHead, zf]}>{jb(L.routeHead)}</Text>
+                <View style={vs.rlCols}>
+                  {cols.map((col, ci) => (
+                    <View key={ci} style={[vs.rlCol, ...(ci > 0 ? [vs.rlColR] : [])]}>
+                      {col.map((s, k) => row(s, ci * perCol + k, k === 0))}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )
+          })()}
+
+    </>
+  )
+
+  const hotelBody = (
+    <>
+        {/* guest → hotel-staff 区切り。ホテルへは「依頼」なので挨拶文を添える (谷口さん 2026-08-27) */}
+        <View style={vs.staffDivider}>
+          <Text style={vs.sdLabel}>
+            {jb("ホテルご担当者様へ　お荷物のお取り扱いのお願い")}{" "}
+            <Text style={vs.sdLabelEn}>/ REQUEST TO HOTEL STAFF</Text>
+          </Text>
+        </View>
+        <Text style={vs.staffGreeting}>
+          {jb("平素より大変お世話になっております。お客様のお荷物につきまして、下記のとおりご対応くださいますようお願い申し上げます。何卒よろしくお願い申し上げます。")}
+        </Text>
+
+        {/* ホテル別カード: 1軒 = 1枚。上から「どのホテルか → 何をするか → 予約の照合方法」の順。 */}
+        <View style={vs.hotelCols}>
+          {/* ---- 01 発送元ホテル ---- */}
+          <View style={vs.hotelCard}>
+            <Text style={[vs.hcHead, { backgroundColor: RED }]}>
+              <Text style={vs.flowColHeadNo}>01  </Text>
+              {jb("発送元ホテル（ご出発ホテル）")}
+            </Text>
+            <View style={vs.hcBody}>
+              <Text style={vs.hcHotel}>{jb(fromHotelJa)}{jb(" 様")}</Text>
+
+              <Text style={vs.hcSection}>ご対応の流れ</Text>
+              {/* 2026-08-27 文字量圧縮: 自明な補足 (2,3の sub) を削除し意味は保持 */}
+              <View style={vs.hcSteps}>
+                <FlowStep color={RED} num="1" main="お客様がチェックアウト時に荷物をお持ち込み" sub="荷物と同数の印字済み送り状もお持ちになります" />
+                <FlowStep color={RED} num="2" main="集荷までお預かりください" sub="通常の出荷荷物としてお取り扱いください" />
+                <FlowStep color={RED} num="3" main="荷物と送り状を集荷ドライバーへお渡し" />
+              </View>
+
+              <View style={vs.noCallBox}>
+                <NoCallIcon />
+                <View style={vs.ncWords}>
+                  <Text style={vs.ncTitle}>{jb("到着先ホテル様へのお電話は不要です")}</Text>
+                  <Text style={vs.ncSub}>
+                    {jb("BondExより連絡済み・お受け入れ確認済みです。")}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={vs.hcSection}>ご予約の照合</Text>
+              {/* 発送元では お客様が対面で荷物+バウチャーを渡すため予約照合日は不要。氏名のみ。 */}
+              <LookupGrid guestName={guestName} />
+              {/* 申し送り: 掲載先が発送元 or 両方 のとき発送元にも出す */}
+              {shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? (
+                <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* ---- 02 到着先ホテル ---- */}
+          <View style={[vs.hotelCard, { marginLeft: mm(3.5) }]}>
+            <Text style={[vs.hcHead, { backgroundColor: INK }]}>
+              <Text style={vs.flowColHeadNo}>02  </Text>
+              {jb("到着先ホテル（次のご宿泊ホテル）")}
+            </Text>
+            <View style={vs.hcBody}>
+              <Text style={vs.hcHotel}>{jb(toHotelJa)}{jb(" 様")}</Text>
+
+              <Text style={vs.hcSection}>ご対応の流れ</Text>
+              <View style={vs.hcSteps}>
+                <FlowStep color={INK} num="1" main="ドライバーが荷物をお届け" sub={`お届け予定　${formatJpDate(shipment.expectedArrival)}`} />
+                <FlowStep color={INK} num="2" main="到着済み荷物としてお預かりください" sub="お部屋番号が確定していれば、お部屋までお運びください" />
+                <FlowStep color={INK} num="3" main="チェックイン時にお客様へお渡し" sub="バウチャー記載のご予約名で照合してください" />
+              </View>
+
+              <Text style={vs.hcSection}>ご予約の照合</Text>
+              {/* 到着(お届け先)ホテルは お客様来訪前に荷物を保管するため「予約名 + チェックイン日」で
+                  照合する。fromCheckIn = お届け先ホテルのチェックイン日 (2026-07 谷口さん指示で
+                  発送元→到着に意味変更・発送日以降の強制は撤廃=早期配達可)。 */}
+              <LookupGrid
+                guestName={guestName}
+                dateEn="CHECK-IN"
+                dateJa="チェックイン日"
+                dateValue={shipment.fromCheckIn}
+                alwaysShowDate
+              />
+              {/* 申し送り: 掲載先が お届け先(既定) or 両方 のとき発送先に出す */}
+              {shipment.specialNote && shipment.noteTarget !== "from" ? (
+                <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+
+    </>
+  )
+
+  // 区間が多いとゲスト面+ホテル面が1枚の A4 に収まらない。
+  // 実測 (和名ホテル・住所・申し送りありの実データ): 2区間 296mm / 3区間 303mm。
+  // 3区間以上はホテルご担当者様向けを次ページへ送り、全ページを A4 内に収める。
+  const splitHotelPage = totalLegs >= 3
+
+  if (!splitHotelPage) {
+    return (
+      <Page size="A4" style={vs.page} wrap={false}>
+        {guestBody}
+        {hotelBody}
+        {footerBlock}
+      </Page>
+    )
+  }
+
+  return (
+    <>
+      <Page size="A4" style={vs.page} wrap={false}>
+        {guestBody}
+        {footerBlock}
+      </Page>
+      <Page size="A4" style={vs.page} wrap={false}>
+        {/* 2ページ目: どの予約・どの区間のホテル向けかがひと目で分かる見出し */}
+        <View style={vs.contMast}>
+          <View>
+            <Image style={logoSize(8.5)} src={LOGO_PATH} />
+            <Text style={vs.contLeg}>{`LEG ${legIndex + 1} / ${totalLegs}`}</Text>
+          </View>
+          <View>
+            <Text style={vs.contRef}>REF</Text>
+            <Text style={vs.refValue}>{ref}</Text>
+          </View>
+        </View>
+        {hotelBody}
+        {footerBlock}
+      </Page>
+    </>
   )
 }
 
@@ -1547,6 +1657,7 @@ const HOWTO_L10N = {
 
 const ht = StyleSheet.create({
   page: {
+    minHeight: mm(297),
     paddingTop: mm(11),
     paddingBottom: mm(9),
     paddingHorizontal: mm(14),
@@ -1904,168 +2015,40 @@ function HowToShipPageLegacy({
   )
 }
 
-// ---- How to Ship「Quick Start Guide」(2026-08-27 リニューアル第4版・谷口さん仕様=1ページ統合) ----
-// 目的は説明ではなく旅行者の不安の除去 —「簡単そう」「ホテルで迷わない」「困ったらすぐ連絡できる」。
-// 上部 = 支給4ステップイラスト (THAT'S IT で完結・IMPORTANT帯は画像側で切除済み)、
-// 下部 = Before You Drop Off Your Luggage (6カード)。1枚のA4に統合。
-// カラーは BondEx Red / Black / White / Gray のみ。見出し=最太ウェイト・本文=Regular。
-
-const hq = StyleSheet.create({
-  masthead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
-  mastheadTag: { fontSize: 7, letterSpacing: 2.2, color: MUTED },
-  hero: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
-  // 切除後の実寸比 1536×906 ≒ 182×107.4mm
-  heroImg: { width: mm(182), height: mm(107.4) },
-  overline: { width: mm(9), height: 2.2, backgroundColor: RED, borderRadius: 1.1, marginBottom: mm(2) },
-  refTitle: { fontSize: 12.5, fontWeight: 700, letterSpacing: 1.2, color: INK },
-  refGridWrap: { gap: mm(3.5) },
-  grid: { flexDirection: "row", gap: mm(3.5) },
-  card: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#e7e7ea",
-    borderRadius: 9,
-    backgroundColor: "#ffffff",
-    padding: mm(4.2),
-    minHeight: mm(36),
-  },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: mm(2), marginBottom: mm(2) },
-  cardTitle: { flex: 1, fontSize: 8.4, fontWeight: 700, letterSpacing: 0.5, color: INK },
-  cardBody: { fontSize: 7.6, lineHeight: 1.55, color: INK_SOFT },
-  bulletRow: { flexDirection: "row", gap: 4 },
-})
-
-// ラインアイコン (統一テイスト: RED 単色ストローク・角丸線端・viewBox 24)
-const HQ_ICON = { stroke: RED, strokeWidth: 1.6, fill: "none" as const, strokeLinecap: "round" as const, strokeLinejoin: "round" as const }
-function HqIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <Svg width={mm(6)} height={mm(6)} viewBox="0 0 24 24">
-      {children}
-    </Svg>
-  )
-}
-const HqTagIcon = () => (
-  <HqIcon>
-    <Path d="M12.6 3.2h5.6a2 2 0 0 1 2 2v5.6a2 2 0 0 1-.6 1.4l-8 8a2 2 0 0 1-2.8 0l-5-5a2 2 0 0 1 0-2.8l8-8a2 2 0 0 1 1.4-.6z" {...HQ_ICON} />
-    <Circle cx={15.8} cy={8.2} r={1.7} {...HQ_ICON} />
-  </HqIcon>
-)
-const HqReuseIcon = () => (
-  <HqIcon>
-    <Path d="M20 12a8 8 0 1 1-2.4-5.7" {...HQ_ICON} />
-    <Path d="M20.2 3.4v4.4h-4.4" {...HQ_ICON} />
-  </HqIcon>
-)
-const HqPlusIcon = () => (
-  <HqIcon>
-    <Circle cx={12} cy={12} r={8.6} {...HQ_ICON} />
-    <Path d="M12 8.2v7.6M8.2 12h7.6" {...HQ_ICON} />
-  </HqIcon>
-)
-const HqTrackIcon = () => (
-  <HqIcon>
-    <Path d="M12 21.2s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11z" {...HQ_ICON} />
-    <Circle cx={12} cy={10} r={2.6} {...HQ_ICON} />
-  </HqIcon>
-)
-const HqPassportIcon = () => (
-  <HqIcon>
-    <Path d="M6 3.4h12a1.4 1.4 0 0 1 1.4 1.4v14.4a1.4 1.4 0 0 1-1.4 1.4H6a1.4 1.4 0 0 1-1.4-1.4V4.8A1.4 1.4 0 0 1 6 3.4z" {...HQ_ICON} />
-    <Circle cx={12} cy={9.6} r={3} {...HQ_ICON} />
-    <Path d="M8.6 16.6h6.8" {...HQ_ICON} />
-  </HqIcon>
-)
-const HqChatIcon = () => (
-  <HqIcon>
-    <Path d="M20 4.4H4a1 1 0 0 0-1 1V20l4.2-3.8H20a1 1 0 0 0 1-1V5.4a1 1 0 0 0-1-1z" {...HQ_ICON} />
-    <Path d="M7.6 10.4h8.8" {...HQ_ICON} />
-  </HqIcon>
-)
-
-function HqCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <View style={hq.card}>
-      <View style={hq.cardHead}>
-        {icon}
-        <Text style={hq.cardTitle}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  )
-}
-const HqBullet = ({ t }: { t: string }) => (
-  <View style={hq.bulletRow}>
-    <Text style={[hq.cardBody, { color: RED }]}>•</Text>
-    <Text style={hq.cardBody}>{t}</Text>
-  </View>
-)
+// How to Ship ページは支給イラスト1枚で完結するため、
+// コード側でカードを描いていた旧実装 (hq スタイル / Hq* アイコン) は 2026-08-27 に削除。
 
 export function HowToShipPage({
-  language,
+  supportQrDataUri,
 }: {
   language: GuestLanguage
   supportQrDataUri?: string
   supportQrKind?: "whatsapp" | "email"
 }) {
   return (
-    <Page size="A4" style={ht.page} wrap={false}>
-      <View style={hq.masthead}>
-        <Image style={logoSize(9)} src={LOGO_PATH} />
-        <Text style={hq.mastheadTag}>QUICK START GUIDE</Text>
-      </View>
+    <Page size="A4" style={{ position: "relative" }} wrap={false}>
+      {/* 支給イラストを A4 全面 (ロゴは実ブランドロゴへ差し替え済み) */}
+      {/* eslint-disable-next-line jsx-a11y/alt-text */}
+      <Image src={HOWTO_PAGE_PATH} style={{ width: mm(210), height: mm(297) }} />
 
-      {/* 上部: 4ステップイラスト — THAT'S IT で完結 */}
-      <View style={hq.hero}>
-        {/* eslint-disable-next-line jsx-a11y/alt-text */}
-        <Image src={HOWTO_STEPS_PATH} style={hq.heroImg} />
-      </View>
-
-      {/* 下部: Before You Drop Off Your Luggage — 6カード 3×2 */}
-      <View>
-        <View style={hq.overline} />
-        <Text style={hq.refTitle}>BEFORE YOU DROP OFF YOUR LUGGAGE</Text>
-        <View style={{ height: mm(3.5) }} />
-        <View style={hq.refGridWrap}>
-          <View style={hq.grid}>
-            <HqCard icon={<HqTagIcon />} title="ONE LABEL PER BAG">
-              <Text style={hq.cardBody}>Attach one shipping label to each piece of luggage.</Text>
-            </HqCard>
-            <HqCard icon={<HqReuseIcon />} title="USING BONDEX AGAIN?">
-              <Text style={hq.cardBody}>
-                Keep your BondEx strap until the end of your journey. You’ll use the same strap for your next shipment.
-              </Text>
-            </HqCard>
-            <HqCard icon={<HqPlusIcon />} title="NEED TO ADD ANOTHER BAG?">
-              <Text style={hq.cardBody}>Please contact BondEx via WhatsApp before shipment.</Text>
-            </HqCard>
-          </View>
-          <View style={hq.grid}>
-            <HqCard icon={<HqTrackIcon />} title="TRACK YOUR LUGGAGE">
-              <Text style={hq.cardBody}>Scan the QR code on your voucher to check your delivery status.</Text>
-            </HqCard>
-            <HqCard icon={<HqPassportIcon />} title="KEEP THESE WITH YOU">
-              <Text style={hq.cardBody}>Do not pack:</Text>
-              <View style={{ height: mm(0.8) }} />
-              <HqBullet t="Passport" />
-              <HqBullet t="Cash" />
-              <HqBullet t="Medication" />
-              <HqBullet t="Valuables" />
-              <HqBullet t="Electronics" />
-            </HqCard>
-            <HqCard icon={<HqChatIcon />} title="NEED HELP?">
-              <Text style={hq.cardBody}>Contact BondEx anytime via WhatsApp.</Text>
-            </HqCard>
-          </View>
-        </View>
-      </View>
-
-      <View style={[ht.htFooter, { marginTop: mm(4) }]}>
-        <Text style={ht.htFooterText}>{jb("株式会社JOJO ／ BondEx — bondex.express")}</Text>
-        <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
-      </View>
+      {/* NEED HELP の実 QR。画像側の生成 QR はデコード不能だったため消去し、
+          WHATSAPP_URL 由来の実 QR をその枠にぴったり重ねる。 */}
+      {supportQrDataUri ? (
+        <Image
+          src={supportQrDataUri}
+          style={{
+            position: "absolute",
+            left: mm(HOWTO_QR_BOX_MM.left),
+            top: mm(HOWTO_QR_BOX_MM.top),
+            width: mm(HOWTO_QR_BOX_MM.size),
+            height: mm(HOWTO_QR_BOX_MM.size),
+          }}
+        />
+      ) : null}
     </Page>
   )
 }
+
 
 export function HowToShipDocument({
   language,
@@ -2246,9 +2229,9 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
 // ---------------------------------------------------------------------------
 
 export const SUPPORT_DEFAULTS = {
-  // 実番号は Vercel の BONDEX_SUPPORT_PHONE で設定。未設定なら空 → バウチャーは
-  // 電話行を出さずメールのみ表示 (仮番号を顧客/ホテルに出さない)。
-  phone: process.env.BONDEX_SUPPORT_PHONE?.trim() || "",
+  // BondEx サポートデスクの業務用番号 (谷口さん確認済み 2026-08-27)。
+  // 番号変更時は Vercel の BONDEX_SUPPORT_PHONE で上書きできる。
+  phone: process.env.BONDEX_SUPPORT_PHONE?.trim() || "090-7005-4178",
   email: BONDEX_SUPPORT_EMAIL,
   contactPersonName: "谷口",
   companyName: "株式会社JOJO",
