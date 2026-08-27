@@ -6,7 +6,8 @@
  *
  * リードタイム (maxLeadDays) = 出荷予定日を「送り状発行日から何日先まで」指定できるか:
  *   - ヤマト: 30日 (Ship&co ES003001「出荷予定日は送り状発行日から30日以内」)
- *   - 佐川  : 50日 (佐川 e飛伝III「出荷予定日 当日〜50日先」)。
+ *   - 佐川  : 30日 (Ship&co 経由の佐川は E1-0046「発送日が30日を超える未来日付です」
+ *             で拒否される。e飛伝の50日ではなく Ship&co の実効上限=30日に合わせる)。
  *             ※ Ship&co API が同値を通すかは本番発行 (test:false) で要確認。暫定値。
  */
 
@@ -46,7 +47,10 @@ export const CARRIERS: Record<Carrier, CarrierConfig> = {
     voucherLabel: "Sagawa Express 佐川急便",
     shipandcoType: "sagawa",
     shipandcoService: "sagawa_regular",
-    maxLeadDays: 50,
+    // Ship&co 経由の佐川は「発送日は送り状発行日から30日以内」(E1-0046
+    // 「発送日が30日を超える未来日付です」で拒否)。e飛伝の50日ではなく
+    // Ship&co の実効上限=30日に合わせる (これを超える区間は deferred 扱い)。
+    maxLeadDays: 30,
     timeSlots: ["not-specified", "before-noon", "12-14", "14-16", "16-18", "18-20", "18-21", "19-21"],
     deliveryRule: { minOffsetDays: 1, maxOffsetDays: 7 },
     packSize: 160, // 佐川: 60/80/100/140/160 のうちスーツケース既定=160
