@@ -46,5 +46,9 @@ BondEx が扱う「発行」には**2種類**あり、印刷できるタイミ�
 
 - 佐川リードタイム 30日: `lib/carrier.ts`(`sagawa.maxLeadDays = 30`)。
 - 発行窓外の deferred 化: `app/api/shipandco/create/route.ts`(`gap > carrier.maxLeadDays` で deferred)。
-- 発行リマインド(現状): `app/api/cron/issue-due/route.ts`(**自動発行はまだ未実装 → リマインドのみ**)。
-- **未実装(バックログ)**: 「30日前 自動発行 + 発行しましたメール + Drive自動格納」(本ルール §3)。
+- 発行 cron: `app/api/cron/issue-due/route.ts`。2モード:
+  - 既定(`AUTO_ISSUE_ENABLED` 未設定): 運用へ「発行してください」ダイジェスト通知のみ。
+  - `AUTO_ISSUE_ENABLED=true` かつ `OPERATOR_PASSWORD` あり: **30日前に入った送り状を自動発行 →
+    Drive 自動格納 → 代理店へ「送り状を発行しました」メール**(§3)。冪等・二重課金なし。
+- **有効化手順**: Vercel に `AUTO_ISSUE_ENABLED=true` を設定(未設定の間はリマインドのみで安全)。
+  cron は既存の GitHub Actions(`CRON_SECRET`)で毎日実行。
