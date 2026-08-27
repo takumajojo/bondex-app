@@ -106,6 +106,12 @@ export function ConsentBanner() {
     }
     if (granted) {
       window.gtag?.("consent", "update", { analytics_storage: "granted" })
+      // 同意連動で読み込む他トラッカー (HubSpot 等) に通知 — 再読込なしで有効化。
+      try {
+        window.dispatchEvent(new Event("bondex-consent-granted"))
+      } catch {
+        /* 古い環境で Event 構築不可でも同意保存自体は成立 */
+      }
     }
     setVisible(false)
   }
