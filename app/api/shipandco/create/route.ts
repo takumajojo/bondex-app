@@ -4,7 +4,8 @@ import {
   deliveryDateErrorCode,
   getDeliverableRange,
 } from "@/lib/yamato-delivery"
-import { saveShipment } from "@/lib/shipments-db"
+import { saveShipment, getAgencyNotificationMode } from "@/lib/shipments-db"
+import { resolveNoteTarget, isHotelNotificationMode } from "@/lib/hotel-notification"
 import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
@@ -331,6 +332,7 @@ interface CreateBody {
   specialNote?: unknown
   /** 申し送りの掲載先 from/to/both (バウチャー専用・既定=お届け先)。 */
   noteTarget?: unknown
+  isAddition?: unknown
   tourNumber?: unknown
   groupName?: unknown
 }
@@ -678,7 +680,15 @@ export async function POST(req: NextRequest) {
   const toCheckOut = typeof body.toCheckOut === "string" ? body.toCheckOut.trim() : ""
   const specialNote = typeof body.specialNote === "string" ? body.specialNote.trim() : ""
   const rawNoteTarget = typeof body.noteTarget === "string" ? body.noteTarget.trim() : ""
-  const noteTarget = ["from", "to", "both"].includes(rawNoteTarget) ? rawNoteTarget : "" // 既定(空)=お届け先
+  const noteTarget = ["from", "to", "both"].includes(rawNoteTarget) ? rawNoteTarget : "" // 空=leg 指定なし
+  // 旅行中の「追加」依頼か。true は集荷時の自動課金対象外(決済リンク/請求書で清算)。
+  const isAddition = body.isAddition === true
+  // leg 個別指定が無ければ代理店の既定モード(agencies.hotel_notification_mode)へ解決。
+  const agencyMode = await getAgencyNotificationMode(agency)
+  const resolvedNoteTarget = resolveNoteTarget(
+    noteTarget,
+    isHotelNotificationMode(agencyMode) ? agencyMode : null,
+  )
   const tourNumber = typeof body.tourNumber === "string" ? body.tourNumber.trim() : ""
   const groupName = typeof body.groupName === "string" ? body.groupName.trim() : ""
 
@@ -742,7 +752,8 @@ export async function POST(req: NextRequest) {
       carrier: carrier.id,
       status: "pending",
       notes: specialNote || null,
-      note_target: noteTarget || null,
+      note_target: resolvedNoteTarget,
+      is_addition: isAddition,
     })
     if (!savedDeferred.ok) {
       // pending 行が保存されないと 1ヶ月前の自動発行が走らない=手荷物が発行漏れになる。即アラート。
@@ -983,7 +994,8 @@ export async function POST(req: NextRequest) {
       amount_yen: suitcaseCount * 5000,
       ship_ref_number: refNumber,
       notes: specialNote || null,
-      note_target: noteTarget || null,
+      note_target: resolvedNoteTarget,
+      is_addition: isAddition,
     }
 
     if (!res.ok) {
