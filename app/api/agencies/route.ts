@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
+import { isHotelNotificationMode } from "@/lib/hotel-notification"
 
 export const runtime = "nodejs"
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await sb
       .from("agencies")
-      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, locale, payment_method, status, contract_status, card_on_file, billing_exempt, created_via, created_at")
+      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, locale, payment_method, status, contract_status, card_on_file, billing_exempt, hotel_notification_mode, created_via, created_at")
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -55,9 +56,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
   }
 
-  let body: { id?: unknown; status?: unknown; locale?: unknown }
+  let body: { id?: unknown; status?: unknown; locale?: unknown; hotelNotificationMode?: unknown }
   try {
-    body = (await req.json()) as { id?: unknown; status?: unknown; locale?: unknown }
+    body = (await req.json()) as { id?: unknown; status?: unknown; locale?: unknown; hotelNotificationMode?: unknown }
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
@@ -66,17 +67,22 @@ export async function PATCH(req: NextRequest) {
   const status = typeof body.status === "string" ? body.status.trim() : ""
   const localeRaw = typeof body.locale === "string" ? body.locale.trim() : ""
   const locale = localeRaw === "ja" || localeRaw === "en" ? localeRaw : ""
+  const hasMode = body.hotelNotificationMode !== undefined
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
-  if (!status && !locale) {
-    return NextResponse.json({ error: "status or locale is required" }, { status: 400 })
+  if (!status && !locale && !hasMode) {
+    return NextResponse.json({ error: "status, locale or hotelNotificationMode is required" }, { status: 400 })
   }
   if (status && !(ALLOWED_STATUS as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "status must be active / suspended / pending" }, { status: 400 })
+  }
+  if (hasMode && !isHotelNotificationMode(body.hotelNotificationMode)) {
+    return NextResponse.json({ error: "hotelNotificationMode must be guest_only / pickup_only / dual" }, { status: 400 })
   }
 
   const update: Record<string, unknown> = {}
   if (status) update.status = status
   if (locale) update.locale = locale
+  if (hasMode) update.hotel_notification_mode = body.hotelNotificationMode
 
   const { data, error } = await sb
     .from("agencies")

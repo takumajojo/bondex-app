@@ -5,6 +5,7 @@ import {
   updateShipmentStatus,
   updateShipmentFields,
   setBookingDriveUrl,
+  setHotelNotified,
   deleteBooking,
   getShipment,
   type ShipmentStatus,
@@ -89,11 +90,31 @@ export async function PATCH(req: NextRequest) {
     notes?: unknown
     bookingId?: unknown
     driveUrl?: unknown
+    pickupHotelNotified?: unknown
+    guestHotelNotified?: unknown
   }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+  }
+
+  // ホテル連絡(申し送り/確認連絡)の完了フラグ (両ルート・id 単位の即時トグル)。
+  if (body.pickupHotelNotified !== undefined || body.guestHotelNotified !== undefined) {
+    const id = typeof body.id === "string" ? body.id : ""
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+    const out: { pickupAt?: string | null; guestAt?: string | null } = {}
+    if (typeof body.pickupHotelNotified === "boolean") {
+      const r = await setHotelNotified(id, "pickup", body.pickupHotelNotified)
+      if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+      out.pickupAt = r.at
+    }
+    if (typeof body.guestHotelNotified === "boolean") {
+      const r = await setHotelNotified(id, "guest", body.guestHotelNotified)
+      if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+      out.guestAt = r.at
+    }
+    return NextResponse.json({ ok: true, ...out })
   }
 
   // 予約単位の Drive URL 登録 (id 不要・booking_id で全区間更新)
