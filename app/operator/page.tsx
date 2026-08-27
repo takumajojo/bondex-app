@@ -1063,7 +1063,9 @@ export default function OperatorPage() {
               residence: s.to.residence ?? undefined,
             },
             // 管理ダッシュボード用メタ情報
-            agency: tourCompanyFromSettings,
+            // 代理店名は予約(発行依頼)の代理店を最優先。発行操作で運営設定の
+            // ツアー会社名 (tourCompany) に上書きしない (BDX-GP3KPG で誤上書き発生)。
+            agency: fromRequest?.agency || tourCompanyFromSettings,
             representative: representativeLabel,
             travelerCount: itinerary!.guest.travelerCount,
             bookingName: s.bookingName || "",
@@ -1160,7 +1162,7 @@ export default function OperatorPage() {
       setGenerationError(err instanceof Error ? err.message : "Generation failed")
       setPhase("confirm")
     }
-  }, [itinerary, settings, t])
+  }, [itinerary, settings, fromRequest, t])
 
   const setRepresentativeChecked = useCallback((checked: boolean) => {
     setVerifications((prev) => ({ ...prev, representative: checked }))
