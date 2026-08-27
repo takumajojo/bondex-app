@@ -82,6 +82,30 @@ export interface ShipmentRecord {
   tour_leader_name: string | null
   tour_leader_phone: string | null
   tour_leader_whatsapp: string | null
+  /** 発送元ホテルへの通知(申し送り引き渡し/確認連絡)完了日時。null=未対応。 */
+  pickup_hotel_notified_at: string | null
+  /** お届け先ホテルへの通知(申し送り引き渡し/確認連絡)完了日時。null=未対応。 */
+  guest_hotel_notified_at: string | null
+  /** 返金が記録された日時 (Stripe charge.refunded)。 */
+  refunded_at: string | null
+  /** 返金累計額 (税込・円)。 */
+  refund_amount_yen: number | null
+  /** チャージバック(係争)開始日時 (Stripe charge.dispute.created)。 */
+  disputed_at: string | null
+  /** Stripe Dispute のステータス。 */
+  dispute_status: string | null
+  /** PaymentIntent の決済失敗日時 (Stripe payment_intent.payment_failed)。 */
+  payment_failed_at: string | null
+  /** 決済失敗の理由。 */
+  payment_failure_message: string | null
+  /** 旅行中の「追加」依頼か。true は集荷時の自動課金対象外(決済リンク/請求書で清算)。 */
+  is_addition: boolean
+  /** 追加の理由・メモ(任意)。 */
+  addition_note: string | null
+  /** カード清算用 Stripe Checkout セッションID。 */
+  stripe_checkout_session_id: string | null
+  /** カード清算用の決済リンク(代理店へ提示/送付)。 */
+  stripe_checkout_url: string | null
   created_at: string
   updated_at: string
 }
@@ -146,6 +170,7 @@ export async function saveShipment(
     error_message: input.error_message ?? null,
     notes: input.notes ?? null,
     note_target: input.note_target ?? null,
+    is_addition: input.is_addition ?? false,
     drive_url: input.drive_url ?? null,
     delivery_time: input.delivery_time ?? null,
     carrier: input.carrier ?? "sagawa",
@@ -444,6 +469,90 @@ export async function recordShipmentChargeError(id: string, message: string): Pr
     .update({ charge_error: message.slice(0, 500) })
     .eq("id", id)
   if (error) console.error("[shipments-db] recordShipmentChargeError failed", error.message)
+}
+
+/**
+ * Stripe PaymentIntent ID から shipment を1件引く (webhook の逆引き用)。
+ */
+export async function getShipmentByPaymentIntentId(
+  paymentIntentId: string,
+): Promise<ShipmentRecord | null> {
+  const sb = getSupabase()
+  if (!sb) return null
+  const { data, error } = await sb
+    .from("shipments")
+    .select("*")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle()
+  if (error) {
+    console.error("[shipments-db] getShipmentByPaymentIntentId failed", error.message)
+    return null
+  }
+  return (data as ShipmentRecord) ?? null
+}
+
+/**
+ * 課金後の状態 (返金/係争/決済失敗) を shipment に同期する (Stripe webhook 用)。
+ * 検知＋DB状態同期のみ。列が未マイグレーションでも握って false を返す。
+ */
+export async function updateShipmentChargeState(
+  id: string,
+  patch: {
+    refunded_at?: string | null
+    refund_amount_yen?: number | null
+    disputed_at?: string | null
+    dispute_status?: string | null
+    payment_failed_at?: string | null
+    payment_failure_message?: string | null
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: "Supabase not configured" }
+  const update: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch)) if (v !== undefined) update[k] = v
+  if (Object.keys(update).length === 0) return { ok: true }
+  const { error } = await sb.from("shipments").update(update).eq("id", id)
+  if (error) {
+    console.error("[shipments-db] updateShipmentChargeState failed", error.message)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
+}
+
+/**
+ * ホテル連絡(申し送り引き渡し/確認連絡)の完了フラグを設定する。
+ * route: 'pickup'=発送元ホテル / 'guest'=お届け先ホテル。
+ */
+export async function setHotelNotified(
+  id: string,
+  route: "pickup" | "guest",
+  notified: boolean,
+): Promise<{ ok: boolean; at: string | null; error?: string }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, at: null, error: "Supabase not configured" }
+  const at = notified ? new Date().toISOString() : null
+  const col = route === "pickup" ? "pickup_hotel_notified_at" : "guest_hotel_notified_at"
+  const { error } = await sb.from("shipments").update({ [col]: at }).eq("id", id)
+  if (error) {
+    console.error("[shipments-db] setHotelNotified failed", error.message)
+    return { ok: false, at: null, error: error.message }
+  }
+  return { ok: true, at }
+}
+
+/**
+ * 代理店名から hotel_notification_mode を引く (発行時の note_target 解決に使う)。
+ */
+export async function getAgencyNotificationMode(agencyName: string): Promise<string | null> {
+  const sb = getSupabase()
+  if (!sb || !agencyName) return null
+  const { data, error } = await sb
+    .from("agencies")
+    .select("hotel_notification_mode")
+    .eq("name", agencyName)
+    .maybeSingle()
+  if (error || !data) return null
+  return (data as { hotel_notification_mode?: string | null }).hotel_notification_mode ?? null
 }
 
 /**
