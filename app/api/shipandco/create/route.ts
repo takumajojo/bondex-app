@@ -980,11 +980,17 @@ export async function POST(req: NextRequest) {
       carrier: carrier.id,
       from_hotel: fromHotel,
       from_city: fromAddr?.city || (fromInput.city ?? "") || null,
+      // 都道府県 (日本語) と 日本語ホテル名 — 発行時に Google Places から解決した値。
+      // 管理ダッシュボードの区間表示を「東京都 新宿ワシントンホテル」の形にするため保存。
+      from_prefecture: fromAddr?.province || null,
+      from_hotel_ja: fromAddr?.company || null,
       from_place_id: fromPlaceId ?? null,
       from_check_in: fromCheckIn || null,
       from_residence: fromResidence,
       to_hotel: toHotel,
       to_city: toAddr?.city || (toInput.city ?? "") || null,
+      to_prefecture: toAddr?.province || null,
+      to_hotel_ja: toAddr?.company || null,
       to_place_id: toPlaceId ?? null,
       to_check_out: toCheckOut || null,
       to_residence: toResidence,

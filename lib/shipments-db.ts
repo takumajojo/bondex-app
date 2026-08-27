@@ -32,12 +32,20 @@ export interface ShipmentRecord {
   expected_arrival: string | null
   from_hotel: string
   from_city: string | null
+  /** 発送元の都道府県 (日本語・発行時に Google Places から解決)。例: 東京都。null=未解決。 */
+  from_prefecture: string | null
+  /** 発送元ホテルの日本語表記 (発行時に Google Places の name から解決)。null=英語名にフォールバック。 */
+  from_hotel_ja: string | null
   from_place_id: string | null
   from_check_in: string | null
   /** 発送元が個人宅のときの構造化住所。null=ホテル (Places 解決)。 */
   from_residence: ResidenceAddress | null
   to_hotel: string
   to_city: string | null
+  /** お届け先の都道府県 (日本語・発行時に Google Places から解決)。例: 京都府。null=未解決。 */
+  to_prefecture: string | null
+  /** お届け先ホテルの日本語表記 (発行時に Google Places の name から解決)。null=英語名にフォールバック。 */
+  to_hotel_ja: string | null
   to_place_id: string | null
   to_check_out: string | null
   /** お届け先が個人宅のときの構造化住所。null=ホテル (Places 解決)。 */
@@ -178,6 +186,12 @@ export async function saveShipment(
   } as Record<string, unknown>
   // 団体フィールドは「渡された時だけ」含める。upsert は含めたカラムしか更新しないため、
   // 既存の団体予約を(これらを渡さない)再発行フローが 'fit' に巻き戻す事故を防ぐ。
+  // 日本語住所 (都道府県・日本語ホテル名) は「渡された時だけ」含める。
+  // 発行時のみ解決できるため、状態更新だけの再 upsert で null 上書きしないようにする。
+  if (input.from_prefecture !== undefined) row.from_prefecture = input.from_prefecture
+  if (input.from_hotel_ja !== undefined) row.from_hotel_ja = input.from_hotel_ja
+  if (input.to_prefecture !== undefined) row.to_prefecture = input.to_prefecture
+  if (input.to_hotel_ja !== undefined) row.to_hotel_ja = input.to_hotel_ja
   if (input.booking_type !== undefined) row.booking_type = input.booking_type
   if (input.tour_leader_name !== undefined) row.tour_leader_name = input.tour_leader_name
   if (input.tour_leader_phone !== undefined) row.tour_leader_phone = input.tour_leader_phone

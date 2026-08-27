@@ -52,8 +52,12 @@ interface Shipment {
   expected_arrival: string | null
   from_hotel: string
   from_city: string | null
+  from_prefecture: string | null
+  from_hotel_ja: string | null
   to_hotel: string
   to_city: string | null
+  to_prefecture: string | null
+  to_hotel_ja: string | null
   recipient: string
   suitcase_count: number
   amount_yen: number
@@ -153,6 +157,31 @@ function effectiveNoteTarget(raw: string | null): NoteTarget {
 
 // 一覧行の「ホテル連絡」チェック。受け取りまでに必須の電話/メール連絡が済んだかを
 // 一覧から直接チェックできる (掲載対象ルートのみ表示)。クリックで完了/未完了を即トグル。
+/** 区間の1地点を「都道府県 + 日本語ホテル名」で表示する。
+ *  日本語名が未解決(旧データ)なら英語ホテル名にフォールバック。
+ *  日本語名を表示できたときだけ、参照用に英語名を小さく併記する。 */
+function LegEndpoint({
+  prefecture,
+  nameJa,
+  nameEn,
+}: {
+  prefecture: string | null
+  nameJa: string | null
+  nameEn: string
+}) {
+  const name = nameJa?.trim() || nameEn
+  const showEnSub = !!nameJa?.trim() && nameJa.trim() !== nameEn
+  return (
+    <div>
+      <p className="text-foreground text-xs">
+        {prefecture ? <span className="text-muted-foreground">{prefecture} </span> : null}
+        {name}
+      </p>
+      {showEnSub ? <p className="text-[10px] text-muted-foreground">{nameEn}</p> : null}
+    </div>
+  )
+}
+
 function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
   const routes = applicableRoutes(effectiveNoteTarget(shipment.note_target))
   const active = (["pickup", "guest"] as HotelRoute[]).filter((r) => routes[r])
@@ -985,9 +1014,9 @@ export default function DashboardPage() {
                         </p>
                       </td>
                       <td className="p-3 align-top max-w-[280px]">
-                        <p className="text-foreground text-xs">{it.from_hotel}</p>
+                        <LegEndpoint prefecture={it.from_prefecture} nameJa={it.from_hotel_ja} nameEn={it.from_hotel} />
                         <p className="text-[10px] text-muted-foreground">↓</p>
-                        <p className="text-foreground text-xs">{it.to_hotel}</p>
+                        <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} />
                         <HotelNotifyBadges shipment={it} />
                       </td>
                       <td className="p-3 align-top text-right">
