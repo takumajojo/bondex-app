@@ -35,6 +35,9 @@ export { normalizeGuestLanguage } from "./guest-language"
 
 const FONT_DIR = path.join(process.cwd(), "public", "fonts")
 const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
+// How to Ship の3ステップイラスト (2026-08-27 谷口さん支給・1536×1024)。
+// ページはこのイラストが主役 —「5秒見ればやることが分かる」ガイド。
+const HOWTO_STEPS_PATH = path.join(process.cwd(), "public", "howto-steps.jpg")
 
 const BONDEX_SUPPORT_EMAIL = "support@bondex.express"
 
@@ -1768,7 +1771,9 @@ function SceneHotel() {
  * 単体 PDF (HowToShipDocument) と、バウチャー末尾への同梱 (VoucherDocument) の
  * 両方から使う。複数区間でも常に 1 枚 = このページ 1 つだけを差し込む。
  */
-export function HowToShipPage({
+// 旧テキスト主体レイアウト (2026-08-27 リニューアルで置換・多言語文面資産として温存)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function HowToShipPageLegacy({
   language,
   supportQrDataUri,
   supportQrKind,
@@ -1896,6 +1901,42 @@ export function HowToShipPage({
           <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
         </View>
       </Page>
+  )
+}
+
+/**
+ * How to Ship ページ (2026-08-27 リニューアル・谷口さん指示)。
+ * 「説明書」ではなく「見れば理解できるガイド」— 支給の3ステップイラストを主役に、
+ * 余白を広く取った航空会社の安全案内風レイアウト。文章要素はイラスト内で完結
+ * (タイトル/3ステップ/THAT'S IT/IMPORTANT/WhatsApp案内)。
+ * 追跡QR・ラベル説明・GOOD TO KNOW 等の旧要素は削除 (バウチャー本面に集約済み)。
+ */
+export function HowToShipPage({
+  language,
+}: {
+  language: GuestLanguage
+  supportQrDataUri?: string
+  supportQrKind?: "whatsapp" | "email"
+}) {
+  return (
+    <Page size="A4" style={ht.page} wrap={false}>
+      {/* masthead — ブランド一貫の小ロゴのみ。本文はイラストが全て語る */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <Image style={logoSize(9)} src={LOGO_PATH} />
+        <Text style={{ fontSize: 7, letterSpacing: 1.4, color: MUTED }}>GUEST GUIDE</Text>
+      </View>
+
+      {/* 3ステップイラスト — 全幅・上下中央 (1536×1024 = 3:2 を実寸比で配置) */}
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+        <Image src={HOWTO_STEPS_PATH} style={{ width: mm(182), height: mm(121.3) }} />
+      </View>
+
+      <View style={ht.htFooter}>
+        <Text style={ht.htFooterText}>{jb("株式会社JOJO ／ BondEx — bondex.express")}</Text>
+        <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
+      </View>
+    </Page>
   )
 }
 
