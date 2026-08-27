@@ -1904,10 +1904,10 @@ function HowToShipPageLegacy({
   )
 }
 
-// ---- How to Ship「Quick Start Guide」(2026-08-27 リニューアル第3版・谷口さん仕様) ----
+// ---- How to Ship「Quick Start Guide」(2026-08-27 リニューアル第4版・谷口さん仕様=1ページ統合) ----
 // 目的は説明ではなく旅行者の不安の除去 —「簡単そう」「ホテルで迷わない」「困ったらすぐ連絡できる」。
-// 1枚目 = 支給4ステップイラストのみ (THAT'S IT で完結・IMPORTANT帯は画像側で切除済み)、
-// 2枚目 = Before You Drop Off Your Luggage (6カードの簡潔なリファレンス)。
+// 上部 = 支給4ステップイラスト (THAT'S IT で完結・IMPORTANT帯は画像側で切除済み)、
+// 下部 = Before You Drop Off Your Luggage (6カード)。1枚のA4に統合。
 // カラーは BondEx Red / Black / White / Gray のみ。見出し=最太ウェイト・本文=Regular。
 
 const hq = StyleSheet.create({
@@ -1916,22 +1916,22 @@ const hq = StyleSheet.create({
   hero: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
   // 切除後の実寸比 1536×906 ≒ 182×107.4mm
   heroImg: { width: mm(182), height: mm(107.4) },
-  overline: { width: mm(9), height: 2.2, backgroundColor: RED, borderRadius: 1.1, marginBottom: mm(2.2) },
-  refTitle: { fontSize: 15, fontWeight: 700, letterSpacing: 1.3, color: INK },
-  refGridWrap: { flexGrow: 1, justifyContent: "center", gap: mm(4) },
-  grid: { flexDirection: "row", gap: mm(4) },
+  overline: { width: mm(9), height: 2.2, backgroundColor: RED, borderRadius: 1.1, marginBottom: mm(2) },
+  refTitle: { fontSize: 12.5, fontWeight: 700, letterSpacing: 1.2, color: INK },
+  refGridWrap: { gap: mm(3.5) },
+  grid: { flexDirection: "row", gap: mm(3.5) },
   card: {
     flex: 1,
     borderWidth: 1,
     borderColor: "#e7e7ea",
-    borderRadius: 10,
+    borderRadius: 9,
     backgroundColor: "#ffffff",
-    padding: mm(5),
-    minHeight: mm(40),
+    padding: mm(4.2),
+    minHeight: mm(36),
   },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: mm(2.4), marginBottom: mm(2.4) },
-  cardTitle: { flex: 1, fontSize: 9.2, fontWeight: 700, letterSpacing: 0.6, color: INK },
-  cardBody: { fontSize: 8.2, lineHeight: 1.6, color: INK_SOFT },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: mm(2), marginBottom: mm(2) },
+  cardTitle: { flex: 1, fontSize: 8.4, fontWeight: 700, letterSpacing: 0.5, color: INK },
+  cardBody: { fontSize: 7.6, lineHeight: 1.55, color: INK_SOFT },
   bulletRow: { flexDirection: "row", gap: 4 },
 })
 
@@ -1939,7 +1939,7 @@ const hq = StyleSheet.create({
 const HQ_ICON = { stroke: RED, strokeWidth: 1.6, fill: "none" as const, strokeLinecap: "round" as const, strokeLinejoin: "round" as const }
 function HqIcon({ children }: { children: React.ReactNode }) {
   return (
-    <Svg width={mm(6.6)} height={mm(6.6)} viewBox="0 0 24 24">
+    <Svg width={mm(6)} height={mm(6)} viewBox="0 0 24 24">
       {children}
     </Svg>
   )
@@ -2008,37 +2008,23 @@ export function HowToShipPage({
   supportQrKind?: "whatsapp" | "email"
 }) {
   return (
-    <>
-      {/* 1枚目: How to Ship — 4ステップイラストのみで完結する Quick Start Guide */}
-      <Page size="A4" style={ht.page} wrap={false}>
-        <View style={hq.masthead}>
-          <Image style={logoSize(9)} src={LOGO_PATH} />
-          <Text style={hq.mastheadTag}>QUICK START GUIDE</Text>
-        </View>
+    <Page size="A4" style={ht.page} wrap={false}>
+      <View style={hq.masthead}>
+        <Image style={logoSize(9)} src={LOGO_PATH} />
+        <Text style={hq.mastheadTag}>QUICK START GUIDE</Text>
+      </View>
 
-        <View style={hq.hero}>
-          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-          <Image src={HOWTO_STEPS_PATH} style={hq.heroImg} />
-        </View>
+      {/* 上部: 4ステップイラスト — THAT'S IT で完結 */}
+      <View style={hq.hero}>
+        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+        <Image src={HOWTO_STEPS_PATH} style={hq.heroImg} />
+      </View>
 
-        <View style={ht.htFooter}>
-          <Text style={ht.htFooterText}>{jb("株式会社JOJO ／ BondEx — bondex.express")}</Text>
-          <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
-        </View>
-      </Page>
-
-      {/* 2枚目: Before You Drop Off Your Luggage — 6カードの簡潔なリファレンス */}
-      <Page size="A4" style={ht.page} wrap={false}>
-        <View style={hq.masthead}>
-          <Image style={logoSize(9)} src={LOGO_PATH} />
-          <Text style={hq.mastheadTag}>TRAVELER REFERENCE</Text>
-        </View>
-
-        <View style={{ marginTop: mm(10) }}>
-          <View style={hq.overline} />
-          <Text style={hq.refTitle}>BEFORE YOU DROP OFF YOUR LUGGAGE</Text>
-        </View>
-
+      {/* 下部: Before You Drop Off Your Luggage — 6カード 3×2 */}
+      <View>
+        <View style={hq.overline} />
+        <Text style={hq.refTitle}>BEFORE YOU DROP OFF YOUR LUGGAGE</Text>
+        <View style={{ height: mm(3.5) }} />
         <View style={hq.refGridWrap}>
           <View style={hq.grid}>
             <HqCard icon={<HqTagIcon />} title="ONE LABEL PER BAG">
@@ -2046,23 +2032,20 @@ export function HowToShipPage({
             </HqCard>
             <HqCard icon={<HqReuseIcon />} title="USING BONDEX AGAIN?">
               <Text style={hq.cardBody}>
-                Keep your BondEx strap until the end of your journey. If you have another BondEx shipment, you’ll use
-                the same strap again.
+                Keep your BondEx strap until the end of your journey. You’ll use the same strap for your next shipment.
               </Text>
             </HqCard>
-          </View>
-          <View style={hq.grid}>
             <HqCard icon={<HqPlusIcon />} title="NEED TO ADD ANOTHER BAG?">
               <Text style={hq.cardBody}>Please contact BondEx via WhatsApp before shipment.</Text>
             </HqCard>
+          </View>
+          <View style={hq.grid}>
             <HqCard icon={<HqTrackIcon />} title="TRACK YOUR LUGGAGE">
               <Text style={hq.cardBody}>Scan the QR code on your voucher to check your delivery status.</Text>
             </HqCard>
-          </View>
-          <View style={hq.grid}>
             <HqCard icon={<HqPassportIcon />} title="KEEP THESE WITH YOU">
               <Text style={hq.cardBody}>Do not pack:</Text>
-              <View style={{ height: mm(1) }} />
+              <View style={{ height: mm(0.8) }} />
               <HqBullet t="Passport" />
               <HqBullet t="Cash" />
               <HqBullet t="Medication" />
@@ -2074,13 +2057,13 @@ export function HowToShipPage({
             </HqCard>
           </View>
         </View>
+      </View>
 
-        <View style={ht.htFooter}>
-          <Text style={ht.htFooterText}>{jb("株式会社JOJO ／ BondEx — bondex.express")}</Text>
-          <Text style={ht.htFooterText}>BEFORE YOU DROP OFF ・ {language.toUpperCase()}</Text>
-        </View>
-      </Page>
-    </>
+      <View style={[ht.htFooter, { marginTop: mm(4) }]}>
+        <Text style={ht.htFooterText}>{jb("株式会社JOJO ／ BondEx — bondex.express")}</Text>
+        <Text style={ht.htFooterText}>HOW TO SHIP ・ {language.toUpperCase()}</Text>
+      </View>
+    </Page>
   )
 }
 
