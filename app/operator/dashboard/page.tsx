@@ -1053,12 +1053,20 @@ export default function DashboardPage() {
                           </div>
                         ) : it.yamato_label_url ? (
                           <a
-                            href={it.yamato_label_url}
+                            href={`/api/voucher/label?${new URLSearchParams({
+                              url: it.yamato_label_url,
+                              bookingId: it.booking_id,
+                              ...(it.tour_number ? { tourNumber: it.tour_number } : {}),
+                              representative: it.representative,
+                              leg: `L${it.leg_index + 1}`,
+                              paper: "a4",
+                            }).toString()}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-foreground underline underline-offset-2 inline-flex items-center gap-1"
+                            title="A5送り状をA4に原寸で載せ替えて開きます（A4プリンタできれいに印刷）"
                           >
-                            送り状
+                            送り状 (A4)
                             <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                           </a>
                         ) : (
