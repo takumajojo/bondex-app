@@ -24,6 +24,12 @@ import {
   CreditCard,
   MoreHorizontal,
 } from "lucide-react"
+import {
+  applicableRoutes,
+  HOTEL_ROUTE_LABEL,
+  type NoteTarget,
+  type HotelRoute,
+} from "@/lib/hotel-notification"
 
 type ShipmentStatus =
   | "requested"
@@ -57,6 +63,9 @@ interface Shipment {
   error_message: string | null
   tour_number: string | null
   notes: string | null
+  note_target: string | null
+  pickup_hotel_notified_at: string | null
+  guest_hotel_notified_at: string | null
   drive_url: string | null
   created_at: string
   charged_at: string | null
@@ -136,6 +145,73 @@ const STATUS_OPTIONS: ShipmentStatus[] = [
   "failed",
   "cancelled",
 ]
+
+// note_target を実効値に正規化 (from/to/both 以外は既定 'to')。
+function effectiveNoteTarget(raw: string | null): NoteTarget {
+  return raw === "from" || raw === "to" || raw === "both" ? raw : "to"
+}
+
+// 一覧行の「ホテル連絡」チェック。受け取りまでに必須の電話/メール連絡が済んだかを
+// 一覧から直接チェックできる (掲載対象ルートのみ表示)。クリックで完了/未完了を即トグル。
+function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
+  const routes = applicableRoutes(effectiveNoteTarget(shipment.note_target))
+  const active = (["pickup", "guest"] as HotelRoute[]).filter((r) => routes[r])
+  const [pickupAt, setPickupAt] = useState<string | null>(shipment.pickup_hotel_notified_at)
+  const [guestAt, setGuestAt] = useState<string | null>(shipment.guest_hotel_notified_at)
+  const [busy, setBusy] = useState<HotelRoute | null>(null)
+  if (active.length === 0) return null
+
+  const toggle = async (route: HotelRoute, next: boolean) => {
+    setBusy(route)
+    try {
+      const b: Record<string, unknown> = { id: shipment.id }
+      b[route === "pickup" ? "pickupHotelNotified" : "guestHotelNotified"] = next
+      const res = await fetch("/api/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(b),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(d?.error || "更新失敗")
+      const at = next ? (d?.[route === "pickup" ? "pickupAt" : "guestAt"] ?? new Date().toISOString()) : null
+      if (route === "pickup") setPickupAt(at)
+      else setGuestAt(at)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "更新に失敗しました")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {active.map((r) => {
+        const sent = Boolean(r === "pickup" ? pickupAt : guestAt)
+        return (
+          <button
+            key={r}
+            type="button"
+            disabled={busy === r}
+            onClick={() => void toggle(r, !sent)}
+            title={
+              sent
+                ? `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 完了。クリックで未完了に戻す`
+                : `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 未完了。完了したらクリック`
+            }
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50 ${
+              sent
+                ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
+                : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+            }`}
+          >
+            <span aria-hidden>{busy === r ? "…" : sent ? "☑" : "☐"}</span>
+            {HOTEL_ROUTE_LABEL[r]}連絡
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function DashboardPage() {
   const [items, setItems] = useState<Shipment[]>([])
@@ -912,6 +988,7 @@ export default function DashboardPage() {
                         <p className="text-foreground text-xs">{it.from_hotel}</p>
                         <p className="text-[10px] text-muted-foreground">↓</p>
                         <p className="text-foreground text-xs">{it.to_hotel}</p>
+                        <HotelNotifyBadges shipment={it} />
                       </td>
                       <td className="p-3 align-top text-right">
                         <p className="font-medium text-foreground tabular-nums">
