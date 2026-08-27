@@ -7,31 +7,38 @@ import { getSupabase } from "@/lib/supabase"
 export const runtime = "nodejs"
 export const maxDuration = 30
 
-// A4 縦 (pt, 72dpi): 210mm × 297mm。
-const A4_W = 595.276
-const A4_H = 841.89
-const A4_MARGIN = 14 // ~5mm。ラベル外周に最小限の余白を残す。
+// A5 (pt, 72dpi): 148mm × 210mm。短辺=A5_SHORT / 長辺=A5_LONG。
+const A5_SHORT = 419.528 // 148mm
+const A5_LONG = 595.276 // 210mm
+// プリンタの印字不可領域 (端~3mm) で切れないよう、内側に最小限インセットする。
+const PRINT_MARGIN = 8.5 // ~3mm
 
 /**
- * Ship&co の A5 送り状 PDF を A4 に「等倍・中央配置」で載せ替えて返す。
+ * Ship&co の A5 送り状 PDF を「正確な A5 ページ」に載せ直して返す。
  *
- * 目的: 送り状は A5 で出力される。A5 の PDF をオフィスの A4 プリンタで印刷すると、
- * ビューアの「用紙に合わせる」が A5→A4 に自動拡大してレイアウトがずれる。
- * ここで **中身は原寸のまま A4 ページに載せ替える** ことで、印刷ダイアログが
- * 「用紙に合わせる」でも「実寸」でも拡大縮小の余地がなくなり、常にきれいに出る。
- * 拡大はせず (scale<=1)、A4 に収まらない場合のみ縮小する。複数枚口 (2/2 等) も全ページ処理。
+ * 目的: 送り状は A5 で出力されるが、A5 用紙に印刷しても端が切れる/ずれることがある。
+ * 原因は (1) ビューアの「用紙に合わせる」による微妙な拡大縮小・シフト、
+ * (2) プリンタの印字不可領域 (用紙端 ~3mm) で端の内容が欠ける、の2つ。
+ * ここで **中身をソースと同じ向きの正確な A5 ページへ、端から少しだけ内側に入れて中央配置** し直す。
+ * これで A5 用紙に「実際のサイズ(100%)」で印刷すれば端が切れず、常にきれいに出る。
+ * 拡大はしない (scale<=1)。複数枚口 (2/2 等) も全ページ処理。
  */
-async function normalizeA5toA4(srcBytes: ArrayBuffer): Promise<Uint8Array> {
+async function normalizeToA5(srcBytes: ArrayBuffer): Promise<Uint8Array> {
   const src = await PDFDocument.load(srcBytes)
   const out = await PDFDocument.create()
   // embedPdf は別ドキュメントのページを安全に取り込む (リソースも複製)。全ページを対象にする。
   const embedded = await out.embedPdf(src, src.getPageIndices())
   for (const emb of embedded) {
-    const page = out.addPage([A4_W, A4_H])
-    const scale = Math.min(1, (A4_W - 2 * A4_MARGIN) / emb.width, (A4_H - 2 * A4_MARGIN) / emb.height)
+    // ソースの向き (横長/縦長) に合わせて A5 の向きを決める。
+    const landscape = emb.width >= emb.height
+    const pageW = landscape ? A5_LONG : A5_SHORT
+    const pageH = landscape ? A5_SHORT : A5_LONG
+    const page = out.addPage([pageW, pageH])
+    // 端の欠け防止のインセット内に収める。元が A5 ならごく僅かに縮小するだけ。拡大はしない。
+    const scale = Math.min(1, (pageW - 2 * PRINT_MARGIN) / emb.width, (pageH - 2 * PRINT_MARGIN) / emb.height)
     const w = emb.width * scale
     const h = emb.height * scale
-    page.drawPage(emb, { x: (A4_W - w) / 2, y: (A4_H - h) / 2, width: w, height: h })
+    page.drawPage(emb, { x: (pageW - w) / 2, y: (pageH - h) / 2, width: w, height: h })
   }
   return out.save()
 }
@@ -52,8 +59,8 @@ export async function GET(req: NextRequest) {
   const tourNumber = req.nextUrl.searchParams.get("tourNumber")?.trim() || undefined
   const representativeLabel = req.nextUrl.searchParams.get("representative")?.trim() || ""
   const legLabel = req.nextUrl.searchParams.get("leg")?.trim() || ""
-  // paper=a4 → A5 を A4 に等倍・中央で載せ替え、画面表示 (inline) で返す (きれい印刷用)。
-  const paperA4 = req.nextUrl.searchParams.get("paper")?.trim().toLowerCase() === "a4"
+  // paper=a5 → 送り状を正確な A5 ページに載せ直し、画面表示 (inline) で返す (A5 用紙のきれい印刷用)。
+  const paperA5 = req.nextUrl.searchParams.get("paper")?.trim().toLowerCase() === "a5"
 
   if (!url || !bookingId) {
     return NextResponse.json({ error: "url and bookingId are required" }, { status: 400 })
@@ -109,23 +116,23 @@ export async function GET(req: NextRequest) {
   }).replace(/\.pdf$/, "")
   const fileName = legLabel ? `${baseName}_${legLabel}_${carrierName}.pdf` : `${baseName}_${carrierName}.pdf`
 
-  // A4 きれい印刷: A5 を A4 に載せ替えて inline 表示 (印刷ダイアログをそのまま印刷できる)。
-  if (paperA4) {
+  // A5 きれい印刷: 正確な A5 ページに載せ直して inline 表示 (印刷ダイアログをそのまま印刷できる)。
+  if (paperA5) {
     try {
       const srcBytes = await upstream.arrayBuffer()
-      const a4 = await normalizeA5toA4(srcBytes)
-      const a4Name = fileName.replace(/\.pdf$/, "_A4.pdf")
-      return new NextResponse(Buffer.from(a4), {
+      const a5 = await normalizeToA5(srcBytes)
+      const a5Name = fileName.replace(/\.pdf$/, "_A5.pdf")
+      return new NextResponse(Buffer.from(a5), {
         status: 200,
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="${a4Name}"`,
+          "Content-Disposition": `inline; filename="${a5Name}"`,
           "Cache-Control": "no-store",
         },
       })
     } catch (e) {
       // 正規化に失敗しても発行済みラベルは渡せるように、原本 (A5) にフォールバック。
-      console.error("[voucher/label] A4 正規化に失敗、A5 原本にフォールバック:", e instanceof Error ? e.message : e)
+      console.error("[voucher/label] A5 正規化に失敗、A5 原本にフォールバック:", e instanceof Error ? e.message : e)
       const passthrough = await fetch(parsed.toString())
       if (passthrough.ok && passthrough.body) {
         return new NextResponse(passthrough.body, {

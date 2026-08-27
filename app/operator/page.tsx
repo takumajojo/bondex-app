@@ -125,9 +125,9 @@ const messages = {
     newBooking: "Start a new booking",
     generationFailed: "Document generation failed",
     yamatoLabelsHeading: "Shipping labels",
-    labelPrintHint: "Labels are A5. “Print on A4 (clean)” re-lays the label onto an A4 page at actual size, so it prints cleanly on office A4 printers at any scale setting. Or download the A5 PDF and print at “actual size (100%)”.",
-    labelPrintA4: "Print on A4 (clean)",
-    labelPrintA5: "A5 PDF",
+    labelPrintHint: "Labels are A5. “A5 print (clean)” re-lays the label onto an exact A5 page, inset slightly so printer edges don’t clip it — open it and print on A5 paper at “actual size (100%)”. “A5 original” is the raw Ship&co PDF.",
+    labelPrintClean: "A5 print (clean)",
+    labelPrintA5: "A5 original",
     yamatoLegLabel: (n: number) => `Leg ${n}`,
     yamatoTracking: "Tracking",
     yamatoLabelFailed: "Label issuance failed",
@@ -291,9 +291,9 @@ const messages = {
     newBooking: "新しい予約を開始",
     generationFailed: "書類の生成に失敗しました",
     yamatoLabelsHeading: "配送伝票",
-    labelPrintHint: "送り状はA5です。「A4できれい印刷」は、ラベルを原寸のままA4に載せ替えて開くので、オフィスのA4プリンタで拡大縮小の設定に関係なくきれいに印刷できます。A5用紙で出す場合は「A5 PDF」をDLして「実際のサイズ(100%)」で印刷してください。",
-    labelPrintA4: "A4できれい印刷",
-    labelPrintA5: "A5 PDF",
+    labelPrintHint: "送り状はA5です。「A5できれい印刷」は、ラベルを正確なA5ページに端が切れないよう少し内側に入れて載せ直して開きます。A5用紙に「実際のサイズ(100%)」で印刷すればきれいに出ます。「A5原本」はShip&coのPDFそのままです。",
+    labelPrintClean: "A5できれい印刷",
+    labelPrintA5: "A5原本",
     yamatoLegLabel: (n: number) => `区間 ${n}`,
     yamatoTracking: "追跡番号",
     yamatoLabelFailed: "送り状発行に失敗",
@@ -2861,8 +2861,8 @@ function GeneratedView({
                     </p>
                     {y.labelUrl && (
                       <div className="flex items-center gap-4 mt-2">
-                        {/* 主導線: A5ラベルをA4に原寸で載せ替えて inline 表示。A4プリンタで拡大縮小に
-                            関係なくきれいに印刷できる (ズレ対策)。 */}
+                        {/* 主導線: A5ラベルを正確なA5ページに載せ直して inline 表示。A5用紙に実寸100%で
+                            印刷すれば端が切れずきれいに出る (ズレ対策)。 */}
                         <a
                           href={`/api/voucher/label?${new URLSearchParams({
                             url: y.labelUrl,
@@ -2870,16 +2870,16 @@ function GeneratedView({
                             ...(docs.tourNumber ? { tourNumber: docs.tourNumber } : {}),
                             representative: docs.representativeLabel,
                             leg: `L${y.legIndex + 1}`,
-                            paper: "a4",
+                            paper: "a5",
                           }).toString()}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26] underline underline-offset-2"
                         >
                           <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
-                          {t.labelPrintA4}
+                          {t.labelPrintClean}
                         </a>
-                        {/* 補助: A5原本 PDF をDL (A5用紙/サーマル用)。印刷は実寸100%。 */}
+                        {/* 補助: A5原本 PDF をDL。印刷は実寸100%。 */}
                         <a
                           href={`/api/voucher/label?${new URLSearchParams({
                             url: y.labelUrl,
