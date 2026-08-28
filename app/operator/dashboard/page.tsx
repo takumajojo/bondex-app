@@ -1034,10 +1034,10 @@ export default function DashboardPage() {
                           </span>
                           {" ／ 差出人: "}
                           <span className="text-foreground">
-                            {it.label_sender === "land_operator"
+                            {it.label_sender === "agency"
                               ? "代理店名義"
-                              : it.label_sender === "travel_agent"
-                                ? "旅行代理店名義"
+                              : it.label_sender === "other"
+                                ? "他社名義"
                                 : "BondEx"}
                           </span>
                         </p>

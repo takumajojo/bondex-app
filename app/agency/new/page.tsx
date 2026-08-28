@@ -102,11 +102,11 @@ const messages = {
     ldSenderBondex: "BondEx (JOJO Inc.)",
     ldSenderLand: "Your company",
     ldSenderLandDesc: "Uses your registered shipping address.",
-    ldSenderAgent: "A travel agency",
-    ldSenderAgentDesc: "Enter their details below.",
+    ldSenderAgent: "Another company",
+    ldSenderAgentDesc: "A travel agency, etc. Enter the details below.",
     ldSenderMissing:
       "Your shipping address is not registered yet. Contact BondEx to register it, or choose another sender.",
-    ldAgentName: "Company name",
+    ldAgentName: "Name on the envelope",
     ldAgentPhone: "Phone",
     ldAgentZip: "Postal code",
     ldAgentPref: "Prefecture",
@@ -334,13 +334,13 @@ const messages = {
     ldSplitEachDesc: "その区間の発送元ホテルへ1通ずつお送りします。",
     ldSenderLabel: "封筒の差出人",
     ldSenderBondex: "BondEx（株式会社JOJO）",
-    ldSenderLand: "貴社名義",
+    ldSenderLand: "御社名義",
     ldSenderLandDesc: "ご登録の発送先住所を使用します。",
-    ldSenderAgent: "旅行代理店",
-    ldSenderAgentDesc: "以下にご入力ください。",
+    ldSenderAgent: "他社名義",
+    ldSenderAgentDesc: "旅行代理店など。以下にご入力ください。",
     ldSenderMissing:
-      "貴社の発送先住所が未登録です。BondEx へご連絡いただくか、別の差出人をお選びください。",
-    ldAgentName: "会社名",
+      "御社の発送先住所が未登録です。BondEx へご連絡いただくか、別の差出人をお選びください。",
+    ldAgentName: "封筒に載せる名称",
     ldAgentPhone: "電話番号",
     ldAgentZip: "郵便番号",
     ldAgentPref: "都道府県",
@@ -995,7 +995,7 @@ export default function AgencyNewBookingPage() {
       if (luggageNames.length === 0) list.push(t.missingLuggage)
     }
     // 差出人に旅行代理店を選んだら住所一式が必須 (封筒に刷るため)
-    if (labelSender === "travel_agent") {
+    if (labelSender === "other") {
       const missing = residenceError(agentInfo)
       if (missing) list.push(`${t.ldSenderAgent}: ${senderFieldLabel(missing, locale)}`)
     }
@@ -1021,7 +1021,7 @@ export default function AgencyNewBookingPage() {
   )
   const labelSenderLabel =
     labelSender === "bondex" ? t.ldSenderBondex
-    : labelSender === "land_operator" ? t.ldSenderLand
+    : labelSender === "agency" ? t.ldSenderLand
     : agentInfo.name || t.ldSenderAgent
 
   const updateLeg = (i: number, patch: Partial<Leg>) =>
@@ -1227,7 +1227,7 @@ export default function AgencyNewBookingPage() {
             to: labelTo,
             split: labelSplit,
             sender: labelSender,
-            senderInfo: labelSender === "travel_agent" ? agentInfo : null,
+            senderInfo: labelSender === "other" ? agentInfo : null,
           },
           ...(bookingType === "group"
             ? {
@@ -1870,11 +1870,11 @@ export default function AgencyNewBookingPage() {
             <div className="grid grid-cols-3 gap-2">
               {([
                 ["bondex", t.ldSenderBondex, ""],
-                ["land_operator", t.ldSenderLand, t.ldSenderLandDesc],
-                ["travel_agent", t.ldSenderAgent, t.ldSenderAgentDesc],
+                ["agency", t.ldSenderLand, t.ldSenderLandDesc],
+                ["other", t.ldSenderAgent, t.ldSenderAgentDesc],
               ] as const).map(([val, title, desc]) => {
                 // 発送先住所が未登録なら「貴社名義」は選べない (宛名不備で郵送が止まるため)
-                const disabled = val === "land_operator" && hasShipAddress === false
+                const disabled = val === "agency" && hasShipAddress === false
                 return (
                   <button
                     key={val}
@@ -1895,12 +1895,12 @@ export default function AgencyNewBookingPage() {
                 )
               })}
             </div>
-            {labelSender === "land_operator" && hasShipAddress === false && (
+            {labelSender === "agency" && hasShipAddress === false && (
               <p className="text-[11px] text-[#C8102E] mt-2">{t.ldSenderMissing}</p>
             )}
 
             {/* 旅行代理店名義のときだけ住所を聞く */}
-            {labelSender === "travel_agent" && (
+            {labelSender === "other" && (
               <div className="mt-3 grid gap-3 rounded-xl bg-[#F8FAFC] p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label={t.ldAgentName} htmlFor="agName" required>

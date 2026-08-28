@@ -24,7 +24,7 @@ import {
  * (共有の作業ツリーで他の作業と競合しないよう、依存を増やさない)。
  */
 const SENDER_FIELD_LABELS_EN: Record<ResidenceField, string> = {
-  name: "company name",
+  name: "name on the envelope",
   phone: "phone number",
   zip: "postal code (7 digits)",
   prefecture: "prefecture",
@@ -42,24 +42,22 @@ export type LabelTo = "agency" | "hotel"
 export const LABEL_TO_VALUES: readonly LabelTo[] = ["agency", "hotel"] as const
 
 /**
- * 差出人。
- * - bondex        : 株式会社JOJO 名義 (既定)
- * - land_operator : BondEx に登録済みの取引先名義。代理店マスタの ship_address を使う
- * - travel_agent  : 登録のない第三者 (代理店の取引先など)。依頼時に手入力する
+ * 差出人 = 封筒に載る名前。
+ * 業種のカテゴリー(ランドオペレーター/旅行代理店)は問わない。どの名前で送るかだけが重要
+ * (谷口さん 2026-08-28)。
+ * - bondex : BondEx（株式会社JOJO）名義 (既定)
+ * - agency : 御社名義。代理店マスタの ship_address を使う (未登録なら選べない)
+ * - other  : 他社名義。依頼ごとに名称と住所を入力する
  */
-export type LabelSender = "bondex" | "land_operator" | "travel_agent"
-export const LABEL_SENDER_VALUES: readonly LabelSender[] = [
-  "bondex",
-  "land_operator",
-  "travel_agent",
-] as const
+export type LabelSender = "bondex" | "agency" | "other"
+export const LABEL_SENDER_VALUES: readonly LabelSender[] = ["bondex", "agency", "other"] as const
 
 export type LabelDelivery = {
   to: LabelTo
   /** hotel かつ複数区間のとき true = 区間ごとに各発送元ホテルへ分送 / false = 最初のホテルへ一括 */
   split: boolean
   sender: LabelSender
-  /** travel_agent の手入力値。land_operator では発送時点のスナップショットを入れる。 */
+  /** other の手入力値。agency では発送時点のスナップショットを入れる。 */
   senderInfo: ResidenceAddress | null
 }
 
@@ -95,14 +93,14 @@ export function cleanLabelDelivery(raw: unknown): LabelDelivery {
 
 /**
  * 入力の不足を返す。問題なければ null。
- * - 差出人が travel_agent のときだけ住所一式が必須 (封筒に差出人として刷るため)
- * - land_operator は代理店マスタの ship_address を使うので、ここでは検証しない
- *   (登録されているかは resolveLabelDelivery 側で判定する)
+ * - 差出人が other のときだけ住所一式が必須 (封筒に差出人として刷るため)
+ * - agency は代理店マスタの ship_address を使うので、ここでは検証しない
+ *   (登録されているかは画面側で判定して選択不可にする)
  */
 export function labelDeliveryError(
   d: LabelDelivery,
 ): { field: "senderInfo"; missing: ReturnType<typeof residenceError> } | null {
-  if (d.sender !== "travel_agent") return null
+  if (d.sender !== "other") return null
   const missing = residenceError(d.senderInfo ?? EMPTY_RESIDENCE)
   return missing ? { field: "senderInfo", missing } : null
 }
@@ -182,11 +180,11 @@ export const LABEL_TO_LABEL_EN: Record<LabelTo, string> = {
 }
 export const LABEL_SENDER_LABEL_JA: Record<LabelSender, string> = {
   bondex: "BondEx（株式会社JOJO）",
-  land_operator: "ランドオペレーター（登録済みの貴社名義）",
-  travel_agent: "旅行代理店（別途入力）",
+  agency: "御社名義",
+  other: "他社名義",
 }
 export const LABEL_SENDER_LABEL_EN: Record<LabelSender, string> = {
   bondex: "BondEx (JOJO Inc.)",
-  land_operator: "Land operator (your registered details)",
-  travel_agent: "Travel agency (enter below)",
+  agency: "Your company",
+  other: "Another company",
 }
