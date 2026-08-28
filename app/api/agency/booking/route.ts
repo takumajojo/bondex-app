@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { saveShipment, deleteBooking } from "@/lib/shipments-db"
+import { cleanLabelDelivery, labelDeliveryError, senderFieldLabel } from "@/lib/label-delivery"
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
@@ -212,6 +213,24 @@ export async function POST(req: NextRequest) {
   // ── 団体 (Group) 対応: bookingType='group' のときは添乗員情報と
   //    ゲスト名リスト (luggageNames) を受け取り、個数はリスト長で確定する。
   //    FIT (既定) はこれまでと完全に同一のパス。
+  // 送り状(紙)の郵送先・差出人。未指定なら既定 (代理店宛・差出人 BondEx)。
+  const labelDelivery = cleanLabelDelivery(body.labelDelivery)
+  {
+    const err = labelDeliveryError(labelDelivery)
+    if (err?.missing) {
+      const en = auth.agency.locale === "en"
+      const label = senderFieldLabel(err.missing, en ? "en" : "ja")
+      return NextResponse.json(
+        {
+          error: en
+            ? `Please enter the sender's ${label}.`
+            : `差出人の${label}を入力してください。`,
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   const bookingType = body.bookingType === "group" ? "group" : "fit"
   const tourLeaderName = s(body.tourLeaderName).slice(0, 60)
   const tourLeaderPhone = s(body.tourLeaderPhone).slice(0, 40)
@@ -272,6 +291,12 @@ export async function POST(req: NextRequest) {
       status: "requested",
       notes: leg.notes || null,
       guest_language: guestLanguage,
+      // 郵送指定は予約単位の設定なので全区間に同じ値を持たせる
+      // (区間ごとに分送するかは label_split で表現する)。
+      label_to: labelDelivery.to,
+      label_split: labelDelivery.split,
+      label_sender: labelDelivery.sender,
+      label_sender_info: labelDelivery.senderInfo,
       booking_type: bookingType,
       tour_leader_name: tourLeaderName || null,
       tour_leader_phone: tourLeaderPhone || null,

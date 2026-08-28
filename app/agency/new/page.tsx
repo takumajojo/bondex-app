@@ -10,6 +10,13 @@ import {
   UploadCloud, Sparkles, Download, AlertTriangle, ExternalLink, type LucideIcon,
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
+import {
+  type LabelTo,
+  type LabelSender,
+  DEFAULT_LABEL_DELIVERY,
+  resolveLabelParcels,
+  senderFieldLabel,
+} from "@/lib/label-delivery"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
 import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
@@ -77,6 +84,36 @@ const GUEST_LANGS: Array<[string, string]> = [
 
 const messages = {
   en: {
+    // ---- 送り状(紙)の郵送先・差出人 ----
+    ldHeading: "Where should we send the printed labels?",
+    ldBody:
+      "BondEx prints the Sagawa labels and mails them so the traveler has them before drop-off. Choose where they should arrive and whose name should be on the envelope.",
+    ldToLabel: "Send the labels to",
+    ldToAgency: "Your office",
+    ldToAgencyDesc: "We mail everything to your registered address.",
+    ldToHotel: "The hotel",
+    ldToHotelDesc: "Addressed to the traveler, c/o the hotel.",
+    ldSplitLabel: "This trip has more than one leg",
+    ldSplitOnce: "Send everything to the first hotel",
+    ldSplitOnceDesc: "One envelope with all legs' labels.",
+    ldSplitEach: "Send each leg to its own hotel",
+    ldSplitEachDesc: "One envelope per leg, to that leg's departure hotel.",
+    ldSenderLabel: "Sender on the envelope",
+    ldSenderBondex: "BondEx (JOJO Inc.)",
+    ldSenderLand: "Your company",
+    ldSenderLandDesc: "Uses your registered shipping address.",
+    ldSenderAgent: "A travel agency",
+    ldSenderAgentDesc: "Enter their details below.",
+    ldSenderMissing:
+      "Your shipping address is not registered yet. Contact BondEx to register it, or choose another sender.",
+    ldAgentName: "Company name",
+    ldAgentPhone: "Phone",
+    ldAgentZip: "Postal code",
+    ldAgentPref: "Prefecture",
+    ldAgentCity: "City / ward",
+    ldAgentStreet: "Street address",
+    ldAgentBuilding: "Building (optional)",
+    ldReview: "Printed labels",
     back: "Back to portal",
     badge: "New issuance request",
     title: "Register a booking",
@@ -281,6 +318,36 @@ const messages = {
     notLoggedIn: "Your session expired. Please sign in again.",
   },
   ja: {
+    // ---- 送り状(紙)の郵送先・差出人 ----
+    ldHeading: "送り状（紙）のお届け先",
+    ldBody:
+      "BondEx が佐川の送り状を印刷し、お荷物をお預けになる前に届くよう郵送します。どこへ届けるか、封筒の差出人を誰にするかをお選びください。",
+    ldToLabel: "送り状の送付先",
+    ldToAgency: "御社宛",
+    ldToAgencyDesc: "ご登録の住所へまとめてお送りします。",
+    ldToHotel: "ホテル宛",
+    ldToHotelDesc: "ホテル気付で旅行者様宛にお送りします。",
+    ldSplitLabel: "区間が複数あります",
+    ldSplitOnce: "最初のホテルへまとめて送る",
+    ldSplitOnceDesc: "全区間ぶんを1通でお送りします。",
+    ldSplitEach: "区間ごとに各ホテルへ送る",
+    ldSplitEachDesc: "その区間の発送元ホテルへ1通ずつお送りします。",
+    ldSenderLabel: "封筒の差出人",
+    ldSenderBondex: "BondEx（株式会社JOJO）",
+    ldSenderLand: "貴社名義",
+    ldSenderLandDesc: "ご登録の発送先住所を使用します。",
+    ldSenderAgent: "旅行代理店",
+    ldSenderAgentDesc: "以下にご入力ください。",
+    ldSenderMissing:
+      "貴社の発送先住所が未登録です。BondEx へご連絡いただくか、別の差出人をお選びください。",
+    ldAgentName: "会社名",
+    ldAgentPhone: "電話番号",
+    ldAgentZip: "郵便番号",
+    ldAgentPref: "都道府県",
+    ldAgentCity: "市区町村",
+    ldAgentStreet: "番地・町名",
+    ldAgentBuilding: "建物名（任意）",
+    ldReview: "送り状の郵送",
     back: "ポータルに戻る",
     badge: "新規発行依頼",
     title: "発行依頼を登録",
@@ -751,6 +818,13 @@ export default function AgencyNewBookingPage() {
   // 荷物リストは2段階UX: ①名簿(名前)を貼り付け → ②「荷物リストを作成」で構造化し、
   // ゲストごとの個数を手入力できる (名簿に個数が無いのが普通のため・谷口さん指示)。
   const [bookingType, setBookingType] = useState<"fit" | "group">("fit")
+  // ── 送り状(紙)の郵送先・差出人。既定は「御社宛・差出人 BondEx」。
+  const [labelTo, setLabelTo] = useState<LabelTo>(DEFAULT_LABEL_DELIVERY.to)
+  const [labelSplit, setLabelSplit] = useState(DEFAULT_LABEL_DELIVERY.split)
+  const [labelSender, setLabelSender] = useState<LabelSender>(DEFAULT_LABEL_DELIVERY.sender)
+  const [agentInfo, setAgentInfo] = useState<ResidenceAddress>({ ...EMPTY_RESIDENCE })
+  // 貴社名義で送れるかは「発送先住所が登録済みか」で決まる (未登録なら選ばせない)。
+  const [hasShipAddress, setHasShipAddress] = useState<boolean | null>(null)
   const [leaderName, setLeaderName] = useState("")
   const [leaderPhone, setLeaderPhone] = useState("")
   const [leaderWhatsapp, setLeaderWhatsapp] = useState("")
@@ -806,6 +880,20 @@ export default function AgencyNewBookingPage() {
       else setAuthChecked(true)
     })
   }, [router])
+
+  // 差出人「貴社名義」を選べるかの判定に使う。RLS で自社行のみ返る。
+  useEffect(() => {
+    const sb = getBrowserSupabase()
+    if (!sb) return
+    void sb
+      .from("agencies")
+      .select("ship_address")
+      .maybeSingle()
+      .then(({ data }) => {
+        const addr = (data as { ship_address?: unknown } | null)?.ship_address
+        setHasShipAddress(Boolean(addr && typeof addr === "object"))
+      })
+  }, [])
 
   // ── 予約の複製 (?dup=BDX-XXX): 元予約の行程・設定をプレフィルし、日付/代表者/Refは空に。
   //    「どの旅か」はバナー (複製元 + 代表者 + 行程) で常時見えるようにする。
@@ -906,9 +994,35 @@ export default function AgencyNewBookingPage() {
       if (!leaderName.trim()) list.push(t.missingLeader)
       if (luggageNames.length === 0) list.push(t.missingLuggage)
     }
+    // 差出人に旅行代理店を選んだら住所一式が必須 (封筒に刷るため)
+    if (labelSender === "travel_agent") {
+      const missing = residenceError(agentInfo)
+      if (missing) list.push(`${t.ldSenderAgent}: ${senderFieldLabel(missing, locale)}`)
+    }
     return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legs, representative, bookingType, leaderName, luggageNames.length, locale])
+  }, [legs, representative, bookingType, leaderName, luggageNames.length, locale, labelSender, agentInfo])
+
+  // 確認画面用: 送り状が何通どこへ届くか
+  const labelParcels = useMemo(
+    () =>
+      resolveLabelParcels(
+        { to: labelTo, split: labelSplit, sender: labelSender, senderInfo: null },
+        legs.map((l, i) => ({
+          legIndex: i,
+          fromHotel: l.fromHotel || "—",
+          shipmentDate: l.shipmentDate || "—",
+          suitcaseCount: l.suitcaseCount,
+        })),
+        { agencyName: t.ldToAgency, travelerName: representative || "—" },
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [labelTo, labelSplit, labelSender, legs, representative, locale],
+  )
+  const labelSenderLabel =
+    labelSender === "bondex" ? t.ldSenderBondex
+    : labelSender === "land_operator" ? t.ldSenderLand
+    : agentInfo.name || t.ldSenderAgent
 
   const updateLeg = (i: number, patch: Partial<Leg>) =>
     setLegs((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
@@ -1109,6 +1223,12 @@ export default function AgencyNewBookingPage() {
           guestLanguage,
           legs,
           bookingType,
+          labelDelivery: {
+            to: labelTo,
+            split: labelSplit,
+            sender: labelSender,
+            senderInfo: labelSender === "travel_agent" ? agentInfo : null,
+          },
           ...(bookingType === "group"
             ? {
                 tourLeaderName: leaderName,
@@ -1438,6 +1558,23 @@ export default function AgencyNewBookingPage() {
               <ReviewRow label={t.rvLang} value={(GUEST_LANGS.find(([c]) => c === guestLanguage)?.[1]) || guestLanguage} />
             </div>
 
+            {/* 送り状(紙)が何通どこへ届くかを確定前に見せる。
+                「1通と思っていたら区間ごとに届いた」といった行き違いを防ぐ。 */}
+            <div className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4 mt-3">
+              <p className="text-[12px] font-bold text-[#334155] mb-2">{t.ldReview}</p>
+              <div className="space-y-1">
+                {labelParcels.map((p, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3 text-[12px]">
+                    <span className="text-[#0F172A]">{p.addressee}</span>
+                    <span className="text-[#64748B] shrink-0">{p.detail}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#64748B] mt-2">
+                {t.ldSenderLabel}: {labelSenderLabel}
+              </p>
+            </div>
+
             {/* 団体: 添乗員と荷物リストも確認画面で必ず見せる */}
             {bookingType === "group" && (
               <div className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4 mt-3">
@@ -1667,6 +1804,138 @@ export default function AgencyNewBookingPage() {
                 <p className="text-[11px] text-[#64748B] mt-0.5">{t.btGroupDesc}</p>
               </button>
             </div>
+          </div>
+
+          {/* ── 送り状(紙)のお届け先 ──
+              BondEx が印刷した佐川の送り状を、旅行者がお預けになる前に手元へ届ける必要がある。
+              どこへ送るか / 封筒の差出人を誰にするかを依頼時に選ぶ (谷口さん 2026-08-28)。 */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5">
+            <p className="text-[13px] font-bold text-[#0F172A]">{t.ldHeading}</p>
+            <p className="text-[12px] text-[#64748B] mt-1 leading-relaxed">{t.ldBody}</p>
+
+            {/* 送付先 */}
+            <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldToLabel}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ["agency", t.ldToAgency, t.ldToAgencyDesc],
+                ["hotel", t.ldToHotel, t.ldToHotelDesc],
+              ] as const).map(([val, title, desc]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setLabelTo(val)}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    labelTo === val
+                      ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                      : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                  }`}
+                >
+                  <p className="text-[14px] font-bold text-[#0F172A]">{title}</p>
+                  <p className="text-[11px] text-[#64748B] mt-0.5">{desc}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* ホテル宛かつ複数区間のときだけ「まとめて/区間ごと」を聞く */}
+            {labelTo === "hotel" && legs.length > 1 && (
+              <>
+                <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">
+                  {t.ldSplitLabel}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    [false, t.ldSplitOnce, t.ldSplitOnceDesc],
+                    [true, t.ldSplitEach, t.ldSplitEachDesc],
+                  ] as const).map(([val, title, desc]) => (
+                    <button
+                      key={String(val)}
+                      type="button"
+                      onClick={() => setLabelSplit(val)}
+                      className={`rounded-xl border p-3 text-left transition-colors ${
+                        labelSplit === val
+                          ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                          : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                      }`}
+                    >
+                      <p className="text-[13px] font-bold text-[#0F172A]">{title}</p>
+                      <p className="text-[11px] text-[#64748B] mt-0.5">{desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* 差出人 */}
+            <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldSenderLabel}</p>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ["bondex", t.ldSenderBondex, ""],
+                ["land_operator", t.ldSenderLand, t.ldSenderLandDesc],
+                ["travel_agent", t.ldSenderAgent, t.ldSenderAgentDesc],
+              ] as const).map(([val, title, desc]) => {
+                // 発送先住所が未登録なら「貴社名義」は選べない (宛名不備で郵送が止まるため)
+                const disabled = val === "land_operator" && hasShipAddress === false
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setLabelSender(val)}
+                    className={`rounded-xl border p-3 text-left transition-colors ${
+                      disabled
+                        ? "border-[#E5E7EB] bg-[#F8FAFC] cursor-not-allowed opacity-60"
+                        : labelSender === val
+                          ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
+                          : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+                    }`}
+                  >
+                    <p className="text-[13px] font-bold text-[#0F172A]">{title}</p>
+                    {desc && <p className="text-[11px] text-[#64748B] mt-0.5">{desc}</p>}
+                  </button>
+                )
+              })}
+            </div>
+            {labelSender === "land_operator" && hasShipAddress === false && (
+              <p className="text-[11px] text-[#C8102E] mt-2">{t.ldSenderMissing}</p>
+            )}
+
+            {/* 旅行代理店名義のときだけ住所を聞く */}
+            {labelSender === "travel_agent" && (
+              <div className="mt-3 grid gap-3 rounded-xl bg-[#F8FAFC] p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t.ldAgentName} htmlFor="agName" required>
+                    <input id="agName" className={inputCls} value={agentInfo.name}
+                      onChange={(e) => setAgentInfo({ ...agentInfo, name: e.target.value })} />
+                  </Field>
+                  <Field label={t.ldAgentPhone} htmlFor="agPhone" required>
+                    <input id="agPhone" className={inputCls} value={agentInfo.phone}
+                      onChange={(e) => setAgentInfo({ ...agentInfo, phone: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t.ldAgentZip} htmlFor="agZip" required>
+                    <input id="agZip" className={inputCls} value={agentInfo.zip}
+                      onChange={(e) => setAgentInfo({ ...agentInfo, zip: e.target.value })} />
+                  </Field>
+                  <Field label={t.ldAgentPref} htmlFor="agPref" required>
+                    <input id="agPref" className={inputCls} value={agentInfo.prefecture}
+                      onChange={(e) => setAgentInfo({ ...agentInfo, prefecture: e.target.value })} />
+                  </Field>
+                </div>
+                <Field label={t.ldAgentCity} htmlFor="agCity" required>
+                  <input id="agCity" className={inputCls} value={agentInfo.city}
+                    onChange={(e) => setAgentInfo({ ...agentInfo, city: e.target.value })} />
+                </Field>
+                <Field label={t.ldAgentStreet} htmlFor="agStreet" required>
+                  <input id="agStreet" className={inputCls} value={agentInfo.street}
+                    onChange={(e) => setAgentInfo({ ...agentInfo, street: e.target.value })} />
+                </Field>
+                <Field label={t.ldAgentBuilding} htmlFor="agBld">
+                  <input id="agBld" className={inputCls} value={agentInfo.building}
+                    onChange={(e) => setAgentInfo({ ...agentInfo, building: e.target.value })} />
+                </Field>
+              </div>
+            )}
           </div>
 
           {/* 旅程表・名簿の AI 自動読み込み (任意) */}

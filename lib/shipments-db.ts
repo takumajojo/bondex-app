@@ -68,6 +68,14 @@ export interface ShipmentRecord {
   note_target: string | null
   /** 書類一式を格納した Google Drive フォルダの共有 URL (BondEx が発行後に登録)。 */
   drive_url: string | null
+  /** 送り状(紙)の郵送先: agency=代理店宛 / hotel=ホテル宛(旅行者様気付)。lib/label-delivery.ts */
+  label_to: string
+  /** hotel かつ複数区間のとき true=区間ごとに分送 / false=最初のホテルへ一括。 */
+  label_split: boolean
+  /** 郵送時の差出人: bondex / land_operator / travel_agent。 */
+  label_sender: string
+  /** 差出人の氏名・住所 (ResidenceAddress 形)。travel_agent は手入力値。 */
+  label_sender_info: ResidenceAddress | null
   /** ヤマトお届け時間帯 (DELIVERY_TIME_SLOTS の値)。代理店の希望。 */
   delivery_time: string | null
   /** 配送キャリア (sagawa=佐川 / yamato=ヤマト)。既定=佐川。 */
@@ -196,6 +204,11 @@ export async function saveShipment(
   if (input.tour_leader_name !== undefined) row.tour_leader_name = input.tour_leader_name
   if (input.tour_leader_phone !== undefined) row.tour_leader_phone = input.tour_leader_phone
   if (input.tour_leader_whatsapp !== undefined) row.tour_leader_whatsapp = input.tour_leader_whatsapp
+  // 送り状の郵送指定も同様に「渡された時だけ」。再発行フローが既定値に巻き戻すのを防ぐ。
+  if (input.label_to !== undefined) row.label_to = input.label_to
+  if (input.label_split !== undefined) row.label_split = input.label_split
+  if (input.label_sender !== undefined) row.label_sender = input.label_sender
+  if (input.label_sender_info !== undefined) row.label_sender_info = input.label_sender_info
   // booking_id + leg_index で同一区間を update (再発行対応)
   const { error } = await sb
     .from("shipments")

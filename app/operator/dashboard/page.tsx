@@ -58,6 +58,10 @@ interface Shipment {
   to_city: string | null
   to_prefecture: string | null
   to_hotel_ja: string | null
+  /** 送り状(紙)の郵送先・差出人 (lib/label-delivery.ts)。 */
+  label_to: string | null
+  label_split: boolean | null
+  label_sender: string | null
   recipient: string
   suitcase_count: number
   amount_yen: number
@@ -1018,6 +1022,25 @@ export default function DashboardPage() {
                         <p className="text-[10px] text-muted-foreground">↓</p>
                         <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} />
                         <HotelNotifyBadges shipment={it} />
+                        {/* 送り状(紙)をどこへ・誰の名義で郵送するか。封筒を用意するのに必要。 */}
+                        <p className="mt-1.5 text-[10px] text-muted-foreground">
+                          送り状:{" "}
+                          <span className="text-foreground">
+                            {it.label_to === "hotel"
+                              ? it.label_split
+                                ? "各ホテルへ分送"
+                                : "最初のホテルへ"
+                              : "代理店宛"}
+                          </span>
+                          {" ／ 差出人: "}
+                          <span className="text-foreground">
+                            {it.label_sender === "land_operator"
+                              ? "代理店名義"
+                              : it.label_sender === "travel_agent"
+                                ? "旅行代理店名義"
+                                : "BondEx"}
+                          </span>
+                        </p>
                       </td>
                       <td className="p-3 align-top text-right">
                         <p className="font-medium text-foreground tabular-nums">

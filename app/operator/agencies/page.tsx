@@ -11,6 +11,8 @@ import {
   type HotelNotificationMode,
 } from "@/lib/hotel-notification"
 
+import { type ResidenceAddress, EMPTY_RESIDENCE } from "@/lib/residence"
+
 interface Agency {
   id: string
   name: string
@@ -26,6 +28,8 @@ interface Agency {
   card_on_file: boolean | null
   created_via: string | null
   created_at: string
+  /** 送り状(紙)の郵送先・差出人に使う構造化住所。未登録なら null。 */
+  ship_address: ResidenceAddress | null
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -44,6 +48,9 @@ export default function OperatorAgenciesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
+  // 発送先住所を編集中の代理店 ID と入力値
+  const [editingShip, setEditingShip] = useState<string | null>(null)
+  const [shipDraft, setShipDraft] = useState<ResidenceAddress>({ ...EMPTY_RESIDENCE })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -80,6 +87,31 @@ export default function OperatorAgenciesPage() {
         setAgencies((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
       } else {
         const d = await res.json().catch(() => ({}))
+        alert(d.error || "更新に失敗しました")
+      }
+    } catch {
+      alert("更新に失敗しました")
+    }
+    setBusyId(null)
+  }
+
+  // 送り状(紙)の郵送先・差出人に使う住所を登録する。請求先住所(自由入力1行)は
+  // 佐川の郵便番号照合に使えないため、構造化した専用欄で持つ。
+  const saveShipAddress = async (id: string, addr: ResidenceAddress | null) => {
+    setBusyId(id)
+    try {
+      const res = await fetch("/api/agencies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, shipAddress: addr ?? {} }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setAgencies((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, ship_address: d.agency?.ship_address ?? addr } : a)),
+        )
+        setEditingShip(null)
+      } else {
         alert(d.error || "更新に失敗しました")
       }
     } catch {
@@ -227,6 +259,77 @@ export default function OperatorAgenciesPage() {
                                 </button>
                               ))}
                             </div>
+                          </div>
+                          {/* 送り状(紙)の郵送先・差出人に使う住所。未登録だと代理店側で
+                              「貴社名義で送る」を選べない (宛名不備で郵送が止まるため)。 */}
+                          <div className="mt-2">
+                            <span className="block text-[9px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                              発送先住所（送り状の郵送用）
+                            </span>
+                            {editingShip === a.id ? (
+                              <div className="space-y-1 w-56">
+                                {([
+                                  ["name", "会社名・宛名"],
+                                  ["phone", "電話番号"],
+                                  ["zip", "郵便番号"],
+                                  ["prefecture", "都道府県"],
+                                  ["city", "市区町村"],
+                                  ["street", "番地・町名"],
+                                  ["building", "建物名（任意）"],
+                                ] as const).map(([k, ph]) => (
+                                  <input
+                                    key={k}
+                                    value={shipDraft[k]}
+                                    placeholder={ph}
+                                    onChange={(e) => setShipDraft({ ...shipDraft, [k]: e.target.value })}
+                                    className="w-full rounded border border-border px-1.5 py-1 text-[11px]"
+                                  />
+                                ))}
+                                <div className="flex gap-1 pt-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={busyId === a.id}
+                                    onClick={() => void saveShipAddress(a.id, shipDraft)}
+                                    className="rounded bg-foreground px-2 py-0.5 text-[10px] text-background disabled:opacity-50"
+                                  >
+                                    保存
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingShip(null)}
+                                    className="rounded border border-border px-2 py-0.5 text-[10px]"
+                                  >
+                                    取消
+                                  </button>
+                                  {a.ship_address && (
+                                    <button
+                                      type="button"
+                                      disabled={busyId === a.id}
+                                      onClick={() => void saveShipAddress(a.id, null)}
+                                      className="rounded border border-red-200 px-2 py-0.5 text-[10px] text-red-700 disabled:opacity-50"
+                                    >
+                                      削除
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShipDraft(a.ship_address ?? { ...EMPTY_RESIDENCE })
+                                  setEditingShip(a.id)
+                                }}
+                                className={`text-[10px] underline underline-offset-2 ${
+                                  a.ship_address ? "text-muted-foreground" : "text-red-700"
+                                }`}
+                                title="送り状を郵送するときの宛先・差出人に使います"
+                              >
+                                {a.ship_address
+                                  ? `${a.ship_address.prefecture}${a.ship_address.city} …（編集）`
+                                  : "未登録（登録する）"}
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="p-3 align-top text-xs">

@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
 import { isHotelNotificationMode } from "@/lib/hotel-notification"
+import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA } from "@/lib/residence"
 
 export const runtime = "nodejs"
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await sb
       .from("agencies")
-      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, locale, payment_method, status, contract_status, card_on_file, billing_exempt, hotel_notification_mode, created_via, created_at")
+      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, locale, payment_method, status, contract_status, card_on_file, billing_exempt, hotel_notification_mode, created_via, created_at, ship_address")
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -42,8 +43,11 @@ export async function GET(req: NextRequest) {
 
 /**
  * PATCH /api/agencies — 代理店の承認 / 却下 / 停止 / やり取り言語の変更
- *   body: { id, status?: 'active'|'suspended'|'pending', locale?: 'ja'|'en' }
- * status か locale の少なくとも一方が必要。(却下 = suspended。完全削除は行わない)
+ *   body: { id, status?: 'active'|'suspended'|'pending', locale?: 'ja'|'en', shipAddress? }
+ * status / locale / shipAddress の少なくとも一つが必要。(却下 = suspended。完全削除は行わない)
+ *
+ * shipAddress = 送り状(紙)の郵送先・差出人に使う構造化住所 (lib/residence.ts の形)。
+ * 請求先住所(billing_address・自由入力1行)は佐川の郵便番号照合に使えないため別欄で持つ。
  */
 const ALLOWED_STATUS = ["active", "suspended", "pending"] as const
 
@@ -56,9 +60,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
   }
 
-  let body: { id?: unknown; status?: unknown; locale?: unknown; hotelNotificationMode?: unknown }
+  let body: {
+    id?: unknown
+    status?: unknown
+    locale?: unknown
+    hotelNotificationMode?: unknown
+    shipAddress?: unknown
+  }
   try {
-    body = (await req.json()) as { id?: unknown; status?: unknown; locale?: unknown; hotelNotificationMode?: unknown }
+    body = (await req.json()) as {
+      id?: unknown
+      status?: unknown
+      locale?: unknown
+      hotelNotificationMode?: unknown
+      shipAddress?: unknown
+    }
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
@@ -68,9 +84,29 @@ export async function PATCH(req: NextRequest) {
   const localeRaw = typeof body.locale === "string" ? body.locale.trim() : ""
   const locale = localeRaw === "ja" || localeRaw === "en" ? localeRaw : ""
   const hasMode = body.hotelNotificationMode !== undefined
+  // shipAddress は「空オブジェクト = 登録解除」も許すため undefined 判定で分ける
+  const hasShipAddress = body.shipAddress !== undefined
+  const shipAddress = hasShipAddress ? cleanResidence(body.shipAddress) : null
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
-  if (!status && !locale && !hasMode) {
-    return NextResponse.json({ error: "status, locale or hotelNotificationMode is required" }, { status: 400 })
+  if (!status && !locale && !hasMode && !hasShipAddress) {
+    return NextResponse.json(
+      { error: "status, locale, hotelNotificationMode or shipAddress is required" },
+      { status: 400 },
+    )
+  }
+  // 住所は「全部空 = 登録解除」か「必須項目が揃っている」のどちらかのみ受け付ける。
+  // 中途半端な住所を保存すると、送り状の郵送時に宛名不備で止まるため。
+  if (hasShipAddress && shipAddress) {
+    const filled = Object.values(shipAddress).some((v) => v !== "")
+    if (filled) {
+      const missing = residenceError(shipAddress)
+      if (missing) {
+        return NextResponse.json(
+          { error: `発送先住所の${RESIDENCE_FIELD_LABELS_JA[missing]}を入力してください` },
+          { status: 400 },
+        )
+      }
+    }
   }
   if (status && !(ALLOWED_STATUS as readonly string[]).includes(status)) {
     return NextResponse.json({ error: "status must be active / suspended / pending" }, { status: 400 })
@@ -83,12 +119,16 @@ export async function PATCH(req: NextRequest) {
   if (status) update.status = status
   if (locale) update.locale = locale
   if (hasMode) update.hotel_notification_mode = body.hotelNotificationMode
+  if (hasShipAddress) {
+    const filled = shipAddress && Object.values(shipAddress).some((v) => v !== "")
+    update.ship_address = filled ? shipAddress : null
+  }
 
   const { data, error } = await sb
     .from("agencies")
     .update(update)
     .eq("id", id)
-    .select("id, name, status, contact_email, locale")
+    .select("id, name, status, contact_email, locale, ship_address")
     .single()
 
   if (error) {
