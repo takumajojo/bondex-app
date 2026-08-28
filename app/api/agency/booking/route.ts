@@ -321,7 +321,15 @@ export async function POST(req: NextRequest) {
   // ── 1ヶ月以内(≤30日)の区間は即発行して即DL。直ランオペ=1ヶ月超は 'requested' のまま
   //    (発行窓の外なので発行しない)。発行は運営と同じ /api/shipandco/create を
   //    サーバー内から OPERATOR_PASSWORD で呼び、検証済みの発行ロジックを再利用する。
-  const origin = req.nextUrl.origin
+  //
+  // 自己呼び出し先の origin は Host ヘッダー由来 (req.nextUrl.origin) を使わない。
+  // この fetch には OPERATOR_PASSWORD を Bearer で載せるため、Host を偽装されると
+  // 秘密が攻撃者ドメインへ送られてしまう (Host header injection)。リクエストヘッダーに
+  // 依存しない固定オリジンのみ使う: 明示 env → Vercel 注入の自デプロイ URL → 本番ドメイン。
+  const origin =
+    process.env.APP_BASE_URL?.replace(/\/+$/, "") ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "https://bondex.express"
   const opPw = process.env.OPERATOR_PASSWORD
   // reason: "far" = 1ヶ月超で発行窓の外 (正常な待ち) / "failed" = 発行を試みたが失敗
   const legOut: Array<{

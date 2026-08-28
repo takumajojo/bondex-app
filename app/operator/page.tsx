@@ -125,8 +125,9 @@ const messages = {
     newBooking: "Start a new booking",
     generationFailed: "Document generation failed",
     yamatoLabelsHeading: "Shipping labels",
-    labelPrintHint: "Labels are A5. Download the label PDF and print at “actual size (100%)” — A5 paper is ideal; A4 is fine too at 100%. “A5 print” is auto-print for Chrome/Edge.",
-    labelPrintA5: "Print (A5)",
+    labelPrintHint: "Labels are A5. “A5 print (clean)” re-lays the label onto an exact A5 page, inset slightly so printer edges don’t clip it — open it and print on A5 paper at “actual size (100%)”. “A5 original” is the raw Ship&co PDF.",
+    labelPrintClean: "A5 print (clean)",
+    labelPrintA5: "A5 original",
     yamatoLegLabel: (n: number) => `Leg ${n}`,
     yamatoTracking: "Tracking",
     yamatoLabelFailed: "Label issuance failed",
@@ -290,8 +291,9 @@ const messages = {
     newBooking: "新しい予約を開始",
     generationFailed: "書類の生成に失敗しました",
     yamatoLabelsHeading: "配送伝票",
-    labelPrintHint: "送り状はA5です。「送り状(PDF)」をダウンロードし、印刷は「実際のサイズ(100%)」で（A5用紙が理想／A4でも100%ならOK）。「A5印刷」はChrome/Edge向けの自動印刷です。",
-    labelPrintA5: "A5で印刷",
+    labelPrintHint: "送り状はA5です。「A5できれい印刷」は、ラベルを正確なA5ページに端が切れないよう少し内側に入れて載せ直して開きます。A5用紙に「実際のサイズ(100%)」で印刷すればきれいに出ます。「A5原本」はShip&coのPDFそのままです。",
+    labelPrintClean: "A5できれい印刷",
+    labelPrintA5: "A5原本",
     yamatoLegLabel: (n: number) => `区間 ${n}`,
     yamatoTracking: "追跡番号",
     yamatoLabelFailed: "送り状発行に失敗",
@@ -1063,7 +1065,9 @@ export default function OperatorPage() {
               residence: s.to.residence ?? undefined,
             },
             // 管理ダッシュボード用メタ情報
-            agency: tourCompanyFromSettings,
+            // 代理店名は予約(発行依頼)の代理店を最優先。発行操作で運営設定の
+            // ツアー会社名 (tourCompany) に上書きしない (BDX-GP3KPG で誤上書き発生)。
+            agency: fromRequest?.agency || tourCompanyFromSettings,
             representative: representativeLabel,
             travelerCount: itinerary!.guest.travelerCount,
             bookingName: s.bookingName || "",
@@ -1160,7 +1164,7 @@ export default function OperatorPage() {
       setGenerationError(err instanceof Error ? err.message : "Generation failed")
       setPhase("confirm")
     }
-  }, [itinerary, settings, t])
+  }, [itinerary, settings, fromRequest, t])
 
   const setRepresentativeChecked = useCallback((checked: boolean) => {
     setVerifications((prev) => ({ ...prev, representative: checked }))
@@ -2857,7 +2861,25 @@ function GeneratedView({
                     </p>
                     {y.labelUrl && (
                       <div className="flex items-center gap-4 mt-2">
-                        {/* 主導線: 送り状PDF(A5)をDL。印刷は実寸(100%)。全ブラウザ/プリンターで確実。 */}
+                        {/* 主導線: A5ラベルを正確なA5ページに載せ直して inline 表示。A5用紙に実寸100%で
+                            印刷すれば端が切れずきれいに出る (ズレ対策)。 */}
+                        <a
+                          href={`/api/voucher/label?${new URLSearchParams({
+                            url: y.labelUrl,
+                            bookingId: docs.bookingId,
+                            ...(docs.tourNumber ? { tourNumber: docs.tourNumber } : {}),
+                            representative: docs.representativeLabel,
+                            leg: `L${y.legIndex + 1}`,
+                            paper: "a5",
+                          }).toString()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26] underline underline-offset-2"
+                        >
+                          <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          {t.labelPrintClean}
+                        </a>
+                        {/* 補助: A5原本 PDF をDL。印刷は実寸100%。 */}
                         <a
                           href={`/api/voucher/label?${new URLSearchParams({
                             url: y.labelUrl,
@@ -2868,23 +2890,9 @@ function GeneratedView({
                           }).toString()}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26] underline underline-offset-2"
-                        >
-                          <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
-                          {t.download}
-                        </a>
-                        {/* 補助: Chrome/Edge向け A5自動印刷 */}
-                        <a
-                          href={`/operator/print-label?${new URLSearchParams({
-                            url: y.labelUrl,
-                            bookingId: docs.bookingId,
-                            leg: `L${y.legIndex + 1}`,
-                          }).toString()}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
                         >
-                          <Printer className="w-3 h-3" strokeWidth={1.5} />
+                          <Download className="w-3 h-3" strokeWidth={1.5} />
                           {t.labelPrintA5}
                         </a>
                       </div>

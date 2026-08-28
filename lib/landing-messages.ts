@@ -80,6 +80,25 @@ export interface LandingMessages {
     photoBody: string
     photoAlt: string
   }
+  philosophy: {
+    eyebrow: string
+    body: string
+  }
+  // 3者(代理店/ホテル/旅行者)の困りごと → BondEx が解決。
+  // まず日本語のみ提供する任意セクション。未設定の言語では非表示。
+  pains?: {
+    eyebrow: string
+    title: { pre: string; hl: string; post: string }
+    lead: string
+    personas: {
+      icon: "agency" | "hotel" | "traveler"
+      name: string
+      role: string
+      items: string[]
+      solve: string
+    }[]
+    closer: { pre: string; hl: string; post: string }
+  }
   sample: {
     eyebrow: string
     heading: string
@@ -233,6 +252,72 @@ const ja: LandingMessages = {
     photoBody: "お荷物はホテルからホテルへ、BondEx が配送手配",
     photoAlt: "スーツケースを持たずに日本を旅行する家族",
   },
+  philosophy: {
+    eyebrow: "BondEx の哲学",
+    body:
+      "御社がBondExに渡した荷物について、誰が・いつ・どこへ・どの配送会社で送り、現在どの状態にあるのかを一元管理し、異常があればBondEx側で検知・対応します。",
+  },
+  pains: {
+    eyebrow: "Who we help",
+    title: { pre: "その「困った」、ぜんぶ ", hl: "BondEx", post: " が引き受けます。" },
+    lead:
+      "荷物配送でつまずくのは、旅行代理店だけではありません。ホテルも、旅行者も、それぞれの「困った」を抱えています。BondEx は、その3者すべての手間と不安を肩代わりします。",
+    personas: [
+      {
+        icon: "agency",
+        name: "旅行代理店・ランドオペレーター",
+        role: "手配する側",
+        items: [
+          "ホテルに伝票作成をお願いするのが心苦しい…頼みづらい",
+          "ホテルに断られたらどうしよう",
+          "支払いはお客様に現金で？そもそも持っているか不安",
+          "お客様ごとに配送業者を探して見積・申込する手間",
+          "遅延・紛失の問い合わせを旅行者本人に任せるとクレームの元",
+          "旅程変更のたびに配送手配をやり直し",
+          "「手ぶら観光」を商品化したいが、手配オペが重くて出せない",
+        ],
+        solve:
+          "旅程データを送るだけ。伝票作成もホテル交渉も不要。費用は旅行代金に組込み／月次・カード決済で、追跡と異常検知まで一元管理します。",
+      },
+      {
+        icon: "hotel",
+        name: "ホテル",
+        role: "預かる側",
+        items: [
+          "配送手配は、できれば各自でやってほしい",
+          "チェックアウト後の繁忙時間に伝票の代筆は困る",
+          "送り先ホテルへ確認電話をしなければならない",
+          "宅配業者の手配をしなければならない",
+          "大型ホテルはクロークに荷物が溢れ、管理が大変",
+          "外国語での配送説明・対応が負担",
+          "伝票の書き間違い・住所ミスの責任リスク",
+        ],
+        solve:
+          "送り状は発行済みで届くので代筆はゼロ。集荷手配・宛先ホテルの確認・追跡までBondExが担当。ホテルは「預かって渡すだけ」です。",
+      },
+      {
+        icon: "traveler",
+        name: "旅行者",
+        role: "受け取る側",
+        items: [
+          "そもそも「荷物を送る」という発想がない",
+          "届かなかったら？母国のように遅れるのでは…と不安",
+          "日本の配送スピードを知らない",
+          "時間指定できるのは世界でもほぼ日本だけ、と知らない",
+          "日本の物流会社名を知らず、信用してよいか分からない",
+          "伝票も追跡も日本語で、言葉の壁がある",
+          "本当は大きな荷物を持って観光したくない",
+        ],
+        solve:
+          "予約時点で旅程に組込み済み。多言語バウチャー＋QR追跡と佐川・ヤマトの日本品質で状況も配達も安心。異常はBondExが検知・対応します。",
+      },
+    ],
+    closer: {
+      pre: "代理店・ホテル・旅行者。3者すべての「困った」が、",
+      hl: "BondEx なら「渡すだけ」",
+      post: "に変わります。",
+    },
+  },
   sample: {
     eyebrow: "実物イメージ",
     heading: "実際に発行されるバウチャー",
@@ -260,14 +345,10 @@ const ja: LandingMessages = {
   },
   carriers: {
     eyebrow: "配送ネットワーク",
-    heading: { first: "日本最大級の配送網で、", second: "確実にお届け。" },
-    body: "実際の配送は佐川急便・ヤマト運輸が担います。BondEx は両社への集荷手配・送り状作成を代行する取次です。",
-    stats: [
-      { value: "35億個超", label: "両社の年間取扱個数" },
-      { value: "47", label: "全国すべての都道府県をカバー" },
-      { value: "翌日〜", label: "標準の配達スピード" },
-    ],
-    footnote: "※取扱個数は佐川急便・ヤマト運輸の公表値に基づく（2023〜2024年度）。",
+    heading: { first: "最適な配送業者を、", second: "BondExが選んでお届け。" },
+    body: "BondEx は自社便を持ちません。区間・お荷物・お届け条件に応じて、佐川急便・ヤマト運輸など最適な配送業者を選定し、集荷手配・送り状作成を代行します。",
+    stats: [],
+    footnote: "",
   },
   difference: {
     eyebrow: "従来手配との違い",
@@ -341,13 +422,18 @@ const ja: LandingMessages = {
         head: "SSL 通信・権限限定・目的外利用なし",
         body: "旅程データはすべて SSL 通信、アクセスは業務担当者のみに限定。目的外利用はいたしません。",
       },
+      {
+        title: "精算",
+        head: "月末締め・翌月末払い",
+        body: "配送費は月末締め・翌月末払いのまとめ精算。クレジットカードで 1 個単位のお支払いも可能です。",
+      },
     ],
   },
   price: {
     eyebrow: "料金",
     heading: { first: "1 件単価、", second: "月次まとめ請求。" },
     intro:
-      "初期費用・月額費用はありません。送料は原則として均一単価でご案内し、正式な料金は取扱件数・配送条件を確認のうえ契約時に確定します。",
+      "荷物のサイズは測りません。1個いくらの均一料金なので、事前に費用が読めます。初期費用・月額費用はなし、月次まとめ請求。均一料金には、最適な配送業者への集荷手配・送り状発行・追跡・異常の検知対応・多言語バウチャー・サポートが含まれます。1個あたりの正式料金は、取扱件数・配送条件を確認のうえ契約時に確定します。",
     billingKicker: "Billing / 請求条件",
     billingHeading: "請求条件",
     billingBody:
@@ -389,7 +475,7 @@ const ja: LandingMessages = {
       },
       {
         q: "補償の範囲は?",
-        a: "実運送を担う物流業者の運送約款に完全に準じます。現在の提携宅配便で 1 個あたり上限 30 万円。BondEx 独自の追加補償はありません。",
+        a: "実運送を担う物流業者の運送約款に準じ、現在の提携宅配便で 1 個あたり上限 30 万円です。ただし、スーツケースの外装・キャスターを含む箇所の破損は補償の対象外となります(構造上、通常の配送でも生じ得るため)。また、すでに破損しているスーツケースは、お引き受けできない場合があります。",
       },
       {
         q: "運用中のサポート体制は?",
@@ -497,6 +583,11 @@ const en: LandingMessages = {
     photoTitle: "Guests move on, hands-free.",
     photoBody: "BondEx forwards their luggage hotel to hotel.",
     photoAlt: "A family traveling in Japan without carrying suitcases",
+  },
+  philosophy: {
+    eyebrow: "The BondEx philosophy",
+    body:
+      "For every bag you hand to BondEx, we keep a single source of truth — who sent it, when, where to, and by which carrier, plus its current status — and BondEx detects and handles any exception on our side.",
   },
   sample: {
     eyebrow: "Real example",
@@ -767,6 +858,11 @@ const es: LandingMessages = {
     photoBody: "BondEx reenvía su equipaje de hotel a hotel.",
     photoAlt: "Una familia viajando por Japón sin cargar maletas",
   },
+  philosophy: {
+    eyebrow: "La filosofía de BondEx",
+    body:
+      "De cada equipaje que nos confía, mantenemos un único registro central —quién lo envió, cuándo, a dónde y con qué transportista, además de su estado actual— y BondEx detecta y resuelve cualquier incidencia por su parte.",
+  },
   sample: {
     eyebrow: "Ejemplo real",
     heading: "Un voucher tal y como se emite",
@@ -1035,6 +1131,11 @@ const fr: LandingMessages = {
     photoTitle: "Les voyageurs poursuivent leur route, les mains libres.",
     photoBody: "BondEx réexpédie leurs bagages d'hôtel en hôtel.",
     photoAlt: "Une famille voyageant au Japon sans porter de valises",
+  },
+  philosophy: {
+    eyebrow: "La philosophie BondEx",
+    body:
+      "Pour chaque bagage que vous nous confiez, nous centralisons tout — qui l'a envoyé, quand, vers où et avec quel transporteur, ainsi que son statut actuel — et BondEx détecte et traite toute anomalie de son côté.",
   },
   sample: {
     eyebrow: "Exemple réel",
@@ -1305,6 +1406,11 @@ const zh: LandingMessages = {
     photoBody: "BondEx 将行李在酒店之间转运。",
     photoAlt: "一家人无需拖行李箱畅游日本",
   },
+  philosophy: {
+    eyebrow: "BondEx 的理念",
+    body:
+      "对于贵司交给 BondEx 的每一件行李，我们统一管理：由谁、于何时、寄往何处、通过哪家配送公司寄出，以及当前状态；一旦出现异常，均由 BondEx 主动检测并处理。",
+  },
   sample: {
     eyebrow: "实物示例",
     heading: "与实际开具一致的兑换券",
@@ -1573,6 +1679,11 @@ const it: LandingMessages = {
     photoTitle: "Gli ospiti proseguono, a mani libere.",
     photoBody: "BondEx inoltra i loro bagagli di hotel in hotel.",
     photoAlt: "Una famiglia in viaggio in Giappone senza portare valigie",
+  },
+  philosophy: {
+    eyebrow: "La filosofia di BondEx",
+    body:
+      "Per ogni bagaglio che ci affidate, manteniamo un unico registro centrale — chi l'ha spedito, quando, dove e con quale corriere, oltre allo stato attuale — e BondEx rileva e gestisce ogni anomalia dal proprio lato.",
   },
   sample: {
     eyebrow: "Esempio reale",

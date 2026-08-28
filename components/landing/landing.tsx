@@ -13,11 +13,22 @@ import {
   Ban,
   Menu,
   X,
+  ClipboardList,
+  Hotel,
+  Luggage,
+  Receipt,
 } from "lucide-react"
 import { messages, type Locale } from "@/lib/landing-messages"
 import { LangSwitcher } from "./lang-switcher"
 
 // ナビゲーションのハッシュリンクは両言語で共通 (#function 等)。ラベルのみ辞書化。
+// 3者の困りごとセクションのペルソナ用アイコン (細線・BondExレッド)。
+function PainIcon({ kind }: { kind: "agency" | "hotel" | "traveler" }) {
+  // サイト全体で使う lucide に統一 (手配=ClipboardList / ホテル=Hotel / 旅行者=Luggage)。
+  const Icon = kind === "agency" ? ClipboardList : kind === "hotel" ? Hotel : Luggage
+  return <Icon className="w-[22px] h-[22px]" strokeWidth={1.8} aria-hidden />
+}
+
 const NAV_HREFS = ["#function", "#difference", "#deliverables", "#trust", "#price", "#faq"] as const
 
 // 導入相談の遷移先。BondEx 専用のオンサイトフォーム (/contact) に統一。
@@ -641,6 +652,91 @@ export function Landing({ lang }: { lang: Locale }) {
         </div>
       </section>
 
+      {/* ═══════════════ BondEx の哲学 (一元管理と異常検知) ═══════════════ */}
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
+        <div className="max-w-3xl mx-auto">
+          <div className="relative rounded-2xl border border-[#E5E7EB] bg-white p-7 sm:p-10 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <span className="absolute left-0 top-7 bottom-7 w-1 rounded-full bg-[#C8102E]" aria-hidden />
+            <p className="pl-5 text-[11px] font-semibold tracking-[0.2em] uppercase text-[#C8102E] mb-3">
+              {t.philosophy.eyebrow}
+            </p>
+            <p className="pl-5 text-[18px] sm:text-[21px] md:text-[25px] font-bold leading-[1.75] tracking-[0.01em] text-[#0F172A] text-balance">
+              {t.philosophy.body}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ 3者の困りごと → BondEx が解決 ═══════════════ */}
+      {t.pains && (
+        <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
+          <p className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.22em] uppercase text-[#C8102E] mb-3.5">
+            <span className="w-[22px] h-0.5 rounded-full bg-[#C8102E]" aria-hidden />
+            {t.pains.eyebrow}
+          </p>
+          <h2 className="text-[23px] md:text-[32px] font-extrabold leading-[1.35] tracking-[0.01em] text-[#0F172A] text-balance mb-3">
+            {t.pains.title.pre}
+            <span className="text-[#C8102E]">{t.pains.title.hl}</span>
+            {t.pains.title.post}
+          </h2>
+          <p className="text-[15px] text-[#47536A] max-w-3xl leading-relaxed mb-7">{t.pains.lead}</p>
+
+          {/* 3枚の上に共通で1回だけ出す問いかけ (各カードの重複見出しを廃止) */}
+          <div className="flex items-center gap-3 mb-5">
+            <span className="inline-flex items-center gap-2 text-[13px] md:text-[15px] font-extrabold text-[#0F172A]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#C8102E]" aria-hidden />
+              こんな「困った」、ありませんか?
+            </span>
+            <span className="flex-1 h-px bg-gradient-to-r from-[#E2E6EC] to-transparent" aria-hidden />
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-5">
+            {t.pains.personas.map((p) => (
+              <article
+                key={p.name}
+                className="flex flex-col bg-white border border-[#E7EAEF] rounded-[18px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.05)]"
+              >
+                <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+                  <span className="flex-none w-[42px] h-[42px] rounded-xl grid place-items-center bg-[#F1F3F7] text-[#C8102E] border border-[#E7EAEF]">
+                    <PainIcon kind={p.icon} />
+                  </span>
+                  <div>
+                    <div className="text-[16px] font-extrabold text-[#0F172A] leading-tight">{p.name}</div>
+                    <div className="text-[12px] text-[#6B7686] mt-0.5">{p.role}</div>
+                  </div>
+                </div>
+                <ul className="flex-1 flex flex-col gap-2 px-5 pt-1 pb-5">
+                  {p.items.map((it) => (
+                    <li key={it} className="relative pl-6 text-[13.5px] leading-[1.6] text-[#47536A]">
+                      <span className="absolute left-1 top-[9px] w-[11px] h-0.5 rounded-full bg-[#6B7686]/60" aria-hidden />
+                      {it}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-auto bg-[#FDF3F5] border-t border-[#F5D9DF] px-5 pt-[18px] pb-5 md:min-h-[152px]">
+                  <div className="inline-flex items-center gap-1.5 text-[12px] font-extrabold text-[#C8102E] mb-2">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                    BondEx なら
+                  </div>
+                  <p className="text-[13.5px] leading-[1.72] text-[#0F172A] font-medium">{p.solve}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-8 flex items-center gap-4 bg-white border border-[#E7EAEF] rounded-2xl px-6 py-6 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.05)]">
+            <span className="flex-none w-1 self-stretch rounded bg-[#C8102E]" aria-hidden />
+            <p className="text-[15px] md:text-[19px] font-extrabold leading-[1.7] tracking-[0.01em] text-[#0F172A]">
+              {t.pains.closer.pre}
+              <span className="text-[#C8102E]">{t.pains.closer.hl}</span>
+              {t.pains.closer.post}
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* ═══════════════ 実物サンプル (信頼材料は早く見せる) ═══════════════ */}
       <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
         <div className="max-w-3xl mx-auto">
@@ -736,22 +832,26 @@ export function Landing({ lang }: { lang: Locale }) {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-[#0F172A]/15 divide-y sm:divide-y-0 sm:divide-x divide-[#0F172A]/10">
-            {t.carriers.stats.map((stat, i) => (
-              <div key={i} className="py-8 sm:py-10 sm:px-8 sm:first:pl-0 sm:last:pr-0">
-                <p className="text-4xl md:text-[44px] font-bold tracking-tight text-[#0F172A] leading-none">
-                  {stat.value}
-                </p>
-                <p className="mt-3 text-[13px] md:text-[14px] text-[#64748B] leading-[1.7]">
-                  {stat.label}
-                </p>
-              </div>
-            ))}
-          </div>
+          {t.carriers.stats.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-[#0F172A]/15 divide-y sm:divide-y-0 sm:divide-x divide-[#0F172A]/10">
+              {t.carriers.stats.map((stat, i) => (
+                <div key={i} className="py-8 sm:py-10 sm:px-8 sm:first:pl-0 sm:last:pr-0">
+                  <p className="text-4xl md:text-[44px] font-bold tracking-tight text-[#0F172A] leading-none">
+                    {stat.value}
+                  </p>
+                  <p className="mt-3 text-[13px] md:text-[14px] text-[#64748B] leading-[1.7]">
+                    {stat.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <p className="mt-8 text-[12px] text-[#94A3B8] leading-[1.8]">
-            {t.carriers.footnote}
-          </p>
+          {t.carriers.footnote && (
+            <p className="mt-8 text-[12px] text-[#94A3B8] leading-[1.8]">
+              {t.carriers.footnote}
+            </p>
+          )}
         </div>
       </section>
 
@@ -1022,18 +1122,18 @@ export function Landing({ lang }: { lang: Locale }) {
             <Eyebrow en="TRUST" label={t.trust.eyebrow} />
             <SectionH2 first={t.trust.heading.first} second={t.trust.heading.second} />
           </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            {[
-              { icon: Shield, anchor: "#faq" },
-              { icon: Handshake, anchor: "#faq" },
-              { icon: Lock, anchor: "#faq" },
-            ].map((c, i) => {
-              const Icon = c.icon
-              const card = t.trust.cards[i]
+          <div
+            className={`grid gap-5 ${
+              t.trust.cards.length >= 4 ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-3"
+            }`}
+          >
+            {t.trust.cards.map((card, i) => {
+              // アイコンはカード順に対応 (補償=Shield / 取次=Handshake / 個人情報=Lock / 精算=Receipt)。
+              const Icon = [Shield, Handshake, Lock, Receipt][i] ?? Shield
               return (
                 <a
                   key={i}
-                  href={c.anchor}
+                  href="#faq"
                   className="rounded-2xl bg-white border border-[#E5E7EB] p-7 hover:border-[#C8102E]/30 hover:shadow-[0_4px_16px_rgba(200,16,46,0.06)] transition-all block group"
                 >
                   <div className="w-11 h-11 rounded-full bg-[#C8102E]/8 flex items-center justify-center mb-5">

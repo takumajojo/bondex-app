@@ -60,6 +60,12 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       return { charged: false, skipped: true, reason: "already_charged" }
     }
 
+    // 旅行中の「追加」区間は集荷時の自動課金対象外。
+    // カード=Stripe Checkout の決済リンク、請求書=月次請求で清算する(二重清算防止)。
+    if (shipment.is_addition) {
+      return { charged: false, skipped: true, reason: "addition_settled_separately" }
+    }
+
     const amountYen = shipment.amount_yen ?? 0
     if (!Number.isFinite(amountYen) || amountYen <= 0) {
       return { charged: false, skipped: true, reason: "no_amount" }
