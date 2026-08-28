@@ -30,6 +30,13 @@ import {
   type NoteTarget,
   type HotelRoute,
 } from "@/lib/hotel-notification"
+import {
+  labelMailStatus,
+  labelMailApplies,
+  todayJst,
+  LABEL_MAIL_LEAD_BUSINESS_DAYS,
+  type LabelMailUrgency,
+} from "@/lib/label-delivery"
 
 type ShipmentStatus =
   | "requested"
@@ -62,6 +69,8 @@ interface Shipment {
   label_to: string | null
   label_split: boolean | null
   label_sender: string | null
+  /** 送り状(紙)を郵送した日時。null の間は送付アラートの対象。 */
+  label_sent_at: string | null
   recipient: string
   suitcase_count: number
   amount_yen: number
@@ -111,6 +120,87 @@ function todayYmd(): string {
 // 遅延判定 — 日付とステータスから導出（新しいデータは不要）。
 //   集荷遅れ: 発送日を過ぎても未集荷 (requested / pending / issued のまま)
 //   配送遅れ: 到着予定日を過ぎても未配達 (picked_up / in_transit のまま)
+/**
+ * 送り状(紙)の郵送アラート。発送日の5営業日前を過ぎたら「送ってください」を出し続ける。
+ * 「郵送済み」にするまで消えない = 作業の取りこぼしを構造的に防ぐ。
+ */
+function labelMailUrgency(s: {
+  shipment_date: string
+  label_sent_at: string | null
+}): LabelMailUrgency {
+  return labelMailStatus({
+    shipmentDate: s.shipment_date,
+    sentAt: s.label_sent_at,
+    today: todayJst(),
+  }).urgency
+}
+
+function isLabelMailPending(s: {
+  shipment_date: string
+  label_sent_at: string | null
+  status: ShipmentStatus
+}): boolean {
+  // 集荷済み以降は送り状が役目を果たしているので対象外
+  if (!labelMailApplies(s.status)) return false
+  const u = labelMailUrgency(s)
+  return u === "due" || u === "urgent" || u === "overdue"
+}
+
+/** 郵送期限のバッジ。郵送済みにするまで消えない。 */
+function LabelMailBadge({
+  shipment,
+  onSent,
+  busy,
+}: {
+  shipment: { shipment_date: string; label_sent_at: string | null; status: ShipmentStatus }
+  onSent: () => void
+  busy: boolean
+}) {
+  if (!labelMailApplies(shipment.status)) return null
+  const st = labelMailStatus({
+    shipmentDate: shipment.shipment_date,
+    sentAt: shipment.label_sent_at,
+    today: todayJst(),
+  })
+  if (st.urgency === "sent") {
+    return (
+      <p className="mt-1.5 text-[10px] text-emerald-700">
+        送り状 郵送済み（{(shipment.label_sent_at || "").slice(0, 10)}）
+      </p>
+    )
+  }
+  if (st.urgency === "ok") {
+    return (
+      <p className="mt-1.5 text-[10px] text-muted-foreground">
+        送り状 投函期限 {st.deadline}（あと{st.businessDaysLeft}営業日）
+      </p>
+    )
+  }
+  const tone =
+    st.urgency === "due"
+      ? "border-amber-300 bg-amber-50 text-amber-900"
+      : "border-red-300 bg-red-50 text-red-900"
+  const text =
+    st.urgency === "due"
+      ? `本日中に送り状を投函（期限 ${st.deadline}）`
+      : st.urgency === "urgent"
+        ? `早急手配 — 投函期限を${Math.abs(st.businessDaysLeft ?? 0)}営業日超過`
+        : `期限超過 — 発送日を過ぎています`
+  return (
+    <div className={`mt-1.5 rounded-md border px-1.5 py-1 ${tone}`}>
+      <p className="text-[10px] font-bold leading-tight">{text}</p>
+      <button
+        type="button"
+        onClick={onSent}
+        disabled={busy}
+        className="mt-1 rounded border border-current px-1.5 py-0.5 text-[9px] disabled:opacity-50"
+      >
+        郵送済みにする
+      </button>
+    </div>
+  )
+}
+
 function deriveDelay(s: {
   shipment_date: string
   expected_arrival: string | null
@@ -265,12 +355,22 @@ export default function DashboardPage() {
   const [statusTarget, setStatusTarget] = useState<Shipment | null>(null)
   // 行の「⋯」操作メニュー (開いている行の id)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  // 送り状の「郵送済み」更新中の区間 ID (二重クリック防止)
+  const [labelBusyId, setLabelBusyId] = useState("")
   // 「状態の一望」用スナップショット (フィルタ非依存・全件)。要対応の集計と遅延の判定に使う。
   const [board, setBoard] = useState<Shipment[]>([])
   const [pendingAgencies, setPendingAgencies] = useState(0)
   // 要対応タイルからのクライアント側フィルタ (サーバー側の status フィルタとは別レイヤ)。
   const [viewFilter, setViewFilter] = useState<
-    "" | "delay-pickup" | "delay-delivery" | "charge-failed" | "failed" | "pay-paid" | "pay-unpaid"
+    | ""
+    | "delay-pickup"
+    | "delay-delivery"
+    | "charge-failed"
+    | "failed"
+    | "pay-paid"
+    | "pay-unpaid"
+    // 送り状(紙)の郵送待ち
+    | "label-mail"
   >("")
   // 決済再試行の実行中 shipment id
   const [chargingId, setChargingId] = useState<string | null>(null)
@@ -336,6 +436,27 @@ export default function DashboardPage() {
       setItems(before)
       setError(err instanceof Error ? err.message : "Update failed")
     }
+  }
+
+  // 送り状(紙)を郵送したことを記録する。これが入るまで要対応から消えない。
+  const markLabelSent = async (it: Shipment) => {
+    setLabelBusyId(it.id)
+    const stamp = new Date().toISOString()
+    const before = items
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, label_sent_at: stamp } : x)))
+    try {
+      const res = await fetch("/api/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: it.id, labelMailed: true }),
+      })
+      if (!res.ok) throw new Error("更新に失敗しました")
+      void loadBoard()
+    } catch (err) {
+      setItems(before)
+      setError(err instanceof Error ? err.message : "更新に失敗しました")
+    }
+    setLabelBusyId("")
   }
 
   // 課金失敗の区間を手動で再試行する (chargeShipmentIfDue を operator 権限で叩く)。
@@ -497,12 +618,18 @@ export default function DashboardPage() {
     const delivery = board.filter((s) => deriveDelay(s) === "delivery").length
     const chargeFailed = board.filter(isChargeFailed).length
     const failed = board.filter((s) => s.status === "failed").length
+    // 送り状(紙)の郵送。キャンセル済みは対象外。
+    const mail = board.filter(isLabelMailPending)
+    const mailUrgent = mail.filter((s) => labelMailUrgency(s) !== "due").length
     return {
       pickup,
       delivery,
       chargeFailed,
       failed,
-      total: pendingAgencies + pickup + delivery + chargeFailed + failed,
+      mail: mail.length,
+      mailUrgent,
+      total:
+        pendingAgencies + pickup + delivery + chargeFailed + failed + mail.length,
     }
   }, [board, pendingAgencies])
 
@@ -511,8 +638,10 @@ export default function DashboardPage() {
   const rows = useMemo(() => {
     if (!viewFilter) return items
     return board.filter((s) =>
-      viewFilter === "delay-pickup"
-        ? deriveDelay(s) === "pickup"
+      viewFilter === "label-mail"
+        ? isLabelMailPending(s)
+        : viewFilter === "delay-pickup"
+          ? deriveDelay(s) === "pickup"
         : viewFilter === "delay-delivery"
           ? deriveDelay(s) === "delivery"
           : viewFilter === "charge-failed"
@@ -618,6 +747,40 @@ export default function DashboardPage() {
               )}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {/* 送り状(紙)の郵送 — 届かないと旅行者が荷物を出せないため最優先で出す。 */}
+              {attention.mail > 0 && (
+                <button
+                  onClick={() => setViewFilter(viewFilter === "label-mail" ? "" : "label-mail")}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "label-mail"
+                      ? "border-red-500 bg-red-100 ring-1 ring-red-400"
+                      : attention.mailUrgent > 0
+                        ? "border-red-300 bg-red-50 hover:border-red-500"
+                        : "border-amber-300 bg-amber-50 hover:border-amber-500"
+                  }`}
+                >
+                  <p
+                    className={`text-2xl font-semibold tabular-nums ${
+                      attention.mailUrgent > 0 ? "text-red-800" : "text-amber-800"
+                    }`}
+                  >
+                    {attention.mail}
+                  </p>
+                  <p
+                    className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${
+                      attention.mailUrgent > 0 ? "text-red-800" : "text-amber-800"
+                    }`}
+                  >
+                    <AlertTriangle className="w-3 h-3" strokeWidth={2} />
+                    送り状を郵送
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {attention.mailUrgent > 0
+                      ? `うち${attention.mailUrgent}件は早急手配`
+                      : `発送${LABEL_MAIL_LEAD_BUSINESS_DAYS}営業日前`}
+                  </p>
+                </button>
+              )}
               {pendingAgencies > 0 && (
                 <Link
                   href="/operator/agencies"
@@ -1022,7 +1185,9 @@ export default function DashboardPage() {
                         <p className="text-[10px] text-muted-foreground">↓</p>
                         <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} />
                         <HotelNotifyBadges shipment={it} />
-                        {/* 送り状(紙)をどこへ・誰の名義で郵送するか。封筒を用意するのに必要。 */}
+                        {/* 送り状(紙)の郵送期限。5営業日前を過ぎたら消えない警告を出す。 */}
+                        <LabelMailBadge shipment={it} onSent={() => void markLabelSent(it)} busy={labelBusyId === it.id} />
+                        {/* どこへ・誰の名義で郵送するか。封筒を用意するのに必要。 */}
                         <p className="mt-1.5 text-[10px] text-muted-foreground">
                           送り状:{" "}
                           <span className="text-foreground">

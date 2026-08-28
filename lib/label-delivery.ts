@@ -188,3 +188,90 @@ export const LABEL_SENDER_LABEL_EN: Record<LabelSender, string> = {
   agency: "Your company",
   other: "Another company",
 }
+
+// ---------------------------------------------------------------------------
+// 郵送アラート — 「送り状を送る」作業を落とさないための期限判定
+// ---------------------------------------------------------------------------
+
+import { businessDaysBefore, businessDaysBetween, toYmd } from "./business-days"
+
+/** 発送日の何営業日前までに投函するか。届かなければ旅行者が荷物を出せない。 */
+export const LABEL_MAIL_LEAD_BUSINESS_DAYS = 5
+
+export type LabelMailUrgency =
+  /** まだ期限まで余裕がある */
+  | "ok"
+  /** 5営業日前に到達。今日から準備して送る */
+  | "due"
+  /** 5営業日を切っている(直前予約含む)。早急手配 */
+  | "urgent"
+  /** 発送日を過ぎている。もう間に合わない */
+  | "overdue"
+  /** 郵送済み */
+  | "sent"
+
+export type LabelMailStatus = {
+  urgency: LabelMailUrgency
+  /** 投函の期限 (YYYY-MM-DD)。発送日の5営業日前。 */
+  deadline: string | null
+  /** 期限まであと何営業日か。負なら超過。 */
+  businessDaysLeft: number | null
+}
+
+/**
+ * 送り状をいつまでに投函すべきかを判定する。
+ *
+ * 期限 = 発送日の 5 営業日前。
+ *  - 期限より前          → ok
+ *  - 期限当日            → due   (今日送る)
+ *  - 期限を過ぎ発送日前   → urgent(直前予約。早急手配)
+ *  - 発送日を過ぎている   → overdue
+ *  - label_sent_at あり  → sent
+ *
+ * today は呼び出し側から渡す (サーバー/クライアントで時刻源を揃えるため)。
+ */
+export function labelMailStatus(input: {
+  shipmentDate: string | null
+  sentAt: string | null
+  today: string
+}): LabelMailStatus {
+  if (input.sentAt) return { urgency: "sent", deadline: null, businessDaysLeft: null }
+  const ship = (input.shipmentDate || "").trim()
+  if (!ship) return { urgency: "ok", deadline: null, businessDaysLeft: null }
+
+  const deadline = businessDaysBefore(ship, LABEL_MAIL_LEAD_BUSINESS_DAYS)
+  if (!deadline) return { urgency: "ok", deadline: null, businessDaysLeft: null }
+
+  const left = businessDaysBetween(input.today, deadline)
+  // 発送日そのものを過ぎていたら手遅れ (暦日で比較する)
+  if (input.today > ship) {
+    return { urgency: "overdue", deadline, businessDaysLeft: left }
+  }
+  if (left === null) return { urgency: "ok", deadline, businessDaysLeft: null }
+  if (left > 0) return { urgency: "ok", deadline, businessDaysLeft: left }
+  if (left === 0) return { urgency: "due", deadline, businessDaysLeft: 0 }
+  return { urgency: "urgent", deadline, businessDaysLeft: left }
+}
+
+/** 今日 (JST) を YYYY-MM-DD で返す。サーバーが UTC でも日本時間で判定するため。 */
+export function todayJst(now: Date = new Date()): string {
+  return toYmd(new Date(now.getTime() + 9 * 60 * 60 * 1000))
+}
+
+/**
+ * 送り状の郵送アラートを出すべきステータスか。
+ * 集荷済み以降 (picked_up / in_transit / delivered) は送り状が既に役目を果たしているので
+ * 対象外。キャンセルも当然対象外。
+ * 「郵送済みにする」を押し忘れた過去分で毎朝鳴り続けるのを防ぐ。
+ */
+export function labelMailApplies(status: string | null | undefined): boolean {
+  return status === "requested" || status === "pending" || status === "issued" || status === "failed"
+}
+
+export const LABEL_URGENCY_LABEL_JA: Record<LabelMailUrgency, string> = {
+  ok: "余裕あり",
+  due: "本日投函",
+  urgent: "早急手配",
+  overdue: "期限超過",
+  sent: "郵送済み",
+}

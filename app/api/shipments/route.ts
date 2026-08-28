@@ -92,6 +92,7 @@ export async function PATCH(req: NextRequest) {
     driveUrl?: unknown
     pickupHotelNotified?: unknown
     guestHotelNotified?: unknown
+    labelMailed?: unknown
   }
   try {
     body = await req.json()
@@ -115,6 +116,21 @@ export async function PATCH(req: NextRequest) {
       out.guestAt = r.at
     }
     return NextResponse.json({ ok: true, ...out })
+  }
+
+  // 送り状(紙)を郵送した/取り消した記録。これが入るまでアラートが消えない設計。
+  if (body.labelMailed !== undefined) {
+    const id = typeof body.id === "string" ? body.id : ""
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
+    if (typeof body.labelMailed !== "boolean") {
+      return NextResponse.json({ error: "labelMailed must be boolean" }, { status: 400 })
+    }
+    const sb = getSupabase()
+    if (!sb) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
+    const at = body.labelMailed ? new Date().toISOString() : null
+    const { error } = await sb.from("shipments").update({ label_sent_at: at }).eq("id", id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, labelSentAt: at })
   }
 
   // 予約単位の Drive URL 登録 (id 不要・booking_id で全区間更新)

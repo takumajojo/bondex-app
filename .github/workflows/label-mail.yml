@@ -1,0 +1,39 @@
+name: Label-mail daily alert
+
+# 送り状(紙)の郵送漏れ防止アラート。投函期限(発送日の5営業日前)を迎えた／過ぎた区間を
+# 毎朝まとめて BondEx 運用へ通知する (/api/cron/label-mail)。
+# 送り状が届かないと旅行者が当日ホテルで荷物を出せないため、画面の「要対応」だけに頼らず
+# メールでも必ず出す。運営が「郵送済みにする」を押すまで毎朝鳴り続ける。
+#
+# 事前設定 (issue-due / sync-tracking と共通):
+#   Repository → Settings → Secrets and variables → Actions
+#   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
+
+on:
+  schedule:
+    # 毎日 23:05 UTC = 08:05 JST (発行ダイジェストの5分前 = 朝イチで先に手配できる)
+    - cron: "5 23 * * *"
+  workflow_dispatch: {}  # 手動実行 (Actions タブから即実行)
+
+jobs:
+  label-mail:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx label-mail alert endpoint
+        run: |
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2"
+            response=$(curl -s -w "\n%{http_code}" --max-time 90 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              https://bondex.express/api/cron/label-mail)
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::label-mail alert failed after 2 attempts"
+          exit 1
