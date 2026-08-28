@@ -59,6 +59,8 @@ export type LabelDelivery = {
   sender: LabelSender
   /** other の手入力値。agency では発送時点のスナップショットを入れる。 */
   senderInfo: ResidenceAddress | null
+  /** 投函期限 (YYYY-MM-DD)。null = 未指定 (旧予約)。 */
+  mailDue: string | null
 }
 
 export const DEFAULT_LABEL_DELIVERY: LabelDelivery = {
@@ -66,6 +68,7 @@ export const DEFAULT_LABEL_DELIVERY: LabelDelivery = {
   split: false,
   sender: "bondex",
   senderInfo: null,
+  mailDue: null,
 }
 
 function asLabelTo(v: unknown): LabelTo {
@@ -82,12 +85,17 @@ export function cleanLabelDelivery(raw: unknown): LabelDelivery {
   const o = raw as Record<string, unknown>
   const to = asLabelTo(o.to ?? o.label_to)
   const sender = asLabelSender(o.sender ?? o.label_sender)
+  const rawDue = o.mailDue ?? o.label_mail_due
   return {
     to,
     // 分送は「ホテル宛」のときだけ意味を持つ。代理店宛なら常に1箇所。
     split: to === "hotel" && Boolean(o.split ?? o.label_split),
     sender,
     senderInfo: cleanResidence(o.senderInfo ?? o.label_sender_info),
+    mailDue:
+      typeof rawDue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDue.trim())
+        ? rawDue.trim()
+        : null,
   }
 }
 
@@ -219,9 +227,18 @@ export type LabelMailStatus = {
 }
 
 /**
+ * 依頼時に選ばれなかった場合の既定の投函期限 = 発送日の5営業日前。
+ * 新規依頼フォームの初期値にも使う。
+ */
+export function defaultLabelMailDue(shipmentDate: string): string | null {
+  return businessDaysBefore(shipmentDate, LABEL_MAIL_LEAD_BUSINESS_DAYS)
+}
+
+/**
  * 送り状をいつまでに投函すべきかを判定する。
  *
- * 期限 = 発送日の 5 営業日前。
+ * 期限 = 依頼時に選ばれた dueDate。
+ *  - dueDate が null    → 対象外 (この機能より前の旧予約。アラートを出さない・谷口さん 2026-08-28)
  *  - 期限より前          → ok
  *  - 期限当日            → due   (今日送る)
  *  - 期限を過ぎ発送日前   → urgent(直前予約。早急手配)
@@ -234,12 +251,14 @@ export function labelMailStatus(input: {
   shipmentDate: string | null
   sentAt: string | null
   today: string
+  /** 依頼時に選んだ投函期限 (shipments.label_mail_due)。null = 旧予約で対象外。 */
+  dueDate: string | null
 }): LabelMailStatus {
   if (input.sentAt) return { urgency: "sent", deadline: null, businessDaysLeft: null }
   const ship = (input.shipmentDate || "").trim()
   if (!ship) return { urgency: "ok", deadline: null, businessDaysLeft: null }
 
-  const deadline = businessDaysBefore(ship, LABEL_MAIL_LEAD_BUSINESS_DAYS)
+  const deadline = (input.dueDate || "").trim() || null
   if (!deadline) return { urgency: "ok", deadline: null, businessDaysLeft: null }
 
   const left = businessDaysBetween(input.today, deadline)

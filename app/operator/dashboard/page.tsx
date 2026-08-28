@@ -30,13 +30,7 @@ import {
   type NoteTarget,
   type HotelRoute,
 } from "@/lib/hotel-notification"
-import {
-  labelMailStatus,
-  labelMailApplies,
-  todayJst,
-  LABEL_MAIL_LEAD_BUSINESS_DAYS,
-  type LabelMailUrgency,
-} from "@/lib/label-delivery"
+import { labelMailStatus, labelMailApplies, todayJst, type LabelMailUrgency } from "@/lib/label-delivery"
 
 type ShipmentStatus =
   | "requested"
@@ -71,6 +65,8 @@ interface Shipment {
   label_sender: string | null
   /** 送り状(紙)を郵送した日時。null の間は送付アラートの対象。 */
   label_sent_at: string | null
+  /** 依頼時に選んだ投函期限。null = 旧予約 (アラート対象外)。 */
+  label_mail_due: string | null
   recipient: string
   suitcase_count: number
   amount_yen: number
@@ -127,17 +123,20 @@ function todayYmd(): string {
 function labelMailUrgency(s: {
   shipment_date: string
   label_sent_at: string | null
+  label_mail_due: string | null
 }): LabelMailUrgency {
   return labelMailStatus({
     shipmentDate: s.shipment_date,
     sentAt: s.label_sent_at,
     today: todayJst(),
+    dueDate: s.label_mail_due,
   }).urgency
 }
 
 function isLabelMailPending(s: {
   shipment_date: string
   label_sent_at: string | null
+  label_mail_due: string | null
   status: ShipmentStatus
 }): boolean {
   // 集荷済み以降は送り状が役目を果たしているので対象外
@@ -152,7 +151,12 @@ function LabelMailBadge({
   onSent,
   busy,
 }: {
-  shipment: { shipment_date: string; label_sent_at: string | null; status: ShipmentStatus }
+  shipment: {
+    shipment_date: string
+    label_sent_at: string | null
+    label_mail_due: string | null
+    status: ShipmentStatus
+  }
   onSent: () => void
   busy: boolean
 }) {
@@ -161,6 +165,7 @@ function LabelMailBadge({
     shipmentDate: shipment.shipment_date,
     sentAt: shipment.label_sent_at,
     today: todayJst(),
+    dueDate: shipment.label_mail_due,
   })
   if (st.urgency === "sent") {
     return (
@@ -170,9 +175,14 @@ function LabelMailBadge({
     )
   }
   if (st.urgency === "ok") {
+    // 期限なし = この機能より前の旧予約。無視してよい (谷口さん 2026-08-28)
+    if (!st.deadline) return null
     return (
-      <p className="mt-1.5 text-[10px] text-muted-foreground">
-        送り状 投函期限 {st.deadline}（あと{st.businessDaysLeft}営業日）
+      <p className="mt-1 text-[11px] font-medium text-foreground">
+        {st.deadline} までに投函
+        <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+          （あと{st.businessDaysLeft}営業日）
+        </span>
       </p>
     )
   }
@@ -182,9 +192,9 @@ function LabelMailBadge({
       : "border-red-300 bg-red-50 text-red-900"
   const text =
     st.urgency === "due"
-      ? `本日中に送り状を投函（期限 ${st.deadline}）`
+      ? `本日 ${st.deadline} までに投函`
       : st.urgency === "urgent"
-        ? `早急手配 — 投函期限を${Math.abs(st.businessDaysLeft ?? 0)}営業日超過`
+        ? `早急手配 — 期限 ${st.deadline} を${Math.abs(st.businessDaysLeft ?? 0)}営業日超過`
         : `期限超過 — 発送日を過ぎています`
   return (
     <div className={`mt-1.5 rounded-md border px-1.5 py-1 ${tone}`}>
@@ -775,9 +785,7 @@ export default function DashboardPage() {
                     送り状を郵送
                   </p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    {attention.mailUrgent > 0
-                      ? `うち${attention.mailUrgent}件は早急手配`
-                      : `発送${LABEL_MAIL_LEAD_BUSINESS_DAYS}営業日前`}
+                    {attention.mailUrgent > 0 ? `うち${attention.mailUrgent}件は早急手配` : "投函期限が来ています"}
                   </p>
                 </button>
               )}
@@ -1181,7 +1189,17 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className="p-3 align-top max-w-[190px]">
-                        {/* 郵送の期限バッジ + 印刷リンク + 宛先。ここを見れば封筒の準備が完結する */}
+                        {/* 1行目 = どこへ送るか / 2行目 = いつまでに送るか。封筒の準備がここで完結する */}
+                        <p className="text-xs font-bold text-foreground">
+                          {it.label_to === "hotel" ? "ホテル宛" : "会社宛"}
+                          <span className="ml-1 font-normal text-[10px] text-muted-foreground">
+                            {it.label_to === "hotel"
+                              ? it.label_split
+                                ? `${it.from_hotel_ja || it.from_hotel}`
+                                : "最初のホテルへ一括"
+                              : it.agency || "代理店"}
+                          </span>
+                        </p>
                         <LabelMailBadge shipment={it} onSent={() => void markLabelSent(it)} busy={labelBusyId === it.id} />
                         {it.yamato_label_url && (
                           <a
@@ -1203,12 +1221,7 @@ export default function DashboardPage() {
                           </a>
                         )}
                         <p className="mt-1 text-[10px] text-muted-foreground">
-                          {it.label_to === "hotel"
-                            ? it.label_split
-                              ? "各ホテルへ分送"
-                              : "最初のホテルへ"
-                            : "代理店宛"}
-                          {" ／ "}
+                          差出人:{" "}
                           {it.label_sender === "agency"
                             ? "代理店名義"
                             : it.label_sender === "other"

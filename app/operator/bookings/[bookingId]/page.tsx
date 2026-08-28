@@ -77,6 +77,7 @@ type Row = {
   label_sender: string | null
   label_sender_info: ResidenceAddress | null
   label_sent_at: string | null
+  label_mail_due: string | null
   pickup_hotel_notified_at: string | null
   guest_hotel_notified_at: string | null
 }
@@ -257,6 +258,7 @@ export default function OperatorBookingDetailPage() {
             shipmentDate: r.shipment_date,
             sentAt: r.label_sent_at,
             today,
+            dueDate: r.label_mail_due,
           })
           const mailApplies = labelMailApplies(r.status)
           return (
@@ -396,12 +398,15 @@ export default function OperatorBookingDetailPage() {
                               mail.urgency === "ok" ? "text-foreground" : "text-red-700"
                             }`}
                           >
-                            投函期限 {mail.deadline}
-                            {mail.urgency === "ok"
-                              ? `（あと${mail.businessDaysLeft}営業日）`
-                              : mail.urgency === "due"
-                                ? "（本日投函）"
-                                : "（早急手配）"}
+                            {mail.deadline
+                              ? `投函期限 ${mail.deadline}${
+                                  mail.urgency === "ok"
+                                    ? `（あと${mail.businessDaysLeft}営業日）`
+                                    : mail.urgency === "due"
+                                      ? "（本日投函）"
+                                      : "（早急手配）"
+                                }`
+                              : "期限指定なし（この機能より前の予約）"}
                           </span>
                           <button
                             onClick={() => void markLabelSent(r, true)}

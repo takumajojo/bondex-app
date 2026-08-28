@@ -297,6 +297,7 @@ export async function POST(req: NextRequest) {
       label_split: labelDelivery.split,
       label_sender: labelDelivery.sender,
       label_sender_info: labelDelivery.senderInfo,
+      label_mail_due: labelDelivery.mailDue,
       booking_type: bookingType,
       tour_leader_name: tourLeaderName || null,
       tour_leader_phone: tourLeaderPhone || null,

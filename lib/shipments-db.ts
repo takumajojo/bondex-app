@@ -74,8 +74,10 @@ export interface ShipmentRecord {
   label_split: boolean
   /** 郵送時の差出人: bondex / land_operator / travel_agent。 */
   label_sender: string
-  /** 差出人の氏名・住所 (ResidenceAddress 形)。travel_agent は手入力値。 */
+  /** 差出人の氏名・住所 (ResidenceAddress 形)。other は手入力値。 */
   label_sender_info: ResidenceAddress | null
+  /** 投函期限 (依頼時に選択)。null = 旧予約 (郵送アラート対象外)。 */
+  label_mail_due: string | null
   /** ヤマトお届け時間帯 (DELIVERY_TIME_SLOTS の値)。代理店の希望。 */
   delivery_time: string | null
   /** 配送キャリア (sagawa=佐川 / yamato=ヤマト)。既定=佐川。 */
@@ -209,6 +211,7 @@ export async function saveShipment(
   if (input.label_split !== undefined) row.label_split = input.label_split
   if (input.label_sender !== undefined) row.label_sender = input.label_sender
   if (input.label_sender_info !== undefined) row.label_sender_info = input.label_sender_info
+  if (input.label_mail_due !== undefined) row.label_mail_due = input.label_mail_due
   // booking_id + leg_index で同一区間を update (再発行対応)
   const { error } = await sb
     .from("shipments")

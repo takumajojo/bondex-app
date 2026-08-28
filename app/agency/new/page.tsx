@@ -16,6 +16,7 @@ import {
   DEFAULT_LABEL_DELIVERY,
   resolveLabelParcels,
   senderFieldLabel,
+  defaultLabelMailDue,
 } from "@/lib/label-delivery"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
@@ -114,6 +115,10 @@ const messages = {
     ldAgentStreet: "Street address",
     ldAgentBuilding: "Building (optional)",
     ldReview: "Printed labels",
+    ldDueLabel: "Labels needed by (mailing deadline)",
+    ldDueHint:
+      "Sagawa labels can only be issued from 30 days before the ship date. If unset, we mail by 5 business days before shipping.",
+    ldDueRange: "Label mailing date must be between 30 days before shipping and the day before shipping",
     back: "Back to portal",
     badge: "New issuance request",
     title: "Register a booking",
@@ -348,6 +353,10 @@ const messages = {
     ldAgentStreet: "番地・町名",
     ldAgentBuilding: "建物名（任意）",
     ldReview: "送り状の郵送",
+    ldDueLabel: "いつまでに送り状が必要ですか（投函期限）",
+    ldDueHint:
+      "佐川の送り状は発送日の30日前から発行できます。ご指定がなければ発送日の5営業日前までに投函します。",
+    ldDueRange: "送り状の投函期限は「発送30日前〜発送前日」の範囲でご指定ください",
     back: "ポータルに戻る",
     badge: "新規発行依頼",
     title: "発行依頼を登録",
@@ -823,6 +832,9 @@ export default function AgencyNewBookingPage() {
   const [labelSplit, setLabelSplit] = useState(DEFAULT_LABEL_DELIVERY.split)
   const [labelSender, setLabelSender] = useState<LabelSender>(DEFAULT_LABEL_DELIVERY.sender)
   const [agentInfo, setAgentInfo] = useState<ResidenceAddress>({ ...EMPTY_RESIDENCE })
+  // 投函期限。既定 = 最初の発送日の5営業日前。手で触ったら自動追従をやめる。
+  const [labelMailDue, setLabelMailDue] = useState("")
+  const labelDueTouched = useRef(false)
   // 貴社名義で送れるかは「発送先住所が登録済みか」で決まる (未登録なら選ばせない)。
   const [hasShipAddress, setHasShipAddress] = useState<boolean | null>(null)
   const [leaderName, setLeaderName] = useState("")
@@ -987,12 +999,47 @@ export default function AgencyNewBookingPage() {
 
   // AI 読み込み後の「不足している情報」チェックリスト。入力が埋まるとリアルタイムで消える。
   // (validateLegs の項目 + 代表者名 + 団体の必須項目)
+  // 投函期限の選択可能範囲。
+  // 下限 = 伝票が全て発行できる日 (佐川は発送30日前から発行可能):
+  //   一括郵送は全区間の伝票が揃う必要があるため「最終区間の発送日-30日」、
+  //   分送は最初の封筒が最初の区間の伝票だけで送れるため「最初の区間の発送日-30日」。
+  // 上限 = 最初の発送日の前日 (当日に投函しても間に合わない)。
+  const labelDueRange = useMemo(() => {
+    const ymdAdd = (ymd: string, days: number): string => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd)
+      if (!m) return ""
+      const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12))
+      d.setUTCDate(d.getUTCDate() + days)
+      return d.toISOString().slice(0, 10)
+    }
+    const ships = legs.map((l) => l.shipmentDate).filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
+    if (ships.length === 0) return null
+    const first = ships.reduce((a, b) => (a < b ? a : b))
+    const last = ships.reduce((a, b) => (a > b ? a : b))
+    const issuableFrom = ymdAdd(labelTo === "hotel" && labelSplit ? first : last, -30)
+    return { min: issuableFrom, max: ymdAdd(first, -1), first }
+  }, [legs, labelTo, labelSplit])
+
+  // 既定値: 最初の発送日の5営業日前 (範囲内に収める)。手動変更後は追従しない。
+  useEffect(() => {
+    if (labelDueTouched.current || !labelDueRange) return
+    const def = defaultLabelMailDue(labelDueRange.first) || labelDueRange.max
+    const clamped =
+      def < labelDueRange.min ? labelDueRange.min : def > labelDueRange.max ? labelDueRange.max : def
+    setLabelMailDue(clamped)
+  }, [labelDueRange])
+
+
   const missingAfterParse = useMemo(() => {
     const list = validateLegs(legs, t)
     if (!representative.trim()) list.unshift(t.missingRep)
     if (bookingType === "group") {
       if (!leaderName.trim()) list.push(t.missingLeader)
       if (luggageNames.length === 0) list.push(t.missingLuggage)
+    }
+    // 投函期限が選択範囲外なら止める (伝票が発行できない期間には送れない)
+    if (labelMailDue && labelDueRange && (labelMailDue < labelDueRange.min || labelMailDue > labelDueRange.max)) {
+      list.push(t.ldDueRange)
     }
     // 差出人に旅行代理店を選んだら住所一式が必須 (封筒に刷るため)
     if (labelSender === "other") {
@@ -1001,13 +1048,13 @@ export default function AgencyNewBookingPage() {
     }
     return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legs, representative, bookingType, leaderName, luggageNames.length, locale, labelSender, agentInfo])
+  }, [legs, representative, bookingType, leaderName, luggageNames.length, locale, labelSender, agentInfo, labelMailDue, labelDueRange])
 
   // 確認画面用: 送り状が何通どこへ届くか
   const labelParcels = useMemo(
     () =>
       resolveLabelParcels(
-        { to: labelTo, split: labelSplit, sender: labelSender, senderInfo: null },
+        { to: labelTo, split: labelSplit, sender: labelSender, senderInfo: null, mailDue: null },
         legs.map((l, i) => ({
           legIndex: i,
           fromHotel: l.fromHotel || "—",
@@ -1228,6 +1275,7 @@ export default function AgencyNewBookingPage() {
             split: labelSplit,
             sender: labelSender,
             senderInfo: labelSender === "other" ? agentInfo : null,
+            mailDue: labelMailDue || null,
           },
           ...(bookingType === "group"
             ? {
@@ -1572,6 +1620,7 @@ export default function AgencyNewBookingPage() {
               </div>
               <p className="text-[11px] text-[#64748B] mt-2">
                 {t.ldSenderLabel}: {labelSenderLabel}
+                {labelMailDue ? ` ／ ${t.ldDueLabel}: ${labelMailDue}` : ""}
               </p>
             </div>
 
@@ -1864,6 +1913,21 @@ export default function AgencyNewBookingPage() {
                 </div>
               </>
             )}
+
+            {/* いつまでに送るか。伝票は発送30日前からしか発行できないため範囲を制約 */}
+            <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldDueLabel}</p>
+            <input
+              type="date"
+              className={`${inputCls} max-w-[220px]`}
+              value={labelMailDue}
+              min={labelDueRange?.min}
+              max={labelDueRange?.max}
+              onChange={(e) => {
+                labelDueTouched.current = true
+                setLabelMailDue(e.target.value)
+              }}
+            />
+            <p className="text-[11px] text-[#64748B] mt-1.5">{t.ldDueHint}</p>
 
             {/* 差出人 */}
             <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldSenderLabel}</p>

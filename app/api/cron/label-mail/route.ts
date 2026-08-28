@@ -43,6 +43,7 @@ type Row = {
   label_split: boolean | null
   label_sender: string | null
   label_sent_at: string | null
+  label_mail_due: string | null
 }
 
 function authorized(req: NextRequest): boolean {
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, representative, shipment_date, from_hotel, status, label_to, label_split, label_sender, label_sent_at",
+      "booking_id, leg_index, agency, representative, shipment_date, from_hotel, status, label_to, label_split, label_sender, label_sent_at, label_mail_due",
     )
     .is("label_sent_at", null)
     .neq("status", "cancelled")
@@ -87,6 +88,7 @@ export async function GET(req: NextRequest) {
       shipmentDate: r.shipment_date,
       sentAt: r.label_sent_at,
       today,
+      dueDate: r.label_mail_due, // null = 旧予約 → labelMailStatus が対象外にする
     })
     if (st.urgency === "due" || st.urgency === "urgent" || st.urgency === "overdue") {
       due.push({
