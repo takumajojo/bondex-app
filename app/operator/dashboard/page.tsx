@@ -1092,14 +1092,16 @@ export default function DashboardPage() {
               <table className="w-full min-w-[960px] text-sm">
                 <thead className="bg-muted/50 text-xs uppercase tracking-widest text-muted-foreground">
                   <tr>
-                    <th className="text-left p-3 font-medium">発行日</th>
-                    <th className="text-left p-3 font-medium">発送日 / 到着日</th>
-                    <th className="text-left p-3 font-medium">代理店</th>
+                    {/* 一覧は「何をすべきか」が分かる最小限に絞る。詳細は予約番号クリックで
+                        /operator/bookings/[id] へ (発行日・追跡番号・変更履歴・エラー全文はそちら)。 */}
+                    <th className="text-left p-3 font-medium">発送日</th>
                     <th className="text-left p-3 font-medium">予約番号</th>
+                    <th className="text-left p-3 font-medium">代理店</th>
                     <th className="text-left p-3 font-medium">代表者</th>
                     <th className="text-left p-3 font-medium">区間</th>
                     <th className="text-right p-3 font-medium">点数</th>
-                    <th className="text-left p-3 font-medium">追跡番号</th>
+                    <th className="text-left p-3 font-medium">送り状</th>
+                    <th className="text-left p-3 font-medium">ホテル連絡</th>
                     <th className="text-left p-3 font-medium">決済</th>
                     <th className="text-left p-3 font-medium">ステータス</th>
                   </tr>
@@ -1108,21 +1110,9 @@ export default function DashboardPage() {
                   {rows.map((it) => (
                     <tr key={it.id} className="border-t border-border hover:bg-muted/20">
                       <td className="p-3 align-top">
-                        <p className="text-xs text-foreground">
-                          {new Date(it.created_at).toLocaleDateString("ja-JP", {
-                            year: "numeric",
-                            month: "2-digit",
-                            day: "2-digit",
-                          })}
-                        </p>
-                      </td>
-                      <td className="p-3 align-top">
-                        <p className="text-xs text-foreground">
-                          <span className="text-muted-foreground">発送</span> {it.shipment_date}
-                        </p>
-                        <p className="text-xs text-foreground mt-0.5">
-                          <span className="text-muted-foreground">到着</span>{" "}
-                          {it.expected_arrival || "—"}
+                        <p className="text-xs font-medium text-foreground">{it.shipment_date}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          到着 {it.expected_arrival || "—"}
                         </p>
                         {(() => {
                           const d = deriveDelay(it)
@@ -1139,17 +1129,14 @@ export default function DashboardPage() {
                         <p className="text-foreground font-medium">{it.agency || "—"}</p>
                       </td>
                       <td className="p-3 align-top">
-                        <p className="text-xs font-mono text-foreground/80">
+                        <a
+                          href={`/operator/bookings/${encodeURIComponent(it.booking_id)}`}
+                          className="text-xs font-mono text-foreground underline underline-offset-2 hover:text-red-700"
+                          title="予約の詳細 (全区間・追跡番号・変更履歴・エラー) を開く"
+                        >
                           {it.booking_id}
-                          <span className="text-muted-foreground">
-                            -L{it.leg_index + 1}
-                          </span>
-                        </p>
-                        {it.tour_number && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            ツアー: <span className="font-mono">{it.tour_number}</span>
-                          </p>
-                        )}
+                          <span className="text-muted-foreground">-L{it.leg_index + 1}</span>
+                        </a>
                         {it.booking_type === "group" && (
                           <a
                             href={`/operator/groups/${encodeURIComponent(it.booking_id)}`}
@@ -1159,53 +1146,26 @@ export default function DashboardPage() {
                             団体 →
                           </a>
                         )}
-                        {/* 主要アクション(発行)だけを行内に残し、他は「⋯」メニューに集約 */}
-                        {(it.status === "requested" || it.status === "failed") && (
+                        {/* 主要アクション(発行)だけを行内に残し、他は「⋯」メニューに集約。
+                            発行失敗は代理店側でも発行できるため、運営に再発行を促す導線は出さない
+                            (谷口さん 2026-08-28)。 */}
+                        {it.status === "requested" && (
                           <a
                             href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
                             className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
-                            title={
-                              it.status === "failed"
-                                ? "前回の送り状発行が失敗しています。内容を確認して再発行します"
-                                : "代理店の発行依頼を発行画面に読み込み、レビューして発行します"
-                            }
+                            title="代理店の発行依頼を発行画面に読み込み、レビューして発行します"
                           >
-                            {it.status === "failed" ? "再発行を試す →" : "この依頼を発行 →"}
+                            この依頼を発行 →
                           </a>
                         )}
                       </td>
                       <td className="p-3 align-top">
-                        <p className="text-foreground">{it.representative}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {it.recipient} · {it.traveler_count}名
-                        </p>
+                        <p className="text-xs text-foreground">{it.representative}</p>
                       </td>
                       <td className="p-3 align-top max-w-[280px]">
                         <LegEndpoint prefecture={it.from_prefecture} nameJa={it.from_hotel_ja} nameEn={it.from_hotel} />
                         <p className="text-[10px] text-muted-foreground">↓</p>
                         <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} />
-                        <HotelNotifyBadges shipment={it} />
-                        {/* 送り状(紙)の郵送期限。5営業日前を過ぎたら消えない警告を出す。 */}
-                        <LabelMailBadge shipment={it} onSent={() => void markLabelSent(it)} busy={labelBusyId === it.id} />
-                        {/* どこへ・誰の名義で郵送するか。封筒を用意するのに必要。 */}
-                        <p className="mt-1.5 text-[10px] text-muted-foreground">
-                          送り状:{" "}
-                          <span className="text-foreground">
-                            {it.label_to === "hotel"
-                              ? it.label_split
-                                ? "各ホテルへ分送"
-                                : "最初のホテルへ"
-                              : "代理店宛"}
-                          </span>
-                          {" ／ 差出人: "}
-                          <span className="text-foreground">
-                            {it.label_sender === "agency"
-                              ? "代理店名義"
-                              : it.label_sender === "other"
-                                ? "他社名義"
-                                : "BondEx"}
-                          </span>
-                        </p>
                       </td>
                       <td className="p-3 align-top text-right">
                         <p className="font-medium text-foreground tabular-nums">
@@ -1215,31 +1175,15 @@ export default function DashboardPage() {
                           ¥{it.amount_yen.toLocaleString()}
                         </p>
                         {it.count_change_log && it.count_change_log.length > 0 && (
-                          <div className="mt-1 space-y-0.5 text-left">
-                            {it.count_change_log.map((c, i) => (
-                              <p
-                                key={i}
-                                className="text-[9px] leading-tight text-amber-700"
-                                title={`${new Date(c.at).toLocaleString("ja-JP")}｜${REASON_LABEL[c.reason] ?? c.reason}${c.note ? "：" + c.note : ""}`}
-                              >
-                                <Pencil className="inline w-2 h-2 mr-0.5" strokeWidth={2} />
-                                {c.cancelled ? `${c.from}個→キャンセル` : `${c.from}→${c.to}個`}（
-                                {REASON_LABEL[c.reason] ?? c.reason}）
-                              </p>
-                            ))}
-                          </div>
+                          <p className="mt-0.5 text-[9px] text-amber-700" title="個数の変更履歴あり (詳細ページで確認)">
+                            変更{it.count_change_log.length}件
+                          </p>
                         )}
                       </td>
-                      <td className="p-3 align-top">
-                        {it.yamato_tracking && it.yamato_tracking.length > 0 ? (
-                          <div className="space-y-0.5">
-                            {it.yamato_tracking.map((t) => (
-                              <p key={t} className="text-[11px] font-mono text-foreground/80">
-                                {t}
-                              </p>
-                            ))}
-                          </div>
-                        ) : it.yamato_label_url ? (
+                      <td className="p-3 align-top max-w-[190px]">
+                        {/* 郵送の期限バッジ + 印刷リンク + 宛先。ここを見れば封筒の準備が完結する */}
+                        <LabelMailBadge shipment={it} onSent={() => void markLabelSent(it)} busy={labelBusyId === it.id} />
+                        {it.yamato_label_url && (
                           <a
                             href={`/api/voucher/label?${new URLSearchParams({
                               url: it.yamato_label_url,
@@ -1251,15 +1195,29 @@ export default function DashboardPage() {
                             }).toString()}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-foreground underline underline-offset-2 inline-flex items-center gap-1"
-                            title="送り状を正確なA5ページに載せ直して開きます（A5用紙に実寸100%できれいに印刷）"
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] text-foreground underline underline-offset-2"
+                            title="送り状を正確なA5ページに載せ直して開きます（A5用紙に実寸100%）"
                           >
-                            送り状 (A5)
+                            印刷 (A5)
                             <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                           </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
                         )}
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          {it.label_to === "hotel"
+                            ? it.label_split
+                              ? "各ホテルへ分送"
+                              : "最初のホテルへ"
+                            : "代理店宛"}
+                          {" ／ "}
+                          {it.label_sender === "agency"
+                            ? "代理店名義"
+                            : it.label_sender === "other"
+                              ? "他社名義"
+                              : "BondEx"}
+                        </p>
+                      </td>
+                      <td className="p-3 align-top">
+                        <HotelNotifyBadges shipment={it} />
                       </td>
                       <td className="p-3 align-top">
                         {it.charged_at ? (
@@ -1385,9 +1343,13 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         {it.error_message && (
-                          <p className="text-[10px] text-red-700 mt-1 max-w-[180px] line-clamp-2">
-                            {it.error_message}
-                          </p>
+                          <a
+                            href={`/operator/bookings/${encodeURIComponent(it.booking_id)}`}
+                            className="mt-1 block text-[10px] text-red-700 underline underline-offset-2"
+                            title="エラーの全文は詳細ページで確認できます"
+                          >
+                            エラー詳細 →
+                          </a>
                         )}
                       </td>
                     </tr>

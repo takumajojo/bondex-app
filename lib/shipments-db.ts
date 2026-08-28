@@ -456,7 +456,10 @@ export async function listIssueDue(
   const { data, error } = await sb
     .from("shipments")
     .select("*")
-    .in("status", ["requested", "pending"])
+    // failed も対象に含める: 発行失敗 (例: E1-0046=発送日が30日超の未来) は
+    // 発送日が30日以内に入れば同じ内容で再発行が通る。毎朝の cron が拾い直すことで
+    // 運営が手動で気づかなくても自動リカバリーされる (谷口さん 2026-08-28)。
+    .in("status", ["requested", "pending", "failed"])
     .gte("shipment_date", todayJstYmd)
     .lte("shipment_date", horizonJstYmd)
     .order("shipment_date", { ascending: true })

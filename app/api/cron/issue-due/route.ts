@@ -9,7 +9,8 @@ export const maxDuration = 300 // 複数区間の Ship&co 発行 + Drive 格納�
 
 /**
  * 発行漏れ防止 cron。発送日が今日〜30日先で、まだ発行 (issued 以降) されていない
- * 区間 (status='requested'/'pending') を対象にする。
+ * 区間 (status='requested'/'pending'/'failed') を対象にする。failed は発送日が窓内に
+ * 入れば再発行が通るケース (E1-0046 など) の自動リカバリー。
  *
  * ── 2モード (docs/issuance-rules.md) ─────────────────────────────
  *  1) 既定 (AUTO_ISSUE_ENABLED != "true"): 運用へ「発行してください」ダイジェスト通知のみ。
