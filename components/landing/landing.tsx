@@ -13,6 +13,10 @@ import {
   Ban,
   Menu,
   X,
+  ClipboardList,
+  Hotel,
+  Luggage,
+  Receipt,
 } from "lucide-react"
 import { messages, type Locale } from "@/lib/landing-messages"
 import { LangSwitcher } from "./lang-switcher"
@@ -20,41 +24,9 @@ import { LangSwitcher } from "./lang-switcher"
 // ナビゲーションのハッシュリンクは両言語で共通 (#function 等)。ラベルのみ辞書化。
 // 3者の困りごとセクションのペルソナ用アイコン (細線・BondExレッド)。
 function PainIcon({ kind }: { kind: "agency" | "hotel" | "traveler" }) {
-  const common = {
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    className: "w-[22px] h-[22px]",
-  }
-  if (kind === "agency") {
-    return (
-      <svg {...common}>
-        <rect x="4" y="7" width="16" height="13" rx="2" />
-        <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-        <path d="M9 11v5M15 11v5" />
-      </svg>
-    )
-  }
-  if (kind === "hotel") {
-    return (
-      <svg {...common}>
-        <path d="M3 21h18" />
-        <path d="M5 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16" />
-        <path d="M15 9h3a1 1 0 0 1 1 1v11" />
-        <path d="M8 8h0M11 8h0M8 12h0M11 12h0M8 16h0M11 16h0" />
-      </svg>
-    )
-  }
-  return (
-    <svg {...common}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z" />
-    </svg>
-  )
+  // サイト全体で使う lucide に統一 (手配=ClipboardList / ホテル=Hotel / 旅行者=Luggage)。
+  const Icon = kind === "agency" ? ClipboardList : kind === "hotel" ? Hotel : Luggage
+  return <Icon className="w-[22px] h-[22px]" strokeWidth={1.8} aria-hidden />
 }
 
 const NAV_HREFS = ["#function", "#difference", "#deliverables", "#trust", "#price", "#faq"] as const
@@ -707,7 +679,16 @@ export function Landing({ lang }: { lang: Locale }) {
             <span className="text-[#C8102E]">{t.pains.title.hl}</span>
             {t.pains.title.post}
           </h2>
-          <p className="text-[15px] text-[#47536A] max-w-3xl leading-relaxed mb-10">{t.pains.lead}</p>
+          <p className="text-[15px] text-[#47536A] max-w-3xl leading-relaxed mb-7">{t.pains.lead}</p>
+
+          {/* 3枚の上に共通で1回だけ出す問いかけ (各カードの重複見出しを廃止) */}
+          <div className="flex items-center gap-3 mb-5">
+            <span className="inline-flex items-center gap-2 text-[13px] md:text-[15px] font-extrabold text-[#0F172A]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#C8102E]" aria-hidden />
+              こんな「困った」、ありませんか?
+            </span>
+            <span className="flex-1 h-px bg-gradient-to-r from-[#E2E6EC] to-transparent" aria-hidden />
+          </div>
 
           <div className="grid md:grid-cols-3 gap-5">
             {t.pains.personas.map((p) => (
@@ -724,8 +705,7 @@ export function Landing({ lang }: { lang: Locale }) {
                     <div className="text-[12px] text-[#6B7686] mt-0.5">{p.role}</div>
                   </div>
                 </div>
-                <p className="text-[11px] font-bold text-[#6B7686] px-5 mb-2">こんな「困った」、ありませんか？</p>
-                <ul className="flex-1 flex flex-col gap-2 px-5 pb-5">
+                <ul className="flex-1 flex flex-col gap-2 px-5 pt-1 pb-5">
                   {p.items.map((it) => (
                     <li key={it} className="relative pl-6 text-[13.5px] leading-[1.6] text-[#47536A]">
                       <span className="absolute left-1 top-[9px] w-[11px] h-0.5 rounded-full bg-[#6B7686]/60" aria-hidden />
@@ -1142,18 +1122,18 @@ export function Landing({ lang }: { lang: Locale }) {
             <Eyebrow en="TRUST" label={t.trust.eyebrow} />
             <SectionH2 first={t.trust.heading.first} second={t.trust.heading.second} />
           </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            {[
-              { icon: Shield, anchor: "#faq" },
-              { icon: Handshake, anchor: "#faq" },
-              { icon: Lock, anchor: "#faq" },
-            ].map((c, i) => {
-              const Icon = c.icon
-              const card = t.trust.cards[i]
+          <div
+            className={`grid gap-5 ${
+              t.trust.cards.length >= 4 ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-3"
+            }`}
+          >
+            {t.trust.cards.map((card, i) => {
+              // アイコンはカード順に対応 (補償=Shield / 取次=Handshake / 個人情報=Lock / 精算=Receipt)。
+              const Icon = [Shield, Handshake, Lock, Receipt][i] ?? Shield
               return (
                 <a
                   key={i}
-                  href={c.anchor}
+                  href="#faq"
                   className="rounded-2xl bg-white border border-[#E5E7EB] p-7 hover:border-[#C8102E]/30 hover:shadow-[0_4px_16px_rgba(200,16,46,0.06)] transition-all block group"
                 >
                   <div className="w-11 h-11 rounded-full bg-[#C8102E]/8 flex items-center justify-center mb-5">
