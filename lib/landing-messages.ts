@@ -323,7 +323,7 @@ const ja: LandingMessages = {
     heading: "実際に発行されるバウチャー",
     openPdf: "PDF で開く",
     altPrefix: "バウチャー見本 — ",
-    pageLabels: ["区間1 — 1枚に集約済み", "区間2 — 1枚に集約済み"],
+    pageLabels: ["バウチャー（荷物引換証）", "使い方ガイド（How-to）"],
     caption: "見本は架空データです。追跡 QR・区間表示・多区間の旅程一覧にも対応しています。",
     openPdfMobile: "サンプル PDF を開く",
   },
@@ -594,7 +594,7 @@ const en: LandingMessages = {
     heading: "A voucher exactly as issued",
     openPdf: "Open PDF",
     altPrefix: "Sample voucher — ",
-    pageLabels: ["Leg 1 — consolidated on one page", "Leg 2 — consolidated on one page"],
+    pageLabels: ["Voucher (luggage claim)", "How-to guide"],
     caption:
       "The sample uses fictitious data. Tracking QR codes, per-leg display, and multi-leg itinerary lists are all supported.",
     openPdfMobile: "Open the sample PDF",
@@ -868,7 +868,7 @@ const es: LandingMessages = {
     heading: "Un voucher tal y como se emite",
     openPdf: "Abrir PDF",
     altPrefix: "Voucher de muestra — ",
-    pageLabels: ["Tramo 1 — consolidado en una página", "Tramo 2 — consolidado en una página"],
+    pageLabels: ["Vale (retiro de equipaje)", "Guía de uso"],
     caption:
       "La muestra usa datos ficticios. Se admiten códigos QR de seguimiento, visualización por tramo y listas de itinerarios de varios tramos.",
     openPdfMobile: "Abrir el PDF de muestra",
@@ -1142,7 +1142,7 @@ const fr: LandingMessages = {
     heading: "Un bon tel qu'il est émis",
     openPdf: "Ouvrir le PDF",
     altPrefix: "Bon d'exemple — ",
-    pageLabels: ["Trajet 1 — regroupé sur une page", "Trajet 2 — regroupé sur une page"],
+    pageLabels: ["Bon (retrait des bagages)", "Guide d'utilisation"],
     caption:
       "L'exemple utilise des données fictives. Les QR codes de suivi, l'affichage par trajet et les listes d'itinéraires à plusieurs trajets sont tous pris en charge.",
     openPdfMobile: "Ouvrir le PDF d'exemple",
@@ -1416,7 +1416,7 @@ const zh: LandingMessages = {
     heading: "与实际开具一致的兑换券",
     openPdf: "打开 PDF",
     altPrefix: "兑换券示例 — ",
-    pageLabels: ["区间 1 — 已汇总于一页", "区间 2 — 已汇总于一页"],
+    pageLabels: ["凭证（行李提取）", "使用指南"],
     caption:
       "示例采用虚构数据。支持追踪二维码、分区间显示以及多区间行程列表。",
     openPdfMobile: "打开示例 PDF",
@@ -1690,7 +1690,7 @@ const it: LandingMessages = {
     heading: "Un voucher esattamente come viene emesso",
     openPdf: "Apri PDF",
     altPrefix: "Voucher di esempio — ",
-    pageLabels: ["Tratta 1 — riunita in una pagina", "Tratta 2 — riunita in una pagina"],
+    pageLabels: ["Voucher (ritiro bagagli)", "Guida all'uso"],
     caption:
       "L'esempio utilizza dati fittizi. Sono supportati QR code di tracciamento, visualizzazione per tratta ed elenchi di itinerari con più tratte.",
     openPdfMobile: "Apri il PDF di esempio",

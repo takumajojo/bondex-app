@@ -764,7 +764,7 @@ export function Landing({ lang }: { lang: Locale }) {
           <div className="grid grid-cols-2 gap-3 md:gap-5">
             {[
               { src: "/samples/voucher-page-1.png" },
-              { src: "/samples/voucher-page-2.png" },
+              { src: "/samples/voucher-page-2.jpg" },
             ].map((pg, i) => {
               const label = t.sample.pageLabels[i]
               return (
