@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React from "react"
 import path from "path"
+import fs from "fs"
 import {
   Document,
   Page,
@@ -34,13 +35,26 @@ export { normalizeGuestLanguage } from "./guest-language"
 // ---------------------------------------------------------------------------
 
 const FONT_DIR = path.join(process.cwd(), "public", "fonts")
-const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
+
+/**
+ * 画像アセットはモジュール読み込み時に読み切って data URI 化する。
+ *  - ファイルが欠落していたら「ここで即例外」= バウチャー生成が失敗として表面化する。
+ *    react-pdf は <Image src=パス> の読み込み失敗を黙って無視して描画を続けるため、
+ *    パス参照のままだと「画像だけ消えた白いページ」が静かに配られてしまう
+ *    (この種のサイレント劣化は絶対に出さない・谷口さん 2026-08-31)。
+ *  - fs.readFileSync + 静的パスなので Vercel のファイルトレースにも確実に含まれる。
+ */
+function loadImageDataUri(fileName: string, mime: string): string {
+  const buf = fs.readFileSync(path.join(process.cwd(), "public", fileName))
+  return `data:${mime};base64,${buf.toString("base64")}`
+}
+const LOGO_PATH = loadImageDataUri("bondex-logo.png", "image/png")
 // How to Ship 全面イラスト (2026-08-27 谷口さん支給 howto.png・1054×1492 = A4比)。
 // 支給版に含まれていたロゴは生成物 (実ブランドロゴではない) だったため、
 // マストヘッド / THAT'S IT 帯 / 下部赤帯 の3箇所を public/bondex-logo.png で差し替え済み。
 // NEED HELP の QR も生成物でデコード不能だったため画像側では消去し、
 // 実 QR (WHATSAPP_URL 由来・env で変更可) を PDF 側で重ねる。
-const HOWTO_PAGE_PATH = path.join(process.cwd(), "public", "howto-page.jpg")
+const HOWTO_PAGE_PATH = loadImageDataUri("howto-page.jpg", "image/jpeg")
 // 消去した QR 枠の位置 (元画像 1054×1492 上の 741,1213 / 106×108 を A4 210×297mm 換算・単位mm)
 const HOWTO_QR_BOX_MM = { left: 147.6, top: 241.5, size: 21.2 }
 
