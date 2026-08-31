@@ -669,20 +669,20 @@ export default function AgencyDashboard() {
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-border bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-x-3 gap-y-2 flex-wrap">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-[200px] max-w-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-9 sm:h-10 w-auto object-contain shrink-0" />
             <div className="border-l border-border pl-3 sm:pl-4 min-w-0">
               <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium hidden sm:block">
                 {t.portal}
               </p>
-              <h1 className="text-base sm:text-xl font-semibold text-foreground sm:mt-0.5 truncate">
+              <h1 className="text-base sm:text-xl font-semibold text-foreground sm:mt-0.5 truncate max-w-[40vw]">
                 {agencyName || t.defaultTitle}
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3 min-w-0">
             {!error && !noAgency && agencyStatus === "active" && contractStatus === "signed" && (
               <Link
                 href="/agency/new"
