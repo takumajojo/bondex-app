@@ -533,6 +533,56 @@ export async function listIssueDue(
   return (data ?? []) as ShipmentRecord[]
 }
 
+/**
+ * 発行窓 (発送30日前) に入った「今は発行できない状態の区間」を 'requested' に自動昇格する。
+ * listIssueDue は failed も拾って再発行を試すが、それだけだと画面には「失敗」バッジが
+ * 残り続ける。ここで状態自体を requested に戻すことで、失敗表示が消え、
+ * 「この依頼を発行」導線 (dashboard は requested/failed のみボタン表示) が自然に出る。
+ * 対象は未発行 (ラベル未取得) かつ発送日が [today, horizon] の:
+ *   - status='pending'  … 30日超で保留していた deferred 区間
+ *   - status='failed'   … かつ error が発送30日超の窓エラー (佐川 E1-0046 / ヤマト ES003001)
+ * cron (app/api/cron/issue-due) から毎日呼ぶ。冪等 (既に requested/issued は対象外)。
+ * @returns 昇格した件数
+ */
+export async function promoteDeferredInWindow(
+  todayJstYmd: string,
+  horizonJstYmd: string,
+): Promise<number> {
+  const sb = getSupabase()
+  if (!sb) return 0
+  let promoted = 0
+
+  // (1) deferred (pending) → requested
+  const { data: p, error: pe } = await sb
+    .from("shipments")
+    .update({ status: "requested", error_message: null })
+    .eq("status", "pending")
+    .is("yamato_label_url", null)
+    .gte("shipment_date", todayJstYmd)
+    .lte("shipment_date", horizonJstYmd)
+    .select("id")
+  if (pe) console.error("[shipments-db] promoteDeferredInWindow pending failed", pe.message)
+  else promoted += (p ?? []).length
+
+  // (2) 窓エラーで failed になっていた区間 → requested (窓に入ったので発行できる)。
+  //     窓エラー以外の失敗 (住所不備など) は対象外にするため error_message で絞る。
+  const { data: f, error: fe } = await sb
+    .from("shipments")
+    .update({ status: "requested", error_message: null })
+    .eq("status", "failed")
+    .is("yamato_label_url", null)
+    .gte("shipment_date", todayJstYmd)
+    .lte("shipment_date", horizonJstYmd)
+    .or(
+      "error_message.ilike.%E1-0046%,error_message.ilike.%ES003001%,error_message.ilike.%30日を超える%,error_message.ilike.%30日以内%",
+    )
+    .select("id")
+  if (fe) console.error("[shipments-db] promoteDeferredInWindow failed-window failed", fe.message)
+  else promoted += (f ?? []).length
+
+  return promoted
+}
+
 /** カード課金成功を記録 (二重課金防止の charged_at をセット)。 */
 /**
  * カード課金成功を記録。

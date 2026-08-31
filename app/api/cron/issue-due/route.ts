@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
-import { listIssueDue, type ShipmentRecord } from "@/lib/shipments-db"
+import { listIssueDue, promoteDeferredInWindow, type ShipmentRecord } from "@/lib/shipments-db"
 import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
 import { sendMail } from "@/lib/mailer"
 
@@ -100,9 +100,14 @@ export async function GET(req: NextRequest) {
     const todayJst = nowJst.toISOString().slice(0, 10)
     const horizonJst = new Date(nowJst.getTime() + HORIZON_DAYS * 86_400_000).toISOString().slice(0, 10)
 
+    // 発行窓に入った deferred(pending)・窓エラーで failed の区間を 'requested' に昇格し、
+    // 「失敗」バッジを消す (発送日が30日以内に入れば発行できるため)。listIssueDue が
+    // failed も拾うのに加え、状態自体を戻して運用画面の見え方と発行導線を正す。
+    const promoted = await promoteDeferredInWindow(todayJst, horizonJst)
+
     const due = await listIssueDue(todayJst, horizonJst)
     if (due.length === 0) {
-      return NextResponse.json({ due: 0, mode: "none", today: todayJst, horizon: horizonJst })
+      return NextResponse.json({ due: 0, promoted, mode: "none", today: todayJst, horizon: horizonJst })
     }
 
     const byBooking = new Map<string, ShipmentRecord[]>()
@@ -147,6 +152,7 @@ export async function GET(req: NextRequest) {
       })
       return NextResponse.json({
         due: due.length,
+        promoted,
         bookings: byBooking.size,
         mode: "digest",
         autoIssue,
@@ -290,6 +296,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       due: due.length,
+      promoted,
       mode: "auto_issue",
       issuedBookings: issuedByBooking.size,
       issuedLegs: Array.from(issuedByBooking.values()).reduce((n, a) => n + a.length, 0),
