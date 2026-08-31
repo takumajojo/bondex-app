@@ -70,6 +70,8 @@ const messages = {
     defaultTitle: "Shipment status",
     signOut: "Sign out",
     noAgencyLinked: "No agency is linked to this account. Please contact BondEx support",
+    loadFailed: "Couldn't load your data. Please check your connection and retry.",
+    retry: "Retry",
     pendingTitle: "Your account is awaiting approval",
     pendingBody:
       "Thank you for registering. Voucher issuance becomes available once BondEx approves your account — usually within one business day.",
@@ -105,6 +107,8 @@ const messages = {
       "Requests with a ship date more than a month away: shipping labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
     downloading: "Preparing…",
     dlError: "Download failed. Please try again.",
+    sessionExpired: "Your session has expired. Please sign in again.",
+    signInAgain: "Sign in again",
     actPlaceholder: "Actions…",
     actDates: "Change dates",
     actCount: "Change pieces",
@@ -182,6 +186,8 @@ const messages = {
     defaultTitle: "案件状況",
     signOut: "サインアウト",
     noAgencyLinked: "アカウントに代理店が紐付いていません。BondEx 管理者にご連絡ください",
+    loadFailed: "データを読み込めませんでした。通信環境をご確認のうえ再試行してください。",
+    retry: "再試行",
     pendingTitle: "アカウントは承認待ちです",
     pendingBody:
       "ご登録ありがとうございます。BondEx による承認が完了するとバウチャー発行がご利用いただけます。通常 1 営業日以内にご連絡します。",
@@ -217,6 +223,8 @@ const messages = {
       "発送日が1ヶ月以上先の依頼は、送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
     downloading: "準備中…",
     dlError: "ダウンロードに失敗しました。もう一度お試しください。",
+    sessionExpired: "セッションが切れました。再度サインインしてください。",
+    signInAgain: "サインインし直す",
     actPlaceholder: "アクション…",
     actDates: "日程を変更",
     actCount: "個数を変更",
@@ -331,18 +339,30 @@ export default function AgencyDashboard() {
   // 複製: どの旅か確認できるサマリモーダル → /agency/new?dup=ID を開く
   const [dupTarget, setDupTarget] = useState<Shipment | null>(null)
 
+  // セッション切れフラグ。true のとき再ログイン導線つきのバナーを出す
+  // (2026-08-31 監査対応: 従来は全操作の失敗が「ダウンロードに失敗しました」固定で、
+  //  リトライしても直らないループに入っていた)。
+  const [sessionExpired, setSessionExpired] = useState(false)
+
   const patchShipment = useCallback(
     async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
       try {
         const sb = getBrowserSupabase()
         const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
-        if (!token) return { ok: false, error: messages[locale].dlError }
+        if (!token) {
+          setSessionExpired(true)
+          return { ok: false, error: messages[locale].sessionExpired }
+        }
         const res = await fetch(`/api/agency/shipment/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify(body),
         })
         const d = (await res.json().catch(() => ({}))) as { error?: string }
+        if (res.status === 401) {
+          setSessionExpired(true)
+          return { ok: false, error: messages[locale].sessionExpired }
+        }
         if (!res.ok) return { ok: false, error: d.error }
         return { ok: true }
       } catch {
@@ -414,7 +434,9 @@ export default function AgencyDashboard() {
       .select("name, status, payment_method, card_on_file, contract_status")
       .maybeSingle()
     if (aErr) {
-      setNoAgency({ detail: aErr.message })
+      // 一時的な取得失敗を「代理店未紐付け」と誤診断しない (2026-08-31 監査対応)。
+      // 未紐付けは「クエリ成功かつ0行」のときだけ。ここは再試行バナーに回す。
+      setError(t.loadFailed)
       setLoading(false)
       return
     }
@@ -498,6 +520,11 @@ export default function AgencyDashboard() {
       const res = await fetch(`/api/agency/voucher?booking_id=${encodeURIComponent(bookingId)}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
+      if (res.status === 401) {
+        setSessionExpired(true)
+        setDlError(messages[locale].sessionExpired)
+        return
+      }
       if (!res.ok) {
         setDlError(messages[locale].dlError)
         return
@@ -530,7 +557,7 @@ export default function AgencyDashboard() {
     try {
       const sb = getBrowserSupabase()
       const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
-      if (!token) { setDlError(messages[locale].dlError); return }
+      if (!token) { setSessionExpired(true); setDlError(messages[locale].sessionExpired); return }
       const res = await fetch(
         `/api/agency/label?booking_id=${encodeURIComponent(bookingId)}&leg_index=${legIndex}`,
         { headers: { Authorization: `Bearer ${token}` } },
@@ -569,6 +596,11 @@ export default function AgencyDashboard() {
       const res = await fetch(`/api/agency/invoice?shipment_id=${encodeURIComponent(shipmentId)}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
+      if (res.status === 401) {
+        setSessionExpired(true)
+        setDlError(messages[locale].sessionExpired)
+        return
+      }
       if (!res.ok) {
         setDlError(messages[locale].dlError)
         return
@@ -739,10 +771,21 @@ export default function AgencyDashboard() {
           </div>
         )}
         {(error || noAgency) && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            {noAgency
-              ? `${t.noAgencyLinked}${noAgency.detail ? ` (${noAgency.detail})` : ""}`
-              : error}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex items-center gap-3 flex-wrap">
+            <span>
+              {noAgency
+                ? `${t.noAgencyLinked}${noAgency.detail ? ` (${noAgency.detail})` : ""}`
+                : t.loadFailed}
+            </span>
+            {error && (
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+              >
+                {t.retry}
+              </button>
+            )}
           </div>
         )}
 
@@ -868,7 +911,18 @@ export default function AgencyDashboard() {
           </section>
         )}
 
-        {dlError && (
+        {sessionExpired && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 flex items-center gap-3 flex-wrap">
+            <span>{t.sessionExpired}</span>
+            <Link
+              href="/agency/login?next=/agency"
+              className="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+            >
+              {t.signInAgain}
+            </Link>
+          </div>
+        )}
+        {dlError && !sessionExpired && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
             {dlError}
           </div>
@@ -918,6 +972,8 @@ export default function AgencyDashboard() {
           )}
         </form>
 
+        {/* 読み込み失敗時は空状態・集計を出さない (失敗が「データなし」に見える誤解の防止) */}
+        {!error && (
         <section className="rounded-2xl border border-border bg-white overflow-hidden">
           {loading ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
@@ -1154,6 +1210,7 @@ export default function AgencyDashboard() {
             </div>
           )}
         </section>
+        )}
       </div>
       {dupTarget && (
         <DuplicateModal

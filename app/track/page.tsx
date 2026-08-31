@@ -16,6 +16,7 @@ function TrackLookup() {
   const [value, setValue] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const notFound = searchParams.get("nf") === "1"
+  const serverError = searchParams.get("err") === "1"
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -58,13 +59,24 @@ function TrackLookup() {
               required
             />
             <p className="text-[11px] text-[#94A3B8]">
-              バウチャーまたは How to ship ガイドに記載の番号(BDX で始まる)を入力してください。
+              バウチャーに記載の BDX で始まる番号を入力してください。
+              <br />
+              Enter the number starting with BDX shown on your voucher.
             </p>
           </div>
 
           {notFound && (
             <p className="text-[12px] text-red-600" role="alert">
               その予約番号の配送情報が見つかりませんでした。番号をご確認ください。
+              <br />
+              We couldn&apos;t find a delivery for that number. Please check and try again.
+            </p>
+          )}
+          {serverError && (
+            <p className="text-[12px] text-red-600" role="alert">
+              一時的に配送情報を取得できませんでした。しばらく待って再度お試しください。
+              <br />
+              We couldn&apos;t load the delivery status right now. Please try again shortly.
             </p>
           )}
 
@@ -78,18 +90,18 @@ function TrackLookup() {
             ) : (
               <>
                 <Search className="w-4 h-4" strokeWidth={2} />
-                配送状況を見る
+                配送状況を見る / Track
               </>
             )}
           </button>
         </form>
 
         <p className="text-center mt-6 text-[12px] text-[#94A3B8]">
-          お困りの場合は{" "}
+          お困りの場合・Need help?{" "}
           <a href="mailto:support@bondex.express" className="text-[#C8102E] font-medium underline underline-offset-2">
             support@bondex.express
           </a>{" "}
-          までご連絡ください。
+          
         </p>
       </div>
     </main>

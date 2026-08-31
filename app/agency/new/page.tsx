@@ -115,6 +115,11 @@ const messages = {
     ldAgentStreet: "Street address",
     ldAgentBuilding: "Building (optional)",
     ldReview: "Printed labels",
+    signInNewTab: "Sign in again in a new tab (your input here is kept)",
+    totalLabel: "Total (fixed at issuance)",
+    totalNote: "Charged when pickup is completed — never at booking.",
+    totalFormula: (pieces: number) => `${pieces} pieces × ¥5,000 = ¥${(pieces * 5000).toLocaleString()} (excl. tax)`,
+    dueImpossible: "With these ship dates, one combined mailing cannot arrive in time. Choose per-hotel mailing (labels are issuable only from 30 days before each ship date).",
     ldDueLabel: "Labels needed by (mailing deadline)",
     ldDueHint:
       "Sagawa labels can only be issued from 30 days before the ship date. If unset, we mail by 5 business days before shipping.",
@@ -353,6 +358,11 @@ const messages = {
     ldAgentStreet: "番地・町名",
     ldAgentBuilding: "建物名（任意）",
     ldReview: "送り状の郵送",
+    signInNewTab: "新しいタブでサインインし直す（この画面の入力は保持されます）",
+    totalLabel: "合計（発行時に確定）",
+    totalNote: "課金は集荷完了時です。ご依頼の時点では課金されません。",
+    totalFormula: (pieces: number) => `${pieces}個 × ¥5,000 = ¥${(pieces * 5000).toLocaleString()}（税抜）`,
+    dueImpossible: "この発送日の組み合わせでは、まとめて1通の郵送は間に合いません。「区間ごとに各ホテルへ送る」をお選びください（伝票は各発送日の30日前から発行できるため）。",
     ldDueLabel: "いつまでに送り状が必要ですか（投函期限）",
     ldDueHint:
       "佐川の送り状は発送日の30日前から発行できます。ご指定がなければ発送日の5営業日前までに投函します。",
@@ -1460,6 +1470,24 @@ export default function AgencyNewBookingPage() {
             <h1 className="text-[18px] font-bold text-[#0F172A]">{t.doneTitle}</h1>
             <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
+
+            {/* 送り状(紙)の郵送recap (2026-08-31 監査対応): 直前に選んだ「どこへ・いつまでに」が
+                完了画面で消えると「紙は来るのか? 自分で印刷か?」が曖昧になるため再掲する。 */}
+            <div className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4 mt-4 text-left">
+              <p className="text-[12px] font-bold text-[#334155] mb-2">{t.ldReview}</p>
+              <div className="space-y-1">
+                {labelParcels.map((pc, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3 text-[12px]">
+                    <span className="text-[#0F172A]">{pc.addressee}</span>
+                    <span className="text-[#64748B] shrink-0">{pc.detail}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#64748B] mt-2">
+                {t.ldSenderLabel}: {labelSenderLabel}
+                {labelMailDue ? ` ／ ${t.ldDueLabel}: ${labelMailDue}` : ""}
+              </p>
+            </div>
             {bookingType === "group" && (
               <a
                 href={`/agency/groups/${encodeURIComponent(result.bookingId)}`}
@@ -1605,9 +1633,19 @@ export default function AgencyNewBookingPage() {
           </div>
 
           {error && (
-            <p className="text-[13px] text-red-600 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3" role="alert">
+            <div className="text-[13px] text-red-600 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3" role="alert">
               {error}
-            </p>
+              {error === t.notLoggedIn && (
+                <a
+                  href="/agency/login?next=/agency/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 block font-medium underline underline-offset-2"
+                >
+                  {t.signInNewTab}
+                </a>
+              )}
+            </div>
           )}
 
           {/* 内容サマリ */}
@@ -1635,6 +1673,18 @@ export default function AgencyNewBookingPage() {
                 {t.ldSenderLabel}: {labelSenderLabel}
                 {labelMailDue ? ` ／ ${t.ldDueLabel}: ${labelMailDue}` : ""}
               </p>
+            </div>
+
+            {/* 合計金額 (2026-08-31 監査対応: 依頼フローに金額が一度も出ていなかった)。
+                発行 = 金額確定なので、確定前に必ず見せる。 */}
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 mt-3 flex items-baseline justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-[#94A3B8]">{t.totalLabel}</p>
+                <p className="text-[15px] font-bold text-[#0F172A] mt-0.5">
+                  {t.totalFormula(legs.reduce((sum, l) => sum + l.suitcaseCount, 0))}
+                </p>
+              </div>
+              <p className="text-[11px] text-[#64748B]">{t.totalNote}</p>
             </div>
 
             {/* 団体: 添乗員と荷物リストも確認画面で必ず見せる */}
@@ -1941,6 +1991,11 @@ export default function AgencyNewBookingPage() {
               }}
             />
             <p className="text-[11px] text-[#64748B] mt-1.5">{t.ldDueHint}</p>
+            {labelDueRange && labelDueRange.min > labelDueRange.max && (
+              <p className="text-[11px] text-[#C8102E] mt-1.5" role="alert">
+                {t.dueImpossible}
+              </p>
+            )}
 
             {/* 差出人 */}
             <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldSenderLabel}</p>
@@ -2397,7 +2452,21 @@ export default function AgencyNewBookingPage() {
             <p className="text-[12px] text-amber-900 leading-relaxed">{t.monthNote}</p>
           </div>
 
-          {error && <p className="text-[13px] text-red-600" role="alert">{error}</p>}
+          {error && (
+            <div className="text-[13px] text-red-600" role="alert">
+              {error}
+              {error === t.notLoggedIn && (
+                <a
+                  href="/agency/login?next=/agency/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 block font-medium underline underline-offset-2"
+                >
+                  {t.signInNewTab}
+                </a>
+              )}
+            </div>
+          )}
 
           {/* 二重依頼の警告 (自社内・止めるだけ・そのまま登録可) */}
           {dupMatches.length > 0 && (

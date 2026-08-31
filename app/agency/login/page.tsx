@@ -30,6 +30,11 @@ const messages = {
     signUp: "Sign up",
     notConfigured: "Supabase not configured. Contact BondEx support.",
     signInFailed: "Sign-in failed",
+    badCredentials: "Email or password is incorrect.",
+    emailNotConfirmed: "Please confirm your email first (check your inbox).",
+    forgot: "Forgot your password?",
+    resetSent: "Password reset email sent. Check your inbox.",
+    resetEnterEmail: "Enter your email above first, then tap this link.",
   },
   ja: {
     subtitle: "代理店アカウントでサインイン",
@@ -40,6 +45,11 @@ const messages = {
     signUp: "新規登録",
     notConfigured: "Supabase が未設定です。BondEx サポートにご連絡ください。",
     signInFailed: "サインインに失敗しました",
+    badCredentials: "メールアドレスまたはパスワードが正しくありません。",
+    emailNotConfirmed: "先にメールアドレスの確認を完了してください（受信箱をご確認ください）。",
+    forgot: "パスワードをお忘れですか？",
+    resetSent: "パスワード再設定メールを送信しました。受信箱をご確認ください。",
+    resetEnterEmail: "先に上のメールアドレス欄に入力してから、このリンクを押してください。",
   },
 } as const
 
@@ -53,6 +63,27 @@ function LoginForm() {
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
+
+  const onForgot = async () => {
+    setError("")
+    setNotice("")
+    const addr = email.trim()
+    if (!addr) {
+      setError(t.resetEnterEmail)
+      return
+    }
+    const sb = getBrowserSupabase()
+    if (!sb) {
+      setError(t.notConfigured)
+      return
+    }
+    // 存在しないメールでも成功と同じ応答にする (アカウント列挙の防止・Supabase 既定挙動)
+    await sb.auth.resetPasswordForEmail(addr, {
+      redirectTo: `${window.location.origin}/agency/reset-password`,
+    })
+    setNotice(t.resetSent)
+  }
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,7 +101,14 @@ function LoginForm() {
         password,
       })
       if (authErr) {
-        setError(authErr.message || t.signInFailed)
+        const m = (authErr.message || "").toLowerCase()
+        setError(
+          m.includes("invalid login credentials")
+            ? t.badCredentials
+            : m.includes("email not confirmed")
+              ? t.emailNotConfirmed
+              : `${t.signInFailed}${authErr.message ? ` (${authErr.message})` : ""}`,
+        )
         setSubmitting(false)
         return
       }
@@ -125,6 +163,14 @@ function LoginForm() {
               required
             />
             {error && <p className="text-xs text-red-600">{error}</p>}
+            {notice && <p className="text-xs text-emerald-700">{notice}</p>}
+            <button
+              type="button"
+              onClick={() => void onForgot()}
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {t.forgot}
+            </button>
           </div>
 
           <Button

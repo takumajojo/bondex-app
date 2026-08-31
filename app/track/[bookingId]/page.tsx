@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation"
+import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { TrackingStepper, carrierTrackUrl } from "@/components/tracking-stepper"
 
@@ -156,13 +156,24 @@ function carrierName(carrier: string, lang: Lang): string {
   const c = CARRIER_NAME[carrier] ?? CARRIER_NAME.sagawa
   return lang === "ja" ? c.ja : c.en
 }
-async function fetchTrack(bookingId: string): Promise<TrackData | null> {
+async function fetchTrack(
+  bookingId: string,
+): Promise<{ ok: true; data: TrackData } | { ok: false; kind: "notfound" | "error" }> {
   const h = await headers()
   const host = h.get("host") || "localhost:3000"
   const proto = h.get("x-forwarded-proto") || "https"
-  const res = await fetch(`${proto}://${host}/api/track/${encodeURIComponent(bookingId)}`, { cache: "no-store" })
-  if (!res.ok) return null
-  return (await res.json()) as TrackData
+  try {
+    const res = await fetch(`${proto}://${host}/api/track/${encodeURIComponent(bookingId)}`, {
+      cache: "no-store",
+    })
+    if (!res.ok) {
+      // 404/400 = 番号違い、それ以外 (5xx/レート制限) = 一時的な障害として区別する
+      return { ok: false, kind: res.status === 404 || res.status === 400 ? "notfound" : "error" }
+    }
+    return { ok: true, data: (await res.json()) as TrackData }
+  } catch {
+    return { ok: false, kind: "error" }
+  }
 }
 
 function formatDate(ymd: string | null): string {
@@ -182,8 +193,13 @@ export default async function TrackPage({
 }) {
   const { bookingId } = await params
   const { lang: langParam } = await searchParams
-  const data = await fetchTrack(bookingId)
-  if (!data) notFound()
+  const result = await fetchTrack(bookingId)
+  if (!result.ok) {
+    // 2026-08-31 監査対応: 素の Next 標準404 (英語のみ・導線ゼロ) に落とさず、
+    // 案内文つきの索引ページへ戻す。番号を1文字打ち間違えた旅行者を行き止まりにしない。
+    redirect(result.kind === "notfound" ? "/track?nf=1" : "/track?err=1")
+  }
+  const data = result.data
 
   const lang = resolveLang(langParam, data.guestLanguage)
   const tr = L[lang]

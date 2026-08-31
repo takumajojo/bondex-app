@@ -26,7 +26,11 @@ export default function GroupSharePage({
   params: Promise<{ token: string }>
 }) {
   const { token } = use(params)
-  const [locale, setLocale] = useState<"ja" | "en">("en")
+  // 初期言語はブラウザ設定から推定 (2026-08-31 監査対応: 常にENだと日本人添乗員が毎回トグルしていた)
+  const [locale, setLocale] = useState<"ja" | "en">(() => {
+    if (typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("ja")) return "ja"
+    return "en"
+  })
   const t = M[locale]
   const [data, setData] = useState<GroupViewPayload | null>(null)
   const [error, setError] = useState(false)
