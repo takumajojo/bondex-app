@@ -1162,18 +1162,7 @@ export default function DashboardPage() {
                             団体 →
                           </a>
                         )}
-                        {/* 主要アクション(発行)だけを行内に残し、他は「⋯」メニューに集約。
-                            発行失敗は代理店側でも発行できるため、運営に再発行を促す導線は出さない
-                            (谷口さん 2026-08-28)。 */}
-                        {it.status === "requested" && (
-                          <a
-                            href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
-                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
-                            title="代理店の発行依頼を発行画面に読み込み、レビューして発行します"
-                          >
-                            この依頼を発行 →
-                          </a>
-                        )}
+                        {/* 発行・再試行などの操作は全て行右端の「⋯」メニューに集約 (行内アクション廃止)。 */}
                       </td>
                       <td className="p-3 align-top">
                         <p className="text-xs text-foreground">{it.representative}</p>
@@ -1251,15 +1240,7 @@ export default function DashboardPage() {
                               <CreditCard className="w-2.5 h-2.5" strokeWidth={2} />
                               課金失敗
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => retryCharge(it.id)}
-                              disabled={chargingId === it.id}
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2 disabled:opacity-50"
-                              title="カード決済を今すぐ再試行します（カード登録済みなら課金・未登録なら再度失敗します）"
-                            >
-                              {chargingId === it.id ? "再試行中…" : "再試行 →"}
-                            </button>
+                            {/* 再試行は「⋯」メニュー(決済を再試行…)に集約。ここは状態表示のみ。 */}
                             {it.charge_error && (
                               <p className="max-w-[160px] text-[10px] text-red-700 line-clamp-2">
                                 {it.charge_error}
@@ -1294,6 +1275,34 @@ export default function DashboardPage() {
                                   onClick={() => setOpenMenuId(null)}
                                 />
                                 <div className="absolute right-0 z-50 mt-1 w-52 rounded-xl border border-border bg-white shadow-lg py-1 text-left">
+                                  {/* 発行 (代理店依頼の読み込み→発行)。行内リンクを廃し、操作は全てこのメニューに集約。 */}
+                                  {it.status === "requested" && (
+                                    <>
+                                      <a
+                                        href={`/operator?requestId=${encodeURIComponent(it.booking_id)}`}
+                                        onClick={() => setOpenMenuId(null)}
+                                        className="block px-3 py-2 text-xs font-semibold text-red-600 hover:bg-muted/40"
+                                        title="代理店の発行依頼を発行画面に読み込み、レビューして発行します"
+                                      >
+                                        この依頼を発行…
+                                      </a>
+                                      <div className="my-1 border-t border-border" />
+                                    </>
+                                  )}
+                                  {/* 決済の再試行 (課金失敗時のみ)。実カードへの課金のため実行時に確認を挟む。 */}
+                                  {isChargeFailed(it) && !it.charged_at && (
+                                    <button
+                                      onClick={() => {
+                                        setOpenMenuId(null)
+                                        void retryCharge(it.id)
+                                      }}
+                                      disabled={chargingId === it.id}
+                                      className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 hover:bg-muted/40 disabled:opacity-50"
+                                      title="カード決済を今すぐ再試行します（カード登録済みなら課金・未登録なら再度失敗します）"
+                                    >
+                                      {chargingId === it.id ? "決済を再試行中…" : "決済を再試行…"}
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => {
                                       setOpenMenuId(null)
