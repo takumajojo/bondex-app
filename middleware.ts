@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import {
+  verifyOperatorSession,
+  OPERATOR_SESSION_COOKIE as SESSION_COOKIE,
+} from "@/lib/operator-session"
 
 /**
  * 運営(operator)ゲート — 既定deny(default-deny)。
@@ -16,7 +20,8 @@ import type { NextRequest } from "next/server"
  * 本番で OPERATOR_PASSWORD 未設定なら 503 (fail closed)。開発は素通し。
  */
 
-const COOKIE_NAME = "bondex_op_auth"
+// 旧 cookie 名 (生パスワード保存)。パスキー導入で廃止 — 参照しない
+// const COOKIE_NAME = "bondex_op_auth"
 
 // operator 認証が不要な公開ルート。これ以外の /operator/* と /api/* は既定で認証必須。
 //  - /api/agency/*  代理店の Supabase JWT で各ルートが自前認証
@@ -35,6 +40,11 @@ const PUBLIC_PREFIXES = [
   "/api/g/", // 添乗員向け共有ビュー (期限付きトークンで自己認証・読み取り専用)
 ]
 const PUBLIC_EXACT = new Set<string>([
+  // パスキー認証 API (登録はパスワード・ログインは生体認証で自己ゲート)
+  "/api/operator/passkey/register-options",
+  "/api/operator/passkey/register-verify",
+  "/api/operator/passkey/login-options",
+  "/api/operator/passkey/login-verify",
   "/operator/login", // ログイン画面自体は公開(無限ループ防止)
   "/api/operator/auth", // ログイン処理
   "/api/operator/logout",
@@ -50,7 +60,7 @@ function isPublicPath(path: string): boolean {
   return PUBLIC_PREFIXES.some((p) => path.startsWith(p))
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname
 
   // 公開ルートは素通し。それ以外の /operator/* と /api/* は既定で operator 認証必須(default-deny)。
@@ -64,8 +74,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  const cookieValue = req.cookies.get(COOKIE_NAME)?.value
-  if (cookieValue === expected) return NextResponse.next()
+  // 2026-08-31 パスキー導入: cookie は「パスワードの生値」ではなく
+  // 署名付き・12時間で失効するセッショントークンに刷新。
+  // 旧 cookie (生パスワード) は受け付けない = 全員が新方式で入り直す。
+  const sessionToken = req.cookies.get(SESSION_COOKIE)?.value
+  if (await verifyOperatorSession(sessionToken)) return NextResponse.next()
 
   const authHeader = req.headers.get("authorization")
   if (authHeader === `Bearer ${expected}`) return NextResponse.next()

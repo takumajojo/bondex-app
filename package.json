@@ -44,6 +44,8 @@
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
     "@react-pdf/renderer": "^4.5.1",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.3",
     "@stripe/react-stripe-js": "^3.10.0",
     "@stripe/stripe-js": "^6.0.0",
     "@supabase/supabase-js": "^2.108.2",
