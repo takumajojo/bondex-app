@@ -87,3 +87,12 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
   console.error(`[ops-alert] ${input.subject} :: ${input.lines.join(" | ")}`)
   return result
 }
+
+/**
+ * アラートを届ける手段が1つでも設定されているか (2026-08-31 監査対応)。
+ * cron はこれを検査し、「知らせるべきことがあるのに知らせる手段がない」場合に
+ * HTTP エラーを返して GitHub Actions 側で赤くする (静かな成功にしない)。
+ */
+export function opsAlertConfigured(): boolean {
+  return mailerConfigured() || Boolean(process.env.SLACK_WEBHOOK_URL)
+}

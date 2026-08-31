@@ -80,6 +80,12 @@ const messages = {
     cardBody:
       "You've selected card payment. Registering a card in advance saves you from entering it at each issuance (payment is finalized at pickup).",
     emptyState: "No shipments yet",
+    searchPh: "Search by booking no. / guest / your ref",
+    searchGo: "Search",
+    searchClear: "Clear search",
+    loadMore: "Load more",
+    loadingMore: "Loading…",
+    emptySearch: "No bookings match your search",
     waybill: "Waybill",
     waybillDlTitle: "Download the label PDF (A5). Print at actual size (100%).",
     waybillPrint: "A5 print",
@@ -186,6 +192,12 @@ const messages = {
     cardBody:
       "カード払いをご選択いただいています。事前にカードをご登録いただくと、発行のたびに入力する必要がなくなります（決済は集荷完了時に確定します）。",
     emptyState: "案件がまだありません",
+    searchPh: "予約番号・代表者・貴社Refで検索",
+    searchGo: "検索",
+    searchClear: "検索を解除",
+    loadMore: "さらに読み込む",
+    loadingMore: "読み込み中…",
+    emptySearch: "検索に一致する案件がありません",
     waybill: "送り状",
     waybillDlTitle: "送り状PDF（A5）をダウンロード。印刷は実際のサイズ(100%)推奨。",
     waybillPrint: "A5印刷",
@@ -284,6 +296,14 @@ export default function AgencyDashboard() {
   const { locale, setLocale } = useAgencyLocale()
   const t = messages[locale]
   const [shipments, setShipments] = useState<Shipment[]>([])
+  // ページング (2026-08-31 監査対応: 固定 limit 200 だと古い予約が静かに消え、
+  // 領収書・バウチャーの再DL導線が切れる)。「さらに読み込む」で 100 件ずつ追加。
+  const PAGE_SIZE = 100
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  // 予約番号・代表者・貴社Ref のサーバー側検索 (RLS で自社分のみが対象)
+  const [searchText, setSearchText] = useState("")
+  const [searchApplied, setSearchApplied] = useState("")
   const [loading, setLoading] = useState(true)
   const [agencyName, setAgencyName] = useState("")
   const [userEmail, setUserEmail] = useState("")
@@ -409,20 +429,48 @@ export default function AgencyDashboard() {
     setPaymentMethod((agency as { payment_method?: string }).payment_method || "invoice")
     setCardOnFile(Boolean((agency as { card_on_file?: boolean }).card_on_file))
 
-    // 3. shipments を取得 (RLS で自社のみフィルタ済み)
-    const { data, error: sErr } = await sb
+    // 3. shipments を取得 (RLS で自社のみフィルタ済み)。先頭ページのみ。
+    let q = sb
       .from("shipments")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(200)
+      .range(0, PAGE_SIZE - 1)
+    if (searchApplied) {
+      const kw = searchApplied.replace(/[,%()]/g, "").trim()
+      if (kw) q = q.or(`booking_id.ilike.%${kw}%,representative.ilike.%${kw}%,booking_name.ilike.%${kw}%`)
+    }
+    const { data, error: sErr } = await q
     if (sErr) {
       setError(sErr.message)
       setLoading(false)
       return
     }
-    setShipments((data as Shipment[]) || [])
+    const rows = (data as Shipment[]) || []
+    setShipments(rows)
+    setHasMore(rows.length === PAGE_SIZE)
     setLoading(false)
-  }, [router])
+  }, [router, searchApplied])
+
+  // 「さらに読み込む」: 現在の末尾から次の 100 件を追加取得する
+  const loadMore = useCallback(async () => {
+    const sb = getBrowserSupabase()
+    if (!sb || loadingMore) return
+    setLoadingMore(true)
+    let q = sb
+      .from("shipments")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(shipments.length, shipments.length + PAGE_SIZE - 1)
+    if (searchApplied) {
+      const kw = searchApplied.replace(/[,%()]/g, "").trim()
+      if (kw) q = q.or(`booking_id.ilike.%${kw}%,representative.ilike.%${kw}%,booking_name.ilike.%${kw}%`)
+    }
+    const { data } = await q
+    const rows = (data as Shipment[]) || []
+    setShipments((prev) => [...prev, ...rows])
+    setHasMore(rows.length === PAGE_SIZE)
+    setLoadingMore(false)
+  }, [shipments.length, searchApplied, loadingMore])
 
   useEffect(() => {
     void load()
@@ -836,6 +884,40 @@ export default function AgencyDashboard() {
           </div>
         )}
 
+        {/* 予約検索 (サーバー側・自社分のみ)。過去履歴が増えても番号で直接引ける */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            setSearchApplied(searchText.trim())
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder={t.searchPh}
+            className="flex-1 max-w-sm rounded-xl border border-border bg-white px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            className="rounded-xl border border-border bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+          >
+            {t.searchGo}
+          </button>
+          {searchApplied && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchText("")
+                setSearchApplied("")
+              }}
+              className="text-xs text-muted-foreground underline underline-offset-2"
+            >
+              {t.searchClear}
+            </button>
+          )}
+        </form>
+
         <section className="rounded-2xl border border-border bg-white overflow-hidden">
           {loading ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
@@ -844,7 +926,7 @@ export default function AgencyDashboard() {
           ) : shipments.length === 0 ? (
             <div className="p-16 flex flex-col items-center gap-3 text-muted-foreground">
               <Package className="w-8 h-8" strokeWidth={1.5} />
-              <span className="text-sm">{t.emptyState}</span>
+              <span className="text-sm">{searchApplied ? t.emptySearch : t.emptyState}</span>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1056,6 +1138,19 @@ export default function AgencyDashboard() {
                   ))}
                 </tbody>
               </table>
+              {/* 100件を超える履歴の追加読み込み (旧: 固定200件で古い予約が消えていた) */}
+              {hasMore && !monthFilter && (
+                <div className="border-t border-border p-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                    className="rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {loadingMore ? t.loadingMore : t.loadMore}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>

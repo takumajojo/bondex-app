@@ -47,12 +47,20 @@ export async function GET(req: NextRequest) {
     }
 
     const sp = req.nextUrl.searchParams
+    // view = 要対応カテゴリ (運営ダッシュボードのタイル絞り込み)。サーバー側で全件から抽出する
+    const VIEWS = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"] as const
+    const viewRaw = sp.get("view")
+    const view = VIEWS.includes(viewRaw as (typeof VIEWS)[number])
+      ? (viewRaw as (typeof VIEWS)[number])
+      : undefined
     const data = await listShipments({
       agency: sp.get("agency") || undefined,
       status: (sp.get("status") as ShipmentStatus) || undefined,
       fromDate: sp.get("fromDate") || undefined,
       toDate: sp.get("toDate") || undefined,
       search: sp.get("search") || undefined,
+      view,
+      todayYmd: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
       limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
     })
     return NextResponse.json({ configured: true, shipments: data })

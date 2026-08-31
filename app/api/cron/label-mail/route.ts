@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
-import { sendOpsAlert } from "@/lib/ops-alert"
+import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
 import {
   labelMailStatus,
   todayJst,
@@ -151,6 +151,14 @@ export async function GET(req: NextRequest) {
         ? `【送り状を郵送してください】早急手配 ${urgent}件 / 全${due.length}件`
         : `【送り状を郵送してください】本日投函 ${due.length}件`
 
+    // 通知手段が無いのに通知対象がある = このcronの存在意義が消えている状態。
+    // 静かに 200 を返さず 503 で GitHub Actions を赤くする (2026-08-31 監査対応)。
+    if (!opsAlertConfigured()) {
+      return NextResponse.json(
+        { error: "alert channel not configured but there are pending label mails", pending: due.length },
+        { status: 503 },
+      )
+    }
     const result = await sendOpsAlert({
       subject,
       lines: [

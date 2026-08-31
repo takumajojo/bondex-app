@@ -5,7 +5,8 @@ import { buildMonthlyInvoice } from "@/lib/invoice-build"
 import { sendMail } from "@/lib/mailer"
 
 export const runtime = "nodejs"
-export const maxDuration = 120
+// 代理店数に比例して伸びる (1社あたり PDF 生成+メール1〜2通 ≒ 3〜6秒)。20社で120秒に達するため300に (2026-08-31)。
+export const maxDuration = 300
 
 /**
  * 月次請求書の自動生成＋送付 (前月分)。毎月1日に GitHub Actions から叩く。
@@ -84,6 +85,19 @@ export async function GET(req: NextRequest) {
     }> = []
 
     for (const ag of agencies ?? []) {
+      // 送付済みマーカー (2026-08-31 監査対応): 途中タイムアウト → GH Actions の再実行で
+      // 先頭から回り直しても、送付済みの代理店に請求書メールを二重送付しない。
+      const already = await sb
+        .from("invoice_sends")
+        .select("invoice_no")
+        .eq("agency", ag.name)
+        .eq("month", targetMonth)
+        .maybeSingle()
+      if (already.data) {
+        results.push({ agency: ag.name, sentTo: [], skipped: `sent already (${already.data.invoice_no ?? "recorded"})` })
+        continue
+      }
+
       const built = await buildMonthlyInvoice(sb, ag.name, targetMonth)
       if (!built.ok || !built.buffer) {
         // 発送実績なしは正常なスキップ
@@ -153,6 +167,17 @@ export async function GET(req: NextRequest) {
         })
         if (r.sent) sentTo.push(built.agencyEmail)
         else errs.push(`agency: ${r.error}`)
+      }
+
+      // 少なくとも1通送れたら送付済みとして記録する (0通 = 全滅なら記録せず次回再試行)
+      if (sentTo.length > 0) {
+        const mark = await sb.from("invoice_sends").insert({
+          agency: ag.name,
+          month: targetMonth,
+          invoice_no: built.invoiceNumber ?? null,
+          sent_to: sentTo,
+        })
+        if (mark.error) console.error("[monthly-invoices] send marker failed:", mark.error.message)
       }
 
       results.push({

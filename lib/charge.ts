@@ -140,7 +140,25 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       )
 
       if (pi.status === "succeeded") {
-        await recordShipmentCharge(shipmentId, pi.id, amountYen)
+        const rec = await recordShipmentCharge(shipmentId, pi.id, amountYen)
+        if (!rec.ok) {
+          // 課金成功なのに記録失敗 = 24時間後の再試行で二重課金になりうる最悪パターン。
+          // 必ず人に届くアラートを飛ばす (2026-08-31 監査対応)。
+          await sendOpsAlert({
+            subject: `【緊急】課金成功の記録に失敗 ${shipment.booking_id}-L${shipment.leg_index + 1}`,
+            lines: [
+              `Stripe では課金が成立しています: PaymentIntent ${pi.id} / ¥${amountYen.toLocaleString()}`,
+              `しかし DB の charged_at を更新できませんでした: ${rec.error ?? "unknown"}`,
+              "手動で charged_at / stripe_payment_intent_id / charge_amount_yen を記録してください。",
+              "記録しないまま24時間経過すると、再試行で二重課金になります。",
+            ],
+            agencyEmail: null,
+          })
+        }
+        if (!rec.firstRecord) {
+          // 既に記録済み (並走 or 再実行)。領収書メールの重複送付を防いでここで終える。
+          return { charged: true, paymentIntentId: pi.id, amountYen }
+        }
         // 請求書 兼 領収書を生成して代理店へメール送付 (必須)。
         // 課金は既に成立しているので、失敗しても throw せずアラートで拾う。
         await sendChargeInvoice(

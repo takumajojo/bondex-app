@@ -70,8 +70,22 @@ export async function PATCH(
 
   // ── 取り消し
   if (body.cancel === true) {
-    const { error } = await sb.from("shipments").update({ status: "cancelled" }).eq("id", id)
+    // 条件付き更新 (2026-08-31 監査対応): 事前チェックと更新の間に cron 自動発行が
+    // 走ると「発行直後の区間をキャンセルで上書き = 実ラベル (課金済み) だけが生き残る」。
+    // 未発行状態のときだけ更新し、0行なら発行済みとして 409 を返す。
+    const { data: upd, error } = await sb
+      .from("shipments")
+      .update({ status: "cancelled" })
+      .eq("id", id)
+      .in("status", ["requested", "pending"])
+      .select("id")
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if ((upd ?? []).length === 0) {
+      return NextResponse.json(
+        { error: "LOCKED", message: "送り状が発行済みのため、取り消しは BondEx へご連絡ください。" },
+        { status: 409 },
+      )
+    }
     await notifyBondEx({
       kind: "change",
       title: `${legRef}（${shipment.agency}）区間を取り消し`,
@@ -146,8 +160,20 @@ export async function PATCH(
     return NextResponse.json({ error: "no fields" }, { status: 400 })
   }
 
-  const { error } = await sb.from("shipments").update(patch).eq("id", id)
+  // 同上: 発行と同時刻の変更が「送り状と DB の日付・個数の食い違い」を生まないよう条件付き
+  const { data: upd2, error } = await sb
+    .from("shipments")
+    .update(patch)
+    .eq("id", id)
+    .in("status", ["requested", "pending"])
+    .select("id")
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if ((upd2 ?? []).length === 0) {
+    return NextResponse.json(
+      { error: "LOCKED", message: "送り状が発行済みのため、変更は BondEx へご連絡ください。" },
+      { status: 409 },
+    )
+  }
 
   await notifyBondEx({
     kind: "change",

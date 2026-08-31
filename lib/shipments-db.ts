@@ -226,6 +226,62 @@ export async function saveShipment(
 /**
  * ダッシュボード用一覧取得. created_at 降順、最大 100件.
  */
+/**
+ * 要対応カテゴリ (運営ダッシュボードのタイル)。判定条件は dashboard の
+ * deriveDelay / isChargeFailed / isLabelMailPending と同一のものを SQL で表現する。
+ * 2026-08-31 監査対応: 従来は「最新500行スナップショット」をクライアントで集計しており、
+ * 総行数が500を超えると古い行の課金失敗・郵送待ちが件数ごと静かに消えていた。
+ */
+export type BoardView = "delay-pickup" | "delay-delivery" | "charge-failed" | "failed" | "label-mail"
+
+function applyBoardView(
+  q: ReturnType<ReturnType<typeof getSupabase> extends infer _ ? any : never>,
+  view: BoardView,
+  todayYmd: string,
+) {
+  switch (view) {
+    case "delay-pickup":
+      return q.in("status", ["requested", "pending", "issued"]).lt("shipment_date", todayYmd)
+    case "delay-delivery":
+      return q.in("status", ["picked_up", "in_transit"]).lt("expected_arrival", todayYmd)
+    case "charge-failed":
+      return q.not("charge_error", "is", null).is("charged_at", null)
+    case "failed":
+      return q.eq("status", "failed")
+    case "label-mail":
+      // 期限当日以前 (<= today) かつ未郵送。null = 旧予約は対象外。
+      return q
+        .in("status", ["requested", "pending", "issued", "failed"])
+        .is("label_sent_at", null)
+        .not("label_mail_due", "is", null)
+        .lte("label_mail_due", todayYmd)
+  }
+}
+
+/** 要対応の件数をサーバー側 count で返す (全件が対象・スナップショット上限なし)。 */
+export async function countBoardViews(
+  todayYmd: string,
+): Promise<Record<BoardView, number> | null> {
+  const sb = getSupabase()
+  if (!sb) return null
+  const views: BoardView[] = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"]
+  const out = {} as Record<BoardView, number>
+  const results = await Promise.all(
+    views.map((v) =>
+      applyBoardView(sb.from("shipments").select("id", { count: "exact", head: true }), v, todayYmd),
+    ),
+  )
+  for (let i = 0; i < views.length; i++) {
+    const r = results[i] as { count: number | null; error: { message: string } | null }
+    if (r.error) {
+      console.error("[shipments-db] countBoardViews failed:", r.error.message)
+      return null
+    }
+    out[views[i]] = r.count ?? 0
+  }
+  return out
+}
+
 export async function listShipments(filter?: {
   agency?: string
   status?: ShipmentStatus
@@ -233,11 +289,15 @@ export async function listShipments(filter?: {
   toDate?: string
   /** 予約番号・代表者・受取人・ツアー番号の部分一致検索 */
   search?: string
+  /** 要対応カテゴリでの絞り込み (todayYmd 必須)。 */
+  view?: BoardView
+  todayYmd?: string
   limit?: number
 }): Promise<ShipmentRecord[]> {
   const sb = getSupabase()
   if (!sb) return []
   let q = sb.from("shipments").select("*").order("created_at", { ascending: false })
+  if (filter?.view && filter?.todayYmd) q = applyBoardView(q, filter.view, filter.todayYmd)
   if (filter?.agency) q = q.eq("agency", filter.agency)
   if (filter?.status) q = q.eq("status", filter.status)
   if (filter?.fromDate) q = q.gte("shipment_date", filter.fromDate)
@@ -474,14 +534,24 @@ export async function listIssueDue(
 }
 
 /** カード課金成功を記録 (二重課金防止の charged_at をセット)。 */
+/**
+ * カード課金成功を記録。
+ * 2026-08-31 監査対応の2点:
+ *  - 条件付き更新 (charged_at IS NULL のときだけ)。並走・再実行で成功記録が重なっても、
+ *    既に記録済みなら firstRecord=false を返し、呼び出し側は領収書メールをスキップできる
+ *    (24時間以内の同一 idempotencyKey 再生で領収書が重複送付されていた)。
+ *  - 記録の失敗は console だけでなく戻り値で返す。課金成功なのに charged_at が入らないと、
+ *    Stripe の冪等キー失効 (24時間) 後の再試行で「本当の二重課金」になるため、
+ *    呼び出し側が緊急アラートを飛ばす。
+ */
 export async function recordShipmentCharge(
   id: string,
   paymentIntentId: string,
   amountYen: number,
-): Promise<void> {
+): Promise<{ ok: boolean; firstRecord: boolean; error?: string }> {
   const sb = getSupabase()
-  if (!sb) return
-  const { error } = await sb
+  if (!sb) return { ok: false, firstRecord: false, error: "Supabase not configured" }
+  const { data, error } = await sb
     .from("shipments")
     .update({
       charged_at: new Date().toISOString(),
@@ -490,7 +560,13 @@ export async function recordShipmentCharge(
       charge_error: null,
     })
     .eq("id", id)
-  if (error) console.error("[shipments-db] recordShipmentCharge failed", error.message)
+    .is("charged_at", null)
+    .select("id")
+  if (error) {
+    console.error("[shipments-db] recordShipmentCharge failed", error.message)
+    return { ok: false, firstRecord: false, error: error.message }
+  }
+  return { ok: true, firstRecord: (data ?? []).length > 0 }
 }
 
 /** カード課金失敗を記録 (charged_at は据え置き=再試行可能、エラーだけ残す)。 */
@@ -588,18 +664,4 @@ export async function getAgencyNotificationMode(agencyName: string): Promise<str
   return (data as { hotel_notification_mode?: string | null }).hotel_notification_mode ?? null
 }
 
-/**
- * 代理店一覧 (重複除去). フィルタ UI のドロップダウン用.
- */
-export async function listAgencies(): Promise<string[]> {
-  const sb = getSupabase()
-  if (!sb) return []
-  const { data, error } = await sb.from("shipments").select("agency")
-  if (error || !data) return []
-  const set = new Set<string>()
-  for (const row of data) {
-    const a = (row as { agency?: string }).agency
-    if (a) set.add(a)
-  }
-  return Array.from(set).sort()
-}
+// (旧 listAgencies は未使用のため削除・2026-08-31 監査対応。shipments 全行 select で1000行キャップに当たる実装だった)

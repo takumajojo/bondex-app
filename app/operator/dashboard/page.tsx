@@ -369,6 +369,9 @@ export default function DashboardPage() {
   const [labelBusyId, setLabelBusyId] = useState("")
   // 「状態の一望」用スナップショット (フィルタ非依存・全件)。要対応の集計と遅延の判定に使う。
   const [board, setBoard] = useState<Shipment[]>([])
+  // 要対応の件数 (サーバー側 count・全件対象)。2026-08-31 監査対応:
+  // 旧実装は最新500行のスナップショット集計で、総行数500超で件数が静かに狂った。
+  const [boardCounts, setBoardCounts] = useState<Record<string, number> | null>(null)
   const [pendingAgencies, setPendingAgencies] = useState(0)
   // 要対応タイルからのクライアント側フィルタ (サーバー側の status フィルタとは別レイヤ)。
   const [viewFilter, setViewFilter] = useState<
@@ -387,11 +390,23 @@ export default function DashboardPage() {
 
   const loadBoard = useCallback(async () => {
     try {
-      const res = await fetch("/api/shipments?limit=500")
+      const res = await fetch("/api/operator/board-stats")
+      const d = (await res.json()) as { counts?: Record<string, number> }
+      if (d.counts) setBoardCounts(d.counts)
+    } catch {
+      /* best-effort — 要対応が出せなくても一覧は動く */
+    }
+  }, [])
+
+  // タイルを選んだときだけ、そのカテゴリの行をサーバーから取得する
+  // (クライアント側スナップショット絞り込みを廃止・全件から正確に抽出)。
+  const loadBoardRows = useCallback(async (view: string) => {
+    try {
+      const res = await fetch(`/api/shipments?view=${encodeURIComponent(view)}&limit=500`)
       const d = (await res.json()) as { shipments?: Shipment[] }
       setBoard(Array.isArray(d.shipments) ? d.shipments : [])
     } catch {
-      /* best-effort — 要対応が出せなくても一覧は動く */
+      setBoard([])
     }
   }, [])
   useEffect(() => {
@@ -623,47 +638,40 @@ export default function DashboardPage() {
   }, [items])
 
   // 要対応（あなたの判断待ち）— フィルタ非依存の全件スナップショットから集計する。
+  // 件数はサーバー側 count (全件対象)。urgent の内訳だけは取得済みの行から補足表示する。
   const attention = useMemo(() => {
-    const pickup = board.filter((s) => deriveDelay(s) === "pickup").length
-    const delivery = board.filter((s) => deriveDelay(s) === "delivery").length
-    const chargeFailed = board.filter(isChargeFailed).length
-    const failed = board.filter((s) => s.status === "failed").length
-    // 送り状(紙)の郵送。キャンセル済みは対象外。
-    const mail = board.filter(isLabelMailPending)
-    const mailUrgent = mail.filter((s) => labelMailUrgency(s) !== "due").length
+    const c = boardCounts ?? {}
+    const pickup = c["delay-pickup"] ?? 0
+    const delivery = c["delay-delivery"] ?? 0
+    const chargeFailed = c["charge-failed"] ?? 0
+    const failed = c["failed"] ?? 0
+    const mail = c["label-mail"] ?? 0
+    const mailUrgent = board.filter(
+      (s) => isLabelMailPending(s) && labelMailUrgency(s) !== "due",
+    ).length
     return {
       pickup,
       delivery,
       chargeFailed,
       failed,
-      mail: mail.length,
+      mail,
       mailUrgent,
-      total:
-        pendingAgencies + pickup + delivery + chargeFailed + failed + mail.length,
+      total: pendingAgencies + pickup + delivery + chargeFailed + failed + mail,
     }
-  }, [board, pendingAgencies])
+  }, [boardCounts, board, pendingAgencies])
 
-  // 一覧に表示する行。要対応タイルが選択されている間は全件スナップショットを
-  // クライアント側で絞り込む（遅延・課金失敗はサーバー側フィルタが無いため）。
+  // 要対応タイル選択中は、そのカテゴリの行をサーバーから取得済み (board)。
+  // 決済ピル (pay-paid/pay-unpaid) だけは通常一覧のクライアント絞り込みのまま。
+  useEffect(() => {
+    const serverViews = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"]
+    if (serverViews.includes(viewFilter)) void loadBoardRows(viewFilter)
+  }, [viewFilter, loadBoardRows])
+
   const rows = useMemo(() => {
     if (!viewFilter) return items
-    return board.filter((s) =>
-      viewFilter === "label-mail"
-        ? isLabelMailPending(s)
-        : viewFilter === "delay-pickup"
-          ? deriveDelay(s) === "pickup"
-        : viewFilter === "delay-delivery"
-          ? deriveDelay(s) === "delivery"
-          : viewFilter === "charge-failed"
-            ? isChargeFailed(s)
-            : viewFilter === "failed"
-              ? s.status === "failed"
-              : viewFilter === "pay-paid"
-                ? !!s.charged_at
-                : viewFilter === "pay-unpaid"
-                  ? !s.charged_at && !s.charge_error
-                  : true,
-    )
+    if (viewFilter === "pay-paid") return items.filter((s) => !!s.charged_at)
+    if (viewFilter === "pay-unpaid") return items.filter((s) => !s.charged_at && !s.charge_error)
+    return board
   }, [viewFilter, items, board])
 
   return (

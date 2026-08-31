@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { listIssueDue, type ShipmentRecord } from "@/lib/shipments-db"
-import { sendOpsAlert } from "@/lib/ops-alert"
+import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
 import { sendMail } from "@/lib/mailer"
 
 export const runtime = "nodejs"
@@ -132,6 +132,14 @@ export async function GET(req: NextRequest) {
         }
       }
       lines.push("", "ダッシュボード: https://bondex.express/operator/dashboard")
+      // 通知手段が無いのに発行対象がある = 発行漏れ防止網が消えている状態。
+      // 静かに 200 を返さず 503 で GitHub Actions を赤くする (2026-08-31 監査対応)。
+      if (!opsAlertConfigured()) {
+        return NextResponse.json(
+          { error: "alert channel not configured but there are due issuances", due: due.length },
+          { status: 503 },
+        )
+      }
       const result = await sendOpsAlert({
         subject: `【発行してください】未発行の予約 ${due.length}区間（発送30日以内）`,
         lines,
@@ -154,7 +162,16 @@ export async function GET(req: NextRequest) {
     const deferred: Array<{ booking_id: string; leg: number }> = []
     const failed: Array<{ booking_id: string; leg: number; error: string }> = []
 
-    for (const s of due) {
+    // 1回の実行で発行する上限 (2026-08-31 監査対応)。
+    // 発行は1件数秒 (Places解決×2 + Ship&co)、後段の Drive 格納は1予約5〜15秒かかる。
+    // 無制限だとバックログ消化日に maxDuration(300s) を超えて途中 kill され、
+    // kill 以降の予約は Drive 格納も発行メールも送られないまま誰にも知らされない。
+    // 上限を設けて確実に完走させ、残りは翌日の実行に持ち越す (毎日走るので自然に消化される)。
+    const ISSUE_BATCH_LIMIT = 20
+    const batch = due.slice(0, ISSUE_BATCH_LIMIT)
+    const carriedOver = due.length - batch.length
+
+    for (const s of batch) {
       try {
         const res = await fetch(`${origin}/api/shipandco/create`, {
           method: "POST",
@@ -278,6 +295,8 @@ export async function GET(req: NextRequest) {
       issuedLegs: Array.from(issuedByBooking.values()).reduce((n, a) => n + a.length, 0),
       deferred: deferred.length,
       failed: failed.length,
+      // 今回のバッチ上限で持ち越した件数 (翌日の実行で消化される)
+      carriedOver,
       today: todayJst,
       horizon: horizonJst,
     })
