@@ -1,12 +1,14 @@
 "use client"
 
-// 運営ログイン (2026-08-31 パスキー化)。
-// パスキー (Touch ID / Face ID) が1台でも登録されると、ブラウザからの入場は生体認証必須。
-// パスワードは「新しい端末を登録するときの本人確認」専用になる (谷口さん決定)。
-// 未登録の初期状態だけは従来どおりパスワードで入場できる (ブートストラップ)。
+// 運営ログイン (2026-08-31 パスキー化 → 同日「メアドと指紋で」に簡素化・谷口さん指示)。
+//
+// サインイン: 登録済み端末なら Touch ID / Face ID ワンタップ。
+// 端末登録  : メールアドレス → 6桁コードがメールで届く → 指紋登録。パスワード入力は廃止
+//             (運営パスワードは Vercel 環境変数で人間は覚えていないため、機械専用に格下げ)。
+// パスキーが1台でも登録されると、ブラウザからの入場は生体認証必須。
 import { Suspense, useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Fingerprint, Loader2, ShieldCheck } from "lucide-react"
+import { Fingerprint, Loader2, Mail, ShieldCheck } from "lucide-react"
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,15 +24,16 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get("next"))
 
-  // registered: null=確認中 / false=パスキー未登録 (パスワードで入場+登録導線) / true=生体認証必須
+  // registered: null=確認中 / false=パスキー未登録 (登録フローへ) / true=生体認証で入場
   const [registered, setRegistered] = useState<boolean | null>(null)
   const [mode, setMode] = useState<"signin" | "enroll">("signin")
-  const [password, setPassword] = useState("")
-  const [deviceLabel, setDeviceLabel] = useState("")
+  // 登録フロー: email 入力 → コード送信済み (codeSent) → コード入力 → 指紋登録
+  const [email, setEmail] = useState("")
+  const [code, setCode] = useState("")
+  const [codeSent, setCodeSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  // パスキーでサインイン (登録済みのとき)
   const signInWithPasskey = useCallback(async () => {
     setError("")
     setBusy(true)
@@ -54,14 +57,12 @@ function LoginForm() {
       router.replace(next)
       return
     } catch (e) {
-      // ユーザーがダイアログを閉じた場合 (NotAllowedError) は静かに戻す
       const msg = e instanceof Error ? e.message : "認証に失敗しました"
       if (!/NotAllowedError|timed out|abort/i.test(msg)) setError(msg)
     }
     setBusy(false)
   }, [next, router])
 
-  // 初期表示: 登録有無を確認し、登録済みなら即 Touch ID を出す (1タップで入場)
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -79,7 +80,27 @@ function LoginForm() {
     }
   }, [])
 
-  // この端末を登録 (パスワードで本人確認 → Touch ID / Face ID を作成)
+  // 手順1: メールへ6桁コードを送る
+  const sendCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setBusy(true)
+    try {
+      const res = await fetch("/api/operator/passkey/email-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || "コードを送信できませんでした")
+      setCodeSent(true)
+    } catch (e2) {
+      setError(e2 instanceof Error ? e2.message : "コードを送信できませんでした")
+    }
+    setBusy(false)
+  }
+
+  // 手順2: コード確認 → 指紋 (Touch ID / Face ID) を登録してそのまま入場
   const enroll = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -88,7 +109,7 @@ function LoginForm() {
       const optRes = await fetch("/api/operator/passkey/register-options", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, code }),
       })
       const opt = await optRes.json()
       if (!optRes.ok) throw new Error(opt.error || "登録を開始できませんでした")
@@ -96,7 +117,7 @@ function LoginForm() {
       const verRes = await fetch("/api/operator/passkey/register-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, attestation, label: deviceLabel || null }),
+        body: JSON.stringify({ email, code, attestation }),
       })
       const ver = await verRes.json().catch(() => ({}))
       if (!verRes.ok) throw new Error(ver.error || "登録に失敗しました")
@@ -109,33 +130,7 @@ function LoginForm() {
     setBusy(false)
   }
 
-  // パスキー未登録のときだけのパスワード入場 (ブートストラップ)
-  const signInWithPassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setBusy(true)
-    try {
-      const res = await fetch("/api/operator/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(
-          data?.error === "PASSKEY_REQUIRED"
-            ? data.message
-            : data?.error || "サインインに失敗しました",
-        )
-        setBusy(false)
-        return
-      }
-      router.replace(next)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "サインインに失敗しました")
-      setBusy(false)
-    }
-  }
+  const showEnroll = (mode === "enroll" || registered === false) && registered !== null
 
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -154,7 +149,7 @@ function LoginForm() {
           </p>
         )}
 
-        {/* 登録済み: 生体認証が正面玄関 */}
+        {/* 登録済み: 指紋が正面玄関 */}
         {registered === true && mode === "signin" && (
           <div className="space-y-4">
             <Button
@@ -170,11 +165,7 @@ function LoginForm() {
               )}
               Touch ID / Face ID でサインイン
             </Button>
-            <p className="text-center text-[11px] text-muted-foreground leading-relaxed">
-              この管理画面は生体認証必須です。
-              <br />
-              パスワード単独では入場できません。
-            </p>
+            {error && <p className="text-center text-xs text-red-600">{error}</p>}
             <button
               type="button"
               onClick={() => {
@@ -183,56 +174,79 @@ function LoginForm() {
               }}
               className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >
-              新しい端末を登録する（パスワードが必要）
+              新しい端末を登録する（メール認証）
             </button>
           </div>
         )}
 
-        {/* 端末登録 (登録済み環境で新デバイスを足す / 未登録環境の初回) */}
-        {(mode === "enroll" || registered === false) && registered !== null && (
-          <form onSubmit={enroll} className="space-y-4">
+        {/* 端末登録: メール → コード → 指紋 */}
+        {showEnroll && (
+          <div className="space-y-4">
             <div className="flex items-start gap-2 rounded-xl bg-slate-50 border border-border p-3">
               <ShieldCheck className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" strokeWidth={1.8} />
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                {registered === false
-                  ? "この端末の Touch ID / Face ID を登録すると、次回から生体認証だけでサインインできます（登録後はパスワード単独で入場できなくなります）。"
-                  : "パスワードで本人確認のうえ、この端末の生体認証を登録します。"}
+                運営のメールアドレスに届く認証コードで本人確認し、この端末の
+                Touch ID / Face ID を登録します。次回からは指紋だけでサインインできます。
               </p>
             </div>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              placeholder="運営パスワード"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <Input
-              type="text"
-              placeholder="端末名（例: MacBook / iPhone）"
-              value={deviceLabel}
-              onChange={(e) => setDeviceLabel(e.target.value)}
-              maxLength={60}
-            />
-            {error && <p className="text-xs text-red-600">{error}</p>}
-            <Button type="submit" className="w-full gap-2" disabled={busy || !password}>
-              {busy ? (
-                <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
-              ) : (
-                <Fingerprint className="w-4 h-4" strokeWidth={1.8} />
-              )}
-              この端末の生体認証を登録
-            </Button>
-            {registered === false && (
-              <button
-                type="button"
-                onClick={(e) => void signInWithPassword(e as unknown as React.FormEvent)}
-                disabled={busy || !password}
-                className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
-              >
-                登録せずパスワードで入場（パスキー未登録の間のみ）
-              </button>
+
+            {!codeSent ? (
+              <form onSubmit={sendCode} className="space-y-3">
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="メールアドレス"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+                {error && <p className="text-xs text-red-600">{error}</p>}
+                <Button type="submit" className="w-full gap-2" disabled={busy || !email}>
+                  {busy ? (
+                    <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                  ) : (
+                    <Mail className="w-4 h-4" strokeWidth={1.8} />
+                  )}
+                  認証コードを送信
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={enroll} className="space-y-3">
+                <p className="text-[12px] text-muted-foreground">
+                  {email} 宛にコードを送信しました（有効期限10分）。
+                </p>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6桁の認証コード"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                />
+                {error && <p className="text-xs text-red-600">{error}</p>}
+                <Button type="submit" className="w-full gap-2" disabled={busy || code.length !== 6}>
+                  {busy ? (
+                    <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                  ) : (
+                    <Fingerprint className="w-4 h-4" strokeWidth={1.8} />
+                  )}
+                  指紋を登録してサインイン
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCodeSent(false)
+                    setCode("")
+                    setError("")
+                  }}
+                  className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  ← コードを再送信する
+                </button>
+              </form>
             )}
+
             {registered === true && (
               <button
                 type="button"
@@ -245,11 +259,7 @@ function LoginForm() {
                 ← サインインに戻る
               </button>
             )}
-          </form>
-        )}
-
-        {registered === true && mode === "signin" && error && (
-          <p className="text-center text-xs text-red-600">{error}</p>
+          </div>
         )}
       </div>
     </main>

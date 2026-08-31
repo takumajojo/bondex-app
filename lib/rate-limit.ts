@@ -42,6 +42,7 @@ const SCOPE_CLASS: Record<string, keyof typeof LIMIT_CLASS> = {
   contact: "strict",
   "agency-register": "strict",
   "operator-auth": "strict",
+  "operator-email-code": "strict",
   track: "strict",
   "group-share-view": "strict",
   howto: "strict",

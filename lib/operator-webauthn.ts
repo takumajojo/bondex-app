@@ -53,3 +53,43 @@ export function operatorPasswordOk(input: unknown): boolean {
   const expected = process.env.OPERATOR_PASSWORD
   return Boolean(expected) && typeof input === "string" && input === expected
 }
+
+/**
+ * パスキー登録を許可する運営メールアドレス (2026-08-31 谷口さん指示: メアドと指紋で)。
+ * OPERATOR_EMAILS (カンマ区切り・大文字小文字無視) で上書き可能。
+ * 未設定時の既定は谷口さんのアドレスのみ。
+ */
+export function operatorEmailAllowed(email: string): boolean {
+  const raw = process.env.OPERATOR_EMAILS?.trim() || "taniguchi@jojo-tokyo.com"
+  const allowed = raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+  return allowed.includes(email.trim().toLowerCase())
+}
+
+/** User-Agent から端末ラベルを自動判定する (端末名の手入力を廃止・2026-08-31)。 */
+export function deviceLabelFromUA(ua: string | null): string {
+  const u = ua ?? ""
+  const os = /iPhone/.test(u)
+    ? "iPhone"
+    : /iPad/.test(u)
+      ? "iPad"
+      : /Android/.test(u)
+        ? "Android"
+        : /Macintosh|Mac OS X/.test(u)
+          ? "Mac"
+          : /Windows/.test(u)
+            ? "Windows"
+            : "端末"
+  const browser = /Edg\//.test(u)
+    ? "Edge"
+    : /Chrome\//.test(u)
+      ? "Chrome"
+      : /Safari\//.test(u)
+        ? "Safari"
+        : /Firefox\//.test(u)
+          ? "Firefox"
+          : ""
+  return browser ? `${os} (${browser})` : os
+}

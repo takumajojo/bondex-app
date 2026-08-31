@@ -41,6 +41,7 @@ const PUBLIC_PREFIXES = [
 ]
 const PUBLIC_EXACT = new Set<string>([
   // パスキー認証 API (登録はパスワード・ログインは生体認証で自己ゲート)
+  "/api/operator/passkey/email-code",
   "/api/operator/passkey/register-options",
   "/api/operator/passkey/register-verify",
   "/api/operator/passkey/login-options",

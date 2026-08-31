@@ -96,3 +96,56 @@ export async function verifyChallengeToken(token: string | undefined | null): Pr
   if (b64url(expected) !== m[3]) return null
   return m[2]
 }
+
+/**
+ * メール認証コード (パスキー登録時の本人確認・2026-08-31)。
+ * 運営パスワードは Vercel 環境変数で人間が覚えていないため、人間の登録フローは
+ * 「許可されたメールアドレス + 6桁コード」に置き換える (谷口さん指示: メアドと指紋で)。
+ * コード自体は cookie に載せず、HMAC(ペイロード + コード) だけを署名として保存する。
+ * 形式: "e1.<exp>.<base64url(email)>.<sig>"
+ */
+export const OPERATOR_EMAIL_CODE_COOKIE = "bondex_op_emailcode"
+const EMAIL_CODE_TTL_SEC = 10 * 60
+
+function b64urlStr(s: string): string {
+  return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+export async function issueEmailCodeToken(
+  email: string,
+  code: string,
+): Promise<string | null> {
+  const key = await hmacKey()
+  if (!key) return null
+  const exp = Math.floor(Date.now() / 1000) + EMAIL_CODE_TTL_SEC
+  const payload = `e1.${exp}.${b64urlStr(email)}`
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${payload}:${code}`),
+  )
+  return `${payload}.${b64url(sig)}`
+}
+
+/** 入力されたコードとメールを cookie の署名と突き合わせる。一致すれば email を返す。 */
+export async function verifyEmailCodeToken(
+  token: string | undefined | null,
+  email: string,
+  code: string,
+): Promise<boolean> {
+  if (!token) return false
+  const m = /^e1\.(\d{10,})\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{20,})$/.exec(token)
+  if (!m) return false
+  const exp = Number(m[1])
+  if (!Number.isFinite(exp) || exp * 1000 < Date.now()) return false
+  if (m[2] !== b64urlStr(email)) return false
+  const key = await hmacKey()
+  if (!key) return false
+  const payload = `e1.${m[1]}.${m[2]}`
+  const expected = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${payload}:${code}`),
+  )
+  return b64url(expected) === m[3]
+}

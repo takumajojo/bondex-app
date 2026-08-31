@@ -1,28 +1,43 @@
 import { NextRequest, NextResponse } from "next/server"
 import { generateRegistrationOptions } from "@simplewebauthn/server"
 import { rateLimit } from "@/lib/rate-limit"
-import { rpFrom, listPasskeys, operatorPasswordOk } from "@/lib/operator-webauthn"
-import { issueChallengeToken, OPERATOR_CHALLENGE_COOKIE } from "@/lib/operator-session"
+import { rpFrom, listPasskeys, operatorPasswordOk, operatorEmailAllowed } from "@/lib/operator-webauthn"
+import {
+  issueChallengeToken,
+  verifyEmailCodeToken,
+  OPERATOR_CHALLENGE_COOKIE,
+  OPERATOR_EMAIL_CODE_COOKIE,
+} from "@/lib/operator-session"
 
 export const runtime = "nodejs"
 
 /**
  * パスキー登録の第1段: 登録オプションを発行する。
- * 端末登録は「パスワードによる本人確認」を毎回要求する (middleware の公開ルートに
- * 載っているため、このパスワード検証が唯一のゲート)。
+ * 本人確認は「許可メールアドレス + メールで届く6桁コード」(2026-08-31 谷口さん指示)。
+ * 運営パスワードでも通る (後方互換・機械用) が、UI はメール方式のみを出す。
  */
 export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "operator-auth")
   if (!limit.ok) return limit.response
 
-  let body: { password?: unknown }
+  let body: { password?: unknown; email?: unknown; code?: unknown }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
-  if (!operatorPasswordOk(body.password)) {
-    return NextResponse.json({ error: "パスワードが一致しません" }, { status: 401 })
+  const email = typeof body.email === "string" ? body.email.trim() : ""
+  const code = typeof body.code === "string" ? body.code.trim() : ""
+  const emailOk =
+    email !== "" &&
+    code !== "" &&
+    operatorEmailAllowed(email) &&
+    (await verifyEmailCodeToken(req.cookies.get(OPERATOR_EMAIL_CODE_COOKIE)?.value, email, code))
+  if (!emailOk && !operatorPasswordOk(body.password)) {
+    return NextResponse.json(
+      { error: "認証コードが正しくないか、有効期限が切れています。もう一度コードを送信してください。" },
+      { status: 401 },
+    )
   }
 
   const { rpID } = rpFrom(req)

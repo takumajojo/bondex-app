@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { verifyRegistrationResponse } from "@simplewebauthn/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
-import { rpFrom, encodePublicKey, operatorPasswordOk } from "@/lib/operator-webauthn"
+import { rpFrom, encodePublicKey, operatorPasswordOk, operatorEmailAllowed, deviceLabelFromUA } from "@/lib/operator-webauthn"
 import {
   issueOperatorSession,
   verifyChallengeToken,
+  verifyEmailCodeToken,
   OPERATOR_CHALLENGE_COOKIE,
+  OPERATOR_EMAIL_CODE_COOKIE,
   OPERATOR_SESSION_COOKIE,
   OPERATOR_SESSION_TTL_SEC,
 } from "@/lib/operator-session"
@@ -18,14 +20,24 @@ export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "operator-auth")
   if (!limit.ok) return limit.response
 
-  let body: { password?: unknown; attestation?: unknown; label?: unknown }
+  let body: { password?: unknown; email?: unknown; code?: unknown; attestation?: unknown; label?: unknown }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
-  if (!operatorPasswordOk(body.password)) {
-    return NextResponse.json({ error: "パスワードが一致しません" }, { status: 401 })
+  const email = typeof body.email === "string" ? body.email.trim() : ""
+  const code = typeof body.code === "string" ? body.code.trim() : ""
+  const emailOk =
+    email !== "" &&
+    code !== "" &&
+    operatorEmailAllowed(email) &&
+    (await verifyEmailCodeToken(req.cookies.get(OPERATOR_EMAIL_CODE_COOKIE)?.value, email, code))
+  if (!emailOk && !operatorPasswordOk(body.password)) {
+    return NextResponse.json(
+      { error: "認証コードが正しくないか、有効期限が切れています。もう一度コードを送信してください。" },
+      { status: 401 },
+    )
   }
   const challenge = await verifyChallengeToken(req.cookies.get(OPERATOR_CHALLENGE_COOKIE)?.value)
   if (!challenge) {
@@ -59,7 +71,14 @@ export async function POST(req: NextRequest) {
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
   const cred = verification.registrationInfo.credential
-  const label = typeof body.label === "string" ? body.label.slice(0, 60) : null
+  // 端末名は手入力を廃止し User-Agent から自動判定 (メール認証ならメールも添える)
+  const autoLabel = deviceLabelFromUA(req.headers.get("user-agent"))
+  const label =
+    typeof body.label === "string" && body.label.trim()
+      ? body.label.slice(0, 60)
+      : emailOk
+        ? `${autoLabel} — ${email}`.slice(0, 60)
+        : autoLabel
   const { error } = await sb.from("operator_passkeys").insert({
     credential_id: cred.id,
     public_key: encodePublicKey(cred.publicKey),
@@ -85,5 +104,6 @@ export async function POST(req: NextRequest) {
     })
   }
   res.cookies.set({ name: OPERATOR_CHALLENGE_COOKIE, value: "", path: "/", maxAge: 0 })
+  res.cookies.set({ name: OPERATOR_EMAIL_CODE_COOKIE, value: "", path: "/", maxAge: 0 })
   return res
 }
