@@ -20,9 +20,10 @@ jobs:
     steps:
       - name: Call BondEx tracking sync endpoint
         run: |
+          # --max-time は関数側 maxDuration(300s)+30s。短いと実行中に切断→誤判定リトライ→二重起動になる
           for attempt in 1 2; do
             echo "Attempt $attempt of 2"
-            response=$(curl -s -w "\n%{http_code}" --max-time 120 \
+            response=$(curl -s -w "\n%{http_code}" --max-time 330 \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
               https://bondex.express/api/cron/sync-tracking)
             http_code=$(echo "$response" | tail -n1)

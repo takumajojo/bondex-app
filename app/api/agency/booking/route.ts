@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { saveShipment, deleteBooking } from "@/lib/shipments-db"
+import { getSupabase } from "@/lib/supabase"
 import { cleanLabelDelivery, labelDeliveryError, senderFieldLabel } from "@/lib/label-delivery"
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
@@ -231,6 +232,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 差出人「御社名義」は代理店マスタの発送先住所が前提。未登録なら 400 で止める
+  // (画面側でも防ぐが、確認中の窓・古いタブからの送信をサーバーで塞ぐ・2026-08-31 監査対応)。
+  if (labelDelivery.sender === "agency") {
+    const sbA = getSupabase()
+    const own = sbA
+      ? await sbA.from("agencies").select("ship_address").eq("name", auth.agency.name).maybeSingle()
+      : null
+    const addr = own?.data?.ship_address
+    if (!addr || typeof addr !== "object") {
+      const en = auth.agency.locale === "en"
+      return NextResponse.json(
+        {
+          error: en
+            ? "Your shipping address is not registered, so labels cannot be sent under your company name. Contact BondEx to register it, or choose another sender."
+            : "御社の発送先住所が未登録のため、御社名義では送り状を郵送できません。BondEx へご連絡いただくか、別の差出人をお選びください。",
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   const bookingType = body.bookingType === "group" ? "group" : "fit"
   const tourLeaderName = s(body.tourLeaderName).slice(0, 60)
   const tourLeaderPhone = s(body.tourLeaderPhone).slice(0, 40)
@@ -256,8 +278,94 @@ export async function POST(req: NextRequest) {
     for (const leg of legs) leg.suitcaseCount = luggageNames.length
   }
 
-  const bookingId = generateBookingId()
   const agencyName = auth.agency.name // 自社名に強制固定
+
+  // ── 冪等キー (2026-08-31 監査対応) ─────────────────────────────
+  // この API は伝票の即時発行まで同期で行うため応答に数十秒かかることがあり、
+  // タイムアウト後の再送信で「別番号の予約がもう1件 + 伝票二重発行」が起きる構造だった。
+  // クライアントが送信ごとに UUID を添付し、同じキーの再送には最初の予約番号を返す。
+  const requestKey =
+    typeof body.requestKey === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestKey)
+      ? body.requestKey.toLowerCase()
+      : null
+  const sbi = getSupabase()
+  if (requestKey && sbi) {
+    const prior = await sbi
+      .from("booking_requests")
+      .select("booking_id")
+      .eq("request_key", requestKey)
+      .maybeSingle()
+    if (prior.data?.booking_id) {
+      // 再送 = 前回の送信は実はサーバー側で完了している。同じ結果を返して二重登録を防ぐ。
+      return NextResponse.json({
+        ok: true,
+        bookingId: prior.data.booking_id,
+        duplicateOf: requestKey,
+        message: "この依頼は既に受け付け済みです / This request was already received.",
+      })
+    }
+  }
+
+  // ── 予約番号の一意発番 (2026-08-31 監査対応) ────────────────────
+  // 従来は存在チェックなしで採番し、保存が upsert のため衝突すると
+  // 「他社の既存予約を無言で上書き」する構造だった (30^6 空間でも累計3,800件で衝突率1%)。
+  // 採番のたびに存在を確認し、埋まっていたら引き直す。
+  let bookingId = ""
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = generateBookingId()
+    if (!sbi) {
+      bookingId = candidate
+      break
+    }
+    const hit = await sbi
+      .from("shipments")
+      .select("booking_id")
+      .eq("booking_id", candidate)
+      .limit(1)
+      .maybeSingle()
+    if (hit.error) {
+      // 確認できない状態で進むと上書き事故になりうるため、ここで止める
+      return NextResponse.json(
+        { error: "予約番号の確認に失敗しました。時間をおいて再度お試しください。" },
+        { status: 503 },
+      )
+    }
+    if (!hit.data) {
+      bookingId = candidate
+      break
+    }
+  }
+  if (!bookingId) {
+    return NextResponse.json(
+      { error: "予約番号の採番に失敗しました。時間をおいて再度お試しください。" },
+      { status: 503 },
+    )
+  }
+
+  // 冪等キーの記録 (insert が衝突 = 全く同時の二重送信 → 相手を勝者として同じ応答を返す)
+  if (requestKey && sbi) {
+    const reg = await sbi
+      .from("booking_requests")
+      .insert({ request_key: requestKey, booking_id: bookingId, agency: agencyName })
+    if (reg.error) {
+      const prior = await sbi
+        .from("booking_requests")
+        .select("booking_id")
+        .eq("request_key", requestKey)
+        .maybeSingle()
+      if (prior.data?.booking_id) {
+        return NextResponse.json({
+          ok: true,
+          bookingId: prior.data.booking_id,
+          duplicateOf: requestKey,
+          message: "この依頼は既に受け付け済みです / This request was already received.",
+        })
+      }
+      // 記録に失敗しても予約自体は進める (冪等性は失われるが、登録を止める方が実害大)
+      console.error("[booking] request_key insert failed:", reg.error.message)
+    }
+  }
 
   // 全区間を requested で保存(発行はしない)。保存失敗は握り潰さず、掃除して 500 を返す。
   for (let i = 0; i < legs.length; i++) {

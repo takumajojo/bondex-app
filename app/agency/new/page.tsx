@@ -835,6 +835,11 @@ export default function AgencyNewBookingPage() {
   // 投函期限。既定 = 最初の発送日の5営業日前。手で触ったら自動追従をやめる。
   const [labelMailDue, setLabelMailDue] = useState("")
   const labelDueTouched = useRef(false)
+  // 冪等キー: 送信のタイムアウト後に再送しても同じ予約として扱われる (二重予約防止)。
+  // 成功して完了画面に進んだら次の依頼用に引き直す。
+  const requestKeyRef = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : "",
+  )
   // 貴社名義で送れるかは「発送先住所が登録済みか」で決まる (未登録なら選ばせない)。
   const [hasShipAddress, setHasShipAddress] = useState<boolean | null>(null)
   const [leaderName, setLeaderName] = useState("")
@@ -903,7 +908,10 @@ export default function AgencyNewBookingPage() {
       .maybeSingle()
       .then(({ data }) => {
         const addr = (data as { ship_address?: unknown } | null)?.ship_address
-        setHasShipAddress(Boolean(addr && typeof addr === "object"))
+        const has = Boolean(addr && typeof addr === "object")
+        setHasShipAddress(has)
+        // 確認中に「御社名義」を選んでいた場合は既定へ戻す (未登録のまま送信させない)
+        if (!has) setLabelSender((cur) => (cur === "agency" ? "bondex" : cur))
       })
   }, [])
 
@@ -1262,6 +1270,7 @@ export default function AgencyNewBookingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
+          requestKey: requestKeyRef.current || undefined,
           representative,
           tourNumber,
           bookingName,
@@ -1301,6 +1310,10 @@ export default function AgencyNewBookingPage() {
         issueFailures: Array.isArray(data.issueFailures) ? data.issueFailures : [],
       })
       setStatus("done")
+      // 次の依頼のために冪等キーを引き直す (同じキーの再利用 = 新規依頼が受付済み扱いになるのを防ぐ)
+      if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        requestKeyRef.current = crypto.randomUUID()
+      }
     } catch {
       setError(t.errNetwork)
       setStatus("error")
@@ -1937,8 +1950,10 @@ export default function AgencyNewBookingPage() {
                 ["agency", t.ldSenderLand, t.ldSenderLandDesc],
                 ["other", t.ldSenderAgent, t.ldSenderAgentDesc],
               ] as const).map(([val, title, desc]) => {
-                // 発送先住所が未登録なら「貴社名義」は選べない (宛名不備で郵送が止まるため)
-                const disabled = val === "agency" && hasShipAddress === false
+                // 発送先住所が未登録・確認中は「御社名義」を選べない (宛名不備で郵送が止まるため)。
+                // null = 確認中も不可にする: 確認前に選んで送信されるとサーバー検証まで素通りしていた
+                // (2026-08-31 監査対応)。
+                const disabled = val === "agency" && hasShipAddress !== true
                 return (
                   <button
                     key={val}

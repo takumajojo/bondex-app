@@ -80,4 +80,7 @@ create trigger shipments_set_updated_at
 
 -- RLS は当面 OFF (operator 共通パスワードで middleware ゲート済み).
 -- 代理店別ログインを導入する Phase B で row level security を有効化.
-alter table shipments disable row level security;
+-- 2026-08-31: disable → enable に修正。本番DBは既に有効で、ファイルだけが古かった
+-- (このまま別環境に適用すると anon キーで読み書きできる穴が開くため)。
+-- ポリシーを付けない = service_role (サーバー) 専用。
+alter table shipments enable row level security;

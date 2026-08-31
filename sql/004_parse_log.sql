@@ -43,4 +43,7 @@ create trigger parse_log_set_updated_at
   for each row execute function set_updated_at();
 
 -- RLS は当面 OFF (service_role でアクセス)
-alter table parse_log disable row level security;
+-- 2026-08-31: disable → enable に修正。本番DBは既に有効で、ファイルだけが古かった
+-- (このまま別環境に適用すると anon キーで読み書きできる穴が開くため)。
+-- ポリシーを付けない = service_role (サーバー) 専用。
+alter table parse_log enable row level security;

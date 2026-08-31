@@ -811,10 +811,23 @@ export async function POST(req: NextRequest) {
     if (sbIdem) {
       const { data: existing } = await sbIdem
         .from("shipments")
-        .select("status, yamato_tracking, yamato_label_url")
+        .select("status, yamato_tracking, yamato_label_url, agency")
         .eq("booking_id", bookingId || refNumber)
         .eq("leg_index", legIndex)
         .maybeSingle()
+      // 予約番号の衝突ガード (2026-08-31 監査対応): 採番がクライアント側の経路 (運営の
+      // 新規発行) では、偶然既存の予約番号と同じIDが来ると saveShipment の upsert が
+      // 他社の予約を無言で上書きする。既存行の代理店と一致しない場合はここで止める。
+      if (existing && agency && (existing as { agency?: string }).agency && (existing as { agency?: string }).agency !== agency) {
+        return NextResponse.json(
+          {
+            error: `この予約番号 (${bookingId || refNumber}) は別の代理店の予約で使用済みです。番号を変えて再実行してください。`,
+            bookingIdCollision: true,
+          },
+          { status: 409 },
+        )
+      }
+
       if (existing?.status === "issued" && existing.yamato_label_url) {
         return NextResponse.json({
           status: "issued",
@@ -823,6 +836,32 @@ export async function POST(req: NextRequest) {
           trackingNumbers: existing.yamato_tracking ?? [],
           savedToDb: true,
         })
+      }
+
+      // 先取りロック (2026-08-31 監査対応): 上の issued チェックは SELECT→発行の間に
+      // 数秒の無防備な窓があり、cron 自動発行と手動発行が並走すると両方がガードを通過して
+      // Ship&co を二重に叩けた (発行ごと課金 = 二重課金)。条件付き UPDATE で行を先取りし、
+      // 10分以内に他プロセスが取得済みなら発行を中断する。行がまだ無い新規 (運営の初回発行)
+      // は対象外だが、その経路は人が1画面から実行するため並走しない。
+      if (existing) {
+        const staleBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+        const claim = await sbIdem
+          .from("shipments")
+          .update({ issue_claimed_at: new Date().toISOString() })
+          .eq("booking_id", bookingId || refNumber)
+          .eq("leg_index", legIndex)
+          .or(`issue_claimed_at.is.null,issue_claimed_at.lt.${staleBefore}`)
+          .select("id")
+        if (!claim.error && (claim.data ?? []).length === 0) {
+          return NextResponse.json(
+            {
+              error:
+                "この区間は別の処理が発行中です。数分待ってから状況を確認してください（二重発行防止）。",
+              issueInProgress: true,
+            },
+            { status: 409 },
+          )
+        }
       }
     }
   }

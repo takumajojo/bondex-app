@@ -79,8 +79,12 @@ export async function POST(req: NextRequest) {
         break
     }
   } catch (err) {
-    // 署名は通っているので 200 を返す (再送されても状態は最新で上書きされる)。
+    // 2026-08-31 監査対応: ここで 200 を返すと Stripe は再送せず、一時的な DB 障害で
+    // 返金・チャージバック・決済失敗の検知が「永久に」消える (チャージバックは証拠提出
+    // 期限があり直接の金銭損失)。ハンドラは冪等 (最新値で上書き + charged_at ガード) なので、
+    // 500 を返して Stripe の自動リトライ (最大3日) に乗せるのが安全。
     console.error("[stripe/webhook] handler error:", err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: "handler failed, retry please" }, { status: 500 })
   }
 
   return NextResponse.json({ received: true }, { status: 200 })
@@ -106,8 +110,8 @@ async function handleRefund(charge: Stripe.Charge, createdAt: number): Promise<v
   if (!pi) return
   const shipment = await getShipmentByPaymentIntentId(pi)
   if (!shipment) {
-    console.error(`[stripe/webhook] refund: shipment not found for PI ${pi}`)
-    return
+    // 見つからない = DB 一時障害の可能性がある。throw して Stripe の再送に乗せる (2026-08-31)。
+    throw new Error(`refund: shipment not found for PI ${pi}`)
   }
   const refundYen = charge.amount_refunded ?? 0 // JPY はゼロ小数通貨 → 円そのまま
   await updateShipmentChargeState(shipment.id, {
@@ -132,8 +136,7 @@ async function handleDispute(dispute: Stripe.Dispute, createdAt: number): Promis
   if (!pi) return
   const shipment = await getShipmentByPaymentIntentId(pi)
   if (!shipment) {
-    console.error(`[stripe/webhook] dispute: shipment not found for PI ${pi}`)
-    return
+    throw new Error(`dispute: shipment not found for PI ${pi}`)
   }
   await updateShipmentChargeState(shipment.id, {
     disputed_at: iso(createdAt),
@@ -185,8 +188,7 @@ async function handlePaymentFailed(pi: Stripe.PaymentIntent, createdAt: number):
     ? await getShipment(shipmentId)
     : await getShipmentByPaymentIntentId(pi.id)
   if (!shipment) {
-    console.error(`[stripe/webhook] payment_failed: shipment not found (PI ${pi.id})`)
-    return
+    throw new Error(`payment_failed: shipment not found (PI ${pi.id})`)
   }
   const message = pi.last_payment_error?.message ?? "決済に失敗しました"
   await updateShipmentChargeState(shipment.id, {
