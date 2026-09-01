@@ -94,3 +94,68 @@ export function applicableRoutes(target: NoteTarget): Record<HotelRoute, boolean
 export function isHotelNotificationMode(v: unknown): v is HotelNotificationMode {
   return v === "guest_only" || v === "pickup_only" || v === "dual"
 }
+
+// ---------------------------------------------------------------------------
+// ホテル連絡の期限・アラート (2026-09-01 谷口さん指示)。
+// 「押したら色が変わるだけ」では取りこぼす → 送り状アラートと同じく期限を持たせ、
+// 期限が来たら画面と毎朝メールで鳴らし、「連絡済み」を押すまで消えない。
+// 期限 = 発送日の2営業日前 (土日祝を除く)。発送元・お届け先とも同じ基準。
+// ---------------------------------------------------------------------------
+
+import { businessDaysBefore, businessDaysBetween } from "./business-days"
+
+/** 発送日の何営業日前までにホテルへ連絡するか。 */
+export const HOTEL_CONTACT_LEAD_BUSINESS_DAYS = 2
+
+export type HotelContactUrgency = "ok" | "due" | "urgent" | "overdue" | "done"
+
+export type HotelContactStatus = {
+  urgency: HotelContactUrgency
+  deadline: string | null
+  businessDaysLeft: number | null
+}
+
+/** ホテル連絡アラートの対象ステータスか (配達完了・キャンセル・発行失敗は対象外)。 */
+export function hotelContactApplies(status: string | null | undefined): boolean {
+  return (
+    status === "requested" ||
+    status === "pending" ||
+    status === "issued" ||
+    status === "picked_up" ||
+    status === "in_transit"
+  )
+}
+
+/**
+ * 1ルート (発送元 or お届け先) のホテル連絡の緊急度を判定する。
+ *  - notifiedAt あり     → done
+ *  - 期限より前          → ok
+ *  - 期限当日            → due   (今日連絡する)
+ *  - 期限超過・発送日前   → urgent(直前予約はここ)
+ *  - 発送日を過ぎている   → overdue
+ */
+export function hotelContactStatus(input: {
+  shipmentDate: string | null
+  notifiedAt: string | null
+  today: string
+}): HotelContactStatus {
+  if (input.notifiedAt) return { urgency: "done", deadline: null, businessDaysLeft: null }
+  const ship = (input.shipmentDate || "").trim()
+  if (!ship) return { urgency: "ok", deadline: null, businessDaysLeft: null }
+  const deadline = businessDaysBefore(ship, HOTEL_CONTACT_LEAD_BUSINESS_DAYS)
+  if (!deadline) return { urgency: "ok", deadline: null, businessDaysLeft: null }
+  if (input.today > ship) return { urgency: "overdue", deadline, businessDaysLeft: null }
+  const left = businessDaysBetween(input.today, deadline)
+  if (left === null) return { urgency: "ok", deadline, businessDaysLeft: null }
+  if (left > 0) return { urgency: "ok", deadline, businessDaysLeft: left }
+  if (left === 0) return { urgency: "due", deadline, businessDaysLeft: 0 }
+  return { urgency: "urgent", deadline, businessDaysLeft: left }
+}
+
+export const HOTEL_CONTACT_URGENCY_LABEL_JA: Record<HotelContactUrgency, string> = {
+  ok: "余裕あり",
+  due: "本日連絡",
+  urgent: "至急連絡",
+  overdue: "期限超過",
+  done: "連絡済み",
+}

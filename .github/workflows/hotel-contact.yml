@@ -1,0 +1,37 @@
+name: Hotel-contact daily alert
+
+# ホテル連絡の漏れ防止アラート。連絡期限 (発送日の2営業日前) を迎えた/過ぎた区間を
+# 毎朝まとめて BondEx 運用へ通知する (/api/cron/hotel-contact)。
+# お届け先ホテルに事前連絡がないと荷物を受け入れられず配送が止まるため、
+# 画面の「要対応」だけに頼らずメールでも必ず出す。「連絡済み」を押すまで毎朝鳴る。
+#
+# 事前設定: Secrets に CRON_SECRET (Vercel 側と同じ値)。
+
+on:
+  schedule:
+    # 毎日 22:55 UTC = 07:55 JST (送り状アラート08:05 の前 = 朝イチでまとめて手配)
+    - cron: "55 22 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  hotel-contact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx hotel-contact alert endpoint
+        run: |
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2"
+            response=$(curl -s -w "\n%{http_code}" --max-time 90 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              https://bondex.express/api/cron/hotel-contact)
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::hotel-contact alert failed after 2 attempts"
+          exit 1

@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import {
   applicableRoutes,
+  hotelContactStatus,
   HOTEL_ROUTE_LABEL,
   type NoteTarget,
   type HotelRoute,
@@ -320,27 +321,46 @@ function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
     <div className="flex flex-wrap gap-1 mt-1.5">
       {active.map((r) => {
         const sent = Boolean(r === "pickup" ? pickupAt : guestAt)
-        return (
-          <button
-            key={r}
-            type="button"
-            disabled={busy === r}
-            onClick={() => void toggle(r, !sent)}
-            title={
-              sent
-                ? `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 完了。クリックで未完了に戻す`
-                : `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 未完了。完了したらクリック`
-            }
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50 ${
-              sent
-                ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
+          const cst = hotelContactStatus({
+            shipmentDate: shipment.shipment_date,
+            notifiedAt: r === "pickup" ? pickupAt : guestAt,
+            today: todayYmd(),
+          })
+          // 期限の緊急度で色を決める (連絡漏れを一目で分かるように・2026-09-01)
+          const tone = sent
+            ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
+            : cst.urgency === "overdue" || cst.urgency === "urgent"
+              ? "bg-red-100 text-red-800 border-red-300 hover:bg-red-200"
+              : cst.urgency === "due"
+                ? "bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200"
                 : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
-            }`}
-          >
-            <span aria-hidden>{busy === r ? "…" : sent ? "☑" : "☐"}</span>
-            {HOTEL_ROUTE_LABEL[r]}連絡
-          </button>
-        )
+          const deadlineLabel = sent
+            ? ""
+            : cst.urgency === "overdue"
+              ? "期限超過"
+              : cst.urgency === "urgent"
+                ? `至急(期限${cst.deadline})`
+                : cst.deadline
+                  ? `${cst.deadline}まで`
+                  : ""
+          return (
+            <button
+              key={r}
+              type="button"
+              disabled={busy === r}
+              onClick={() => void toggle(r, !sent)}
+              title={
+                sent
+                  ? `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 完了。クリックで未完了に戻す`
+                  : `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 未完了。連絡期限=発送2営業日前。完了したらクリック`
+              }
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50 ${tone}`}
+            >
+              <span aria-hidden>{busy === r ? "…" : sent ? "☑" : "☐"}</span>
+              {HOTEL_ROUTE_LABEL[r]}連絡
+              {deadlineLabel && <span className="font-normal opacity-90">・{deadlineLabel}</span>}
+            </button>
+          )
       })}
     </div>
   )
@@ -372,6 +392,7 @@ export default function DashboardPage() {
   // 要対応の件数 (サーバー側 count・全件対象)。2026-08-31 監査対応:
   // 旧実装は最新500行のスナップショット集計で、総行数500超で件数が静かに狂った。
   const [boardCounts, setBoardCounts] = useState<Record<string, number> | null>(null)
+  const [hotelCountUrgent, setHotelCountUrgent] = useState(0)
   const [pendingAgencies, setPendingAgencies] = useState(0)
   // 要対応タイルからのクライアント側フィルタ (サーバー側の status フィルタとは別レイヤ)。
   const [viewFilter, setViewFilter] = useState<
@@ -384,6 +405,8 @@ export default function DashboardPage() {
     | "pay-unpaid"
     // 送り状(紙)の郵送待ち
     | "label-mail"
+    // ホテル連絡の期限待ち
+    | "hotel-contact"
   >("")
   // 決済再試行の実行中 shipment id
   const [chargingId, setChargingId] = useState<string | null>(null)
@@ -391,8 +414,9 @@ export default function DashboardPage() {
   const loadBoard = useCallback(async () => {
     try {
       const res = await fetch("/api/operator/board-stats")
-      const d = (await res.json()) as { counts?: Record<string, number> }
+      const d = (await res.json()) as { counts?: Record<string, number>; hotelContactUrgent?: number }
       if (d.counts) setBoardCounts(d.counts)
+      if (typeof d.hotelContactUrgent === "number") setHotelCountUrgent(d.hotelContactUrgent)
     } catch {
       /* best-effort — 要対応が出せなくても一覧は動く */
     }
@@ -400,6 +424,20 @@ export default function DashboardPage() {
 
   // タイルを選んだときだけ、そのカテゴリの行をサーバーから取得する
   // (クライアント側スナップショット絞り込みを廃止・全件から正確に抽出)。
+  // ホテル連絡タイル: 期限が来ている区間だけを id で絞って一覧表示する。
+  const loadHotelRows = useCallback(async () => {
+    try {
+      const idsRes = await fetch("/api/operator/hotel-contact-rows")
+      const idsD = (await idsRes.json()) as { ids?: string[] }
+      const ids = new Set(idsD.ids ?? [])
+      const listRes = await fetch("/api/shipments?limit=500")
+      const listD = (await listRes.json()) as { shipments?: Shipment[] }
+      setBoard((listD.shipments ?? []).filter((s) => ids.has(s.id)))
+    } catch {
+      setBoard([])
+    }
+  }, [])
+
   const loadBoardRows = useCallback(async (view: string) => {
     try {
       const res = await fetch(`/api/shipments?view=${encodeURIComponent(view)}&limit=500`)
@@ -646,6 +684,7 @@ export default function DashboardPage() {
     const chargeFailed = c["charge-failed"] ?? 0
     const failed = c["failed"] ?? 0
     const mail = c["label-mail"] ?? 0
+    const hotel = c["hotel-contact"] ?? 0
     const mailUrgent = board.filter(
       (s) => isLabelMailPending(s) && labelMailUrgency(s) !== "due",
     ).length
@@ -656,15 +695,18 @@ export default function DashboardPage() {
       failed,
       mail,
       mailUrgent,
-      total: pendingAgencies + pickup + delivery + chargeFailed + failed + mail,
+      hotel,
+      hotelUrgent: hotelCountUrgent,
+      total: pendingAgencies + pickup + delivery + chargeFailed + failed + mail + hotel,
     }
-  }, [boardCounts, board, pendingAgencies])
+  }, [boardCounts, board, pendingAgencies, hotelCountUrgent])
 
   // 要対応タイル選択中は、そのカテゴリの行をサーバーから取得済み (board)。
   // 決済ピル (pay-paid/pay-unpaid) だけは通常一覧のクライアント絞り込みのまま。
   useEffect(() => {
     const serverViews = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"]
     if (serverViews.includes(viewFilter)) void loadBoardRows(viewFilter)
+    else if (viewFilter === "hotel-contact") void loadHotelRows()
   }, [viewFilter, loadBoardRows])
 
   const rows = useMemo(() => {
@@ -794,6 +836,38 @@ export default function DashboardPage() {
                   </p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     {attention.mailUrgent > 0 ? `うち${attention.mailUrgent}件は早急手配` : "投函期限が来ています"}
+                  </p>
+                </button>
+              )}
+              {/* ホテル連絡 (発送2営業日前) — 送らないとホテルが荷物を受け入れられない */}
+              {attention.hotel > 0 && (
+                <button
+                  onClick={() => setViewFilter(viewFilter === "hotel-contact" ? "" : "hotel-contact")}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "hotel-contact"
+                      ? "border-red-500 bg-red-100 ring-1 ring-red-400"
+                      : attention.hotelUrgent > 0
+                        ? "border-red-300 bg-red-50 hover:border-red-500"
+                        : "border-amber-300 bg-amber-50 hover:border-amber-500"
+                  }`}
+                >
+                  <p
+                    className={`text-2xl font-semibold tabular-nums ${
+                      attention.hotelUrgent > 0 ? "text-red-800" : "text-amber-800"
+                    }`}
+                  >
+                    {attention.hotel}
+                  </p>
+                  <p
+                    className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${
+                      attention.hotelUrgent > 0 ? "text-red-800" : "text-amber-800"
+                    }`}
+                  >
+                    <AlertTriangle className="w-3 h-3" strokeWidth={2} />
+                    ホテルへ連絡
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {attention.hotelUrgent > 0 ? `うち${attention.hotelUrgent}件は至急` : "発送2営業日前"}
                   </p>
                 </button>
               )}

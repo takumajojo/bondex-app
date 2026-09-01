@@ -258,6 +258,104 @@ function applyBoardView(
   }
 }
 
+/**
+ * ホテル連絡の期限が来ている区間を抽出する (2026-09-01)。
+ * 発送元/お届け先どちらのルートが対象かは note_target で決まり、期限は業務日ベースの
+ * 計算が要るため、SQL で候補を粗く絞ってから JS で判定する。
+ * candidate = 進行中(集荷前後)かつ発送日が近い かつ 両ルート連絡済みでない。
+ */
+export type HotelContactDueRow = {
+  id: string
+  booking_id: string
+  leg_index: number
+  agency: string
+  representative: string
+  shipment_date: string
+  from_hotel: string
+  to_hotel: string
+  status: string
+  note_target: string | null
+  pickup_hotel_notified_at: string | null
+  guest_hotel_notified_at: string | null
+  routes: Array<{
+    route: "pickup" | "guest"
+    hotel: string
+    urgency: string
+    deadline: string | null
+  }>
+}
+
+export async function listHotelContactDue(todayYmd: string): Promise<HotelContactDueRow[]> {
+  const sb = getSupabase()
+  if (!sb) return []
+  const { hotelContactStatus, hotelContactApplies, applicableRoutes } = await import(
+    "./hotel-notification"
+  )
+  // 発送日が今日+21日以内 (それより先はまだ期限前) + 進行中。両ルート連絡済みは除外。
+  const horizon = new Date(Date.parse(`${todayYmd}T00:00:00Z`) + 21 * 86400000)
+    .toISOString()
+    .slice(0, 10)
+  const { data, error } = await sb
+    .from("shipments")
+    .select(
+      "id, booking_id, leg_index, agency, representative, shipment_date, from_hotel, to_hotel, status, note_target, pickup_hotel_notified_at, guest_hotel_notified_at",
+    )
+    .in("status", ["requested", "pending", "issued", "picked_up", "in_transit"])
+    .lte("shipment_date", horizon)
+    .order("shipment_date", { ascending: true })
+    .limit(1000)
+  if (error) {
+    console.error("[shipments-db] listHotelContactDue failed:", error.message)
+    return []
+  }
+  const out: HotelContactDueRow[] = []
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    if (!hotelContactApplies(r.status as string)) continue
+    const target = (r.note_target as string) || "to"
+    const applies = applicableRoutes(
+      target === "from" || target === "to" || target === "both" ? target : "to",
+    )
+    const routes: HotelContactDueRow["routes"] = []
+    for (const route of ["pickup", "guest"] as const) {
+      if (!applies[route]) continue
+      const notifiedAt = (route === "pickup"
+        ? r.pickup_hotel_notified_at
+        : r.guest_hotel_notified_at) as string | null
+      const st = hotelContactStatus({
+        shipmentDate: r.shipment_date as string,
+        notifiedAt,
+        today: todayYmd,
+      })
+      if (st.urgency === "due" || st.urgency === "urgent" || st.urgency === "overdue") {
+        routes.push({
+          route,
+          hotel: (route === "pickup" ? r.from_hotel : r.to_hotel) as string,
+          urgency: st.urgency,
+          deadline: st.deadline,
+        })
+      }
+    }
+    if (routes.length > 0) {
+      out.push({
+        id: r.id as string,
+        booking_id: r.booking_id as string,
+        leg_index: r.leg_index as number,
+        agency: r.agency as string,
+        representative: r.representative as string,
+        shipment_date: r.shipment_date as string,
+        from_hotel: r.from_hotel as string,
+        to_hotel: r.to_hotel as string,
+        status: r.status as string,
+        note_target: (r.note_target as string) ?? null,
+        pickup_hotel_notified_at: (r.pickup_hotel_notified_at as string) ?? null,
+        guest_hotel_notified_at: (r.guest_hotel_notified_at as string) ?? null,
+        routes,
+      })
+    }
+  }
+  return out
+}
+
 /** 要対応の件数をサーバー側 count で返す (全件が対象・スナップショット上限なし)。 */
 export async function countBoardViews(
   todayYmd: string,

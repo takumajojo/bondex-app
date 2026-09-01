@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
-import { countBoardViews } from "@/lib/shipments-db"
+import { countBoardViews, listHotelContactDue } from "@/lib/shipments-db"
 
 export const runtime = "nodejs"
 
@@ -21,5 +21,17 @@ export async function GET(req: NextRequest) {
   if (!counts) {
     return NextResponse.json({ error: "集計に失敗しました" }, { status: 500 })
   }
-  return NextResponse.json({ ok: true, today, counts })
+  // ホテル連絡の期限件数 (発送2営業日前判定。区間数でなく「連絡タスク数」で数える)
+  const hotelDue = await listHotelContactDue(today)
+  const hotelContact = hotelDue.reduce((acc, r) => acc + r.routes.length, 0)
+  const hotelContactUrgent = hotelDue.reduce(
+    (acc, r) => acc + r.routes.filter((x) => x.urgency !== "due").length,
+    0,
+  )
+  return NextResponse.json({
+    ok: true,
+    today,
+    counts: { ...counts, "hotel-contact": hotelContact },
+    hotelContactUrgent,
+  })
 }
