@@ -23,6 +23,7 @@ import {
   Truck,
   CreditCard,
   MoreHorizontal,
+  ChevronRight,
 } from "lucide-react"
 import {
   applicableRoutes,
@@ -987,6 +988,17 @@ export default function DashboardPage() {
           ))}
         </section>
 
+        {/* 運用ツール・接続状況 — 毎日見るものではないので既定は畳む（アテンションを上げるため）。
+            承認待ち代理店・課金失敗などの「判断待ち」は上の要対応タイルに出るので、ここは畳んでよい。 */}
+        <details className="group rounded-2xl border border-border bg-white">
+          <summary className="flex cursor-pointer list-none items-center gap-2 p-4 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" strokeWidth={1.6} />
+            運用ツール・接続状況
+            <span className="text-[11px] font-normal text-muted-foreground">
+              代理店一覧 ・ Ship&amp;co ・ Stripe ・ 契約書/請求書 発行
+            </span>
+          </summary>
+          <div className="space-y-6 border-t border-border p-4">
         {/* 代理店ステータス（承認待ち＝あなたの判断待ちを最上部に） */}
         <AgencyStatusCard />
 
@@ -1078,6 +1090,8 @@ export default function DashboardPage() {
             該当月の成功した発行 (issued / 集荷済 / 配達中 / 完了) を集計します
           </p>
         </section>
+          </div>
+        </details>
 
         {/* Filters */}
         <section className="rounded-2xl border border-border bg-white p-4 flex flex-wrap items-center gap-3">
@@ -1215,9 +1229,7 @@ export default function DashboardPage() {
                           )
                         })()}
                       </td>
-                      <td className="p-3 align-top">
-                        <p className="text-foreground font-medium">{it.agency || "—"}</p>
-                      </td>
+                      {/* 予約番号 (ヘッダーの並びに合わせる — 以前は代理店と列が逆だった) */}
                       <td className="p-3 align-top">
                         <a
                           href={`/operator/bookings/${encodeURIComponent(it.booking_id)}`}
@@ -1237,6 +1249,10 @@ export default function DashboardPage() {
                           </a>
                         )}
                         {/* 発行・再試行などの操作は全て行右端の「⋯」メニューに集約 (行内アクション廃止)。 */}
+                      </td>
+                      {/* 代理店 */}
+                      <td className="p-3 align-top">
+                        <p className="text-foreground font-medium">{it.agency || "—"}</p>
                       </td>
                       <td className="p-3 align-top">
                         <p className="text-xs text-foreground">{it.representative}</p>
