@@ -1,0 +1,45 @@
+{
+  "syncKey": "e6e6ee79f3620294",
+  "dryRun": true,
+  "portalId": "247107122",
+  "contacts": [
+    {
+      "id": "dryrun-contacts-2",
+      "action": "created",
+      "label": "m.yasuda@trix.co.jp"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "dryrun-tasks-5",
+      "action": "created",
+      "label": "ミーティング日程確定"
+    }
+  ],
+  "associations": 9,
+  "associationsSkipped": 0,
+  "counts": {
+    "created": 5,
+    "updated": 0,
+    "reused": 0
+  },
+  "skipped": [],
+  "errors": [],
+  "startedAt": "2026-08-21T07:12:34.959Z",
+  "finishedAt": "2026-08-21T07:12:38.138Z",
+  "company": {
+    "id": "dryrun-companies-1",
+    "action": "created",
+    "label": "株式会社TriX"
+  },
+  "deal": {
+    "id": "dryrun-deals-3",
+    "action": "created",
+    "label": "BondEx導入"
+  },
+  "note": {
+    "id": "dryrun-notes-4",
+    "action": "created",
+    "label": "Note"
+  }
+}

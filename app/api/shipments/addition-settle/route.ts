@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { sendMail } from "@/lib/mailer"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { grossOf } from "@/lib/tax"
 
 export const runtime = "nodejs"
 
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
   if (!shipment.is_addition) {
     return NextResponse.json({ error: "この区間は追加 (is_addition) ではありません。" }, { status: 400 })
   }
-  const amountYen = shipment.amount_yen ?? 0
+  const netYen = shipment.amount_yen ?? 0
+  const amountYen = grossOf(netYen) // 税込
   if (!Number.isFinite(amountYen) || amountYen <= 0) {
     return NextResponse.json({ error: "金額が不正です (amount_yen)。" }, { status: 400 })
   }

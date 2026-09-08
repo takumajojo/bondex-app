@@ -1,0 +1,47 @@
+{
+  "company": {
+    "name": "株式会社サンプル商事",
+    "domain": "sample-shoji.co.jp",
+    "phone": "03-1234-5678",
+    "city": "東京",
+    "country": "Japan",
+    "industry": "旅行・宿泊",
+    "description": "訪日客向けホテルを首都圏で12軒運営。手ぶら観光の導入を検討中。"
+  },
+  "contacts": [
+    {
+      "email": "yamada@sample-shoji.co.jp",
+      "lastname": "山田",
+      "firstname": "太郎",
+      "jobtitle": "営業部長",
+      "phone": "03-1234-5679"
+    }
+  ],
+  "deal": {
+    "dealname": "サンプル商事 — BondEx 手ぶら配送 導入",
+    "amount": 1200000,
+    "closedate": "2026-10-31"
+  },
+  "meeting": {
+    "title": "初回商談 — 手ぶら配送の運用フロー確認",
+    "body": "・現状: フロント預かりが1日40件、繁忙期は保管スペースが逼迫\n・要望: 当日中にホテル間配送できるか。料金は1件2,000円台希望\n・懸念: 佐川の集荷締切とチェックアウト時刻のずれ\n・次回までに: 見積書と運用フロー図を提出",
+    "startTime": "2026-08-21T10:00:00+09:00",
+    "endTime": "2026-08-21T11:00:00+09:00",
+    "outcome": "COMPLETED"
+  },
+  "tasks": [
+    {
+      "subject": "見積書を作成して山田部長へ送付",
+      "body": "1件2,000円台の希望を踏まえた3プラン構成で作成する",
+      "dueDate": "2026-08-25T09:00:00+09:00",
+      "priority": "HIGH",
+      "type": "EMAIL"
+    },
+    {
+      "subject": "佐川の集荷締切を確認",
+      "dueDate": "2026-08-22T09:00:00+09:00",
+      "priority": "MEDIUM",
+      "type": "TODO"
+    }
+  ]
+}

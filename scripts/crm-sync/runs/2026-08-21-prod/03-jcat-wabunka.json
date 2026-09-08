@@ -1,0 +1,18 @@
+{
+  "company": {
+    "name": "J-CAT株式会社",
+    "description": "BondEx Category: Travel Agency / Priority: S / Status: Contacted\n\nWabunka Global Travel Arrangement Team\nGeneral Email: global-support@wabunka-media.jp\nWebsite (Wabunka): https://wabunka-media.jp/en/\n\n高付加価値な日本文化体験・訪日旅行を扱う。BondExターゲットとの親和性が高い。現時点では既接触として管理し、新規営業対象には戻さない。"
+  },
+  "contacts": [
+    {
+      "email": "tomomi.sudo@j-cat.co.jp",
+      "lastname": "須藤",
+      "firstname": "智美",
+      "jobtitle": "Assistant Manager (Wabunka Global Travel Arrangement Team)"
+    }
+  ],
+  "note": {
+    "body": "BondEx営業連絡済み。\n\n高付加価値な日本文化体験・訪日旅行を扱う。BondExターゲットとの親和性が高い。現時点では既接触として管理し、新規営業対象には戻さない。"
+  },
+  "tasks": []
+}

@@ -76,7 +76,7 @@ export interface InvoiceInput {
   taxRate?: number         // デフォルト 0.10 (10%)
   /**
    * true のとき items.amountYen を「税込」金額として扱う (内税表示)。
-   * BondEx の料金は契約上 ¥5,000 税込なので本番はこちら。
+   * (旧仕様。BondEx の料金は 2026-08-28 に税抜へ改定したため本番では false を使う)
    * 合計 = 小計、消費税は内数として按分表示する。
    * false (既定) は従来どおり税抜 → 税を上乗せ (外税)。
    */

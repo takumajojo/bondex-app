@@ -1,0 +1,24 @@
+{
+  "company": {
+    "name": "I LOVE JAPAN",
+    "website": "https://www.ilovejapandmc.jp/",
+    "domain": "ilovejapandmc.jp",
+    "description": "BondEx Category: Land Operator / Priority: S / Status: Meeting Completed\nインド拠点の訪日旅行会社 / ランドオペレーター。"
+  },
+  "contacts": [],
+  "deal": {
+    "dealname": "BondEx導入",
+    "pipeline": "default",
+    "dealstage": "decisionmakerboughtin"
+  },
+  "note": {
+    "body": "【2026年8月20日ミーティング実施】\nインド拠点の訪日旅行会社/ランドオペレーター。BondEx導入について前向きで、契約していただく流れになりそう。\n\nBondExとの親和性が高い。今後、実配送件数・利用ツアー・旅行者属性・リピート状況を追跡する。",
+    "timestamp": "2026-08-20T09:00:00+09:00"
+  },
+  "tasks": [
+    {
+      "subject": "契約条件・実運用方法を確認し、契約へ進める",
+      "type": "TODO"
+    }
+  ]
+}

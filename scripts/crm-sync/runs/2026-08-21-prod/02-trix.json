@@ -1,0 +1,32 @@
+{
+  "company": {
+    "name": "株式会社TriX",
+    "website": "https://trix.co.jp/",
+    "domain": "trix.co.jp",
+    "description": "BondEx Category: Travel Agency / Priority: S / Status: Meeting Scheduled\n\nPain Point: 現在は旅行者がホテルのチェックアウト時に荷物配送を依頼し、ホテル側に次のホテルへの発送を任せている。ただしホテルによっては手荷物配送サービスに対応していないため、そのケースを課題として認識している。"
+  },
+  "contacts": [
+    {
+      "email": "m.yasuda@trix.co.jp",
+      "lastname": "安田",
+      "firstname": "昌史",
+      "jobtitle": "代表取締役 (CEO)",
+      "phone": "+81-90-6555-7753"
+    }
+  ],
+  "deal": {
+    "dealname": "BondEx導入",
+    "pipeline": "default",
+    "dealstage": "appointmentscheduled"
+  },
+  "note": {
+    "body": "BondExから営業連絡。先方より高い関心を示す返信あり。現在ミーティング日程調整中。\n\n先方コメント: BondExのサービス詳細および連携イメージについて打ち合わせ希望。"
+  },
+  "tasks": [
+    {
+      "subject": "ミーティング日程確定",
+      "body": "商談で確認する項目: 年間送客人数、主要国籍、FIT/Group比率、平均旅行日数、都市周遊数、現在の荷物配送方法、配送非対応ホテルの発生頻度、BondExを旅程へ組み込める可能性",
+      "type": "TODO"
+    }
+  ]
+}

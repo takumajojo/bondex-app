@@ -2,13 +2,14 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { InvoiceDocument, type InvoiceLineItem } from "@/lib/invoice-pdf"
 import type { ShipmentRecord } from "@/lib/shipments-db"
+import { TAX_RATE, grossOf } from "@/lib/tax"
 
 /**
  * 月次請求書の組み立て — 手動DL (api/invoices/generate) と自動送付
  * (cron/monthly-invoices) の両方が使う単一ソース。
  *
- * 料金は契約上 ¥5,000「税込」なので taxInclusive:true で内税表示する
- * (税抜額に 10% を上乗せしない = 過大請求を防ぐ)。対象は当月に発送された
+ * 料金は契約上 ¥5,000「税抜」なので taxInclusive:false で外税表示する
+ * (税抜小計に消費税を上乗せする)。対象は当月に発送された
  * issued/picked_up/in_transit/delivered の区間 (失敗・キャンセルは除外)。
  */
 
@@ -31,7 +32,7 @@ export interface BuildInvoiceResult {
   fileName?: string
   buffer?: Buffer
   itemCount?: number
-  /** 請求総額 (税込・円)。 */
+  /** 請求総額 (税込・円)。税抜小計 + 消費税。 */
   totalYen?: number
   agencyEmail?: string | null
   agencyContactPerson?: string | null
@@ -94,7 +95,8 @@ export async function buildMonthlyInvoice(
     amountYen: s.amount_yen ?? 0,
   }))
 
-  const totalYen = items.reduce((sum, it) => sum + it.amountYen, 0) // 税込
+  const netYen = items.reduce((sum, it) => sum + it.amountYen, 0) // 税抜小計
+  const totalYen = grossOf(netYen) // 請求総額 (税込)
 
   const issuedDate = formatJpDate(new Date())
   const closingDate = formatJpDate(new Date(year, mon, 0)) // 当月末
@@ -116,8 +118,8 @@ export async function buildMonthlyInvoice(
         bondex: BONDEX_BILLING,
         closingDate,
         items,
-        taxRate: 0.1,
-        taxInclusive: true, // ¥5,000 は税込 — 内税表示 (過大請求防止)
+        taxRate: TAX_RATE,
+        taxInclusive: false, // ¥5,000 は税抜 — 外税表示 (消費税を上乗せ)
       }}
     />
   )
@@ -140,14 +142,17 @@ export async function buildMonthlyInvoice(
 /**
  * カード決済1件ごとの「請求書 兼 領収書」。集荷完了で off_session 課金した
  * 直後、または代理店ポータルからの再取得時に、その区間 (shipment) 単体で作る。
- * 金額は amount_yen (税込) を内税表示。charged_at を決済日として領収表示する。
+ * 金額は amount_yen (税抜小計) を外税表示。charged_at を決済日として領収表示する。
  */
 export async function buildChargeInvoice(
   sb: SupabaseClient,
   shipment: ShipmentRecord,
 ): Promise<BuildInvoiceResult> {
-  const amountYen = shipment.charge_amount_yen ?? shipment.amount_yen ?? 0
-  if (amountYen <= 0) return { ok: false, reason: "no_amount" }
+  // 明細は税抜小計 (amount_yen)。総額は実際に課金した税込額 (charge_amount_yen)。
+  // charge_amount_yen が無い過去データは税抜小計から算出する。
+  const netYen = shipment.amount_yen ?? 0
+  if (netYen <= 0) return { ok: false, reason: "no_amount" }
+  const grossYen = shipment.charge_amount_yen ?? grossOf(netYen)
 
   const { data: agencyRow } = await sb
     .from("agencies")
@@ -173,7 +178,7 @@ export async function buildChargeInvoice(
       toHotel: shipment.to_hotel ?? "",
       representative: shipment.representative ?? "",
       suitcaseCount: shipment.suitcase_count ?? 0,
-      amountYen,
+      amountYen: netYen,
     },
   ]
 
@@ -196,8 +201,8 @@ export async function buildChargeInvoice(
         },
         bondex: BONDEX_BILLING,
         items,
-        taxRate: 0.1,
-        taxInclusive: true,
+        taxRate: TAX_RATE,
+        taxInclusive: false,
         paid: {
           method: "クレジットカード",
           date: paidDate,
@@ -214,7 +219,7 @@ export async function buildChargeInvoice(
     fileName: `bondex-receipt-${invoiceNumber}.pdf`,
     buffer,
     itemCount: 1,
-    totalYen: amountYen,
+    totalYen: grossYen,
     agencyEmail: agencyRow?.contact_email ?? null,
     agencyContactPerson: agencyRow?.contact_person ?? null,
     period,

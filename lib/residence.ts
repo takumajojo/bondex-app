@@ -74,6 +74,21 @@ export const RESIDENCE_FIELD_LABELS_JA: Record<ResidenceField, string> = {
   street: "番地・町名",
 }
 
+/** 英語ラベル（英語圏の代理店向けエラー文言用）。 */
+export const RESIDENCE_FIELD_LABELS_EN: Record<ResidenceField, string> = {
+  name: "name",
+  phone: "phone number",
+  zip: "postal code (7 digits)",
+  prefecture: "prefecture",
+  city: "city / ward",
+  street: "street address",
+}
+
+/** locale で住所フィールドのラベルを返す。 */
+export function residenceFieldLabel(field: ResidenceField, locale: "ja" | "en"): string {
+  return (locale === "en" ? RESIDENCE_FIELD_LABELS_EN : RESIDENCE_FIELD_LABELS_JA)[field]
+}
+
 /**
  * 必須項目の検証。最初に不足しているフィールドのキーを返し、問題なければ null。
  * 建物名のみ任意。呼び出し側で RESIDENCE_FIELD_LABELS_JA 等でラベル化する。

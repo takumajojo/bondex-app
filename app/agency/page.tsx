@@ -266,7 +266,7 @@ const messages = {
     muMonth: "月",
     muLegs: "件数",
     muPieces: "個数",
-    muAmount: "金額（税込）",
+    muAmount: "金額（税抜）",
     muInvoice: "請求書PDF",
     muInvoiceNone: "この月のご請求対象がありません。",
     muFiltering: (m: string) => `${m} のみ表示中`,

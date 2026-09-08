@@ -11,6 +11,7 @@ import { sendMail } from "@/lib/mailer"
 import { notifyBondEx } from "@/lib/notify"
 import { buildChargeInvoice } from "@/lib/invoice-build"
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { grossOf } from "@/lib/tax"
 
 /**
  * 集荷完了時のカード課金 (海外/法人=Stripe 1件ごと課金モデル)。
@@ -66,10 +67,12 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       return { charged: false, skipped: true, reason: "addition_settled_separately" }
     }
 
-    const amountYen = shipment.amount_yen ?? 0
-    if (!Number.isFinite(amountYen) || amountYen <= 0) {
+    // amount_yen は税抜小計 (個数 × ¥5,000)。カードへは消費税を上乗せした税込額を請求する。
+    const netYen = shipment.amount_yen ?? 0
+    if (!Number.isFinite(netYen) || netYen <= 0) {
       return { charged: false, skipped: true, reason: "no_amount" }
     }
+    const amountYen = grossOf(netYen) // 実際に課金する税込額
 
     const sb = getSupabase()
     if (!sb) return { charged: false, skipped: true, reason: "db_unset" }

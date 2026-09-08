@@ -4,11 +4,12 @@ import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { sendMail } from "@/lib/mailer"
 import { notifyBondEx } from "@/lib/notify"
+import { grossOf } from "@/lib/tax"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
 
-const PRICE_PER = 5000
+const PRICE_PER = 5000 // 税抜単価
 
 type ReasonCode = "mismatch" | "not_collected" | "customer_change" | "other"
 const REASON_LABEL_JA: Record<ReasonCode, string> = {
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
 
   const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
   const route = `${shipment.from_hotel} → ${shipment.to_hotel}`
-  const yen = (n: number) => `¥${n.toLocaleString()}`
+  const yen = (n: number) => `¥${grossOf(n).toLocaleString()}（税込）`
 
   // ランオペ向けメール本文（キャンセル / 個数是正 で文面を出し分け）
   const jaLines: string[] = [`${shipment.agency} 御中`, ""]

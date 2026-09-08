@@ -1,0 +1,24 @@
+{
+  "syncKey": "fb4953f7e43c762f",
+  "dryRun": true,
+  "portalId": "247107122",
+  "contacts": [],
+  "tasks": [],
+  "associations": 0,
+  "associationsSkipped": 0,
+  "counts": {
+    "created": 0,
+    "updated": 1,
+    "reused": 0
+  },
+  "skipped": [],
+  "errors": [],
+  "startedAt": "2026-08-21T07:12:47.878Z",
+  "finishedAt": "2026-08-21T07:12:48.626Z",
+  "company": {
+    "id": "341099032307",
+    "action": "updated",
+    "label": "Hitotoki",
+    "url": "https://app.hubspot.com/contacts/247107122/company/341099032307"
+  }
+}

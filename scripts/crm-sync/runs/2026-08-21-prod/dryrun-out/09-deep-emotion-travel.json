@@ -1,0 +1,24 @@
+{
+  "syncKey": "1ee86967f00a9196",
+  "dryRun": true,
+  "portalId": "247107122",
+  "contacts": [],
+  "tasks": [],
+  "associations": 0,
+  "associationsSkipped": 0,
+  "counts": {
+    "created": 0,
+    "updated": 1,
+    "reused": 0
+  },
+  "skipped": [],
+  "errors": [],
+  "startedAt": "2026-08-21T07:12:46.769Z",
+  "finishedAt": "2026-08-21T07:12:47.464Z",
+  "company": {
+    "id": "341070265065",
+    "action": "updated",
+    "label": "Deep Emotion Travel",
+    "url": "https://app.hubspot.com/contacts/247107122/company/341070265065"
+  }
+}
