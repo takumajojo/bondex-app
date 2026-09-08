@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Check, Ban, RotateCcw } from "lucide-react"
+import { ArrowLeft, Loader2, Check, Ban, RotateCcw, Eye } from "lucide-react"
 import {
   HOTEL_NOTIFICATION_MODES,
   HOTEL_NOTIFICATION_MODE_LABEL,
@@ -234,6 +234,14 @@ export default function OperatorAgenciesPage() {
                           {a.created_via === "self_signup" && (
                             <span className="text-[10px] text-muted-foreground">セルフ登録</span>
                           )}
+                          <Link
+                            href={`/operator/agencies/view?agency=${encodeURIComponent(a.name)}`}
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900 underline underline-offset-2"
+                            title="この代理店が見ている画面（予約一覧・ステータス・追跡・書類）を読み取り専用で開く"
+                          >
+                            <Eye className="w-3 h-3" strokeWidth={1.8} />
+                            画面を見る
+                          </Link>
                         </td>
                         <td className="p-3 align-top text-xs">
                           {a.is_domestic === false ? `海外${a.country ? ` (${a.country})` : ""}` : "国内"}
