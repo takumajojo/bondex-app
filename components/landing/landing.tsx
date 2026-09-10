@@ -19,6 +19,7 @@ import {
   Receipt,
 } from "lucide-react"
 import { messages, type Locale } from "@/lib/landing-messages"
+import { PRICING, formatYen, fill } from "@/lib/pricing"
 import { LangSwitcher } from "./lang-switcher"
 
 // ナビゲーションのハッシュリンクは両言語で共通 (#function 等)。ラベルのみ辞書化。
@@ -1153,48 +1154,176 @@ export function Landing({ lang }: { lang: Locale }) {
         </div>
       </section>
 
-      {/* ═══════════════ Price (Timeline visual) ═══════════════ */}
-      <section id="price" className="max-w-6xl mx-auto px-5 sm:px-6 py-20 md:py-28">
-        <div className="mb-12 md:mb-16 max-w-2xl">
-          <Eyebrow en="PRICE" label={t.price.eyebrow} />
-          <SectionH2 first={t.price.heading.first} second={t.price.heading.second} />
-          <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
-            {t.price.intro}
-          </p>
-        </div>
-
-        {/* Billing conditions — quiet contract-style */}
-        <div className="grid md:grid-cols-[1fr_1.1fr] gap-8 md:gap-14 mb-12">
-          <div>
-            <p className="text-[11px] font-mono tracking-widest text-[#64748B] uppercase mb-4">
-              {t.price.billingKicker}
-            </p>
-            <h3 className="text-2xl md:text-[28px] font-bold tracking-tight text-[#0F172A] mb-5 leading-[1.4]">
-              {t.price.billingHeading}
-            </h3>
-            <p className="text-[15px] text-[#334155] leading-[1.9]">
-              {t.price.billingBody}
-            </p>
+      {/* ═══════════════ PRICE — 料金 + 直接手配との比較 + フロー + CTA を1セクションに集約 ═══════════════
+          通常料金を見た直後に、同じ画面内で「なぜその価格か = 直接手配なら全部自分でやる」を
+          理解させるコンバージョンポイント。数値はすべて lib/pricing.ts の PRICING から生成する。 */}
+      <section id="price" className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
+        <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
+          <div className="max-w-2xl mb-10 md:mb-12">
+            <Eyebrow en="PRICE" label={t.price.eyebrow} />
+            <SectionH2 first={t.price.heading.first} second={t.price.heading.second} />
+            <p className="mt-6 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">{t.price.sub}</p>
           </div>
 
-          <dl className="border-t border-[#E5E7EB]">
-            {t.price.rows.map((row) => (
-              <div
-                key={row.term}
-                className="grid grid-cols-[minmax(0,110px)_1fr] gap-4 py-4 border-b border-[#E5E7EB]"
-              >
-                <dt className="text-[13px] text-[#64748B] leading-[1.7]">{row.term}</dt>
-                <dd className="text-[14px] md:text-[15px] font-semibold text-[#0F172A] leading-[1.7]">
-                  {row.desc}
-                </dd>
+          {/* 料金カード */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 md:p-8">
+            <div className="grid gap-6 md:grid-cols-[1fr_1.4fr_1fr] md:gap-8 md:items-center">
+              {/* 初期 / 月額 */}
+              <div className="flex gap-8 md:block md:space-y-4">
+                <div>
+                  <p className="text-[12px] text-[#64748B]">{t.price.setup}</p>
+                  <p className="text-[22px] font-bold text-[#0F172A]">{t.price.free}</p>
+                </div>
+                <div>
+                  <p className="text-[12px] text-[#64748B]">{t.price.monthly}</p>
+                  <p className="text-[22px] font-bold text-[#0F172A]">{t.price.free}</p>
+                </div>
               </div>
-            ))}
-          </dl>
-        </div>
 
-        <p className="text-[13px] text-[#64748B] leading-[1.9] max-w-3xl">
-          {t.price.sizeNote}
-        </p>
+              {/* 通常料金 (主役) + 初回トライアル */}
+              <div className="rounded-xl border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5 md:order-none">
+                <p className="text-[12px] font-semibold tracking-wide text-[#C8102E]">{t.price.regular}</p>
+                <p className="mt-1 flex items-baseline gap-1 flex-wrap">
+                  <span className="text-[44px] md:text-[52px] font-bold leading-none text-[#0F172A] tabular-nums">
+                    {formatYen(PRICING.regularPrice)}
+                  </span>
+                  <span className="text-[15px] font-medium text-[#334155]">{t.price.perItem}</span>
+                  <span className="ml-1 text-[12px] text-[#64748B]">（{t.price.tax}）</span>
+                </p>
+                <div className="mt-4 rounded-lg bg-white border border-[#E5E7EB] px-4 py-3">
+                  <p className="text-[12px] font-semibold text-[#0F172A]">{t.price.trial}</p>
+                  <p className="mt-0.5 flex items-baseline gap-1 flex-wrap">
+                    <span className="text-[22px] font-bold text-[#0F172A] tabular-nums">
+                      {formatYen(PRICING.trialPrice)}
+                    </span>
+                    <span className="text-[13px] text-[#334155]">{t.price.perItem}</span>
+                    <span className="ml-1 text-[11px] text-[#64748B]">（{t.price.tax}）</span>
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#64748B]">
+                    {fill(t.price.trialNote, { limit: PRICING.trialLimit })}
+                  </p>
+                </div>
+              </div>
+
+              {/* ボリューム + 団体 */}
+              <div className="space-y-4">
+                <div className="rounded-lg bg-[#F7F8FA] border border-[#E5E7EB] px-4 py-3">
+                  <p className="text-[13px] font-semibold text-[#0F172A]">
+                    {fill(t.price.volume, { n: PRICING.volumeThreshold, d: PRICING.volumeDiscount })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[12px] text-[#64748B]">{t.price.group}</p>
+                  <p className="text-[15px] font-semibold text-[#0F172A]">{t.price.groupValue}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-[#F1F5F9] pt-4 space-y-1">
+              {t.price.notes.map((n) => (
+                <p key={n} className="text-[11px] text-[#94A3B8] leading-relaxed">
+                  {n}
+                </p>
+              ))}
+            </div>
+          </div>
+
+          {/* 比較 — 違うのは送料だけではない */}
+          <div className="mt-14 md:mt-16">
+            <h3 className="text-[20px] md:text-[26px] font-bold text-[#0F172A] leading-snug">
+              {t.price.compareLead}
+            </h3>
+            <p className="mt-3 max-w-2xl text-[14px] md:text-[15px] text-[#334155] leading-[1.9]">
+              {t.price.compareSub}
+            </p>
+
+            <div className="mt-6 overflow-x-auto">
+              <table className="w-full min-w-[440px] text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-[#0F172A]/15">
+                    <th className="text-left py-3 pr-3 font-medium text-[12px] text-[#64748B]" />
+                    <th className="text-left py-3 px-3 font-medium text-[12px] text-[#64748B]">
+                      {t.price.colDirect}
+                    </th>
+                    <th className="text-left py-3 pl-3 font-semibold text-[12px] text-[#C8102E]">
+                      {t.price.colBondex}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-[#0F172A]/10">
+                    <td className="py-3 pr-3 text-[13px] text-[#0F172A]">{t.price.costLabel}</td>
+                    <td className="py-3 px-3 text-[13px] text-[#334155]">{t.price.costDirect}</td>
+                    <td className="py-3 pl-3 text-[13px] font-semibold text-[#0F172A] tabular-nums whitespace-nowrap">
+                      {formatYen(PRICING.regularPrice)}
+                      {t.price.perItem}
+                    </td>
+                  </tr>
+                  {t.price.rows.map((row) => (
+                    <tr key={row.item} className="border-b border-[#0F172A]/10 last:border-0">
+                      <td className="py-3 pr-3 text-[13px] text-[#0F172A]">{row.item}</td>
+                      <td className="py-3 px-3 text-[13px] text-[#64748B]">{row.direct}</td>
+                      <td className="py-3 pl-3 text-[13px] font-medium text-[#C8102E]">{row.bondex}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 業務フロー比較 — BondEx 側が極端に短いことを見せる */}
+          <div className="mt-12 grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-5">
+              <p className="text-[11px] font-mono tracking-widest uppercase text-[#94A3B8] mb-3">
+                {t.price.flowDirect}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+                {t.price.flowDirectSteps.map((s, i) => (
+                  <span key={s} className="inline-flex items-center gap-1.5">
+                    {i > 0 && <ArrowRight className="w-3 h-3 text-[#CBD5E1]" strokeWidth={2} />}
+                    <span className="rounded-md bg-[#F1F5F9] px-2 py-1 text-[11px] text-[#334155]">{s}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5">
+              <p className="text-[11px] font-mono tracking-widest uppercase text-[#C8102E] mb-3">
+                {t.price.flowBondex}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+                {t.price.flowBondexSteps.map((s, i) => (
+                  <span key={s} className="inline-flex items-center gap-2">
+                    {i > 0 && <ArrowRight className="w-3.5 h-3.5 text-[#C8102E]/60" strokeWidth={2} />}
+                    <span className="rounded-md bg-white border border-[#C8102E]/20 px-3 py-1.5 text-[13px] font-semibold text-[#0F172A]">
+                      {s}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 締めコピー */}
+          <p className="mt-12 text-center text-[19px] md:text-[24px] font-bold text-[#0F172A] leading-[1.6]">
+            {t.price.closer}
+          </p>
+
+          {/* CTA — 既存の /contact 導線を再利用 (新規導線は増やさない) */}
+          <div className="mt-8 flex flex-col items-center gap-2">
+            <a
+              href={contactHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-md bg-[#C8102E] text-white text-[15px] font-semibold hover:bg-[#A00D25]"
+            >
+              {fill(t.price.ctaMain, { limit: PRICING.trialLimit })}
+              <ArrowRight className="w-4 h-4" strokeWidth={1.8} />
+            </a>
+            <p className="text-[12px] text-[#64748B] text-center">
+              {t.price.ctaSubFree} ・ {fill(t.price.ctaSubTrial, { limit: PRICING.trialLimit, price: formatYen(PRICING.trialPrice) })}
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* ═══════════════ FAQ (with 3 anxiety callouts + accordion) ═══════════════ */}

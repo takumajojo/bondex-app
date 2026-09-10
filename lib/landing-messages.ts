@@ -146,15 +146,44 @@ export interface LandingMessages {
     heading: TwoLine
     cards: { title: string; head: string; body: string }[]
   }
+  // 料金セクション (2026-09-10 全面刷新): 料金 + 直接手配との簡潔な比較 + フロー比較 + CTA を
+  // 1セクションに集約。数値は lib/pricing.ts (PRICING) から生成し、辞書には {limit} 等の
+  // プレースホルダのみ持たせる (fill() で置換)。
   price: {
     eyebrow: string
     heading: TwoLine
-    intro: string
-    billingKicker: string
-    billingHeading: string
-    billingBody: string
-    rows: { term: string; desc: string }[]
-    sizeNote: string
+    sub: string
+    // 料金カード
+    setup: string
+    monthly: string
+    free: string
+    regular: string
+    perItem: string
+    tax: string
+    trial: string
+    trialNote: string // "{limit}"
+    volume: string // "{n}" "{d}"
+    group: string
+    groupValue: string
+    notes: string[]
+    // 直接手配との比較
+    compareLead: string
+    compareSub: string
+    colDirect: string
+    colBondex: string
+    costLabel: string
+    costDirect: string
+    rows: { item: string; direct: string; bondex: string }[]
+    // 業務フロー比較
+    flowDirect: string
+    flowDirectSteps: string[]
+    flowBondex: string
+    flowBondexSteps: string[]
+    // 締め + CTA
+    closer: string
+    ctaMain: string // "{limit}"
+    ctaSubFree: string
+    ctaSubTrial: string // "{limit}" "{price}"
   }
   faq: {
     eyebrow: string
@@ -431,23 +460,46 @@ const ja: LandingMessages = {
   },
   price: {
     eyebrow: "料金",
-    heading: { first: "1 件単価、", second: "月次まとめ請求。" },
-    intro:
-      "荷物のサイズは測りません。1個いくらの均一料金なので、事前に費用が読めます。初期費用・月額費用はなし、月次まとめ請求。均一料金には、最適な配送業者への集荷手配・送り状発行・追跡・異常の検知対応・多言語バウチャー・サポートが含まれます。1個あたりの正式料金は、取扱件数・配送条件を確認のうえ契約時に確定します。",
-    billingKicker: "Billing / 請求条件",
-    billingHeading: "請求条件",
-    billingBody:
-      "配送費は月次でまとめて精算。月末に当月分をまとめて集計します。翌月初に請求書を発行し、翌月末までにお支払いいただきます。クレジットカードでのお支払いにも対応しています。",
-    rows: [
-      { term: "締め日", desc: "月末" },
-      { term: "請求書発行", desc: "翌月初" },
-      { term: "支払期限", desc: "翌月末" },
-      { term: "支払方法", desc: "銀行振込 ／ クレジットカード" },
-      { term: "運賃", desc: "月次まとめ精算" },
-      { term: "請求単位", desc: "月次まとめ請求" },
+    heading: { first: "シンプルな、", second: "料金体系。" },
+    sub: "初期費用・月額費用は0円。必要なとき、必要な分だけご利用いただけます。",
+    setup: "初期費用",
+    monthly: "月額費用",
+    free: "0円",
+    regular: "通常料金",
+    perItem: "／個",
+    tax: "税別",
+    trial: "初回トライアル",
+    trialNote: "1社につき最初の{limit}個まで",
+    volume: "月間{n}個以上のご利用で {d}% OFF",
+    group: "団体・大口案件",
+    groupValue: "個別プランあり",
+    notes: [
+      "配送手配・送り状発行・管理・追跡・異常時対応・多言語バウチャー・サポートを含む料金です。",
+      "一部地域・大型荷物・特殊配送等は別途条件となる場合があります。",
     ],
-    sizeNote:
-      "宅配便の受託限度 (3辺合計 160cm 以内・重量は配送業者の規定による) を超える荷物・離島や一部地域宛・冷蔵冷凍等の特殊配送は原則対象外となります。具体条件は個別にご相談ください。",
+    compareLead: "違うのは、送料だけではありません。",
+    compareSub:
+      "配送費だけなら、配送会社へ直接依頼した方が安く済みます。BondEx は、その差額で「配送に伴う業務そのもの」を減らすサービスです。",
+    colDirect: "配送会社へ直接依頼",
+    colBondex: "BondEx",
+    costLabel: "配送費",
+    costDirect: "安い",
+    rows: [
+      { item: "配送日・配送可否の確認", direct: "自社対応", bondex: "BondEx" },
+      { item: "ホテルへの連絡", direct: "自社対応", bondex: "BondEx" },
+      { item: "集荷手配", direct: "自社対応", bondex: "BondEx" },
+      { item: "送り状", direct: "自社またはホテル", bondex: "BondEx" },
+      { item: "追跡・配送管理", direct: "自社対応", bondex: "BondEx" },
+      { item: "問い合わせ・異常時対応", direct: "自社対応", bondex: "BondEx" },
+    ],
+    flowDirect: "直接手配",
+    flowDirectSteps: ["配送可否・到着日の確認", "ホテル連絡", "集荷手配", "送り状", "配送管理", "追跡", "問い合わせ対応"],
+    flowBondex: "BondEx",
+    flowBondexSteps: ["旅程と配送日を送る", "配送完了を待つ"],
+    closer: "安い配送を選ぶか、配送業務そのものを減らすか。",
+    ctaMain: "まずは{limit}個、試してみる",
+    ctaSubFree: "初期費用・月額費用なし",
+    ctaSubTrial: "初回{limit}個まで {price}／個（税別）",
   },
   faq: {
     eyebrow: "よくあるご質問",
@@ -702,23 +754,46 @@ const en: LandingMessages = {
   },
   price: {
     eyebrow: "Pricing",
-    heading: { first: "Per-shipment pricing,", second: "billed monthly." },
-    intro:
-      "There are no setup fees and no monthly fees. Shipping is generally quoted at a flat per-item rate, and the final pricing is confirmed at the time of contract after reviewing your volume and delivery conditions.",
-    billingKicker: "Billing / Billing terms",
-    billingHeading: "Billing terms",
-    billingBody:
-      "Shipping costs are settled together on a monthly basis. We total the month's shipments at month-end, issue an invoice at the start of the following month, and payment is due by the end of that month. Credit card payment is also accepted.",
-    rows: [
-      { term: "Closing date", desc: "Month-end" },
-      { term: "Invoice issued", desc: "Start of the following month" },
-      { term: "Payment due", desc: "End of the following month" },
-      { term: "Payment method", desc: "Bank transfer / Credit card" },
-      { term: "Freight", desc: "Settled monthly" },
-      { term: "Billing unit", desc: "Consolidated monthly invoice" },
+    heading: { first: "Simple,", second: "transparent pricing." },
+    sub: "No setup fee, no monthly fee. Use it whenever you need — and only for what you use.",
+    setup: "Setup fee",
+    monthly: "Monthly fee",
+    free: "Free",
+    regular: "Standard",
+    perItem: " / item",
+    tax: "excl. tax",
+    trial: "First-time trial",
+    trialNote: "First {limit} items per company",
+    volume: "{d}% OFF at {n}+ items / month",
+    group: "Groups & large accounts",
+    groupValue: "Custom plan",
+    notes: [
+      "The price includes shipping arrangement, label issuance, management, tracking, exception handling, multilingual vouchers and support.",
+      "Certain areas, oversized luggage and special handling may be subject to separate conditions.",
     ],
-    sizeNote:
-      "Items exceeding the courier's acceptance limit (up to 160 cm in total dimensions; weight per the carrier's rules), shipments to remote islands or certain areas, and special handling such as refrigerated or frozen delivery are generally out of scope. Please consult us on specific conditions.",
+    compareLead: "It's not just the shipping fee that's different.",
+    compareSub:
+      "For the shipping cost alone, booking a carrier directly is cheaper. BondEx uses that difference to remove the operational work that comes with shipping.",
+    colDirect: "Booking a carrier directly",
+    colBondex: "BondEx",
+    costLabel: "Shipping fee",
+    costDirect: "Cheaper",
+    rows: [
+      { item: "Checking delivery date / feasibility", direct: "You handle it", bondex: "BondEx" },
+      { item: "Contacting the hotel", direct: "You handle it", bondex: "BondEx" },
+      { item: "Arranging pickup", direct: "You handle it", bondex: "BondEx" },
+      { item: "Shipping label", direct: "You or the hotel", bondex: "BondEx" },
+      { item: "Tracking & delivery management", direct: "You handle it", bondex: "BondEx" },
+      { item: "Inquiries & exception handling", direct: "You handle it", bondex: "BondEx" },
+    ],
+    flowDirect: "Direct booking",
+    flowDirectSteps: ["Check feasibility & arrival date", "Contact hotel", "Arrange pickup", "Shipping label", "Delivery management", "Tracking", "Handle inquiries"],
+    flowBondex: "BondEx",
+    flowBondexSteps: ["Send the itinerary & delivery dates", "Wait for the completion notice"],
+    closer: "Choose cheaper shipping, or fewer shipping tasks.",
+    ctaMain: "Start with {limit} items",
+    ctaSubFree: "No setup or monthly fee",
+    ctaSubTrial: "First {limit} items at {price} / item (excl. tax)",
   },
   faq: {
     eyebrow: "Common questions",
@@ -976,23 +1051,46 @@ const es: LandingMessages = {
   },
   price: {
     eyebrow: "Precios",
-    heading: { first: "Precio por envío,", second: "facturado mensualmente." },
-    intro:
-      "No hay costes de instalación ni cuotas mensuales. El envío se cotiza por lo general con una tarifa plana por artículo, y el precio final se confirma en el momento del contrato tras revisar su volumen y sus condiciones de entrega.",
-    billingKicker: "Billing / Condiciones de facturación",
-    billingHeading: "Condiciones de facturación",
-    billingBody:
-      "Los costes de envío se liquidan juntos con periodicidad mensual. Totalizamos los envíos del mes a fin de mes, emitimos una factura a principios del mes siguiente y el pago vence al final de ese mes. También se admite el pago con tarjeta de crédito.",
-    rows: [
-      { term: "Fecha de cierre", desc: "Fin de mes" },
-      { term: "Emisión de la factura", desc: "Principios del mes siguiente" },
-      { term: "Vencimiento del pago", desc: "Fin del mes siguiente" },
-      { term: "Forma de pago", desc: "Transferencia bancaria / Tarjeta de crédito" },
-      { term: "Flete", desc: "Liquidado mensualmente" },
-      { term: "Unidad de facturación", desc: "Factura mensual consolidada" },
+    heading: { first: "Precios simples", second: "y transparentes." },
+    sub: "Sin coste inicial ni cuota mensual. Úselo cuando lo necesite, solo por lo que use.",
+    setup: "Coste inicial",
+    monthly: "Cuota mensual",
+    free: "Gratis",
+    regular: "Tarifa estándar",
+    perItem: " / artículo",
+    tax: "sin IVA",
+    trial: "Prueba inicial",
+    trialNote: "Primeros {limit} artículos por empresa",
+    volume: "{d}% OFF a partir de {n} artículos/mes",
+    group: "Grupos y grandes cuentas",
+    groupValue: "Plan personalizado",
+    notes: [
+      "El precio incluye la organización del envío, la emisión de etiquetas, la gestión, el seguimiento, la atención de incidencias, los vouchers multilingües y el soporte.",
+      "Determinadas zonas, el equipaje de gran tamaño y los envíos especiales pueden estar sujetos a condiciones aparte.",
     ],
-    sizeNote:
-      "Los artículos que superen el límite de aceptación del transportista (hasta 160 cm de dimensiones totales; peso según las normas del transportista), los envíos a islas remotas o a determinadas zonas, y los envíos especiales como refrigerados o congelados quedan, por lo general, fuera del alcance. Consúltenos las condiciones concretas.",
+    compareLead: "No solo cambia el coste de envío.",
+    compareSub:
+      "Solo por el coste de envío, contratar directamente a un transportista sale más barato. BondEx usa esa diferencia para eliminar el trabajo operativo que conlleva el envío.",
+    colDirect: "Contratar al transportista directamente",
+    colBondex: "BondEx",
+    costLabel: "Coste de envío",
+    costDirect: "Más barato",
+    rows: [
+      { item: "Comprobar fecha / viabilidad de entrega", direct: "Usted se ocupa", bondex: "BondEx" },
+      { item: "Contactar con el hotel", direct: "Usted se ocupa", bondex: "BondEx" },
+      { item: "Organizar la recogida", direct: "Usted se ocupa", bondex: "BondEx" },
+      { item: "Etiqueta de envío", direct: "Usted o el hotel", bondex: "BondEx" },
+      { item: "Seguimiento y gestión de la entrega", direct: "Usted se ocupa", bondex: "BondEx" },
+      { item: "Consultas e incidencias", direct: "Usted se ocupa", bondex: "BondEx" },
+    ],
+    flowDirect: "Gestión directa",
+    flowDirectSteps: ["Comprobar viabilidad y fecha de llegada", "Contactar con el hotel", "Organizar la recogida", "Etiqueta de envío", "Gestión de la entrega", "Seguimiento", "Atender consultas"],
+    flowBondex: "BondEx",
+    flowBondexSteps: ["Envíe el itinerario y las fechas", "Espere el aviso de finalización"],
+    closer: "Elegir un envío más barato, o reducir el trabajo de envío.",
+    ctaMain: "Empiece con {limit} artículos",
+    ctaSubFree: "Sin coste inicial ni cuota mensual",
+    ctaSubTrial: "Primeros {limit} artículos a {price} / artículo (sin IVA)",
   },
   faq: {
     eyebrow: "Preguntas frecuentes",
@@ -1250,23 +1348,46 @@ const fr: LandingMessages = {
   },
   price: {
     eyebrow: "Tarifs",
-    heading: { first: "Tarif par envoi,", second: "facturé mensuellement." },
-    intro:
-      "Il n'y a ni frais de mise en place ni frais mensuels. L'expédition est généralement facturée à un tarif forfaitaire par article, et le tarif final est confirmé au moment du contrat après examen de votre volume et de vos conditions de livraison.",
-    billingKicker: "Billing / Conditions de facturation",
-    billingHeading: "Conditions de facturation",
-    billingBody:
-      "Les frais d'expédition sont réglés ensemble sur une base mensuelle. Nous totalisons les envois du mois en fin de mois, émettons une facture au début du mois suivant, et le paiement est dû avant la fin de ce mois. Le paiement par carte bancaire est également accepté.",
-    rows: [
-      { term: "Date de clôture", desc: "Fin de mois" },
-      { term: "Émission de la facture", desc: "Début du mois suivant" },
-      { term: "Échéance de paiement", desc: "Fin du mois suivant" },
-      { term: "Mode de paiement", desc: "Virement bancaire / Carte bancaire" },
-      { term: "Fret", desc: "Réglé mensuellement" },
-      { term: "Unité de facturation", desc: "Facture mensuelle unique" },
+    heading: { first: "Une tarification", second: "simple et claire." },
+    sub: "Aucuns frais de mise en place ni frais mensuels. Utilisez-le quand vous en avez besoin, uniquement pour ce que vous utilisez.",
+    setup: "Frais de mise en place",
+    monthly: "Frais mensuels",
+    free: "Gratuit",
+    regular: "Tarif standard",
+    perItem: " / article",
+    tax: "HT",
+    trial: "Offre découverte",
+    trialNote: "Les {limit} premiers articles par entreprise",
+    volume: "{d}% OFF dès {n} articles/mois",
+    group: "Groupes et grands comptes",
+    groupValue: "Offre sur mesure",
+    notes: [
+      "Le tarif comprend l'organisation de l'expédition, l'émission des étiquettes, la gestion, le suivi, le traitement des incidents, les bons multilingues et l'assistance.",
+      "Certaines régions, les bagages hors format et les livraisons spéciales peuvent être soumis à des conditions particulières.",
     ],
-    sizeNote:
-      "Les articles dépassant la limite d'acceptation du transporteur (jusqu'à 160 cm de dimensions totales ; poids selon les règles du transporteur), les envois vers des îles éloignées ou certaines régions, et les livraisons spéciales telles que réfrigérées ou congelées sont en principe hors périmètre. Consultez-nous pour les conditions précises.",
+    compareLead: "Ce n'est pas seulement le prix de l'expédition qui change.",
+    compareSub:
+      "Pour le seul coût d'expédition, réserver directement un transporteur revient moins cher. BondEx utilise cet écart pour supprimer le travail opérationnel lié à l'expédition.",
+    colDirect: "Réservation directe du transporteur",
+    colBondex: "BondEx",
+    costLabel: "Coût d'expédition",
+    costDirect: "Moins cher",
+    rows: [
+      { item: "Vérifier date / faisabilité de livraison", direct: "À votre charge", bondex: "BondEx" },
+      { item: "Contacter l'hôtel", direct: "À votre charge", bondex: "BondEx" },
+      { item: "Organiser l'enlèvement", direct: "À votre charge", bondex: "BondEx" },
+      { item: "Étiquette d'expédition", direct: "Vous ou l'hôtel", bondex: "BondEx" },
+      { item: "Suivi et gestion de la livraison", direct: "À votre charge", bondex: "BondEx" },
+      { item: "Demandes et incidents", direct: "À votre charge", bondex: "BondEx" },
+    ],
+    flowDirect: "Gestion directe",
+    flowDirectSteps: ["Vérifier faisabilité et date d'arrivée", "Contacter l'hôtel", "Organiser l'enlèvement", "Étiquette d'expédition", "Gestion de la livraison", "Suivi", "Traiter les demandes"],
+    flowBondex: "BondEx",
+    flowBondexSteps: ["Envoyez l'itinéraire et les dates", "Attendez l'avis de fin"],
+    closer: "Choisir une expédition moins chère, ou réduire le travail d'expédition.",
+    ctaMain: "Commencez avec {limit} articles",
+    ctaSubFree: "Sans frais de mise en place ni frais mensuels",
+    ctaSubTrial: "Les {limit} premiers articles à {price} / article (HT)",
   },
   faq: {
     eyebrow: "Questions fréquentes",
@@ -1524,23 +1645,46 @@ const zh: LandingMessages = {
   },
   price: {
     eyebrow: "价格",
-    heading: { first: "按件计价，", second: "每月汇总开票。" },
-    intro:
-      "无初期费用，无月度费用。运费原则上按统一的单件费率报价，正式价格在核对您的业务量与配送条件后于签约时确定。",
-    billingKicker: "Billing / 结算条件",
-    billingHeading: "结算条件",
-    billingBody:
-      "配送费用按月汇总结算。我们在月末合计当月的配送，次月初开具账单，款项须于当月底前支付。同时支持信用卡付款。",
-    rows: [
-      { term: "结账日", desc: "月末" },
-      { term: "账单开具", desc: "次月初" },
-      { term: "付款期限", desc: "次月底" },
-      { term: "付款方式", desc: "银行转账 / 信用卡" },
-      { term: "运费", desc: "按月汇总结算" },
-      { term: "开票单位", desc: "每月汇总账单" },
+    heading: { first: "简单透明的", second: "价格体系。" },
+    sub: "无初期费用，无月度费用。需要时按需使用，只为实际使用量付费。",
+    setup: "初期费用",
+    monthly: "月度费用",
+    free: "0元",
+    regular: "常规价格",
+    perItem: " / 件",
+    tax: "不含税",
+    trial: "首次体验",
+    trialNote: "每家公司前 {limit} 件",
+    volume: "每月满 {n} 件享 {d}% OFF",
+    group: "团体・大宗业务",
+    groupValue: "专属方案",
+    notes: [
+      "价格已含配送安排、面单开具、管理、追踪、异常处理、多语种凭证与支持。",
+      "部分地区、超大件行李及特殊配送等可能适用另行条件。",
     ],
-    sizeNote:
-      "超出快递受理限额（三边合计 160 厘米以内；重量以承运商规定为准）的物品、寄往离岛或部分地区的物品，以及冷藏冷冻等特殊配送，原则上不在服务范围内。具体条件请单独咨询。",
+    compareLead: "不同的，不只是运费。",
+    compareSub:
+      "仅就运费而言，直接委托配送公司更便宜。BondEx 用这一差额，替您省去配送相关的各项事务。",
+    colDirect: "直接委托配送公司",
+    colBondex: "BondEx",
+    costLabel: "运费",
+    costDirect: "更便宜",
+    rows: [
+      { item: "确认配送日期・可否", direct: "自行处理", bondex: "BondEx" },
+      { item: "联系酒店", direct: "自行处理", bondex: "BondEx" },
+      { item: "安排上门取件", direct: "自行处理", bondex: "BondEx" },
+      { item: "配送面单", direct: "自行或酒店", bondex: "BondEx" },
+      { item: "追踪与配送管理", direct: "自行处理", bondex: "BondEx" },
+      { item: "咨询与异常处理", direct: "自行处理", bondex: "BondEx" },
+    ],
+    flowDirect: "直接手配",
+    flowDirectSteps: ["确认可否与到达日", "联系酒店", "安排取件", "配送面单", "配送管理", "追踪", "处理咨询"],
+    flowBondex: "BondEx",
+    flowBondexSteps: ["发送行程与配送日期", "等待完成通知"],
+    closer: "是选择更便宜的配送，还是减少配送事务本身。",
+    ctaMain: "先试 {limit} 件",
+    ctaSubFree: "无初期费用与月度费用",
+    ctaSubTrial: "前 {limit} 件每件 {price}（不含税）",
   },
   faq: {
     eyebrow: "常见问题",
@@ -1798,23 +1942,46 @@ const it: LandingMessages = {
   },
   price: {
     eyebrow: "Prezzi",
-    heading: { first: "Prezzo per spedizione,", second: "fatturato mensilmente." },
-    intro:
-      "Non ci sono costi di attivazione né canoni mensili. La spedizione è di norma quotata a una tariffa fissa per collo, e il prezzo finale viene confermato al momento del contratto dopo aver esaminato il tuo volume e le tue condizioni di consegna.",
-    billingKicker: "Billing / Condizioni di fatturazione",
-    billingHeading: "Condizioni di fatturazione",
-    billingBody:
-      "I costi di spedizione si saldano insieme su base mensile. Totalizziamo le spedizioni del mese a fine mese, emettiamo una fattura all'inizio del mese successivo e il pagamento è dovuto entro la fine di quel mese. È accettato anche il pagamento con carta di credito.",
-    rows: [
-      { term: "Data di chiusura", desc: "Fine mese" },
-      { term: "Emissione fattura", desc: "Inizio del mese successivo" },
-      { term: "Scadenza pagamento", desc: "Fine del mese successivo" },
-      { term: "Metodo di pagamento", desc: "Bonifico bancario / Carta di credito" },
-      { term: "Nolo", desc: "Saldato mensilmente" },
-      { term: "Unità di fatturazione", desc: "Fattura mensile unica" },
+    heading: { first: "Prezzi semplici", second: "e trasparenti." },
+    sub: "Nessun costo di attivazione né canone mensile. Usalo quando serve, solo per ciò che usi.",
+    setup: "Costo di attivazione",
+    monthly: "Canone mensile",
+    free: "Gratis",
+    regular: "Tariffa standard",
+    perItem: " / collo",
+    tax: "IVA escl.",
+    trial: "Prova iniziale",
+    trialNote: "I primi {limit} colli per azienda",
+    volume: "{d}% OFF da {n} colli/mese",
+    group: "Gruppi e grandi clienti",
+    groupValue: "Piano su misura",
+    notes: [
+      "Il prezzo include l'organizzazione della spedizione, l'emissione delle etichette, la gestione, il tracciamento, la gestione delle anomalie, i voucher multilingue e l'assistenza.",
+      "Alcune zone, i bagagli fuori misura e le spedizioni speciali possono essere soggetti a condizioni a parte.",
     ],
-    sizeNote:
-      "I colli che superano il limite di accettazione del corriere (fino a 160 cm di dimensioni totali; peso secondo le regole del corriere), le spedizioni verso isole remote o determinate zone e le consegne speciali come refrigerate o surgelate sono di norma escluse. Contattaci per le condizioni specifiche.",
+    compareLead: "Non cambia solo il costo di spedizione.",
+    compareSub:
+      "Per il solo costo di spedizione, rivolgersi direttamente a un corriere costa meno. BondEx usa quella differenza per eliminare il lavoro operativo legato alla spedizione.",
+    colDirect: "Rivolgersi direttamente al corriere",
+    colBondex: "BondEx",
+    costLabel: "Costo di spedizione",
+    costDirect: "Più economico",
+    rows: [
+      { item: "Verifica data / fattibilità consegna", direct: "A tuo carico", bondex: "BondEx" },
+      { item: "Contatto con l'hotel", direct: "A tuo carico", bondex: "BondEx" },
+      { item: "Organizzazione del ritiro", direct: "A tuo carico", bondex: "BondEx" },
+      { item: "Etichetta di spedizione", direct: "Tu o l'hotel", bondex: "BondEx" },
+      { item: "Tracciamento e gestione consegna", direct: "A tuo carico", bondex: "BondEx" },
+      { item: "Richieste e anomalie", direct: "A tuo carico", bondex: "BondEx" },
+    ],
+    flowDirect: "Gestione diretta",
+    flowDirectSteps: ["Verifica fattibilità e data di arrivo", "Contatto hotel", "Organizzazione ritiro", "Etichetta di spedizione", "Gestione consegna", "Tracciamento", "Gestione richieste"],
+    flowBondex: "BondEx",
+    flowBondexSteps: ["Invia l'itinerario e le date", "Attendi l'avviso di completamento"],
+    closer: "Scegliere una spedizione più economica, o ridurre il lavoro di spedizione.",
+    ctaMain: "Inizia con {limit} colli",
+    ctaSubFree: "Nessun costo di attivazione né canone mensile",
+    ctaSubTrial: "I primi {limit} colli a {price} / collo (IVA escl.)",
   },
   faq: {
     eyebrow: "Domande frequenti",

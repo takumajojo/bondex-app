@@ -1,4 +1,5 @@
 import React from "react"
+import { PRICING, formatYen } from "@/lib/pricing"
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,7 @@ const rows: Array<{ k: string; v: React.ReactNode }> = [
   { k: 'メールアドレス', v: 'support@bondex.express' },
   {
     k: '販売価格 / 役務の対価',
-    v: '荷物1個あたりの定額制です。金額は代理店さまとの契約・お見積りに基づき、発行前にご提示します（税抜表示。別途消費税を申し受けます）。',
+    v: `通常料金は荷物1個あたり${formatYen(PRICING.regularPrice)}（税抜表示。別途消費税を申し受けます）です。初回のご利用・ボリューム利用・団体・大口案件、及び一部地域・大型サイズ・特殊配送等については、当社所定の条件又は個別のお見積りを適用する場合があります。`,
   },
   {
     k: '対価以外の必要料金',
