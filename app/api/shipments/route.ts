@@ -12,7 +12,7 @@ import {
 } from "@/lib/shipments-db"
 import { isSupabaseConfigured, getSupabase } from "@/lib/supabase"
 import { chargeShipmentIfDue } from "@/lib/charge"
-import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
+import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 
@@ -219,57 +219,58 @@ export async function PATCH(req: NextRequest) {
     } catch (e) {
       console.error("[shipments] charge hook failed:", e instanceof Error ? e.message : e)
     }
-    // 配達完了 → 代理店へ通知
-    if (patch.status === "delivered") {
+    // 集荷完了 / 配達完了 → 代理店へ設計版ステータス通知メール (cron と同じ体裁)。
+    //   手動操作は明示的なので、集荷完了は status を picked_up に、配達完了は
+    //   delivered にセットした時に送る。配達完了はさらに push / Slack も送る。
+    if (patch.status === "picked_up" || patch.status === "delivered") {
       try {
         const ship = await getShipment(id)
         if (ship) {
           let agencyEmail: string | null = null
           let english = false
+          let contactPerson: string | null = null
           const sb = getSupabase()
           if (sb) {
             const { data: ag } = await sb
               .from("agencies")
-              .select("contact_email, locale")
+              .select("contact_email, contact_person, locale")
               .eq("name", ship.agency)
               .maybeSingle()
             agencyEmail = ag?.contact_email ?? null
             english = ag?.locale === "en"
+            contactPerson = ag?.contact_person ?? null
           }
-          await sendDeliveryCompleteEmail({
+          await sendAgencyStatusEmail(
+            patch.status as "picked_up" | "delivered",
+            statusDataFromRow(ship, contactPerson),
             agencyEmail,
-            agencyName: ship.agency,
-            bookingId: ship.booking_id,
-            legIndex: ship.leg_index,
-            representative: ship.representative,
-            recipient: ship.recipient,
-            toHotel: ship.to_hotel,
-            tracking: ship.yamato_tracking,
             english,
-          })
-          // 代理店へのプッシュ通知 (WhatsApp/LINE・登録があれば。メールの補完)
-          await pushToAgency(
-            ship.agency,
-            `【BondEx】配達完了 ${ship.booking_id}-L${ship.leg_index + 1}\n${ship.representative} 様のお荷物が ${ship.to_hotel} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
-            `[BondEx] Delivered ${ship.booking_id}-L${ship.leg_index + 1}\nLuggage for ${ship.representative} has arrived at ${ship.to_hotel}.\nhttps://bondex.express/track/${ship.booking_id}`,
           )
-          // 社内通知(Slack集約)
-          await notifyBondEx({
-            kind: "delivery",
-            title: `${ship.booking_id}-L${ship.leg_index + 1}（${ship.agency}）`,
-            lines: [
-              `お届け先: ${ship.to_hotel}`,
-              `代表者: ${ship.representative}`,
-              (ship.yamato_tracking ?? []).filter(Boolean).length
-                ? `追跡番号: ${(ship.yamato_tracking ?? []).filter(Boolean).join(", ")}`
-                : "",
-            ],
-            link: `/track/${ship.booking_id}`,
-            linkLabel: "追跡ページで確認",
-          })
+          if (patch.status === "delivered") {
+            // 代理店へのプッシュ通知 (WhatsApp/LINE・登録があれば。メールの補完)
+            await pushToAgency(
+              ship.agency,
+              `【BondEx】配達完了 ${ship.booking_id}-L${ship.leg_index + 1}\n${ship.representative} 様のお荷物が ${ship.to_hotel} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
+              `[BondEx] Delivered ${ship.booking_id}-L${ship.leg_index + 1}\nLuggage for ${ship.representative} has arrived at ${ship.to_hotel}.\nhttps://bondex.express/track/${ship.booking_id}`,
+            )
+            // 社内通知(Slack集約)
+            await notifyBondEx({
+              kind: "delivery",
+              title: `${ship.booking_id}-L${ship.leg_index + 1}（${ship.agency}）`,
+              lines: [
+                `お届け先: ${ship.to_hotel}`,
+                `代表者: ${ship.representative}`,
+                (ship.yamato_tracking ?? []).filter(Boolean).length
+                  ? `追跡番号: ${(ship.yamato_tracking ?? []).filter(Boolean).join(", ")}`
+                  : "",
+              ],
+              link: `/track/${ship.booking_id}`,
+              linkLabel: "追跡ページで確認",
+            })
+          }
         }
       } catch (e) {
-        console.error("[shipments] delivery notify failed:", e instanceof Error ? e.message : e)
+        console.error("[shipments] status notify failed:", e instanceof Error ? e.message : e)
       }
     }
   }

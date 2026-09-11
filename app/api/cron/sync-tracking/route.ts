@@ -5,7 +5,7 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
-import { sendDeliveryCompleteEmail } from "@/lib/delivery-notify"
+import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 
@@ -265,7 +265,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await sb
       .from("shipments")
-      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, to_hotel, yamato_tracking, yamato_tracking_detail")
+      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, tour_number, shipment_date, yamato_tracking, yamato_tracking_detail")
       .not("yamato_tracking", "is", null)
       .not("status", "in", '("delivered","cancelled","failed")')
       // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
@@ -282,11 +282,13 @@ export async function GET(req: NextRequest) {
     // ランドオペレーター通知用: 代理店名 → contact_email / 国内外フラグ の対応表を 1 回で引く
     const agencyEmailByName = new Map<string, string>()
     const agencyForeignByName = new Map<string, boolean>()
+    const agencyContactByName = new Map<string, string>()
     {
-      const { data: agencies } = await sb.from("agencies").select("name, contact_email, locale")
+      const { data: agencies } = await sb.from("agencies").select("name, contact_email, contact_person, locale")
       for (const a of agencies ?? []) {
         if (a.name && a.contact_email) agencyEmailByName.set(a.name, a.contact_email)
         if (a.name) agencyForeignByName.set(a.name, a.locale === "en")
+        if (a.name && a.contact_person) agencyContactByName.set(a.name, a.contact_person)
       }
     }
 
@@ -322,6 +324,7 @@ export async function GET(req: NextRequest) {
     let detailUpdated = 0
     let skipped = skippedNoTracking
     let deliveryNotified = 0
+    let pickupNotified = 0
     const unmapped: Array<{ bookingId: string; leg: number; raw: string }> = []
     const failures: Array<{ bookingId: string; leg: number; reason: string }> = []
     const alertsSent: Array<{ bookingId: string; leg: number; exception: string }> = []
@@ -495,20 +498,35 @@ export async function GET(req: NextRequest) {
             console.error("[sync-tracking] charge hook failed:", e instanceof Error ? e.message : e)
           }
         }
+        // 集荷完了 → 代理店へ「集荷しました(＝課金確定)」通知。
+        //   初めて集荷ライン(picked_up)を越えた時に一度だけ。配達完了に直行した
+        //   場合は下の配達完了メールに集約するので、ここでは送らない (二重回避)。
+        if (
+          bestStatus !== "delivered" &&
+          currentRank < progressionRank("picked_up") &&
+          bestRank >= progressionRank("picked_up")
+        ) {
+          try {
+            const sent = await sendAgencyStatusEmail(
+              "picked_up",
+              statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null),
+              agencyEmailByName.get(row.agency as string) ?? null,
+              agencyForeignByName.get(row.agency as string) ?? false,
+            )
+            if (sent) pickupNotified++
+          } catch (e) {
+            console.error("[sync-tracking] pickup notify failed:", e instanceof Error ? e.message : e)
+          }
+        }
         // 配達完了 → 代理店へ通知 (delivered は次回以降 cron 対象外なので一度きり)
         if (bestStatus === "delivered") {
           try {
-            await sendDeliveryCompleteEmail({
-              agencyEmail: agencyEmailByName.get(row.agency as string) ?? null,
-              agencyName: row.agency as string,
-              bookingId: row.booking_id as string,
-              legIndex: row.leg_index as number,
-              representative: (row.representative as string) ?? "",
-              recipient: (row.recipient as string) ?? "",
-              toHotel: (row.to_hotel as string) ?? "",
-              tracking: (row.yamato_tracking as string[] | null) ?? null,
-              english: agencyForeignByName.get(row.agency as string) ?? false,
-            })
+            await sendAgencyStatusEmail(
+              "delivered",
+              statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null),
+              agencyEmailByName.get(row.agency as string) ?? null,
+              agencyForeignByName.get(row.agency as string) ?? false,
+            )
             // 代理店へのプッシュ通知 (WhatsApp/LINE・登録があれば。メールの補完)
             await pushToAgency(
               row.agency as string,
@@ -593,6 +611,7 @@ export async function GET(req: NextRequest) {
       detailUpdated,
       skipped,
       deliveryNotified,
+      pickupNotified,
       unmapped,
       alertsSent,
       chargesMade,
