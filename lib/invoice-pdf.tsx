@@ -86,6 +86,10 @@ export interface InvoiceInput {
    */
   taxInclusive?: boolean
   /**
+   * 海外事業者など消費税の対象外のとき true。合計＝小計 (税を上乗せせず、税欄は「対象外」)。
+   */
+  taxExempt?: boolean
+  /**
    * カード決済など「支払い済み」の場合に指定。指定時は本書を
    * 「請求書 兼 領収書」として扱い、振込先ブロックの代わりに
    * 領収 (お支払い済み) ブロックを表示する。
@@ -454,13 +458,14 @@ function parseBankInfo(raw: string): React.JSX.Element {
 export function InvoiceDocument({ data }: { data: InvoiceInput }) {
   const taxRate = data.taxRate ?? 0.10
   const taxInclusive = data.taxInclusive === true
+  const taxExempt = data.taxExempt === true
   const paid = data.paid
   // 明細金額の合計 (税込モードでは税込額、税抜モードでは税抜額)
   const lineSum = data.items.reduce((sum, it) => sum + it.amountYen, 0)
-  // net=税抜相当 / tax=消費税 / total=請求総額(税込)
-  const net = taxInclusive ? Math.round(lineSum / (1 + taxRate)) : lineSum
-  const tax = taxInclusive ? lineSum - net : Math.floor(lineSum * taxRate)
-  const total = taxInclusive ? lineSum : lineSum + tax
+  // net=税抜相当 / tax=消費税 / total=請求総額。海外事業者(taxExempt)は税を上乗せしない。
+  const net = taxExempt ? lineSum : taxInclusive ? Math.round(lineSum / (1 + taxRate)) : lineSum
+  const tax = taxExempt ? 0 : taxInclusive ? lineSum - net : Math.floor(lineSum * taxRate)
+  const total = taxExempt ? lineSum : taxInclusive ? lineSum : lineSum + tax
   const totalSuitcases = data.items.reduce((sum, it) => sum + it.suitcaseCount, 0)
 
   return (
@@ -574,9 +579,11 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
               </View>
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>
-                  消費税 ({Math.round(taxRate * 100)}%)
+                  {taxExempt ? "消費税" : `消費税 (${Math.round(taxRate * 100)}%)`}
                 </Text>
-                <Text style={styles.totalValue}>¥{tax.toLocaleString()}</Text>
+                <Text style={styles.totalValue}>
+                  {taxExempt ? "対象外" : `¥${tax.toLocaleString()}`}
+                </Text>
               </View>
               <View style={styles.grandTotalRow}>
                 <Text style={styles.grandTotalLabel}>合計</Text>

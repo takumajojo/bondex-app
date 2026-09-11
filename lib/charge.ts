@@ -67,12 +67,11 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       return { charged: false, skipped: true, reason: "addition_settled_separately" }
     }
 
-    // amount_yen は税抜小計 (個数 × ¥5,000)。カードへは消費税を上乗せした税込額を請求する。
+    // amount_yen は税抜小計 (個数 × 単価)。実際の課金額は下で代理店の国内/海外区分に応じて決める。
     const netYen = shipment.amount_yen ?? 0
     if (!Number.isFinite(netYen) || netYen <= 0) {
       return { charged: false, skipped: true, reason: "no_amount" }
     }
-    const amountYen = grossOf(netYen) // 実際に課金する税込額
 
     const sb = getSupabase()
     if (!sb) return { charged: false, skipped: true, reason: "db_unset" }
@@ -80,11 +79,15 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
     // 代理店の決済情報を引く
     const { data: agency } = await sb
       .from("agencies")
-      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt, locale")
+      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt, locale, is_domestic")
       .eq("name", shipment.agency)
       .maybeSingle()
 
     if (!agency) return { charged: false, skipped: true, reason: "agency_not_found" }
+
+    // 実際に課金する額。国内代理店は消費税を上乗せ (税込)、海外法人は非課税 (税抜のまま)。
+    // ※ 海外事業者向け国内配送の消費税不課税の適否は税務判断。運用前に税理士確認のこと (谷口さん)。
+    const amountYen = agency.is_domestic === false ? netYen : grossOf(netYen)
 
     // テスト代理店 (billing_exempt) は、どんなに配送手配しても一切課金しない (谷口さん指示)。
     // カード登録は可能だが、集荷完了しても課金処理をスキップする。

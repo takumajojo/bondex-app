@@ -72,7 +72,7 @@ export async function buildMonthlyInvoice(
 
   const { data: agencyRow } = await sb
     .from("agencies")
-    .select("name, contact_person, contact_email, billing_address")
+    .select("name, contact_person, contact_email, billing_address, is_domestic")
     .eq("name", agencyName)
     .maybeSingle()
 
@@ -96,7 +96,9 @@ export async function buildMonthlyInvoice(
   }))
 
   const netYen = items.reduce((sum, it) => sum + it.amountYen, 0) // 税抜小計
-  const totalYen = grossOf(netYen) // 請求総額 (税込)
+  // 海外事業者は消費税対象外 (税を上乗せしない)。国内は外税。
+  const taxExempt = agencyRow?.is_domestic === false
+  const totalYen = taxExempt ? netYen : grossOf(netYen) // 請求総額
 
   const issuedDate = formatJpDate(new Date())
   const closingDate = formatJpDate(new Date(year, mon, 0)) // 当月末
@@ -119,7 +121,8 @@ export async function buildMonthlyInvoice(
         closingDate,
         items,
         taxRate: TAX_RATE,
-        taxInclusive: false, // ¥5,000 は税抜 — 外税表示 (消費税を上乗せ)
+        taxInclusive: false, // 単価は税抜 — 外税表示 (国内は消費税を上乗せ)
+        taxExempt, // 海外事業者は消費税対象外
       }}
     />
   )
@@ -152,13 +155,16 @@ export async function buildChargeInvoice(
   // charge_amount_yen が無い過去データは税抜小計から算出する。
   const netYen = shipment.amount_yen ?? 0
   if (netYen <= 0) return { ok: false, reason: "no_amount" }
-  const grossYen = shipment.charge_amount_yen ?? grossOf(netYen)
 
   const { data: agencyRow } = await sb
     .from("agencies")
-    .select("name, contact_person, contact_email, billing_address")
+    .select("name, contact_person, contact_email, billing_address, is_domestic")
     .eq("name", shipment.agency)
     .maybeSingle()
+
+  // 海外事業者は消費税対象外。実課金額(charge_amount_yen)があれば総額に使う。
+  const taxExempt = agencyRow?.is_domestic === false
+  const grossYen = shipment.charge_amount_yen ?? (taxExempt ? netYen : grossOf(netYen))
 
   // 決済日 (JST)。charged_at が無ければ発行日を使う。
   const chargedAt = shipment.charged_at ? new Date(shipment.charged_at) : new Date()
@@ -203,6 +209,7 @@ export async function buildChargeInvoice(
         items,
         taxRate: TAX_RATE,
         taxInclusive: false,
+        taxExempt, // 海外事業者は消費税対象外
         paid: {
           method: "クレジットカード",
           date: paidDate,

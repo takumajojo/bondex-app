@@ -10,6 +10,7 @@ import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
+import { PRICING } from "@/lib/pricing"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
 
 export const runtime = "nodejs"
@@ -746,7 +747,7 @@ export async function POST(req: NextRequest) {
       recipient: (toInput.recipient ?? "").trim(),
       suitcase_count: suitcaseCount,
       item_type: (typeof body.productName === "string" && body.productName.trim()) || null,
-      amount_yen: suitcaseCount * 5000,
+      amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
       ship_ref_number: refNumber,
       yamato_issuable_from: issuableFrom,
       carrier: carrier.id,
@@ -1036,7 +1037,7 @@ export async function POST(req: NextRequest) {
       recipient: (toInput.recipient ?? "").trim(),
       suitcase_count: suitcaseCount,
       item_type: productName,
-      amount_yen: suitcaseCount * 5000,
+      amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
       ship_ref_number: refNumber,
       notes: specialNote || null,
       note_target: resolvedNoteTarget,

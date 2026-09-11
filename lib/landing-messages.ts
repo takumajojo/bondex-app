@@ -467,7 +467,7 @@ const ja: LandingMessages = {
     free: "0円",
     regular: "通常料金",
     perItem: "／個",
-    tax: "税別",
+    tax: "税抜",
     trial: "初回トライアル",
     trialNote: "1社につき最初の{limit}個まで",
     volume: "月間{n}個以上のご利用で {d}% OFF",
@@ -499,7 +499,7 @@ const ja: LandingMessages = {
     closer: "安い配送を選ぶか、配送業務そのものを減らすか。",
     ctaMain: "まずは{limit}個、試してみる",
     ctaSubFree: "初期費用・月額費用なし",
-    ctaSubTrial: "初回{limit}個まで {price}／個（税別）",
+    ctaSubTrial: "初回{limit}個まで {price}／個（税抜）",
   },
   faq: {
     eyebrow: "よくあるご質問",
