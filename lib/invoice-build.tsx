@@ -21,8 +21,31 @@ const BONDEX_BILLING = {
   // 適格請求書登録番号は取得後にここへ
 }
 
-function formatJpDate(d: Date): string {
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+const MONTHS_EN = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
+
+/** 年月日を言語別に整形。ja=「2026年7月1日」/ en=「Jul 1, 2026」 */
+function fmtDate(year: number, month1: number, day: number, locale: "ja" | "en"): string {
+  return locale === "en"
+    ? `${MONTHS_EN[month1 - 1]} ${day}, ${year}`
+    : `${year}年${month1}月${day}日`
+}
+
+function formatJpDate(d: Date, locale: "ja" | "en" = "ja"): string {
+  return fmtDate(d.getFullYear(), d.getMonth() + 1, d.getDate(), locale)
+}
+
+/** 対象期間を言語別に。ja(monthly)=「2026年7月分」/ ja=「2026年7月」/ en=「July 2026」 */
+const MONTHS_EN_FULL = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+]
+function fmtPeriod(year: number, month1: number, locale: "ja" | "en", monthly: boolean): string {
+  return locale === "en"
+    ? `${MONTHS_EN_FULL[month1 - 1]} ${year}`
+    : `${year}年${month1}月${monthly ? "分" : ""}`
 }
 
 export interface BuildInvoiceResult {
@@ -72,9 +95,12 @@ export async function buildMonthlyInvoice(
 
   const { data: agencyRow } = await sb
     .from("agencies")
-    .select("name, contact_person, contact_email, billing_address, is_domestic")
+    .select("name, contact_person, contact_email, billing_address, is_domestic, locale")
     .eq("name", agencyName)
     .maybeSingle()
+
+  // 代理店の登録言語で請求書を出し分ける (英語圏の代理店は英語の請求書)。
+  const locale: "ja" | "en" = agencyRow?.locale === "en" ? "en" : "ja"
 
   const agencyHash = Math.abs(
     agencyName.split("").reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0),
@@ -100,10 +126,10 @@ export async function buildMonthlyInvoice(
   const taxExempt = agencyRow?.is_domestic === false
   const totalYen = taxExempt ? netYen : grossOf(netYen) // 請求総額
 
-  const issuedDate = formatJpDate(new Date())
-  const closingDate = formatJpDate(new Date(year, mon, 0)) // 当月末
-  const dueDate = formatJpDate(new Date(year, mon + 1, 0)) // 翌月末払い
-  const period = `${year}年${mon}月分`
+  const issuedDate = formatJpDate(new Date(), locale)
+  const closingDate = formatJpDate(new Date(year, mon, 0), locale) // 当月末
+  const dueDate = formatJpDate(new Date(year, mon + 1, 0), locale) // 翌月末払い
+  const period = fmtPeriod(year, mon, locale, true)
 
   const doc = (
     <InvoiceDocument
@@ -123,6 +149,7 @@ export async function buildMonthlyInvoice(
         taxRate: TAX_RATE,
         taxInclusive: false, // 単価は税抜 — 外税表示 (国内は消費税を上乗せ)
         taxExempt, // 海外事業者は消費税対象外
+        locale,
       }}
     />
   )
@@ -158,9 +185,12 @@ export async function buildChargeInvoice(
 
   const { data: agencyRow } = await sb
     .from("agencies")
-    .select("name, contact_person, contact_email, billing_address, is_domestic")
+    .select("name, contact_person, contact_email, billing_address, is_domestic, locale")
     .eq("name", shipment.agency)
     .maybeSingle()
+
+  // 代理店の登録言語で出し分け (英語圏はカード領収書も英語)。
+  const locale: "ja" | "en" = agencyRow?.locale === "en" ? "en" : "ja"
 
   // 海外事業者は消費税対象外。実課金額(charge_amount_yen)があれば総額に使う。
   const taxExempt = agencyRow?.is_domestic === false
@@ -169,7 +199,12 @@ export async function buildChargeInvoice(
   // 決済日 (JST)。charged_at が無ければ発行日を使う。
   const chargedAt = shipment.charged_at ? new Date(shipment.charged_at) : new Date()
   const chargedJst = new Date(chargedAt.getTime() + 9 * 3600 * 1000)
-  const paidDate = `${chargedJst.getUTCFullYear()}年${chargedJst.getUTCMonth() + 1}月${chargedJst.getUTCDate()}日`
+  const paidDate = fmtDate(
+    chargedJst.getUTCFullYear(),
+    chargedJst.getUTCMonth() + 1,
+    chargedJst.getUTCDate(),
+    locale,
+  )
   const ymd = chargedJst.toISOString().slice(0, 10).replace(/-/g, "")
 
   const shortId = shipment.id.replace(/-/g, "").slice(0, 6).toUpperCase()
@@ -188,10 +223,10 @@ export async function buildChargeInvoice(
     },
   ]
 
-  const issuedDate = formatJpDate(new Date(chargedAt))
+  const issuedDate = formatJpDate(new Date(chargedAt), locale)
   // 対象期間は発送月
   const sm = /^(\d{4})-(\d{2})/.exec(shipment.shipment_date || "")
-  const period = sm ? `${Number(sm[1])}年${Number(sm[2])}月` : issuedDate
+  const period = sm ? fmtPeriod(Number(sm[1]), Number(sm[2]), locale, false) : issuedDate
 
   const doc = (
     <InvoiceDocument
@@ -210,8 +245,9 @@ export async function buildChargeInvoice(
         taxRate: TAX_RATE,
         taxInclusive: false,
         taxExempt, // 海外事業者は消費税対象外
+        locale,
         paid: {
-          method: "クレジットカード",
+          method: locale === "en" ? "Credit card" : "クレジットカード",
           date: paidDate,
           reference: shipment.stripe_payment_intent_id ?? undefined,
         },
