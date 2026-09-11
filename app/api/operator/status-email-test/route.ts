@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
     subject: `[見本] ${mail.subject}`,
     text: mail.text,
     html: mail.html,
+    replyTo: "support@bondex.express",
   })
   return NextResponse.json({ to, kind, lang, result })
 }

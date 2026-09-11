@@ -33,7 +33,11 @@ async function sendViaSmtp(opts: {
   const user = process.env.SMTP_USER!
   const pass = process.env.SMTP_PASS!
   const port = Number(process.env.SMTP_PORT || 465)
-  const from = process.env.SMTP_FROM || `BondEx <${user}>`
+  // 差出人は原則 support@bondex.express。SMTP_FROM で上書き可。
+  // ※ Google Workspace SMTP の場合、認証アカウント (SMTP_USER) に support@bondex.express を
+  //   「名前を指定して送信 (send mail as)」で登録しておく必要がある (未登録だと Gmail 側で
+  //   認証アドレスに書き換えられる)。届いた差出人が support でなければこの設定を確認する。
+  const from = process.env.SMTP_FROM || "BondEx <support@bondex.express>"
   try {
     const transporter = nodemailer.createTransport({
       host,
