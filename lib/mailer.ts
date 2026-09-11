@@ -74,7 +74,8 @@ async function sendViaResend(opts: {
   replyTo?: string
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY!
-  const from = process.env.ALERT_FROM_EMAIL || "BondEx <onboarding@resend.dev>"
+  // 既定は support@bondex.express (Resend で bondex.express を認証済みが前提)。ALERT_FROM_EMAIL で上書き可。
+  const from = process.env.ALERT_FROM_EMAIL || "BondEx <support@bondex.express>"
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -112,18 +113,20 @@ export async function sendMail(opts: {
   replyTo?: string
 }): Promise<SendResult> {
   if (!opts.to?.trim()) return { sent: false, error: "no recipient" }
-  if (smtpConfigured()) {
-    const r = await sendViaSmtp(opts)
+  // 差出人を support@bondex.express に統一するため Resend を優先する。
+  // (Gmail SMTP は認証アカウント=taniguchi@ に差出人を書き換えるため、顧客向けには不適。)
+  // Resend 未設定なら従来どおり SMTP。Resend 失敗時は取りこぼし防止に SMTP へフォールバック。
+  if (process.env.RESEND_API_KEY) {
+    const r = await sendViaResend(opts)
     if (r.sent) return r
-    // SMTP失敗時、Resendがあればフォールバックして取りこぼしを防ぐ
-    if (process.env.RESEND_API_KEY) {
-      const r2 = await sendViaResend(opts)
-      if (r2.sent) return { ...r2, error: `smtp_failed(${r.error})→resend_ok` }
-      return { sent: false, error: `smtp(${r.error}) / resend(${r2.error})` }
+    if (smtpConfigured()) {
+      const r2 = await sendViaSmtp(opts)
+      if (r2.sent) return { ...r2, error: `resend_failed(${r.error})→smtp_ok` }
+      return { sent: false, error: `resend(${r.error}) / smtp(${r2.error})` }
     }
     return r
   }
-  if (process.env.RESEND_API_KEY) return sendViaResend(opts)
+  if (smtpConfigured()) return sendViaSmtp(opts)
   return { sent: false, error: "no mailer configured" }
 }
 
