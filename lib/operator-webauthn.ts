@@ -60,7 +60,9 @@ export function operatorPasswordOk(input: unknown): boolean {
  * 未設定時の既定は谷口さんのアドレスのみ。
  */
 export function operatorEmailAllowed(email: string): boolean {
-  const raw = process.env.OPERATOR_EMAILS?.trim() || "taniguchi@jojo-tokyo.com"
+  const raw =
+    process.env.OPERATOR_EMAILS?.trim() ||
+    "taniguchi@jojo-tokyo.com,taniguchi.yuhki@gmail.com"
   const allowed = raw
     .split(",")
     .map((e) => e.trim().toLowerCase())
