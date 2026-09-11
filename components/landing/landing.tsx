@@ -1237,7 +1237,43 @@ export function Landing({ lang }: { lang: Locale }) {
               {t.price.compareSub}
             </p>
 
-            <div className="mt-6 overflow-x-auto">
+            {/* モバイル: 各項目をカードで縦積み (BondEx列を必ず見せる・横スクロールを避ける) */}
+            <div className="mt-6 space-y-2 md:hidden">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3">
+                <p className="text-[13px] font-semibold text-[#0F172A] mb-2">{t.price.costLabel}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-[#94A3B8]">{t.price.colDirect}</p>
+                    <p className="text-[13px] text-[#334155]">{t.price.costDirect}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-[#C8102E]">{t.price.colBondex}</p>
+                    <p className="text-[13px] font-semibold text-[#0F172A] tabular-nums">
+                      {formatYen(PRICING.regularPrice)}
+                      {t.price.perItem}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {t.price.rows.map((row) => (
+                <div key={row.item} className="rounded-lg border border-[#E5E7EB] bg-white p-3">
+                  <p className="text-[13px] font-semibold text-[#0F172A] mb-2">{row.item}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-[#94A3B8]">{t.price.colDirect}</p>
+                      <p className="text-[13px] text-[#64748B]">{row.direct}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-[#C8102E]">{t.price.colBondex}</p>
+                      <p className="text-[13px] font-medium text-[#C8102E]">{row.bondex}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* デスクトップ: 表形式 */}
+            <div className="mt-6 hidden md:block overflow-x-auto">
               <table className="w-full min-w-[440px] text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-[#0F172A]/15">
