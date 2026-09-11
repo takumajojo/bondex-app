@@ -10,7 +10,7 @@ import {
   Image,
   Font,
 } from "@react-pdf/renderer"
-import { buildArticles, contractPreamble } from "./contract-content"
+import { buildArticles, contractPreamble, CONTRACT_PRICE_YEN } from "./contract-content"
 
 // ---------------------------------------------------------------------------
 // Fonts (voucher-pdf.tsx と同じ Noto Sans JP)
@@ -58,7 +58,7 @@ export interface ContractInput {
     email: string
     bankInfo: string             // 三菱UFJ銀行 田園調布駅前 普通 0145653 株式会社JOJO
   }
-  pricePerSuitcaseYen?: number   // デフォルト 5,000
+  pricePerSuitcaseYen?: number   // 既定は CONTRACT_PRICE_YEN (v3=4,980)
   serviceBrandName?: string      // デフォルト "BondEx"
   // 電子署名(手書きサイン+同意)。存在すると 乙 欄を署名者情報で埋め、署名画像と監査情報を印字する。
   signature?: {
@@ -289,7 +289,7 @@ function Para({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 export function ContractDocument({ data }: { data: ContractInput }) {
-  const price = data.pricePerSuitcaseYen ?? 5000
+  const price = data.pricePerSuitcaseYen ?? CONTRACT_PRICE_YEN
   const brand = data.serviceBrandName ?? "BondEx"
   const locale = data.locale === "en" ? "en" : "ja"
   const L =

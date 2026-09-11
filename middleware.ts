@@ -42,6 +42,8 @@ const PUBLIC_PREFIXES = [
 const PUBLIC_EXACT = new Set<string>([
   // パスキー認証 API (登録はパスワード・ログインは生体認証で自己ゲート)
   "/api/operator/passkey/email-code",
+  // ステータス通知メールの見本テスト送信 (operatorEmailAllowed 宛のみ = 許可運営メール以外へは送れない)
+  "/api/operator/status-email-test",
   "/api/operator/passkey/register-options",
   "/api/operator/passkey/register-verify",
   "/api/operator/passkey/login-options",

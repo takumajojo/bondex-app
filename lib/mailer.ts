@@ -25,6 +25,7 @@ async function sendViaSmtp(opts: {
   to: string
   subject: string
   text: string
+  html?: string
   attachments?: MailAttachment[]
   replyTo?: string
 }): Promise<SendResult> {
@@ -46,6 +47,7 @@ async function sendViaSmtp(opts: {
       replyTo: opts.replyTo,
       subject: opts.subject,
       text: opts.text,
+      html: opts.html,
       attachments: opts.attachments?.map((a) => ({
         filename: a.filename,
         content: Buffer.from(a.contentBase64, "base64"),
@@ -63,6 +65,7 @@ async function sendViaResend(opts: {
   to: string
   subject: string
   text: string
+  html?: string
   attachments?: MailAttachment[]
   replyTo?: string
 }): Promise<SendResult> {
@@ -78,6 +81,7 @@ async function sendViaResend(opts: {
         reply_to: opts.replyTo,
         subject: opts.subject,
         text: opts.text,
+        html: opts.html,
         attachments: opts.attachments?.map((a) => ({ filename: a.filename, content: a.contentBase64 })),
       }),
     })
@@ -99,6 +103,7 @@ export async function sendMail(opts: {
   to: string
   subject: string
   text: string
+  html?: string
   attachments?: MailAttachment[]
   replyTo?: string
 }): Promise<SendResult> {

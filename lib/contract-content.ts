@@ -5,12 +5,13 @@
 // 言語対応: 代理店の locale(ja|en) で日/英を出し分ける。日本法の契約のため、英語版は
 // 参考訳とし、末尾に「疑義時は日本語版を優先する」旨の言語条項(第17条・en のみ)を付す。
 
-// v2 (2026-08-26): 第4条を「固定額」から「料金表参照＋改定条項(30日前通知・新規依頼から適用)」へ
-// 変更(価格を臨機応変に改定できるように・谷口さん指示)。日本語条文が変わったため版を更新。
-// 既存の署名済み代理店(v1)は旧条文のまま有効 — 署名済みPDFの再ダウンロードは
-// buildArticles(termsVersion) で署名時の版の条文を再現する(法的整合)。
-export const CONTRACT_VERSION = "2026-08-26-v2"
+// v2 (2026-08-26): 第4条を「固定額」から「料金表参照＋改定条項(30日前通知・新規依頼から適用)」へ。
+// v3 (2026-09-11): 基準料金を¥5,000→¥4,980(税抜)に改定し、消費税の取扱い(国内=課税/海外=協議)を明記。
+// 既存の署名済み代理店(v1/v2)は旧条文のまま有効 — 署名済みPDFの再ダウンロードは
+// buildArticles(termsVersion) で署名時の版の条文・価格を再現する(法的整合)。
+export const CONTRACT_VERSION = "2026-09-11-v3"
 export const CONTRACT_VERSION_V1 = "2026-08-04-v1"
+export const CONTRACT_VERSION_V2 = "2026-08-26-v2"
 
 export type ContractLocale = "ja" | "en"
 
@@ -23,7 +24,7 @@ export const BONDEX_PARTY = {
   bankInfo: "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO",
 }
 
-export const CONTRACT_PRICE_YEN = 5000
+export const CONTRACT_PRICE_YEN = 4980 // v3 基準料金 (税抜)。v1/v2 は条文側で¥5,000固定。
 
 export interface ContractBlock {
   kind: "para" | "item"
@@ -60,33 +61,58 @@ export function buildArticles(
   locale: ContractLocale = "ja",
   termsVersion?: string,
 ): ContractArticle[] {
-  const v1 = termsVersion === CONTRACT_VERSION_V1
-  return locale === "en" ? articlesEn(price, bankInfo, v1) : articlesJa(price, bankInfo, v1)
+  const ver: ContractVer =
+    termsVersion === CONTRACT_VERSION_V1
+      ? "v1"
+      : termsVersion === CONTRACT_VERSION_V2
+        ? "v2"
+        : "v3" // 現行 (undefined 含む)
+  return locale === "en" ? articlesEn(price, bankInfo, ver) : articlesJa(price, bankInfo, ver)
 }
 
-function articlesJa(price: number, bankInfo: string, v1 = false): ContractArticle[] {
-  // 第4条: v2=料金表参照(改定可能・30日前通知・新規依頼から適用) / v1=固定額(署名済み契約の再現用・変更禁止)
-  const article4: ContractArticle = v1
-    ? {
-        num: 4,
-        title: "料金",
-        blocks: [
-          P(`1. 本業務の料金は、配送対象物1個あたり金${price.toLocaleString()}円（消費税別）とする。`),
-          P("2. 上記料金には、実運送人の運賃及び甲の手配手数料を含む。消費税は別途申し受ける。"),
-          P("3. 上記料金は乙の旅行商品の販売価格に含めて旅行者から徴収するものとし、旅行者から直接甲に支払いは行わない。"),
-        ],
-      }
-    : {
-        num: 4,
-        title: "料金",
-        blocks: [
-          P(`1. 本業務の料金は、甲が別途定めて乙に提示する料金表（甲のサービスサイト又は管理画面上での提示を含む。以下「料金表」という）によるものとする。本契約締結時点の基準料金は、配送対象物1個あたり金${price.toLocaleString()}円（消費税別）とする。`),
-          P("2. 甲は、実運送人の運賃改定、燃料費その他の経済事情の変動等により、料金表を変更することができる。この場合、甲は適用開始日の30日前までに、電子メールその他の電磁的方法により乙に通知する。"),
-          P("3. 変更後の料金は、適用開始日以降に新たに登録された発行依頼から適用するものとし、適用開始日前に登録済みの発行依頼には従前の料金を適用する。"),
-          P("4. 料金には、実運送人の運賃及び甲の手配手数料を含む。消費税は別途申し受ける。"),
-          P("5. 料金は乙の旅行商品の販売価格に含めて旅行者から徴収するものとし、旅行者から直接甲に支払いは行わない。"),
-        ],
-      }
+type ContractVer = "v1" | "v2" | "v3"
+
+function articlesJa(price: number, bankInfo: string, ver: ContractVer = "v3"): ContractArticle[] {
+  // 第4条は署名版ごとに固定: v1=固定額¥5,000 / v2=料金表参照¥5,000 / v3=料金表参照¥4,980+税区分。
+  // v1/v2 は署名済み契約の再現用のため¥5,000で固定 (price は使わない)。
+  const HIST = "5,000"
+  let article4: ContractArticle
+  if (ver === "v1") {
+    article4 = {
+      num: 4,
+      title: "料金",
+      blocks: [
+        P(`1. 本業務の料金は、配送対象物1個あたり金${HIST}円（消費税別）とする。`),
+        P("2. 上記料金には、実運送人の運賃及び甲の手配手数料を含む。消費税は別途申し受ける。"),
+        P("3. 上記料金は乙の旅行商品の販売価格に含めて旅行者から徴収するものとし、旅行者から直接甲に支払いは行わない。"),
+      ],
+    }
+  } else if (ver === "v2") {
+    article4 = {
+      num: 4,
+      title: "料金",
+      blocks: [
+        P(`1. 本業務の料金は、甲が別途定めて乙に提示する料金表（甲のサービスサイト又は管理画面上での提示を含む。以下「料金表」という）によるものとする。本契約締結時点の基準料金は、配送対象物1個あたり金${HIST}円（消費税別）とする。`),
+        P("2. 甲は、実運送人の運賃改定、燃料費その他の経済事情の変動等により、料金表を変更することができる。この場合、甲は適用開始日の30日前までに、電子メールその他の電磁的方法により乙に通知する。"),
+        P("3. 変更後の料金は、適用開始日以降に新たに登録された発行依頼から適用するものとし、適用開始日前に登録済みの発行依頼には従前の料金を適用する。"),
+        P("4. 料金には、実運送人の運賃及び甲の手配手数料を含む。消費税は別途申し受ける。"),
+        P("5. 料金は乙の旅行商品の販売価格に含めて旅行者から徴収するものとし、旅行者から直接甲に支払いは行わない。"),
+      ],
+    }
+  } else {
+    article4 = {
+      num: 4,
+      title: "料金",
+      blocks: [
+        P(`1. 本業務の料金は、甲が別途定めて乙に提示する料金表（甲のサービスサイト又は管理画面上での提示を含む。以下「料金表」という）によるものとする。本契約締結時点の基準料金は、配送対象物1個あたり金${price.toLocaleString()}円（税抜）とする。`),
+        P("2. 前項の料金には消費税を含まない。乙が日本国内の事業者である場合、甲は所定の消費税を加算して請求する。乙が国外の事業者である場合の消費税の取扱いは、関係法令及び甲乙の協議により定める。"),
+        P("3. 甲は、実運送人の運賃改定、燃料費その他の経済事情の変動等により、料金表を変更することができる。この場合、甲は適用開始日の30日前までに、電子メールその他の電磁的方法により乙に通知する。"),
+        P("4. 変更後の料金は、適用開始日以降に新たに登録された発行依頼から適用するものとし、適用開始日前に登録済みの発行依頼には従前の料金を適用する。"),
+        P("5. 料金には、実運送人の運賃及び甲の手配手数料を含む（消費税を除く）。"),
+        P("6. 料金は乙の旅行商品の販売価格に含めて旅行者から徴収するものとし、旅行者から直接甲に支払いは行わない。"),
+      ],
+    }
+  }
   return [
     {
       num: 1,
@@ -219,28 +245,46 @@ function articlesJa(price: number, bankInfo: string, v1 = false): ContractArticl
 }
 
 // 英語版（参考訳）。第17条(言語)で「日本語版を正・疑義時は日本語版を優先」を明記する。
-function articlesEn(price: number, bankInfo: string, v1 = false): ContractArticle[] {
-  const article4: ContractArticle = v1
-    ? {
-        num: 4,
-        title: "Fees",
-        blocks: [
-          P(`1. The fee for the Services is JPY ${price.toLocaleString()} (tax included) per item to be forwarded.`),
-          P("2. The above fee includes consumption tax, the Actual Carriers' freight charges, and Party A's coordination fee."),
-          P("3. The above fee shall be collected from travelers as part of Party B's travel-product price; travelers do not pay Party A directly."),
-        ],
-      }
-    : {
-        num: 4,
-        title: "Fees",
-        blocks: [
-          P(`1. Fees for the Services shall be as set out in the fee schedule separately established and presented to Party B by Party A (including presentation on Party A's service site or portal; the "Fee Schedule"). The base fee as of the execution of this Agreement is JPY ${price.toLocaleString()} (tax included) per item.`),
-          P("2. Party A may revise the Fee Schedule due to carrier rate revisions, fuel costs, or other changes in economic circumstances. In such case, Party A shall notify Party B by e-mail or other electronic means at least 30 days prior to the effective date."),
-          P("3. Revised fees apply to issuance requests registered on or after the effective date; requests registered before that date remain subject to the previous fees."),
-          P("4. Fees include consumption tax, the Actual Carriers' freight charges, and Party A's coordination fee."),
-          P("5. Fees shall be collected from travelers as part of Party B's travel-product price; travelers do not pay Party A directly."),
-        ],
-      }
+function articlesEn(price: number, bankInfo: string, ver: ContractVer = "v3"): ContractArticle[] {
+  // 英語は参考訳 (第17条で日本語版が優先)。v1/v2 は署名再現のため¥5,000で固定。
+  const HIST = "5,000"
+  let article4: ContractArticle
+  if (ver === "v1") {
+    article4 = {
+      num: 4,
+      title: "Fees",
+      blocks: [
+        P(`1. The fee for the Services is JPY ${HIST} (tax included) per item to be forwarded.`),
+        P("2. The above fee includes consumption tax, the Actual Carriers' freight charges, and Party A's coordination fee."),
+        P("3. The above fee shall be collected from travelers as part of Party B's travel-product price; travelers do not pay Party A directly."),
+      ],
+    }
+  } else if (ver === "v2") {
+    article4 = {
+      num: 4,
+      title: "Fees",
+      blocks: [
+        P(`1. Fees for the Services shall be as set out in the fee schedule separately established and presented to Party B by Party A (including presentation on Party A's service site or portal; the "Fee Schedule"). The base fee as of the execution of this Agreement is JPY ${HIST} (tax included) per item.`),
+        P("2. Party A may revise the Fee Schedule due to carrier rate revisions, fuel costs, or other changes in economic circumstances. In such case, Party A shall notify Party B by e-mail or other electronic means at least 30 days prior to the effective date."),
+        P("3. Revised fees apply to issuance requests registered on or after the effective date; requests registered before that date remain subject to the previous fees."),
+        P("4. Fees include consumption tax, the Actual Carriers' freight charges, and Party A's coordination fee."),
+        P("5. Fees shall be collected from travelers as part of Party B's travel-product price; travelers do not pay Party A directly."),
+      ],
+    }
+  } else {
+    article4 = {
+      num: 4,
+      title: "Fees",
+      blocks: [
+        P(`1. Fees for the Services shall be as set out in the fee schedule separately established and presented to Party B by Party A (including presentation on Party A's service site or portal; the "Fee Schedule"). The base fee as of the execution of this Agreement is JPY ${price.toLocaleString()} (excluding consumption tax) per item.`),
+        P("2. The fees in the preceding paragraph exclude consumption tax. If Party B is a business located in Japan, Party A adds the applicable consumption tax to the invoice. If Party B is a business located outside Japan, the treatment of consumption tax shall be determined in accordance with applicable laws and by good-faith consultation between the parties."),
+        P("3. Party A may revise the Fee Schedule due to carrier rate revisions, fuel costs, or other changes in economic circumstances. In such case, Party A shall notify Party B by e-mail or other electronic means at least 30 days prior to the effective date."),
+        P("4. Revised fees apply to issuance requests registered on or after the effective date; requests registered before that date remain subject to the previous fees."),
+        P("5. Fees include the Actual Carriers' freight charges and Party A's coordination fee (excluding consumption tax)."),
+        P("6. Fees shall be collected from travelers as part of Party B's travel-product price; travelers do not pay Party A directly."),
+      ],
+    }
+  }
   return [
     {
       num: 1,
