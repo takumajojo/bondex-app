@@ -30,6 +30,10 @@ try {
   // フォント未配置時は Helvetica fallback
 }
 
+// 日本語に英語流のハイフネーションを効かせない (「ご査収-のほど」のような不自然な
+// 行末ハイフン改行を防ぐ)。単語をそのまま1要素で返す。
+Font.registerHyphenationCallback((word) => [word])
+
 // NotoSansJP は Latin Extended-A (Ō 等のマクロン付き文字) を含まないため、
 // voucher-pdf.tsx と同様にサニタイズしてから描画する。
 function safeText(input?: string | null): string {
@@ -103,6 +107,16 @@ function formatJpDate(ymd: string): string {
   return `${Number(m[1])}/${Number(m[2])}/${Number(m[3])}`
 }
 
+/**
+ * 区間 (発→着) を明細1行に収める。長い施設名は「…」で省略し、行折り返しによる
+ * 行高の増大を防ぐ (代理店はツアー番号で照合するため詳細名は省略可)。
+ */
+function routeLabel(from?: string | null, to?: string | null): string {
+  const MAX = 34
+  const s = `${safeText(from)} → ${safeText(to)}`
+  return s.length > MAX ? `${s.slice(0, MAX - 1)}…` : s
+}
+
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
@@ -132,9 +146,10 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: "column" },
   headerRight: { flexDirection: "column", alignItems: "flex-end" },
-  logo: { width: 130, height: 65, marginBottom: 8 },
+  // 実ロゴは 1255×254 (約4.94:1)。枠の縦横比を実寸に合わせて歪みを防ぐ。
+  logo: { width: 108, height: 22, marginBottom: 8 },
   title: {
-    fontSize: 28,
+    fontSize: 21,
     fontWeight: 500,
     color: C_FG,
     letterSpacing: 1,
@@ -154,12 +169,12 @@ const styles = StyleSheet.create({
   topRule: {
     height: 2,
     backgroundColor: C_FG,
-    marginTop: 8,
-    marginBottom: 20,
+    marginTop: 6,
+    marginBottom: 14,
   },
   // Agency / billing block
   toBlock: {
-    marginBottom: 18,
+    marginBottom: 12,
   },
   toLabel: {
     fontSize: 9,
@@ -182,8 +197,8 @@ const styles = StyleSheet.create({
   summaryBox: {
     backgroundColor: C_BG_SOFT,
     borderRadius: 6,
-    padding: 16,
-    marginBottom: 18,
+    padding: 12,
+    marginBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -211,8 +226,17 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: C_MUTED,
     letterSpacing: 1.5,
-    marginBottom: 6,
-    marginTop: 6,
+  },
+  itemsHeading: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  itemsCount: {
+    fontSize: 9,
+    color: C_MUTED,
   },
   tableHead: {
     flexDirection: "row",
@@ -222,7 +246,7 @@ const styles = StyleSheet.create({
   },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 6,
+    paddingVertical: 3.5,
     borderBottomWidth: 0.5,
     borderBottomColor: C_HAIRLINE,
   },
@@ -283,8 +307,8 @@ const styles = StyleSheet.create({
   },
   // Bank info — 構造化テーブル風
   bankBlock: {
-    marginTop: 24,
-    padding: 16,
+    marginTop: 10,
+    padding: 10,
     backgroundColor: C_BG_SOFT,
     borderLeftWidth: 3,
     borderLeftColor: C_FG,
@@ -328,20 +352,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: C_FG,
     fontWeight: 500,
-    marginBottom: 8,
+    marginBottom: 3,
   },
   bankNote: {
     fontSize: 8,
     color: C_MUTED,
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 6,
+    paddingTop: 6,
     borderTopWidth: 0.5,
     borderTopColor: C_HAIRLINE,
   },
   // 領収 (お支払い済み) ブロック
   paidBlock: {
-    marginTop: 24,
-    padding: 16,
+    marginTop: 14,
+    padding: 12,
     backgroundColor: "#F1F7F2",
     borderLeftWidth: 3,
     borderLeftColor: "#2E7D32",
@@ -356,8 +380,8 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 9.5,
     color: C_FG,
-    lineHeight: 1.7,
-    marginBottom: 14,
+    lineHeight: 1.5,
+    marginBottom: 10,
   },
   // Footer
   footer: {
@@ -483,31 +507,20 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           )}
         </View>
 
-        {/* Greeting */}
+        {/* Greeting (簡潔に1行。ご査収の一文は下部の注記に集約) */}
         <Text style={styles.greeting}>
-          拝啓 平素は格別のお引き立てを賜り、誠にありがとうございます。{"\n"}
-          下記の通りご請求申し上げます。ご査収のほど、よろしくお願い申し上げます。
+          平素は格別のお引き立てを賜り、誠にありがとうございます。下記の通りご請求申し上げます。
         </Text>
 
-        {/* Summary box */}
-        <View style={styles.summaryBox}>
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>SERVICE</Text>
-            <Text style={styles.summaryValue}>BondEx Luggage Forwarding</Text>
-            <View style={{ height: 8 }} />
-            <Text style={styles.summaryLabel}>VOLUME</Text>
-            <Text style={styles.summaryValue}>
-              {data.items.length} 件 / {totalSuitcases} 個
-            </Text>
-          </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <Text style={styles.summaryLabel}>{paid ? "ご請求金額 (税込・お支払い済み)" : "ご請求金額 (税込)"}</Text>
-            <Text style={styles.summaryTotal}>¥{total.toLocaleString()}</Text>
-          </View>
+        {/* Line items (合計の重複表示だったサマリーボックスは廃止し、合計は末尾に集約) */}
+        <View style={styles.itemsHeading}>
+          <Text style={styles.tableHeading}>
+            明細 ・ BondEx Luggage Forwarding
+          </Text>
+          <Text style={styles.itemsCount}>
+            {data.items.length} 件 / {totalSuitcases} 個
+          </Text>
         </View>
-
-        {/* Line items */}
-        <Text style={styles.tableHeading}>明細</Text>
         <View style={styles.tableHead}>
           <Text style={[styles.th, styles.col_date]}>発送日</Text>
           <Text style={[styles.th, styles.col_ref]}>ツアー番号</Text>
@@ -522,8 +535,8 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
             <Text style={[styles.td, styles.col_ref, { fontSize: 8 }]}>
               {it.tourNumber || it.bookingRef}
             </Text>
-            <Text style={[styles.td, styles.col_route, { fontSize: 8.5 }]} wrap={false}>
-              {safeText(it.fromHotel)} ・{safeText(it.toHotel)}
+            <Text style={[styles.td, styles.col_route, { fontSize: 8 }]} wrap={false}>
+              {routeLabel(it.fromHotel, it.toHotel)}
             </Text>
             <Text style={[styles.td, styles.col_rep, { fontSize: 8.5 }]}>{safeText(it.representative)}</Text>
             <Text style={[styles.td, styles.col_qty]}>{it.suitcaseCount}</Text>
@@ -533,8 +546,8 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           </View>
         ))}
 
-        {/* Totals */}
-        <View style={styles.totalsBlock}>
+        {/* Totals (小計/消費税/合計 は分割させない) */}
+        <View style={styles.totalsBlock} wrap={false}>
           {taxInclusive ? (
             <>
               {/* 内税表示: 合計(税込) を主とし、消費税は内数として示す */}
@@ -575,7 +588,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
 
         {/* お支払い状況: 支払い済み(カード)は領収ブロック、未払いは振込先ブロック */}
         {paid ? (
-          <View style={styles.paidBlock}>
+          <View style={styles.paidBlock} wrap={false}>
             <View style={styles.bankHeader}>
               <Text style={styles.bankLabel}>お支払い状況 / PAID</Text>
               <Text style={styles.paidStamp}>お支払い済み</Text>
@@ -612,8 +625,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
             </View>
             {parseBankInfo(data.bondex.bankInfo)}
             <Text style={styles.bankNote}>
-              ・お振込手数料は貴社にてご負担をお願い申し上げます。{"\n"}
-              ・上記期限までにお手続きが難しい場合は、事前にご連絡ください。
+              ・お振込手数料は貴社にてご負担をお願い申し上げます。お支払期限までにお手続きが難しい場合は事前にご連絡ください。
             </Text>
           </View>
         )}
