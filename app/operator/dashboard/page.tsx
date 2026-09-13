@@ -33,6 +33,7 @@ import {
   type HotelRoute,
 } from "@/lib/hotel-notification"
 import { labelMailStatus, labelMailApplies, todayJst, type LabelMailUrgency } from "@/lib/label-delivery"
+import TodayTodo from "@/components/operator/TodayTodo"
 
 type ShipmentStatus =
   | "requested"
@@ -787,6 +788,9 @@ export default function DashboardPage() {
             </p>
           </div>
         ) : null}
+
+        {/* 今日のTODO — 運用担当が今日やること (中心=ホテル連絡)。 */}
+        <TodayTodo onSelectView={(v) => setViewFilter(v as typeof viewFilter)} />
 
         {/* 要対応（あなたの判断待ち）— 状態の一望。解消するまで残り続ける。 */}
         {attention.total > 0 && (

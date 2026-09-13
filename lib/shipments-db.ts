@@ -104,6 +104,12 @@ export interface ShipmentRecord {
   pickup_hotel_notified_at: string | null
   /** お届け先ホテルへの通知(申し送り引き渡し/確認連絡)完了日時。null=未対応。 */
   guest_hotel_notified_at: string | null
+  /**
+   * ホテル連絡の実務情報 (jsonb / migration 032)。発送元(pickup)・お届け先(guest) ごとに
+   * 連絡方法・連絡先・メモ・公式サイト由来の電話・今後のメール連絡設定を保持する。
+   * 形は lib/hotel-contact-info.ts の HotelContactInfo。既定は {} (parseHotelContactInfo で正規化)。
+   */
+  hotel_contact_info: Record<string, unknown> | null
   /** 返金が記録された日時 (Stripe charge.refunded)。 */
   refunded_at: string | null
   /** 返金累計額 (税込・円)。 */
@@ -795,6 +801,32 @@ export async function setHotelNotified(
     return { ok: false, at: null, error: error.message }
   }
   return { ok: true, at }
+}
+
+/**
+ * ホテル連絡情報 (hotel_contact_info jsonb) の1ルート (pickup/guest) を部分更新する。
+ * jsonb 全体を read-merge-write する (1区間の低頻度更新なので競合は無視できる)。
+ * patch は lib/hotel-contact-info.ts の sanitizeRoutePatch で検証済みの値を渡すこと。
+ */
+export async function setHotelContactRoute(
+  id: string,
+  route: "pickup" | "guest",
+  patch: import("./hotel-contact-info").HotelContactRoutePatch,
+): Promise<{ ok: boolean; error?: string; info?: import("./hotel-contact-info").HotelContactInfo }> {
+  const sb = getSupabase()
+  if (!sb) return { ok: false, error: "Supabase not configured" }
+  const { parseHotelContactInfo } = await import("./hotel-contact-info")
+  const { data, error } = await sb
+    .from("shipments")
+    .select("hotel_contact_info")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  const info = parseHotelContactInfo((data as { hotel_contact_info?: unknown } | null)?.hotel_contact_info)
+  info[route] = { ...info[route], ...patch }
+  const { error: e2 } = await sb.from("shipments").update({ hotel_contact_info: info }).eq("id", id)
+  if (e2) return { ok: false, error: e2.message }
+  return { ok: true, info }
 }
 
 /**

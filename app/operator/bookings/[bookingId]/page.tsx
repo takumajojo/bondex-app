@@ -24,6 +24,7 @@ import {
   type LabelSender,
 } from "@/lib/label-delivery"
 import type { ResidenceAddress } from "@/lib/residence"
+import HotelContactEditor from "@/components/operator/HotelContactEditor"
 
 type CountChange = {
   at: string
@@ -425,26 +426,11 @@ export default function OperatorBookingDetailPage() {
                   </div>
                 </Section>
 
-                <Section title="ホテル連絡">
-                  <div className="space-y-1">
-                    <KV
-                      k="発送元ホテル"
-                      v={
-                        r.pickup_hotel_notified_at
-                          ? `連絡済み（${new Date(r.pickup_hotel_notified_at).toLocaleString("ja-JP")}）`
-                          : "未連絡"
-                      }
-                    />
-                    <KV
-                      k="到着先ホテル"
-                      v={
-                        r.guest_hotel_notified_at
-                          ? `連絡済み（${new Date(r.guest_hotel_notified_at).toLocaleString("ja-JP")}）`
-                          : "未連絡"
-                      }
-                    />
-                  </div>
-                </Section>
+                <div className="md:col-span-2">
+                  <Section title="ホテル連絡">
+                    <HotelContactEditor shipmentId={r.id} />
+                  </Section>
+                </div>
 
                 {(r.notes || r.note_target) && (
                   <Section title="ホテルへの申し送り">
