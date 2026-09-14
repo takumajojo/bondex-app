@@ -1055,7 +1055,9 @@ function VoucherPage({
         <View style={vs.journey}>
           {/* DROP-OFF */}
           <View style={vs.legCard}>
-            <Text style={[vs.legTab, { backgroundColor: RED }]}>DROP-OFF / お預け</Text>
+            <Text style={[vs.legTab, { backgroundColor: RED }]}>
+              {`1 HAND OVER${shipment.from.city ? ` · ${shipment.from.city}` : ""} / お預け`}
+            </Text>
             <View style={vs.legDateRow}>
               <Text style={vs.legDay}>{dayOfMonth(shipment.shipmentDate)}</Text>
               <Text style={vs.legMy}>{monthYear(shipment.shipmentDate)}</Text>
@@ -1076,7 +1078,9 @@ function VoucherPage({
 
           {/* PICK-UP */}
           <View style={vs.legCard}>
-            <Text style={[vs.legTab, { backgroundColor: INK }]}>PICK-UP / お受け取り</Text>
+            <Text style={[vs.legTab, { backgroundColor: INK }]}>
+              {`2 COLLECT${shipment.to.city ? ` · ${shipment.to.city}` : ""} / お受け取り`}
+            </Text>
             <View style={vs.legDateRow}>
               <Text style={vs.legDay}>{dayOfMonth(shipment.expectedArrival)}</Text>
               <Text style={vs.legMy}>{monthYear(shipment.expectedArrival)}</Text>
