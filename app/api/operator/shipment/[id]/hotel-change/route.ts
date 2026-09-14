@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: ship, error: fetchErr } = await sb
     .from("shipments")
     .select(
-      "id, booking_id, leg_index, agency, status, shipment_date, change_deadline_at, label_sent_at, yamato_tracking, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja",
+      "id, booking_id, leg_index, agency, status, shipment_date, change_deadline_at, label_sent_at, yamato_tracking, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
     )
     .eq("id", shipmentId)
     .maybeSingle()
@@ -99,6 +99,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // 準物理ゲート (送り状郵送済み → 旧伝票破棄タスクを生成)
   const oldSlipTask = !!ship.label_sent_at
+  // 変更前に該当sideが連絡済みなら「旧ホテルへの受入キャンセル連絡タスク」を生成 (旧伝票破棄と同等)
+  const oldHotelCancelTask =
+    side === "guest" ? !!ship.guest_hotel_notified_at : !!ship.pickup_hotel_notified_at
 
   // 単一トランザクションで 更新 + 履歴INSERT
   const { data: changeId, error: rpcErr } = await sb.rpc("apply_hotel_change", {
@@ -138,12 +141,33 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     })
   }
 
+  // 旧ホテル受入キャンセル連絡タスク (変更前に該当sideが連絡済み) → 運用アラート (best-effort)
+  if (oldHotelCancelTask) {
+    const legRef = `${ship.booking_id}-L${(ship.leg_index as number) + 1}`
+    const sideJa = side === "guest" ? "お届け先" : "発送元"
+    const oldHotelName =
+      side === "guest"
+        ? (ship.to_hotel_ja as string) || (ship.to_hotel as string)
+        : (ship.from_hotel_ja as string) || (ship.from_hotel as string)
+    await sendOpsAlert({
+      subject: `【旧ホテル受入キャンセル連絡】${legRef} ${sideJa}ホテル変更`,
+      lines: [
+        `予約: ${legRef} (代理店: ${ship.agency})`,
+        `${sideJa}ホテルを変更しましたが、旧ホテル「${oldHotelName}」へは既に受入連絡済みでした。`,
+        `旧ホテルへ「受入キャンセル」の連絡をしてください。`,
+        `新ホテル: ${newHotelJa}（${newHotel}）`,
+      ],
+      agencyEmail: null,
+    })
+  }
+
   return NextResponse.json({
     ok: true,
     changeId,
     side,
     overDeadline,
     oldSlipTask,
+    oldHotelCancelTask,
     newHotel,
     newHotelJa,
     newPlaceId,

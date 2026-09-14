@@ -55,18 +55,24 @@ export async function GET(req: NextRequest) {
   // 保存済み連絡情報・place_id をまとめて引く (method/value/firstTime 用)。
   const extraById = new Map<
     string,
-    { from_place_id: string | null; to_place_id: string | null; tour_number: string | null; hotel_contact_info: unknown }
+    {
+      from_place_id: string | null; to_place_id: string | null
+      from_hotel_ja: string | null; to_hotel_ja: string | null
+      tour_number: string | null; hotel_contact_info: unknown
+    }
   >()
   if (sb && hotelRows.length > 0) {
     const ids = hotelRows.map((r) => r.id)
     const { data } = await sb
       .from("shipments")
-      .select("id, from_place_id, to_place_id, tour_number, hotel_contact_info")
+      .select("id, from_place_id, to_place_id, from_hotel_ja, to_hotel_ja, tour_number, hotel_contact_info")
       .in("id", ids)
     for (const r of (data ?? []) as Record<string, unknown>[]) {
       extraById.set(r.id as string, {
         from_place_id: (r.from_place_id as string) ?? null,
         to_place_id: (r.to_place_id as string) ?? null,
+        from_hotel_ja: (r.from_hotel_ja as string) ?? null,
+        to_hotel_ja: (r.to_hotel_ja as string) ?? null,
         tour_number: (r.tour_number as string) ?? null,
         hotel_contact_info: r.hotel_contact_info,
       })
@@ -80,11 +86,13 @@ export async function GET(req: NextRequest) {
     for (const rt of row.routes) {
       const saved = info[rt.route]
       const placeId = rt.route === "pickup" ? extra?.from_place_id ?? null : extra?.to_place_id ?? null
+      const hotelNameJa = rt.route === "pickup" ? extra?.from_hotel_ja ?? null : extra?.to_hotel_ja ?? null
       let firstTime = false
       if (sb) {
         const h = await lookupHotelHistory(sb, {
           placeId,
           hotelName: rt.hotel,
+          hotelNameJa,
           excludeBookingId: row.booking_id,
         })
         firstTime = h.firstTime

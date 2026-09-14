@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
         ? await lookupHotelHistory(sb, {
             placeId: meta.placeId,
             hotelName: meta.hotel,
+            hotelNameJa: meta.hotelJa,
             excludeBookingId: ship.booking_id,
           })
         : { firstTime: false, prior: null, matchedBy: "none" as const }

@@ -31,22 +31,30 @@ interface Row {
   to_place_id: string | null
   from_hotel: string | null
   to_hotel: string | null
+  from_hotel_ja: string | null
+  to_hotel_ja: string | null
   hotel_contact_info: unknown
 }
 
-function orClauses(placeId: string | null, hotelName: string | null): string | null {
+// or() 区切り記号を含む名前は名前照合をスキップ (place_id に委ねる)。
+function nameSafe(name: string | null): string | null {
+  if (!name) return null
+  if (/[,()]/.test(name)) return null
+  const s = name.trim()
+  return s || null
+}
+
+/**
+ * 照合条件: place_id を最優先しつつ、ホテル名(英名・和名の両方)でも完全一致で拾う。
+ * place_id が無い/0件でも名前で照合できるようにするフォールバック (谷口さん 2026-09-14)。
+ */
+function orClauses(placeId: string | null, hotelName: string | null, hotelNameJa: string | null): string | null {
   const parts: string[] = []
-  if (placeId) {
-    parts.push(`from_place_id.eq.${placeId}`, `to_place_id.eq.${placeId}`)
-  }
-  if (hotelName) {
-    // 完全一致のみ (ilike の部分一致は別ホテル誤検知が多いので使わない)。
-    // カンマ/括弧など or() の区切り記号を含む名前は名前照合をスキップ (place_id に委ねる)。
-    if (!/[,()]/.test(hotelName)) {
-      const safe = hotelName.trim()
-      if (safe) parts.push(`from_hotel.eq.${safe}`, `to_hotel.eq.${safe}`)
-    }
-  }
+  if (placeId) parts.push(`from_place_id.eq.${placeId}`, `to_place_id.eq.${placeId}`)
+  const en = nameSafe(hotelName)
+  if (en) parts.push(`from_hotel.eq.${en}`, `to_hotel.eq.${en}`)
+  const ja = nameSafe(hotelNameJa)
+  if (ja) parts.push(`from_hotel_ja.eq.${ja}`, `to_hotel_ja.eq.${ja}`)
   return parts.length ? parts.join(",") : null
 }
 
@@ -59,15 +67,17 @@ export async function lookupHotelHistory(
   params: {
     placeId: string | null
     hotelName: string | null
+    /** ホテルの和名 (to_hotel_ja / from_hotel_ja)。place_id が無い/0件でも和名で照合する。 */
+    hotelNameJa?: string | null
     excludeBookingId: string
   },
 ): Promise<HotelHistoryResult> {
-  const clause = orClauses(params.placeId, params.hotelName)
+  const clause = orClauses(params.placeId, params.hotelName, params.hotelNameJa ?? null)
   if (!clause) return { firstTime: true, prior: null, matchedBy: "none" }
 
   const { data, error } = await sb
     .from("shipments")
-    .select("booking_id, created_at, from_place_id, to_place_id, from_hotel, to_hotel, hotel_contact_info")
+    .select("booking_id, created_at, from_place_id, to_place_id, from_hotel, to_hotel, from_hotel_ja, to_hotel_ja, hotel_contact_info")
     .or(clause)
     .neq("booking_id", params.excludeBookingId)
     .order("created_at", { ascending: false })
@@ -87,10 +97,12 @@ export async function lookupHotelHistory(
   for (const r of rows) {
     const routeKey: HotelRoute | null =
       (params.placeId && r.from_place_id === params.placeId) ||
-      (params.hotelName && r.from_hotel === params.hotelName)
+      (params.hotelName && r.from_hotel === params.hotelName) ||
+      (params.hotelNameJa && r.from_hotel_ja === params.hotelNameJa)
         ? "pickup"
         : (params.placeId && r.to_place_id === params.placeId) ||
-            (params.hotelName && r.to_hotel === params.hotelName)
+            (params.hotelName && r.to_hotel === params.hotelName) ||
+            (params.hotelNameJa && r.to_hotel_ja === params.hotelNameJa)
           ? "guest"
           : null
     if (!routeKey) continue

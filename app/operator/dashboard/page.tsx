@@ -34,6 +34,7 @@ import {
 } from "@/lib/hotel-notification"
 import { labelMailStatus, labelMailApplies, todayJst, type LabelMailUrgency } from "@/lib/label-delivery"
 import TodayTodo from "@/components/operator/TodayTodo"
+import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
 
 type ShipmentStatus =
   | "requested"
@@ -54,6 +55,7 @@ interface Shipment {
   traveler_count: number
   shipment_date: string
   expected_arrival: string | null
+  change_deadline_at: string | null
   from_hotel: string
   from_city: string | null
   from_prefecture: string | null
@@ -1203,6 +1205,7 @@ export default function DashboardPage() {
                     {/* 一覧は「何をすべきか」が分かる最小限に絞る。詳細は予約番号クリックで
                         /operator/bookings/[id] へ (発行日・追跡番号・変更履歴・エラー全文はそちら)。 */}
                     <th className="text-left p-3 font-medium">発送日</th>
+                    <th className="text-left p-3 font-medium">変更締切</th>
                     <th className="text-left p-3 font-medium">予約番号</th>
                     <th className="text-left p-3 font-medium">代理店</th>
                     <th className="text-left p-3 font-medium">代表者</th>
@@ -1229,6 +1232,20 @@ export default function DashboardPage() {
                             <span className="mt-1 inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
                               <Clock className="w-2.5 h-2.5" strokeWidth={2} />
                               {d === "delivery" ? "配送遅れ" : "集荷遅れ"}
+                            </span>
+                          )
+                        })()}
+                      </td>
+                      {/* 変更締切 (発送日の2営業日前 18:00 JST・48h切ったら警告色) */}
+                      <td className="p-3 align-top">
+                        {(() => {
+                          const over = isChangeDeadlinePassed(it.change_deadline_at)
+                          const near = isChangeDeadlineNear(it.change_deadline_at)
+                          return (
+                            <span
+                              className={`text-[11px] whitespace-nowrap ${over ? "text-red-700 font-semibold" : near ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}
+                            >
+                              {formatChangeDeadlineJst(it.change_deadline_at)}
                             </span>
                           )
                         })()}
