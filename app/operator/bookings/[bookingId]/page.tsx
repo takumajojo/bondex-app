@@ -25,6 +25,8 @@ import {
 } from "@/lib/label-delivery"
 import type { ResidenceAddress } from "@/lib/residence"
 import HotelContactEditor from "@/components/operator/HotelContactEditor"
+import HotelChangeModal, { type HotelChangeTarget } from "@/components/operator/HotelChangeModal"
+import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
 
 type CountChange = {
   at: string
@@ -57,9 +59,12 @@ type Row = {
   from_prefecture: string | null
   from_hotel_ja: string | null
   from_hotel: string
+  from_place_id: string | null
   to_prefecture: string | null
   to_hotel_ja: string | null
   to_hotel: string
+  to_place_id: string | null
+  change_deadline_at: string | null
   suitcase_count: number
   amount_yen: number
   count_change_log: CountChange[] | null
@@ -123,6 +128,7 @@ export default function OperatorBookingDetailPage() {
   const params = useParams<{ bookingId: string }>()
   const bookingId = decodeURIComponent(params.bookingId || "")
   const [rows, setRows] = useState<Row[]>([])
+  const [changeTarget, setChangeTarget] = useState<HotelChangeTarget | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [busyId, setBusyId] = useState("")
@@ -171,8 +177,36 @@ export default function OperatorBookingDetailPage() {
   const head = rows[0]
   const today = todayJst()
 
+  const openChange = (r: Row, side: "guest" | "pickup") => {
+    setChangeTarget({
+      shipmentId: r.id,
+      side,
+      bookingId: r.booking_id,
+      legLabel: `${r.booking_id}-L${r.leg_index + 1}`,
+      currentHotel: side === "guest" ? r.to_hotel : r.from_hotel,
+      currentHotelJa: side === "guest" ? r.to_hotel_ja : r.from_hotel_ja,
+      currentPlaceId: side === "guest" ? r.to_place_id : r.from_place_id,
+      shipmentDate: r.shipment_date,
+      expectedArrival: r.expected_arrival,
+      fromCheckIn: r.from_check_in,
+      toCheckOut: r.to_check_out,
+      changeDeadlineAt: r.change_deadline_at,
+      labelSentAt: r.label_sent_at,
+    })
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
+      {changeTarget && (
+        <HotelChangeModal
+          target={changeTarget}
+          onClose={() => setChangeTarget(null)}
+          onDone={() => {
+            setChangeTarget(null)
+            void load()
+          }}
+        />
+      )}
       <header className="border-b border-border bg-white">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
           <div>
@@ -276,6 +310,49 @@ export default function OperatorBookingDetailPage() {
                   {st.ja}
                 </span>
               </div>
+
+              {/* 変更受付: 締切表示 + ホテル変更ボタン (物理ゲートで無効化) */}
+              {(() => {
+                const gated =
+                  ((r.yamato_tracking?.length ?? 0) > 0) ||
+                  ["picked_up", "in_transit", "delivered"].includes(r.status)
+                const over = isChangeDeadlinePassed(r.change_deadline_at)
+                const near = isChangeDeadlineNear(r.change_deadline_at)
+                return (
+                  <div className="rounded-xl border border-border bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span
+                        className={`text-xs ${over ? "text-red-700 font-semibold" : near ? "text-amber-700 font-semibold" : "text-foreground"}`}
+                      >
+                        変更締切: {formatChangeDeadlineJst(r.change_deadline_at)}
+                        {over && <span className="ml-1">（締切超過）</span>}
+                        {!over && near && <span className="ml-1">（残り48時間以内）</span>}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => !gated && openChange(r, "guest")}
+                          disabled={gated}
+                          className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] font-semibold hover:bg-muted/40 disabled:opacity-40"
+                        >
+                          お届け先を変更
+                        </button>
+                        <button
+                          onClick={() => !gated && openChange(r, "pickup")}
+                          disabled={gated}
+                          className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-[11px] hover:bg-muted/40 disabled:opacity-40"
+                        >
+                          発送元を変更
+                        </button>
+                      </div>
+                    </div>
+                    {gated && (
+                      <p className="mt-1 text-[10px] text-red-600">
+                        追跡番号発行済み/集荷済みのため変更不可。ラベル取消→再発行が必要です。
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* 発行・課金のエラー全文 (一覧では出さない) */}
               {r.error_message && (

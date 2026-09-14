@@ -1,5 +1,6 @@
 import { getSupabase } from "@/lib/supabase"
 import type { ResidenceAddress } from "@/lib/residence"
+import { changeDeadlineAt } from "./change-deadline"
 
 /**
  * shipments テーブル CRUD.
@@ -171,6 +172,8 @@ export async function saveShipment(
     tour_number: input.tour_number ?? null,
     group_name: input.group_name ?? null,
     shipment_date: input.shipment_date ?? null,
+    // 変更受付締切 = 発送日の2営業日前 18:00 JST (lib/change-deadline.ts)。発送日から自動算出。
+    change_deadline_at: changeDeadlineAt(input.shipment_date ?? null),
     expected_arrival: input.expected_arrival ?? null,
     from_hotel: input.from_hotel ?? "",
     from_city: input.from_city ?? null,
@@ -458,7 +461,11 @@ export async function updateShipmentFields(
   const sb = getSupabase()
   if (!sb) return { ok: false, error: "Supabase not configured" }
   const update: Record<string, unknown> = {}
-  if (patch.shipment_date !== undefined) update.shipment_date = patch.shipment_date
+  if (patch.shipment_date !== undefined) {
+    update.shipment_date = patch.shipment_date
+    // 発送日が変わったら変更受付締切も再計算 (締切系は営業日関数1本に統一)。
+    update.change_deadline_at = changeDeadlineAt(patch.shipment_date)
+  }
   if (patch.expected_arrival !== undefined) update.expected_arrival = patch.expected_arrival
   if (patch.suitcase_count !== undefined) update.suitcase_count = patch.suitcase_count
   if (patch.notes !== undefined) update.notes = patch.notes

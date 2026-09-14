@@ -76,8 +76,11 @@ export async function GET(req: NextRequest) {
   }
 
   if (place_id) {
+    // lang=en で施設名(name)を英語で取得できる (既定 ja)。住所解析(parseJpAddress)は
+    // ja 前提なので、英名だけ欲しい呼び出しは name のみ利用する想定。
+    const lang = searchParams.get("lang") === "en" ? "en" : "ja"
     const fields = "name,place_id,formatted_address,address_components,types,international_phone_number,geometry/location,vicinity"
-    const url  = `${BASE}/details/json?place_id=${encodeURIComponent(place_id)}&fields=${fields}&language=ja&key=${API_KEY}`
+    const url  = `${BASE}/details/json?place_id=${encodeURIComponent(place_id)}&fields=${fields}&language=${lang}&key=${API_KEY}`
     const res  = await fetch(url, { next: { revalidate: 0 } })
     const data = await res.json()
     const result = data.result as any
