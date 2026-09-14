@@ -5,6 +5,7 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
+import { getTrackingProvider } from "@/lib/tracking"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
@@ -43,8 +44,6 @@ export const maxDuration = 300
  *   人間の operator 判断に委ねる (dashboard の手動ステータス変更は従来通り有効).
  */
 
-const SHIPANDCO_BASE = "https://api.shipandco.com/v1"
-
 // 前進方向のみを許可する順序。この配列に無いステータス (pending/failed/cancelled) は
 // 「Ship&co ポーリングでは触らない」ことを意味する。
 const PROGRESSION: ShipmentStatus[] = ["issued", "picked_up", "in_transit", "delivered"]
@@ -54,153 +53,9 @@ function progressionRank(status: ShipmentStatus): number {
   return i === -1 ? -1 : i
 }
 
-/**
- * 異常系ステータスの検知。ヤマト公式 FAQ (a_id/3887) の語彙 + 想定される
- * 英語正規化の両方をカバーする。検知したら status は進めず、BondEx と
- * ランドオペレーターへアラートを送る (自動で failed 等にはしない —
- * 最終判断は人間に委ねる)。
- *
- * ヤマト側の異常系語彙 (公式 FAQ より):
- *   遅延中（〇〇） / 調査中 / 持戻（〇〇） / 返品 / 返品完了 /
- *   輸送経路修正 / 伝票番号誤り / 伝票番号未登録
- */
-const EXCEPTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
-  { pattern: /遅延|delay/i, label: "遅延中 (delayed)" },
-  { pattern: /調査|investigat/i, label: "調査中 (under investigation)" },
-  { pattern: /持戻|bring.?back|attempt.*fail|absence/i, label: "持戻 (delivery attempted / brought back)" },
-  { pattern: /返品|return/i, label: "返品 (being returned)" },
-  { pattern: /経路修正|reroute|misroute|wrong.?route/i, label: "輸送経路修正 (rerouted)" },
-  { pattern: /伝票番号誤り|伝票番号未登録|not.?found|invalid.*number|unregistered/i, label: "伝票番号エラー (tracking number issue)" },
-  { pattern: /exception|hold.*exception|failed/i, label: "exception (carrier-reported problem)" },
-]
-
-function detectException(raw: string): string | null {
-  for (const { pattern, label } of EXCEPTION_PATTERNS) {
-    if (pattern.test(raw)) return label
-  }
-  return null
-}
-
-/**
- * Ship&co の current_status.status を BondEx の ShipmentStatus に対応付ける。
- *
- * ヤマト公式 FAQ の全ステータス語彙 (日本語) と、Ship&co が英語正規化して
- * 返す場合の両方をカバーする。判定順序が重要:
- *   1. まず異常系 (呼び出し元で detectException を先に評価すること)
- *   2. 「配達完了」系 — ただし "out for delivery" (持ち出し中 = 配達中) が
- *      "deliver" を含むため、配達中系を先に判定しないと誤って delivered に
- *      マップされる (実際に初期実装にあったバグ)
- *   3. 配達中・輸送中系
- *   4. 集荷・発送済み系
- *
- * マッチしなければ null (= 何もしない・unmapped としてログに残す)。
- */
-function mapTrackingStatus(raw: string): ShipmentStatus | null {
-  const s = raw.toLowerCase()
-
-  // -- 配達中 (out for delivery) を「完了」より先に判定する --
-  if (
-    s.includes("out_for_delivery") ||
-    s.includes("out for delivery") ||
-    s.includes("配達中") ||
-    s.includes("持ち出し")
-  ) {
-    return "in_transit"
-  }
-
-  // -- 配達完了系 --
-  if (s.includes("配達完了") || /deliver/.test(s)) return "delivered"
-
-  // -- 輸送中系 (ヤマト語彙: 輸送中 / 作業店通過 / 配達店到着 / 配達準備中 /
-  //    転送 / 保管中系は「持ち出し前の正常な中間状態」として扱う) --
-  if (
-    s.includes("transit") ||
-    s.includes("輸送中") ||
-    s.includes("作業店通過") ||
-    s.includes("配達店到着") ||
-    s.includes("配達準備") ||
-    s.includes("転送") ||
-    s.includes("保管") ||
-    s.includes("hold") ||
-    s.includes("stored")
-  ) {
-    return "in_transit"
-  }
-
-  // -- 集荷・発送済み系 --
-  //   ヤマト語彙: 荷物受付 / 発送済み
-  //   佐川語彙: 集荷 (Ship&co は佐川の集荷を英語 "collected" で返す) —
-  //   これが未対応だと佐川便が発行済のまま進まないため必ず含める。
-  if (
-    s.includes("picked_up") ||
-    s.includes("picked up") ||
-    s.includes("pickup_complete") ||
-    s.includes("collected") ||
-    s.includes("集荷") ||
-    s.includes("荷物受付") ||
-    s.includes("発送済")
-  ) {
-    return "picked_up"
-  }
-
-  return null
-}
-
-interface TrackingCurrentStatus {
-  date?: string
-  status?: string
-  details?: string[]
-  location?: string
-}
-
-interface TrackingResponse {
-  current_status?: TrackingCurrentStatus
-}
-
-const SHIPANDCO_TIMEOUT_MS = 10_000
-
-// Ship&co 追跡 API は GET /v1/tracking/:carrier/:trackingNumber (公式ドキュメント確認済み
-// 2026-08-05: 佐川/ヤマト/日本郵便に対応 https://developer.shipandco.com/en/)。
-// キャリア識別子は shipments.carrier ('sagawa' / 'yamato') をそのまま使う。既定は佐川。
-function trackingCarrierPath(carrier: string | null | undefined): "sagawa" | "yamato" {
-  return carrier === "yamato" ? "yamato" : "sagawa"
-}
-
-/**
- * 1件の Ship&co 呼び出しがハングすると batch 全体が maxDuration まで
- * ブロックされてしまうため、個別に AbortController でタイムアウトを切る。
- * carrier で照会先を切替 (佐川の荷物をヤマトのURLで引くと空振りするため)。
- */
-async function fetchTracking(
-  token: string,
-  carrier: "sagawa" | "yamato",
-  trackingNumber: string,
-): Promise<TrackingResponse | null> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), SHIPANDCO_TIMEOUT_MS)
-  try {
-    const res = await fetch(
-      `${SHIPANDCO_BASE}/tracking/${carrier}/${encodeURIComponent(trackingNumber)}`,
-      {
-        headers: { "x-access-token": token, "Content-Type": "application/json" },
-        signal: controller.signal,
-      },
-    )
-    if (!res.ok) {
-      console.error(
-        `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${carrier}/${trackingNumber}`,
-      )
-      return null
-    }
-    return (await res.json()) as TrackingResponse
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    console.error(`[cron/sync-tracking] Ship&co call failed for ${carrier}/${trackingNumber}: ${reason}`)
-    return null
-  } finally {
-    clearTimeout(timer)
-  }
-}
+// Ship&co 追跡の HTTP・ステータス正規化(mapTrackingStatus)・異常検知(detectException)・
+// carrier パス解決は lib/tracking/shipandco.ts へ移設済み。cron は
+// getTrackingProvider().fetchOne() が返す正規化済み結果 (TrackingResult) だけを見る。
 
 /**
  * 単純な同時実行数制限つき map。
@@ -300,19 +155,22 @@ export async function GET(req: NextRequest) {
     // Step 1: 全 shipment × 全追跡番号をフラットなタスク一覧にして、まとめて並列取得。
     // 「1 leg 内で直列」ではなく「全体で並列」にすることで、leg 数や口数に関わらず
     // 総所要時間が ceil(タスク総数 / CONCURRENCY) × 平均レイテンシ に収まる。
-    type Task = { rowIndex: number; trackingNumber: string; carrier: "sagawa" | "yamato" }
+    type Task = { rowIndex: number; trackingNumber: string; carrier: string | null }
     const tasks: Task[] = []
     rows.forEach((row, rowIndex) => {
       const trackingNumbers = (row.yamato_tracking as string[] | null) ?? []
-      const carrier = trackingCarrierPath(row.carrier as string | null)
+      const carrier = (row.carrier as string | null) ?? null
       trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num, carrier }))
     })
 
     const checkedAt = new Date().toISOString()
 
+    // 追跡プロバイダ経由で取得 (Phase A: shipandco)。carrier→照会先の対応付けと
+    // ステータス正規化・異常検知はプロバイダ内で行い、cron は正規化済み結果だけを扱う。
+    const provider = getTrackingProvider()
     const taskResults = await mapWithConcurrency(tasks, CONCURRENCY, async (task) => {
-      const tracking = await fetchTracking(token, task.carrier, task.trackingNumber)
-      return { ...task, current: tracking?.current_status }
+      const result = await provider.fetchOne(task.carrier, task.trackingNumber)
+      return { rowIndex: task.rowIndex, result }
     })
 
     // Step 2: rowIndex ごとにグルーピングして、(a) leg の代表ステータス、
@@ -338,7 +196,7 @@ export async function GET(req: NextRequest) {
 
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       const row = rows[rowIndex]
-      const resultsForRow = taskResults.filter((r) => r.rowIndex === rowIndex)
+      const resultsForRow = taskResults.filter((t) => t.rowIndex === rowIndex).map((t) => t.result)
 
       // 前回 cron が保存した「通知済み異常」を番号単位で引き継ぐ —
       // 同じ遅延に対して毎時アラートを打ち続けないための重複防止。
@@ -353,38 +211,36 @@ export async function GET(req: NextRequest) {
       let anySuccess = false
       const newExceptions: Array<{ number: string; label: string; raw: string; location?: string }> = []
 
-      const detail = resultsForRow.map((r) => {
-        const rawStatus = r.current?.status
-        if (!rawStatus) {
-          return { number: r.trackingNumber, checkedAt, alertedException: prevAlerted.get(r.trackingNumber) }
+      const detail = resultsForRow.map((tr) => {
+        if (tr.noData) {
+          return { number: tr.number, checkedAt, alertedException: prevAlerted.get(tr.number) }
         }
         anySuccess = true
 
-        // 異常系を最優先で判定 — 異常中は status の前進判定に使わない
-        const exception = detectException(rawStatus)
-        if (exception) {
-          const alreadyAlerted = prevAlerted.get(r.trackingNumber) === exception
+        // 異常系を最優先 — provider が正規化済み (異常時は status=null)。前進判定には使わない。
+        if (tr.exception) {
+          const alreadyAlerted = prevAlerted.get(tr.number) === tr.exception
           if (!alreadyAlerted) {
             newExceptions.push({
-              number: r.trackingNumber,
-              label: exception,
-              raw: rawStatus,
-              location: r.current?.location,
+              number: tr.number,
+              label: tr.exception,
+              raw: tr.rawStatus ?? "",
+              location: tr.location,
             })
           }
           return {
-            number: r.trackingNumber,
+            number: tr.number,
             status: null,
-            rawStatus,
-            exception,
-            alertedException: exception,
-            location: r.current?.location,
-            date: r.current?.date,
+            rawStatus: tr.rawStatus,
+            exception: tr.exception,
+            alertedException: tr.exception,
+            location: tr.location,
+            date: tr.date,
             checkedAt,
           }
         }
 
-        const mapped = mapTrackingStatus(rawStatus)
+        const mapped = tr.status
         if (mapped) {
           const rank = progressionRank(mapped)
           if (bestRank === -1 || rank < bestRank) {
@@ -392,14 +248,14 @@ export async function GET(req: NextRequest) {
             bestStatus = mapped
           }
         } else {
-          sawUnmapped = rawStatus
+          sawUnmapped = tr.rawStatus ?? null
         }
         return {
-          number: r.trackingNumber,
+          number: tr.number,
           status: mapped,
-          rawStatus,
-          location: r.current?.location,
-          date: r.current?.date,
+          rawStatus: tr.rawStatus,
+          location: tr.location,
+          date: tr.date,
           checkedAt,
         }
       })
