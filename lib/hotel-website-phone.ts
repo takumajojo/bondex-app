@@ -126,20 +126,55 @@ export async function fetchPhoneFromWebsite(website: string): Promise<{ phone: s
   }
 }
 
+/** ホテル名 (+ 地域ヒント) から place_id を検索する。
+ *  place_id が保存されていない予約 (フリーテキスト入力) でも公式サイトを辿れるようにするフォールバック。 */
+export async function resolvePlaceIdByName(name: string, regionHint?: string | null): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  const query = [name, regionHint].map((v) => (v || "").trim()).filter(Boolean).join(" ")
+  if (!apiKey || !query) return null
+  const url = `${PLACES_BASE}/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id&language=ja&region=jp&key=${apiKey}`
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    const res = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer))
+    if (!res.ok) return null
+    const data = (await res.json()) as { candidates?: Array<{ place_id?: string }> }
+    const pid = data.candidates?.[0]?.place_id
+    return typeof pid === "string" && pid ? pid : null
+  } catch (e) {
+    console.error("[hotel-website-phone] resolvePlaceIdByName failed:", e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 /**
  * place_id (と任意で既知の website) から、公式サイト由来の電話番号を引く。
  * website 未指定なら place_id から公式サイトURLを取得してから読む。
+ * place_id が無ければ hotelName から place_id を検索してフォールバックする
+ * (フリーテキスト入力で place_id 未取得の予約でも「公式サイトから取得」を動かすため)。
  */
 export async function lookupHotelPhone(params: {
   placeId?: string | null
   website?: string | null
+  hotelName?: string | null
+  regionHint?: string | null
 }): Promise<HotelPhoneLookup> {
   let website = params.website && /^https?:\/\//i.test(params.website) ? params.website : null
-  if (!website && params.placeId) {
-    website = await getOfficialWebsite(params.placeId)
+  let placeId = params.placeId || null
+  // place_id が無ければホテル名から解決 (フリーテキスト入力の予約に対応)。
+  if (!website && !placeId && params.hotelName) {
+    placeId = await resolvePlaceIdByName(params.hotelName, params.regionHint)
+  }
+  if (!website && placeId) {
+    website = await getOfficialWebsite(placeId)
   }
   if (!website) {
-    return { website: null, phone: null, source: null, note: "公式サイトのURLが見つかりませんでした" }
+    return {
+      website: null,
+      phone: null,
+      source: null,
+      note: "公式サイトのURLを特定できませんでした。ホテル名で見つからない場合は、サイトを開いて電話番号を手入力してください。",
+    }
   }
   const { phone, note } = await fetchPhoneFromWebsite(website)
   return { website, phone, source: phone ? website : null, note: phone ? undefined : note }

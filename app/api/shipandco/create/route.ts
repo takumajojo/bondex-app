@@ -289,6 +289,8 @@ export function normalizeBanchi(s: string): string {
 interface YamatoAddress {
   full_name: string
   company: string
+  /** ホテル名の未切詰め表記 (ダッシュボード表示用)。company は送り状の欄幅で切るが、これは切らない。 */
+  nameJa: string
   email?: string
   phone: string
   country: string
@@ -522,13 +524,15 @@ async function resolveYamatoAddress(
   //     (Yamato parser が address2 から 市区郡町村 を抽出)。既存動作を壊さないため据え置き。
   const isYamato = carrierType === "yamato"
   // 会社名欄 = ホテル名 (発送元/お届け先とも)。佐川の欄上限に収める (E1-0043: 長いホテル名対策)。
-  const building = capName(result?.name ?? hotelName)
+  const buildingFull = (result?.name ?? hotelName).trim() // 表示用に切り詰めない
+  const building = capName(buildingFull)
 
   if (isYamato) {
     // ヤマト: 過去実績のあるマッピング (address1=市区 / address2=市区+町名+番地)。据え置き。
     return {
       full_name: fullName,
       company: building,
+      nameJa: buildingFull,
       phone,
       country: "JP",
       zip: zip || FALLBACK_ZIP,
@@ -548,6 +552,7 @@ async function resolveYamatoAddress(
   return {
     full_name: fullName,
     company: building,
+    nameJa: buildingFull,
     phone,
     country: "JP",
     zip: zip || FALLBACK_ZIP,
@@ -579,7 +584,8 @@ function buildResidenceAddress(
   if (!phone) phone = FALLBACK_PHONE
   const nm = res.name.trim()
   const fullName = capName(/様\s*$/.test(nm) ? nm : `${nm} 様`)
-  const building = capName(res.building.trim())
+  const buildingFull = res.building.trim()
+  const building = capName(buildingFull)
   const prefecture = res.prefecture.trim()
   const city = res.city.trim()
   const street = res.street.trim()
@@ -590,6 +596,7 @@ function buildResidenceAddress(
     return {
       full_name: fullName,
       company: building,
+      nameJa: buildingFull,
       phone,
       country: "JP",
       zip,
@@ -607,6 +614,7 @@ function buildResidenceAddress(
   return {
     full_name: fullName,
     company: building,
+    nameJa: buildingFull,
     phone,
     country: "JP",
     zip,
@@ -1023,14 +1031,14 @@ export async function POST(req: NextRequest) {
       // 都道府県 (日本語) と 日本語ホテル名 — 発行時に Google Places から解決した値。
       // 管理ダッシュボードの区間表示を「東京都 新宿ワシントンホテル」の形にするため保存。
       from_prefecture: fromAddr?.province || null,
-      from_hotel_ja: fromAddr?.company || null,
+      from_hotel_ja: fromAddr?.nameJa || null,
       from_place_id: fromPlaceId ?? null,
       from_check_in: fromCheckIn || null,
       from_residence: fromResidence,
       to_hotel: toHotel,
       to_city: toAddr?.city || (toInput.city ?? "") || null,
       to_prefecture: toAddr?.province || null,
-      to_hotel_ja: toAddr?.company || null,
+      to_hotel_ja: toAddr?.nameJa || null,
       to_place_id: toPlaceId ?? null,
       to_check_out: toCheckOut || null,
       to_residence: toResidence,
