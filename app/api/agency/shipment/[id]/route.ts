@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
+import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
@@ -104,9 +105,27 @@ export async function PATCH(
   const patch: Record<string, unknown> = {}
   const changes: string[] = []
 
+  // リードタイムゲート (団体30個以上=発送7日以内は全変更不可 / 個数変更=14日前まで)
+  const gateInput = {
+    bookingType: shipment.booking_type,
+    suitcaseCount: shipment.suitcase_count,
+    shipmentDate: shipment.shipment_date,
+  }
+  const groupLockResp = () =>
+    NextResponse.json(
+      {
+        error: "GROUP_LARGE_LOCK",
+        message: en
+          ? "Large group bookings (30+ pieces) can't be changed here within a week of shipment. Please contact BondEx."
+          : "団体（30個以上）は発送1週間以内の変更ができません。BondEx までご連絡ください。",
+      },
+      { status: 409 },
+    )
+
   const shipDate = typeof body.shipmentDate === "string" ? body.shipmentDate : ""
   const arrival = typeof body.expectedArrival === "string" ? body.expectedArrival : ""
   if (shipDate || arrival) {
+    if (changeBlockedReason("dates", gateInput) === "group_large_lock") return groupLockResp()
     const newShip = shipDate || shipment.shipment_date
     const newArr = arrival || shipment.expected_arrival || newShip
     if (!DATE_RE.test(newShip) || !DATE_RE.test(newArr)) {
@@ -143,6 +162,19 @@ export async function PATCH(
             : "団体予約の個数は、団体ダッシュボードの荷物リストから変更してください。",
         },
         { status: 400 },
+      )
+    }
+    const countGate = changeBlockedReason("count", gateInput)
+    if (countGate === "group_large_lock") return groupLockResp()
+    if (countGate === "count_lead") {
+      return NextResponse.json(
+        {
+          error: "COUNT_LEAD",
+          message: en
+            ? "Piece-count changes must be made at least 2 weeks before shipment. Please contact BondEx."
+            : "個数の変更は発送の2週間前までにお願いします。締切を過ぎた分は BondEx までご連絡ください。",
+        },
+        { status: 409 },
       )
     }
     const n = Math.floor(Number(body.suitcaseCount))

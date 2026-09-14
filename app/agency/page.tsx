@@ -23,6 +23,8 @@ import {
 } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { AgencyCardSetup } from "@/components/agency-card-setup"
+import AgencyHotelChangeModal, { type AgencyHotelChangeTarget } from "@/components/agency-hotel-change-modal"
+import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { TrackingStepper, carrierTrackUrl, TRACK_STEPS } from "@/components/tracking-stepper"
 import { AgencyContactFab } from "@/components/agency-contact-fab"
@@ -41,6 +43,11 @@ interface Shipment {
   expected_arrival: string | null
   from_hotel: string
   to_hotel: string
+  from_hotel_ja?: string | null
+  to_hotel_ja?: string | null
+  from_place_id?: string | null
+  to_place_id?: string | null
+  change_deadline_at?: string | null
   recipient: string
   suitcase_count: number
   amount_yen: number
@@ -112,8 +119,16 @@ const messages = {
     actPlaceholder: "Actions…",
     actDates: "Change dates",
     actCount: "Change pieces",
+    actHotelGuest: "Change delivery hotel",
+    actHotelPickup: "Change pickup hotel",
+    hotelChangeDone: "Hotel changed. BondEx has been notified.",
+    lockGroupLarge:
+      "Large group bookings (30+ pieces) can't be changed here within a week of shipment. Please contact BondEx from “Contact” and we'll take care of it.",
+    lockCountLead:
+      "Piece-count changes must be made at least 2 weeks before shipment. Please contact BondEx from “Contact” and we'll take care of it.",
     actCancel: "Cancel this leg",
     lockedTitle: "This leg is already issued",
+    lockedTitleGate: "This change isn't available",
     lockedBody:
       "The shipping label has been issued, so it can't be changed here (the label and the actual shipment must match). Please contact BondEx via the Contact button — we'll handle it for you.",
     lockedClose: "Close",
@@ -228,8 +243,16 @@ const messages = {
     actPlaceholder: "アクション…",
     actDates: "日程を変更",
     actCount: "個数を変更",
+    actHotelGuest: "お届け先を変更",
+    actHotelPickup: "発送元を変更",
+    hotelChangeDone: "ホテルを変更しました。BondEx にも通知済みです。",
+    lockGroupLarge:
+      "団体（30個以上）のご予約は、発送1週間以内の変更ができません。お手数ですが「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
+    lockCountLead:
+      "個数の変更は発送の2週間前までにお願いしています。締切を過ぎた分は「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
     actCancel: "この区間を取り消し",
     lockedTitle: "この区間は発行済みです",
+    lockedTitleGate: "この変更はできません",
     lockedBody:
       "送り状が発行済みのため、こちらから変更できません（送り状と実際のお荷物を一致させる必要があるため）。お手数ですが「お問い合わせ」ボタンから BondEx にご連絡ください。こちらで対応いたします。",
     lockedClose: "閉じる",
@@ -334,8 +357,11 @@ export default function AgencyDashboard() {
   const [actionTarget, setActionTarget] = useState<{
     shipment: Shipment
     action: "dates" | "count" | "cancel" | "locked"
+    lockedMessage?: string
   } | null>(null)
   const [actNote, setActNote] = useState("")
+  // ホテル変更 (お届け先=guest / 発送元=pickup)。未発行・締切内のみ・専用モーダル。
+  const [hotelChangeTarget, setHotelChangeTarget] = useState<AgencyHotelChangeTarget | null>(null)
   // 複製: どの旅か確認できるサマリモーダル → /agency/new?dup=ID を開く
   const [dupTarget, setDupTarget] = useState<Shipment | null>(null)
 
@@ -364,6 +390,35 @@ export default function AgencyDashboard() {
           return { ok: false, error: messages[locale].sessionExpired }
         }
         if (!res.ok) return { ok: false, error: d.error }
+        return { ok: true }
+      } catch {
+        return { ok: false, error: "network" }
+      }
+    },
+    [locale],
+  )
+
+  // ホテル変更の適用: POST /api/agency/shipment/[id]/hotel-change (未発行・締切内のみ)。
+  const changeHotel = useCallback(
+    async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const sb = getBrowserSupabase()
+        const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+        if (!token) {
+          setSessionExpired(true)
+          return { ok: false, error: messages[locale].sessionExpired }
+        }
+        const res = await fetch(`/api/agency/shipment/${encodeURIComponent(id)}/hotel-change`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        const d = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
+        if (res.status === 401) {
+          setSessionExpired(true)
+          return { ok: false, error: messages[locale].sessionExpired }
+        }
+        if (!res.ok) return { ok: false, error: d.message || d.error }
         return { ok: true }
       } catch {
         return { ok: false, error: "network" }
@@ -1080,7 +1135,14 @@ export default function AgencyDashboard() {
                         <select
                           value=""
                           onChange={(e) => {
-                            const v = e.target.value as "dates" | "count" | "cancel" | "duplicate" | ""
+                            const v = e.target.value as
+                              | "dates"
+                              | "count"
+                              | "hotel-guest"
+                              | "hotel-pickup"
+                              | "cancel"
+                              | "duplicate"
+                              | ""
                             e.target.value = ""
                             if (!v) return
                             setActNote("")
@@ -1093,6 +1155,39 @@ export default function AgencyDashboard() {
                               setActionTarget({ shipment: it, action: "locked" })
                               return
                             }
+                            // リードタイムゲート (団体30個以上=発送7日以内は全変更不可 / 個数=14日前まで)。
+                            // 取消(cancel)は対象外。
+                            if (v === "dates" || v === "count" || v === "hotel-guest" || v === "hotel-pickup") {
+                              const kind = v === "dates" ? "dates" : v === "count" ? "count" : "hotel"
+                              const blocked = changeBlockedReason(kind, {
+                                bookingType: it.booking_type,
+                                suitcaseCount: it.suitcase_count,
+                                shipmentDate: it.shipment_date,
+                              })
+                              if (blocked) {
+                                setActionTarget({
+                                  shipment: it,
+                                  action: "locked",
+                                  lockedMessage: blocked === "group_large_lock" ? t.lockGroupLarge : t.lockCountLead,
+                                })
+                                return
+                              }
+                            }
+                            if (v === "hotel-guest" || v === "hotel-pickup") {
+                              const side = v === "hotel-guest" ? "guest" : "pickup"
+                              setHotelChangeTarget({
+                                shipmentId: it.id,
+                                side,
+                                legLabel: `${it.booking_id}-L${it.leg_index + 1}`,
+                                currentHotel: side === "guest" ? it.to_hotel : it.from_hotel,
+                                currentHotelJa:
+                                  side === "guest" ? it.to_hotel_ja ?? null : it.from_hotel_ja ?? null,
+                                shipmentDate: it.shipment_date,
+                                expectedArrival: it.expected_arrival,
+                                changeDeadlineAt: it.change_deadline_at ?? null,
+                              })
+                              return
+                            }
                             setActionTarget({ shipment: it, action: v })
                           }}
                           className="mt-2 h-8 w-40 max-w-full rounded-lg border border-border bg-white px-2 text-xs text-muted-foreground hover:border-foreground/40"
@@ -1103,6 +1198,8 @@ export default function AgencyDashboard() {
                             <>
                               <option value="dates">{t.actDates}</option>
                               {it.booking_type !== "group" && <option value="count">{t.actCount}</option>}
+                              <option value="hotel-guest">{t.actHotelGuest}</option>
+                              <option value="hotel-pickup">{t.actHotelPickup}</option>
                               <option value="cancel">{t.actCancel}</option>
                             </>
                           )}
@@ -1232,6 +1329,19 @@ export default function AgencyDashboard() {
           }}
         />
       )}
+      {hotelChangeTarget && (
+        <AgencyHotelChangeModal
+          target={hotelChangeTarget}
+          locale={locale}
+          onClose={() => setHotelChangeTarget(null)}
+          onApply={(body) => changeHotel(hotelChangeTarget.shipmentId, body)}
+          onDone={() => {
+            setHotelChangeTarget(null)
+            setActNote(t.hotelChangeDone)
+            void load()
+          }}
+        />
+      )}
       <AgencyContactFab />
     </main>
   )
@@ -1326,7 +1436,7 @@ function AgencyActionModal({
   onDone,
 }: {
   t: (typeof messages)[keyof typeof messages]
-  target: { shipment: Shipment; action: "dates" | "count" | "cancel" | "locked" }
+  target: { shipment: Shipment; action: "dates" | "count" | "cancel" | "locked"; lockedMessage?: string }
   onClose: () => void
   onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
   onDone: (msg: string) => void
@@ -1387,7 +1497,15 @@ function AgencyActionModal({
   }
 
   const title =
-    action === "dates" ? t.dcTitle : action === "count" ? t.ccTitle : action === "cancel" ? t.cxTitle : t.lockedTitle
+    action === "dates"
+      ? t.dcTitle
+      : action === "count"
+        ? t.ccTitle
+        : action === "cancel"
+          ? t.cxTitle
+          : target.lockedMessage
+            ? t.lockedTitleGate
+            : t.lockedTitle
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -1406,7 +1524,7 @@ function AgencyActionModal({
 
         {action === "locked" ? (
           <>
-            <p className="text-sm text-foreground leading-relaxed">{t.lockedBody}</p>
+            <p className="text-sm text-foreground leading-relaxed">{target.lockedMessage ?? t.lockedBody}</p>
             <div className="flex justify-end">
               <button
                 onClick={onClose}
