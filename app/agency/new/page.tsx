@@ -270,6 +270,8 @@ const messages = {
     errPastDate: (n: number) => `Leg ${n}: the ship date is in the past — please check the year.`,
     errArrivalBeforeShip: (n: number) => `Leg ${n}: the arrival date is before the ship date.`,
     errMissingHotel: (n: number) => `Leg ${n}: both the origin and destination hotel are required.`,
+    errHotelNotSelected: (n: number, side: string) =>
+      `Leg ${n}: please pick the ${side} hotel from the suggestions (a typed name alone can't be issued).`,
     errMissingCheckIn: (n: number) => `Leg ${n}: the check-in date at the delivery hotel is required (the hotel looks up the booking by name + check-in date).`,
     errResidence: (n: number, side: string, field: string) => `Leg ${n}: the ${side} (private residence) needs a ${field}.`,
     sideFrom: "origin",
@@ -512,6 +514,8 @@ const messages = {
     errPastDate: (n: number) => `区間${n}: 発送日が過去の日付です。年をご確認ください。`,
     errArrivalBeforeShip: (n: number) => `区間${n}: 到着日が発送日より前になっています。`,
     errMissingHotel: (n: number) => `区間${n}: 発送元・発送先ホテルの両方が必要です。`,
+    errHotelNotSelected: (n: number, side: string) =>
+      `区間${n}: ${side}ホテルは検索候補から選択してください（名前の手入力のみでは送り状を発行できません）。`,
     errMissingCheckIn: (n: number) => `区間${n}: お届け先ホテルのチェックイン日は必須です（受取ホテルが「予約名＋チェックイン日」で照会するため）。`,
     errResidence: (n: number, side: string, field: string) => `区間${n}: ${side}（個人宅）の${field}をご入力ください。`,
     sideFrom: "発送元",
@@ -785,6 +789,7 @@ function validateLegs(
     errPastDate: (n: number) => string
     errArrivalBeforeShip: (n: number) => string
     errMissingHotel: (n: number) => string
+    errHotelNotSelected: (n: number, side: string) => string
     errMissingCheckIn: (n: number) => string
     errResidence: (n: number, side: string, field: string) => string
     resFieldLabels: Record<string, string>
@@ -803,6 +808,9 @@ function validateLegs(
       if (e) errs.push(m.errResidence(n, m.sideFrom, m.resFieldLabels[e]))
     } else if (!leg.fromHotel.trim()) {
       errs.push(m.errMissingHotel(n))
+    } else if (!leg.fromPlaceId) {
+      // ホテル名だけで place_id が無いと発行時に住所解決できず送り状が作れない
+      errs.push(m.errHotelNotSelected(n, m.sideFrom))
     }
     // お届け先: 同上
     if (leg.toKind === "residence") {
@@ -810,6 +818,8 @@ function validateLegs(
       if (e) errs.push(m.errResidence(n, m.sideTo, m.resFieldLabels[e]))
     } else if (!leg.toHotel.trim()) {
       errs.push(m.errMissingHotel(n))
+    } else if (!leg.toPlaceId) {
+      errs.push(m.errHotelNotSelected(n, m.sideTo))
     }
     // お届け先ホテルのチェックイン日は「予約名+チェックイン日」でホテルが照合するため必須。
     // 個人宅は照合が無いので不要。早期配達もあるため発送日との前後は縛らない。

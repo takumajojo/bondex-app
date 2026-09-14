@@ -21,7 +21,11 @@ export interface PlaceCandidate {
  */
 export function parseJpAddress(formattedAddr: string): { prefecture: string; city: string } {
   const noZip = formattedAddr.replace(/^〒\s*\d{3}-?\d{4}\s*/, "").trim()
-  const prefRe = /^(.+?[県府都]|北海道)/u
+  // 都道府県の抽出。以前は /^(.+?[県府都]|北海道)/ だったが、「京都府…」の "京都" の "都" に
+  // 先にマッチして prefecture="京都" / city="府京都市…" と誤分割していた (京都府だけ破損)。
+  // 47都道府県は 東京都/北海道/大阪府/京都府 の4つ以外はすべて「…県」なので、
+  // 特殊4つを明示 + それ以外は最短一致の「…県」で確定させる。
+  const prefRe = /^(東京都|北海道|(?:大阪|京都)府|.+?県)/u
   const prefM = prefRe.exec(noZip)
   if (!prefM) return { prefecture: "", city: "" }
   const prefecture = prefM[1]

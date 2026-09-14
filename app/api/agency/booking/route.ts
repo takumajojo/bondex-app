@@ -93,6 +93,13 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   const fromHotel = fromKind === "residence" ? (fromResidence?.name ?? "") : s(o.fromHotel)
   const toHotel = toKind === "residence" ? (toResidence?.name ?? "") : s(o.toHotel)
   if (!fromHotel || !toHotel) return { error: "発送元・お届け先をご入力ください。" }
+  // ホテルは Google Places の place_id 必須 (名前だけだと発行時に住所解決できず送り状が作れない)。
+  if (fromKind === "hotel" && !s(o.fromPlaceId)) {
+    return { error: "発送元ホテルは検索候補から選択してください（名前の手入力のみでは送り状を発行できません）。" }
+  }
+  if (toKind === "hotel" && !s(o.toPlaceId)) {
+    return { error: "お届け先ホテルは検索候補から選択してください（名前の手入力のみでは送り状を発行できません）。" }
+  }
   if (!DATE_RE.test(shipmentDate)) return { error: "発送日を正しくご入力ください。" }
   if (!DATE_RE.test(expectedArrival)) return { error: "到着日を正しくご入力ください。" }
   if (expectedArrival < shipmentDate) return { error: "到着日は発送日以降にしてください。" }
