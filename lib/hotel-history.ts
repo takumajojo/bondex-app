@@ -44,13 +44,23 @@ function nameSafe(name: string | null): string | null {
   return s || null
 }
 
+// place_id を PostgREST の or() フィルタ文字列に差し込む前の検証。
+// Google の place_id は [A-Za-z0-9_-] のみ。想定外の文字(カンマ等)を含むものは、
+// or() 構文へのフィルタ差し込み(RLS を迂回する service_role 経由の越権読み取り)を
+// 防ぐため一切採用しない。
+function placeIdSafe(id: string | null): string | null {
+  if (!id) return null
+  return /^[A-Za-z0-9_-]+$/.test(id) ? id : null
+}
+
 /**
  * 照合条件: place_id を最優先しつつ、ホテル名(英名・和名の両方)でも完全一致で拾う。
  * place_id が無い/0件でも名前で照合できるようにするフォールバック (谷口さん 2026-09-14)。
  */
 function orClauses(placeId: string | null, hotelName: string | null, hotelNameJa: string | null): string | null {
   const parts: string[] = []
-  if (placeId) parts.push(`from_place_id.eq.${placeId}`, `to_place_id.eq.${placeId}`)
+  const pid = placeIdSafe(placeId)
+  if (pid) parts.push(`from_place_id.eq.${pid}`, `to_place_id.eq.${pid}`)
   const en = nameSafe(hotelName)
   if (en) parts.push(`from_hotel.eq.${en}`, `to_hotel.eq.${en}`)
   const ja = nameSafe(hotelNameJa)
