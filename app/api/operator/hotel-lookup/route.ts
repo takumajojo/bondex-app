@@ -25,9 +25,19 @@ export async function GET(req: NextRequest) {
   if (!ship) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
 
   const placeId = route === "pickup" ? ship.from_place_id : ship.to_place_id
+  // place_id が無い予約 (フリーテキスト入力) 用に、ホテル名と地域ヒントも渡す。
+  const hotelName = route === "pickup" ? ship.from_hotel : ship.to_hotel
+  const prefecture = route === "pickup" ? ship.from_prefecture : ship.to_prefecture
+  const city = route === "pickup" ? ship.from_city : ship.to_city
+  const regionHint = [prefecture, city].map((v) => (v || "").trim()).filter(Boolean).join(" ") || undefined
   // 既に公式サイトURLを保存していればそれを優先 (再取得の手入力に対応)。
   const savedWebsite = parseHotelContactInfo(ship.hotel_contact_info)[route].officialWebsite
 
-  const result = await lookupHotelPhone({ placeId, website: savedWebsite || undefined })
+  const result = await lookupHotelPhone({
+    placeId,
+    website: savedWebsite || undefined,
+    hotelName: hotelName || undefined,
+    regionHint,
+  })
   return NextResponse.json(result)
 }
