@@ -218,8 +218,15 @@ function RouteEditor({
           <span className="text-[11px] text-muted-foreground">未取得</span>
         )}
         {officialWebsite && (
-          <a href={officialWebsite} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-[11px] text-blue-600 hover:underline">
-            <Globe className="w-3 h-3" strokeWidth={1.6} /> 公式サイト
+          <a
+            href={officialWebsite}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={officialWebsite}
+            className="inline-flex items-center gap-0.5 max-w-full text-[11px] text-blue-600 hover:underline break-all"
+          >
+            <Globe className="w-3 h-3 shrink-0" strokeWidth={1.6} />
+            <span className="truncate">{officialWebsite.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
           </a>
         )}
         <button
