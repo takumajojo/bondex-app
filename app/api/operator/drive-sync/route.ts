@@ -76,8 +76,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) 共有ドライブへ格納 (代理店フォルダ → 予約番号フォルダ)
-  const result = await putBookingDocuments(bookingId, files, voucher.agencyName)
+  // 3) 共有ドライブへ格納 (代理店フォルダ → 予約番号フォルダ) ＋ 代理店の登録メールへ閲覧共有
+  // 代理店フォルダを agencies.contact_email へ「閲覧者」で自動共有する (通知なし)。
+  let agencyEmail: string | undefined
+  if (voucher.agencyName) {
+    const { data: ag } = await sb
+      .from("agencies")
+      .select("contact_email")
+      .eq("name", voucher.agencyName)
+      .maybeSingle()
+    agencyEmail = ((ag?.contact_email as string | null) ?? undefined) || undefined
+  }
+  const result = await putBookingDocuments(bookingId, files, voucher.agencyName, agencyEmail)
   if (!result.ok) {
     // サイレント失敗の撲滅 (2026-09-15 谷口さん)。呼び出し元 (予約API/issue-due cron) は
     // drive-sync の失敗を握りつぶすため、単一の急所であるここで必ず運営へ通知する。
@@ -105,5 +115,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ ok: true, folderUrl: result.folderUrl, files: files.map((f) => f.name) })
+  return NextResponse.json({
+    ok: true,
+    folderUrl: result.folderUrl,
+    files: files.map((f) => f.name),
+    sharedWith: agencyEmail ?? null,
+    ...(result.shareWarning
+      ? { warning: `代理店(${agencyEmail})への閲覧共有に失敗: ${result.shareWarning}（共有ドライブの外部共有設定を確認）` }
+      : {}),
+  })
 }

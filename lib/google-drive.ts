@@ -234,16 +234,42 @@ async function uploadPdf(
 
 export type DriveFile = { name: string; buffer: Buffer }
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
+/**
+ * folderId を email に「閲覧者(reader)」で共有する。**メール通知は送らない**
+ * (谷口さん指示 2026-09-15: 代理店へ自動通知しない)。同じメールへの再付与は
+ * Drive 側で実質冪等 (重複しない)。共有ドライブの外部共有が禁止されていると失敗する
+ * (その場合は共有ドライブ設定で外部共有を許可する必要がある) → 呼び出し側で warning 化。
+ */
+async function shareFolderWithViewer(token: string, folderId: string, email: string): Promise<void> {
+  const url = new URL(`${DRIVE_FILES}/${folderId}/permissions`)
+  url.searchParams.set("supportsAllDrives", "true")
+  url.searchParams.set("sendNotificationEmail", "false")
+  url.searchParams.set("fields", "id")
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ role: "reader", type: "user", emailAddress: email }),
+  })
+  if (!res.ok) {
+    const e = await res.text().catch(() => "")
+    throw new Error(`Drive share error: ${res.status} ${e.slice(0, 200)}`)
+  }
+}
+
 /**
  * 予約の書類を「共有ドライブ → 代理店フォルダ → 予約番号フォルダ」に保存する。
  * agencyName を渡すと代理店ごとに整理される (未指定なら共有ドライブ直下)。
+ * agencyEmail を渡すと**代理店フォルダを登録メールへ閲覧共有** (通知なし) する。
  * 予約番号フォルダの webViewLink を返す。未設定・失敗は { ok:false }。
  */
 export async function putBookingDocuments(
   bookingId: string,
   files: DriveFile[],
   agencyName?: string,
-): Promise<{ ok: true; folderUrl: string } | { ok: false; error: string }> {
+  agencyEmail?: string,
+): Promise<{ ok: true; folderUrl: string; shareWarning?: string } | { ok: false; error: string }> {
   const creds = loadCredentials()
   if (!creds || !ROOT_ID) return { ok: false, error: "Google Drive not configured" }
   try {
@@ -252,11 +278,21 @@ export async function putBookingDocuments(
     const parentId = agencyName?.trim()
       ? (await ensureFolder(token, agencyName.trim(), ROOT_ID)).id
       : ROOT_ID
+    // 代理店フォルダを登録メールへ閲覧共有 (best-effort・失敗しても格納は続行)。
+    let shareWarning: string | undefined
+    const email = agencyEmail?.trim()
+    if (email && parentId !== ROOT_ID && EMAIL_RE.test(email)) {
+      try {
+        await shareFolderWithViewer(token, parentId, email)
+      } catch (e) {
+        shareWarning = e instanceof Error ? e.message : "share failed"
+      }
+    }
     const folder = await ensureFolder(token, bookingId, parentId)
     for (const f of files) {
       await uploadPdf(token, folder.id, f.name, f.buffer)
     }
-    return { ok: true, folderUrl: folder.webViewLink }
+    return { ok: true, folderUrl: folder.webViewLink, ...(shareWarning ? { shareWarning } : {}) }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Drive error" }
   }
