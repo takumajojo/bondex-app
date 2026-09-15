@@ -430,13 +430,15 @@ export function Landing({ lang }: { lang: Locale }) {
               <p className="mt-4 text-[15px] text-[#334155] max-w-3xl leading-[1.9]">{t.pains.lead}</p>
               <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
                 {t.pains.personas.map((p) => (
-                  <div key={p.name} className="md:border-l md:border-[#E5E7EB] md:pl-6 first:md:border-0 first:md:pl-0">
+                  <div key={p.name} className="flex flex-col md:border-l md:border-[#E5E7EB] md:pl-6 first:md:border-0 first:md:pl-0">
                     <p className="text-[11px] tracking-[0.18em] uppercase text-[#94A3B8]">{p.role}</p>
                     <h4 className="mt-1 text-[17px] font-bold text-[#0F172A]">{p.name}</h4>
                     <Dots items={p.items} className="mt-4 [&_li]:text-[13.5px] [&_li]:leading-[1.7]" />
-                    <div className="mt-5 border-t border-[#C8102E]/30 pt-4">
-                      <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-[#C8102E]">BondEx</p>
+                    <div className="mt-auto pt-5">
+                      <div className="border-t border-[#C8102E]/30 pt-4">
+                      <p className="text-[11px] font-semibold tracking-[0.18em] text-[#C8102E]">BondEx</p>
                       <p className="mt-1.5 text-[14px] leading-[1.8] text-[#0F172A]">{p.solve}</p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -588,7 +590,7 @@ export function Landing({ lang }: { lang: Locale }) {
               <p className="text-[14px] text-[#64748B] leading-[1.95]">{t.difference.conventionalBody}</p>
             </div>
             <div className="py-8 md:py-10 md:pl-12">
-              <p className="text-[11px] tracking-[0.2em] uppercase text-[#C8102E] mb-3">BondEx</p>
+              <p className="text-[11px] tracking-[0.2em] text-[#C8102E] mb-3">BondEx</p>
               <h3 className="text-[16px] font-bold text-[#0F172A] mb-4">{t.difference.bondexHeading}</h3>
               <p className="text-[14px] text-[#334155] leading-[1.95]">{t.difference.bondexBody}</p>
             </div>
@@ -829,7 +831,7 @@ export function Landing({ lang }: { lang: Locale }) {
                       <p className="text-[13px] text-[#64748B]">{row.direct}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wide text-[#C8102E]">{t.price.colBondex}</p>
+                      <p className="text-[10px] tracking-wide text-[#C8102E]">{t.price.colBondex}</p>
                       <p className="text-[13px] font-medium text-[#C8102E]">{row.bondex}</p>
                     </div>
                   </div>
@@ -882,7 +884,7 @@ export function Landing({ lang }: { lang: Locale }) {
               </div>
             </div>
             <div className="border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5">
-              <p className="text-[11px] tracking-[0.2em] uppercase text-[#C8102E] mb-3">{t.price.flowBondex}</p>
+              <p className="text-[11px] tracking-[0.2em] text-[#C8102E] mb-3">{t.price.flowBondex}</p>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
                 {t.price.flowBondexSteps.map((s, i) => (
                   <span key={s} className="inline-flex items-center gap-2">
