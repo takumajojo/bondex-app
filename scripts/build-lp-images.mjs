@@ -12,7 +12,7 @@ const OUT = path.join(ROOT, "public/lp")
 // ロゴ (public/lp/bondex-logo.webp) は public/bondex-logo.png から幅480で別途生成 (LP専用・PDF等は PNG のまま)
 const jobs = [
   ["hero-desktop", `${FINAL}/hero-desktop.png`, null, [1672, 1200, 900]],
-  ["hero-mobile", `${FINAL}/hero-mobile.png`, null, [1122, 750], 68], // 白72%を重ねるため低画質で可
+  ["hero-mobile", `${FINAL}/hero-mobile.png`, null, [1122, 750], 52], // 白72%を重ねるため低画質で可 (LCP対策)
   ["pain-street", `${FINAL}/pain-street.png`, null, [1536, 900, 600]],
   ["pain-station", `${FINAL}/pain-station.png`, null, [1536, 900, 600]],
   ["concept-family", `${FINAL}/concept-family.png`, null, [1122, 750, 500]],
