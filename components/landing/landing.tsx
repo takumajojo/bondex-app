@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { preload } from "react-dom"
 import Link from "next/link"
 import { ArrowRight, Menu, X, Plus, Minus } from "lucide-react"
 import { messages, type Locale } from "@/lib/landing-messages"
@@ -49,6 +50,10 @@ const LP_IMAGES = {
 } satisfies Record<string, LpImage>
 type LpImageName = keyof typeof LP_IMAGES
 
+function lpSrcSet(name: LpImageName) {
+  return LP_IMAGES[name].widths.map((w, i) => `/lp/${name}${i === 0 ? "" : `-${w}`}.webp ${w}w`).join(", ")
+}
+
 function Pic({
   name,
   alt,
@@ -64,9 +69,7 @@ function Pic({
   priority?: boolean
 }) {
   const img = LP_IMAGES[name]
-  const srcSet = img.widths
-    .map((w, i) => `/lp/${name}${i === 0 ? "" : `-${w}`}.webp ${w}w`)
-    .join(", ")
+  const srcSet = lpSrcSet(name)
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -189,6 +192,10 @@ export function Landing({ lang }: { lang: Locale }) {
   ]
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // LCP 画像 (ヒーロー) を先読み。media で画面幅に合う片方だけ。
+  preload("/lp/hero-mobile-750.webp", { as: "image", fetchPriority: "high", imageSrcSet: lpSrcSet("hero-mobile"), imageSizes: "100vw", media: "(max-width: 1023px)" })
+  preload("/lp/hero-desktop.webp", { as: "image", fetchPriority: "high", imageSrcSet: lpSrcSet("hero-desktop"), imageSizes: "100vw", media: "(min-width: 1024px)" })
+
   const storyImages: LpImageName[] = ["portal-new", "flow-02-handover", "flow-03-truck", "flow-04-receive", "flow-05-mail"]
 
   return (
@@ -198,7 +205,7 @@ export function Landing({ lang }: { lang: Locale }) {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href={lang === "en" ? "/en" : "/"} aria-label="BondEx home" className="flex items-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
+            <img src="/lp/bondex-logo.webp" alt="BondEx" className="h-10 w-auto object-contain" />
           </Link>
           <nav className="hidden lg:flex items-center gap-6">
             {navItems.map((item) => (
@@ -291,15 +298,26 @@ export function Landing({ lang }: { lang: Locale }) {
           スマホは縦長イラストに上からの白フェードを重ねて、文字は常に白地の上に載せる。
           文字色は本文も #0F172A (濃紺) に固定し、グレーは使わない。 */}
       <section className="relative overflow-hidden border-b border-[#E5E7EB] bg-[#EAF2FB]">
-        {/* PC: 横長イラストを全面に敷く + 左からの白フェード */}
-        <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
-          <Pic name="hero-desktop" alt="" priority sizes="100vw" className="h-full w-full object-cover object-[72%_100%]" />
-          <div className="absolute inset-y-0 left-0 w-[68%] bg-gradient-to-r from-white from-30% via-white/80 via-70% to-transparent" />
-        </div>
-        {/* スマホ・タブレット: 縦長イラストを全面に敷き、白を重ねて薄くした上に文字を載せる (谷口さん指示 2026-09-15) */}
-        <div className="absolute inset-0 lg:hidden" aria-hidden="true">
-          <Pic name="hero-mobile" alt="" priority sizes="100vw" className="h-full w-full object-cover object-[50%_35%]" />
-          <div className="absolute inset-0 bg-white/72" />
+        {/* 背景イラスト: <picture> で PC(lg以上)は横長・それ未満は縦長の片方だけを読み込む (LCP対策)。
+            PC は左からの白フェード、スマホは白72%を重ねて薄くし、その上に文字を載せる。 */}
+        <div className="absolute inset-0" aria-hidden="true">
+          <picture>
+            <source media="(min-width: 1024px)" srcSet={lpSrcSet("hero-desktop")} sizes="100vw" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/lp/hero-mobile-750.webp"
+              srcSet={lpSrcSet("hero-mobile")}
+              sizes="100vw"
+              width={LP_IMAGES["hero-mobile"].w}
+              height={LP_IMAGES["hero-mobile"].h}
+              alt=""
+              fetchPriority="high"
+              decoding="async"
+              className="block h-full w-full object-cover object-[50%_35%] lg:object-[72%_100%]"
+            />
+          </picture>
+          <div className="absolute inset-0 bg-white/72 lg:hidden" />
+          <div className="hidden lg:block absolute inset-y-0 left-0 w-[68%] bg-gradient-to-r from-white from-30% via-white/80 via-70% to-transparent" />
         </div>
 
         <div className="relative max-w-6xl mx-auto px-5 sm:px-6 pt-12 pb-14 md:pt-20 md:pb-20 lg:pt-28 lg:pb-36">
@@ -455,7 +473,7 @@ export function Landing({ lang }: { lang: Locale }) {
                 {
                   label: t.concept.luggageLabel,
                   // eslint-disable-next-line @next/next/no-img-element
-                  mid: <img src="/bondex-logo.png" alt="BondEx" className="h-6 w-auto mx-auto" />,
+                  mid: <img src="/lp/bondex-logo.webp" alt="BondEx" className="h-6 w-auto mx-auto" />,
                 },
               ].map((col) => (
                 <div key={col.label} className="flex flex-col items-center">
@@ -979,7 +997,7 @@ export function Landing({ lang }: { lang: Locale }) {
         <div className="max-w-6xl mx-auto px-6 py-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 text-sm">
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/bondex-logo.png" alt="BondEx" className="h-8 w-auto object-contain" />
+            <img src="/lp/bondex-logo.webp" alt="BondEx" className="h-8 w-auto object-contain" />
             <p className="text-[13px] font-medium text-[#64748B] leading-loose">
               {t.footer.operatorPrefix}
               <a

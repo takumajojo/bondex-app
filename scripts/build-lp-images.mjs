@@ -8,10 +8,11 @@ const ROOT = process.cwd()
 const FINAL = path.join(ROOT, "design/lp-illustrations/final")
 const PH = path.join(ROOT, "design/lp-illustrations/placeholder")
 const OUT = path.join(ROOT, "public/lp")
-// [name, source, {crop aspect w:h | null}, widths]
+// [name, source, {crop aspect w:h | null}, widths, quality?]
+// ロゴ (public/lp/bondex-logo.webp) は public/bondex-logo.png から幅480で別途生成 (LP専用・PDF等は PNG のまま)
 const jobs = [
   ["hero-desktop", `${FINAL}/hero-desktop.png`, null, [1672, 1200, 900]],
-  ["hero-mobile", `${FINAL}/hero-mobile.png`, null, [1122, 750]],
+  ["hero-mobile", `${FINAL}/hero-mobile.png`, null, [1122, 750], 68], // 白72%を重ねるため低画質で可
   ["pain-street", `${FINAL}/pain-street.png`, null, [1536, 900, 600]],
   ["pain-station", `${FINAL}/pain-station.png`, null, [1536, 900, 600]],
   ["concept-family", `${FINAL}/concept-family.png`, null, [1122, 750, 500]],
@@ -25,7 +26,7 @@ const jobs = [
   ["support-operator", `${FINAL}/support-operator.png`, null, [1122, 750, 500]],
   ["japan-map", `${ROOT}/docs/collateral/assets/japan.png`, null, [1294, 800]],
 ]
-for (const [name, src, aspect, widths] of jobs) {
+for (const [name, src, aspect, widths, quality = 82] of jobs) {
   const img = sharp(src)
   const meta = await img.metadata()
   let base = img
@@ -41,7 +42,7 @@ for (const [name, src, aspect, widths] of jobs) {
   for (const w of widths) {
     const suffix = w === widths[0] ? "" : `-${w}`
     const out = path.join(OUT, `${name}${suffix}.webp`)
-    await sharp(buf).resize({ width: w, withoutEnlargement: true }).webp({ quality: 82, effort: 5 }).toFile(out)
+    await sharp(buf).resize({ width: w, withoutEnlargement: true }).webp({ quality, effort: 5 }).toFile(out)
     const st = fs.statSync(out)
     const m = await sharp(out).metadata()
     console.log(`${path.basename(out).padEnd(28)} ${m.width}x${m.height}  ${(st.size / 1024).toFixed(0)}KB`)
