@@ -247,12 +247,16 @@ export async function PATCH(req: NextRequest) {
             english,
           )
           if (patch.status === "delivered") {
-            // 代理店へのプッシュ通知 (WhatsApp/LINE・登録があれば。メールの補完)
-            await pushToAgency(
-              ship.agency,
-              `【BondEx】配達完了 ${ship.booking_id}-L${ship.leg_index + 1}\n${ship.representative} 様のお荷物が ${ship.to_hotel} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
-              `[BondEx] Delivered ${ship.booking_id}-L${ship.leg_index + 1}\nLuggage for ${ship.representative} has arrived at ${ship.to_hotel}.\nhttps://bondex.express/track/${ship.booking_id}`,
-            )
+            // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
+            {
+              const legRef = `${ship.booking_id}-L${ship.leg_index + 1}`
+              await pushToAgency(ship.agency, {
+                kind: "delivered",
+                templateParams: [ship.representative, ship.to_hotel, legRef], // bondex_delivered の {{1}}{{2}}{{3}}
+                textJa: `【BondEx】配達完了 ${legRef}\n${ship.representative} 様のお荷物が ${ship.to_hotel} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
+                textEn: `[BondEx] Delivered ${legRef}\nLuggage for ${ship.representative} has arrived at ${ship.to_hotel}.\nhttps://bondex.express/track/${ship.booking_id}`,
+              })
+            }
             // 社内通知(Slack集約)
             await notifyBondEx({
               kind: "delivery",

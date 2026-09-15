@@ -2,10 +2,12 @@
 //
 // 有効化条件 (どちらも谷口さん側の外部設定が必要):
 //   WhatsApp: Meta WhatsApp Business Cloud API
-//     - env WHATSAPP_CLOUD_TOKEN      (システムユーザートークン)
+//     - env WHATSAPP_CLOUD_TOKEN      (システムユーザーの永続トークン)
 //     - env WHATSAPP_PHONE_NUMBER_ID  (送信元電話番号ID)
 //     - agencies.notify_whatsapp      (宛先番号 E.164 例 +819012345678)
-//   LINE: LINE公式アカウント + Messaging API
+//     ※ こちら起点のプッシュは「承認済みテンプレート」でのみ送れる (24h枠外は自由文不可)。
+//        テンプレ名は WA_TEMPLATES。本文パラメータは承認済みテンプレの {{1}}{{2}}… と順序一致させる。
+//   LINE: LINE公式アカウント + Messaging API (自由文でよい)
 //     - env LINE_CHANNEL_ACCESS_TOKEN (チャネルアクセストークン)
 //     - agencies.notify_line_user_id  (友だち追加後に webhook で取得した userId)
 //
@@ -18,7 +20,35 @@ export interface AgencyPushResult {
   line: boolean
 }
 
-async function sendWhatsApp(to: string, text: string): Promise<boolean> {
+/** WhatsApp プッシュの種類。種類ごとに承認済みテンプレートを対応させる。 */
+export type AgencyPushKind = "delivered"
+
+/** 種類 → WhatsApp 承認済みテンプレート名。WhatsApp Manager で作成した名前と一致させること。 */
+const WA_TEMPLATES: Record<AgencyPushKind, string> = {
+  delivered: "bondex_delivered",
+}
+
+export interface AgencyPushInput {
+  kind: AgencyPushKind
+  /** WhatsApp テンプレ本文の差し込み値 (承認済みテンプレの {{1}}{{2}}… の順に一致)。 */
+  templateParams: string[]
+  /** LINE 用の自由文 (locale で出し分け)。 */
+  textJa: string
+  textEn: string
+}
+
+/** テンプレパラメータの禁則 (改行・タブ・連続空白) を除去する。WhatsApp が弾くため。 */
+function cleanParam(v: string): string {
+  return (v ?? "").replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 256) || "-"
+}
+
+/** WhatsApp 承認済みテンプレートを送る (こちら起点のプッシュ用)。 */
+async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  langCode: "ja" | "en_US",
+  bodyParams: string[],
+): Promise<boolean> {
   const token = process.env.WHATSAPP_CLOUD_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!token || !phoneId) return false
@@ -29,12 +59,18 @@ async function sendWhatsApp(to: string, text: string): Promise<boolean> {
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: to.replace(/[^+\d]/g, ""),
-        type: "text",
-        text: { body: text },
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: langCode },
+          components: bodyParams.length
+            ? [{ type: "body", parameters: bodyParams.map((t) => ({ type: "text", text: cleanParam(t) })) }]
+            : [],
+        },
       }),
     })
     if (!res.ok) {
-      console.error("[agency-push] WhatsApp HTTP", res.status, (await res.text()).slice(0, 200))
+      console.error("[agency-push] WhatsApp HTTP", res.status, (await res.text()).slice(0, 300))
       return false
     }
     return true
@@ -65,13 +101,12 @@ async function sendLine(userId: string, text: string): Promise<boolean> {
 }
 
 /**
- * 代理店名で通知先を引いて WhatsApp / LINE にプッシュする (登録がある方すべて)。
- * 文面は代理店の locale で ja/en を出し分け。
+ * 代理店名で通知先を引いて WhatsApp (テンプレ) / LINE (自由文) にプッシュする。
+ * 言語は代理店の locale で ja/en を出し分け。登録がある手段すべてに送る。best-effort。
  */
 export async function pushToAgency(
   agencyName: string,
-  textJa: string,
-  textEn: string,
+  input: AgencyPushInput,
 ): Promise<AgencyPushResult> {
   const result: AgencyPushResult = { whatsapp: false, line: false }
   try {
@@ -83,9 +118,18 @@ export async function pushToAgency(
       .eq("name", agencyName)
       .maybeSingle()
     if (!ag) return result
-    const text = ag.locale === "en" ? textEn : textJa
-    if (ag.notify_whatsapp) result.whatsapp = await sendWhatsApp(ag.notify_whatsapp as string, text)
-    if (ag.notify_line_user_id) result.line = await sendLine(ag.notify_line_user_id as string, text)
+    const en = ag.locale === "en"
+    if (ag.notify_whatsapp) {
+      result.whatsapp = await sendWhatsAppTemplate(
+        ag.notify_whatsapp as string,
+        WA_TEMPLATES[input.kind],
+        en ? "en_US" : "ja",
+        input.templateParams,
+      )
+    }
+    if (ag.notify_line_user_id) {
+      result.line = await sendLine(ag.notify_line_user_id as string, en ? input.textEn : input.textJa)
+    }
   } catch (e) {
     console.error("[agency-push] unexpected:", e instanceof Error ? e.message : e)
   }
