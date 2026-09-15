@@ -4,6 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { regenerateVoucherPdf } from "@/lib/voucher-regen"
 import { putBookingDocuments, isDriveConfigured, type DriveFile } from "@/lib/google-drive"
 import { setBookingDriveUrl } from "@/lib/shipments-db"
+import { sendOpsAlert } from "@/lib/ops-alert"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -78,6 +79,20 @@ export async function POST(req: NextRequest) {
   // 3) 共有ドライブへ格納 (代理店フォルダ → 予約番号フォルダ)
   const result = await putBookingDocuments(bookingId, files, voucher.agencyName)
   if (!result.ok) {
+    // サイレント失敗の撲滅 (2026-09-15 谷口さん)。呼び出し元 (予約API/issue-due cron) は
+    // drive-sync の失敗を握りつぶすため、単一の急所であるここで必ず運営へ通知する。
+    await sendOpsAlert({
+      subject: `【Drive格納失敗】${bookingId}`,
+      lines: [
+        `予約 ${bookingId} の書類を共有ドライブに格納できませんでした。`,
+        `エラー: ${result.error}`,
+        `よくある原因: サービスアカウントが共有ドライブのメンバーから外れた / GOOGLE_DRIVE_SA_KEY が失効。`,
+        `復旧後の再格納: 運営ダッシュボードの予約メニュー「Drive へ格納」から再実行できます。`,
+      ],
+      agencyEmail: null,
+    }).catch(() => {
+      /* アラート送信自体の失敗で本処理を止めない */
+    })
     return NextResponse.json({ error: result.error }, { status: 502 })
   }
 
