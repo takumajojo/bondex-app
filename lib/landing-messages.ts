@@ -54,6 +54,7 @@ export interface LandingMessages {
     tryDemo: string
     consult: string
     agencyLogin: string
+    signup: string
     menuOpen: string
     menuClose: string
   }
@@ -133,6 +134,47 @@ export interface LandingMessages {
     heading: TwoLine
     steps: { title: string; desc: string }[]
   }
+  // ── 2026-09-15 脱AI化リニューアルで追加 (サービス概要PDFの構成に合わせたセクション) ──
+  // 見出しは配列 = 行ごとに <br> で改行する。英語小見出し (THE CHALLENGE 等) は
+  // ブランド共通のためコンポーネント側に固定し、辞書には持たせない。
+  challenge: {
+    heading: string[]
+    lead: string
+    street: { alt: string; items: string[] }
+    station: { alt: string; items: string[] }
+  }
+  concept: {
+    heading: string[]
+    body: string[]
+    alt: string
+    travelerLabel: string
+    luggageLabel: string
+    enjoy: string
+  }
+  story: {
+    heading: string[]
+    steps: { title: string; body: string; alt: string }[]
+  }
+  segments: {
+    heading: string[]
+    fit: { label: string; title: string; items: string[]; alt: string }
+    group: { label: string; title: string; items: string[]; alt: string }
+    privacy: { title: string; body: string }
+  }
+  manage: {
+    heading: string[]
+    body: string
+    alt: string
+    features: string[]
+  }
+  support: {
+    heading: string[]
+    alt: string
+    items: { label: string; title: string; body: string }[]
+    monitoring: { label: string; title: string; body: string }
+    note: string
+  }
+  closingAlt: string
   deliverables: {
     eyebrow: string
     heading: TwoLine
@@ -221,6 +263,7 @@ const ja: LandingMessages = {
     tryDemo: "デモを試す",
     consult: "導入相談",
     agencyLogin: "代理店ログイン",
+    signup: "代理店登録（無料）",
     menuOpen: "メニューを開く",
     menuClose: "メニューを閉じる",
   },
@@ -416,6 +459,98 @@ const ja: LandingMessages = {
       { title: "Drive で共有", desc: "Email / Slack で通知" },
     ],
   },
+  challenge: {
+    heading: ["日本の旅は素晴らしい。", "でも、移動のたびに", "荷物が負担になっていませんか？"],
+    lead: "チェックアウト後、次のホテルまでの移動。観光やビジネスの貴重な時間が、荷物によって制限されてしまいます。",
+    street: {
+      alt: "スーツケースを引きながら京都の街を歩く旅行者",
+      items: ["買い物をしたくても、荷物が多くて諦める", "狭い飲食店では荷物の置き場に困る", "散策や写真撮影でも荷物から目が離せない"],
+    },
+    station: {
+      alt: "大きな荷物を持って駅の階段を上る家族",
+      items: ["駅の階段や乗り換えが大きな負担", "ロッカーや預け先探しで時間を失う", "次のホテルまで身軽に動けない"],
+    },
+  },
+  concept: {
+    heading: ["旅行者と荷物を、", "いったん別々にする。"],
+    body: ["旅行者は、手ぶらで日本を楽しむ。", "荷物は BondEx が次のホテルまで届ける。"],
+    alt: "手ぶらで京都の街を歩く家族",
+    travelerLabel: "旅行者",
+    luggageLabel: "荷物",
+    enjoy: "Enjoy Japan",
+  },
+  story: {
+    heading: ["旅程を登録する。", "あとは、次のホテルへ。"],
+    steps: [
+      {
+        title: "旅程と配送日を送る",
+        body: "PDF・Excel・画像のままで結構です。「いつ・どのホテルから送るか」だけご指定ください。",
+        alt: "BondEx 代理店ポータルの画面",
+      },
+      {
+        title: "ホテルから集荷",
+        body: "送り状・バウチャーは BondEx が発行。ホテルへの連絡と集荷手配も BondEx が行います。",
+        alt: "ホテルのフロントで配送員に荷物を引き渡す場面",
+      },
+      {
+        title: "次の都市へ配送",
+        body: "佐川急便・ヤマト運輸など提携物流会社が配送。追跡番号で状況を確認できます。",
+        alt: "富士山を望む高速道路を走る配送トラック",
+      },
+      {
+        title: "次のホテルで受け取り",
+        body: "ゲストは手ぶらで観光し、次のホテルで荷物を受け取るだけ。",
+        alt: "次のホテルで荷物を受け取る家族",
+      },
+      {
+        title: "配送完了をメールで報告",
+        body: "集荷完了・配送完了の際は、BondEx から御社宛にご連絡します。",
+        alt: "配送完了の通知を確認する担当者",
+      },
+    ],
+  },
+  segments: {
+    heading: ["個人旅行から団体旅行まで、", "あらゆる旅に対応。"],
+    fit: {
+      label: "FIT",
+      title: "個人旅行・少人数",
+      items: ["1 件から利用可能", "予約ごとに配送を管理", "旅行中の追加配送も相談可能"],
+      alt: "京都を手ぶらで観光するカップル",
+    },
+    group: {
+      label: "GROUP / 10+ GUESTS",
+      title: "10 名以上の団体にも対応",
+      items: ["10 名以上の団体旅行に対応", "30〜45 名規模の荷物も一元管理", "複数個口をまとめて確認", "個数に応じたボリュームディスカウント"],
+      alt: "ホテルのロビーで団体の荷物を預かる場面",
+    },
+    privacy: {
+      title: "必要なのは、配送に必要な情報だけ。",
+      body: "フルの旅程表を共有する必要はありません。BondEx が取得・利用するのは、配送手配に必要な最小限の情報のみです。旅程表をオンラインで読み込む場合も、配送に必要な情報のみを抽出・利用します。",
+    },
+  },
+  manage: {
+    heading: ["すべての配送を、", "ひとつの画面で。"],
+    body: "代理店ポータルで、発行から配達完了までの状況をいつでも確認できます。バウチャー・送り状のダウンロードも同じ画面から。",
+    alt: "BondEx 代理店ポータルの予約一覧画面",
+    features: ["配送ステータス", "送り状 / バウチャー", "日程 / 荷物数", "FIT / Group", "複数荷物", "追跡", "請求情報"],
+  },
+  support: {
+    heading: ["何も起きないことだけを、", "前提にしない。"],
+    alt: "配送状況を確認する BondEx の担当者",
+    items: [
+      { label: "PICKUP ISSUE", title: "集荷されていない", body: "物流会社へ確認し、状況を把握して御社へご連絡。" },
+      { label: "DELAY", title: "配送が遅れている", body: "配送状況と原因を確認し、到着見込みをご案内。" },
+      { label: "DAMAGE / LOSS", title: "紛失・破損・誤配", body: "物流会社への確認・連絡と、必要な手続きの取次を代行。" },
+      { label: "GUEST INQUIRY", title: "ゲストからの問い合わせ", body: "ゲストからの問い合わせを受け、物流会社への確認・連絡を取り次ぎます。" },
+    ],
+    monitoring: {
+      label: "PROACTIVE MONITORING",
+      title: "お問い合わせの前に、遅れを検知。",
+      body: "想定時刻までに配送ステータスが変わらない場合は、社内アラートで検知。届いていない理由を先回りして確認し、状況を把握してから旅行代理店へご案内します。",
+    },
+    note: "運送契約はゲスト／旅行会社と物流会社の間で成立します。BondEx は確認・連絡・取次を代行します。",
+  },
+  closingAlt: "タグ付きのスーツケースを手渡す場面",
   deliverables: {
     eyebrow: "発行物",
     heading: { first: "必要な発行物を、", second: "まとめて用意。" },
@@ -573,6 +708,7 @@ const en: LandingMessages = {
     tryDemo: "Try the demo",
     consult: "Get started",
     agencyLogin: "Agency login",
+    signup: "Create agency account",
     menuOpen: "Open menu",
     menuClose: "Close menu",
   },
@@ -715,6 +851,61 @@ const en: LandingMessages = {
       { title: "Shared via Drive", desc: "Notified by email / Slack" },
     ],
   },
+  challenge: {
+    heading: ["Japan is a wonderful place to travel.", "But does luggage weigh down", "every move between cities?"],
+    lead: "After check-out, guests still have to get to the next hotel. Precious hours for sightseeing or business are lost to luggage.",
+    street: {
+      alt: "Travelers pulling suitcases through a Kyoto street",
+      items: ["Shopping is skipped because there is too much to carry", "Small restaurants have nowhere to put bags", "Strolls and photos are spoiled by keeping an eye on luggage"],
+    },
+    station: {
+      alt: "A family climbing station stairs with heavy luggage",
+      items: ["Station stairs and transfers become a burden", "Time is lost hunting for lockers or storage", "Guests cannot move freely to the next hotel"],
+    },
+  },
+  concept: {
+    heading: ["Separate the traveler", "from the luggage, for a while."],
+    body: ["Guests enjoy Japan hands-free.", "BondEx delivers the luggage to the next hotel."],
+    alt: "A family walking through Kyoto hands-free",
+    travelerLabel: "Traveler",
+    luggageLabel: "Luggage",
+    enjoy: "Enjoy Japan",
+  },
+  story: {
+    heading: ["Register the itinerary.", "The luggage goes to the next hotel."],
+    steps: [
+      { title: "Send the itinerary and delivery date", body: "PDF, Excel or an image is fine. Just tell us when and from which hotel to ship.", alt: "The BondEx agency portal" },
+      { title: "Pickup at the hotel", body: "BondEx issues the label and voucher, contacts the hotel and arranges the pickup.", alt: "Luggage handed to a courier at the hotel front desk" },
+      { title: "Delivered to the next city", body: "Partner carriers such as Sagawa Express and Yamato Transport carry the luggage. Track it by number.", alt: "A delivery truck on a highway with Mt. Fuji in view" },
+      { title: "Received at the next hotel", body: "Guests sightsee hands-free and simply collect their luggage at the next hotel.", alt: "A family collecting luggage at the next hotel" },
+      { title: "Completion reported by email", body: "BondEx notifies your company when the luggage is picked up and when it is delivered.", alt: "Staff checking a delivery completion notice" },
+    ],
+  },
+  segments: {
+    heading: ["From individual travelers to groups,", "for every kind of trip."],
+    fit: { label: "FIT", title: "Individuals and small parties", items: ["Available from a single booking", "Deliveries managed per reservation", "Extra deliveries mid-trip on request"], alt: "A couple sightseeing hands-free in Kyoto" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Groups of 10 or more", items: ["Group tours of 10 or more guests", "Luggage for 30–45 guests managed in one place", "Multiple pieces confirmed together", "Volume discounts by piece count"], alt: "Group luggage collected in a hotel lobby" },
+    privacy: { title: "Only the information needed for delivery.", body: "There is no need to share the full itinerary. BondEx collects and uses only the minimum information required to arrange delivery. When itineraries are read online, only delivery-related details are extracted." },
+  },
+  manage: {
+    heading: ["Every delivery,", "on one screen."],
+    body: "The agency portal shows the status from issue to delivery at any time. Vouchers and labels download from the same screen.",
+    alt: "Booking list in the BondEx agency portal",
+    features: ["Delivery status", "Label / voucher", "Dates / pieces", "FIT / Group", "Multiple pieces", "Tracking", "Billing"],
+  },
+  support: {
+    heading: ["We never assume", "nothing will go wrong."],
+    alt: "BondEx staff monitoring deliveries",
+    items: [
+      { label: "PICKUP ISSUE", title: "Luggage not picked up", body: "We check with the carrier, confirm the situation and report to you." },
+      { label: "DELAY", title: "Delivery is late", body: "We confirm the status and cause, and advise the expected arrival." },
+      { label: "DAMAGE / LOSS", title: "Loss, damage or misdelivery", body: "We handle confirmation with the carrier and relay the required procedures." },
+      { label: "GUEST INQUIRY", title: "Inquiries from guests", body: "We take the guest's inquiry and liaise with the carrier on their behalf." },
+    ],
+    monitoring: { label: "PROACTIVE MONITORING", title: "Delays detected before anyone asks.", body: "If a delivery status does not change by the expected time, an internal alert fires. We check the reason first and brief the agency with the facts in hand." },
+    note: "The carriage contract is between the guest or travel company and the carrier. BondEx handles confirmation, communication and liaison.",
+  },
+  closingAlt: "A tagged suitcase being handed over",
   deliverables: {
     eyebrow: "Deliverables",
     heading: { first: "Every document you need,", second: "prepared together." },
@@ -870,6 +1061,7 @@ const es: LandingMessages = {
     tryDemo: "Ver la demo",
     consult: "Empezar",
     agencyLogin: "Acceso agencias",
+    signup: "Registrar agencia",
     menuOpen: "Abrir menú",
     menuClose: "Cerrar menú",
   },
@@ -1012,6 +1204,55 @@ const es: LandingMessages = {
       { title: "Compartido por Drive", desc: "Aviso por email / Slack" },
     ],
   },
+  challenge: {
+    heading: ["Viajar por Japón es maravilloso.", "Pero, ¿el equipaje pesa", "en cada traslado?"],
+    lead: "Tras el check-out, aún queda llegar al siguiente hotel. Horas valiosas de turismo o negocios se pierden por culpa del equipaje.",
+    street: { alt: "Viajeros arrastrando maletas por una calle de Kioto", items: ["Se renuncia a comprar porque ya hay demasiado que cargar", "En restaurantes pequeños no hay dónde dejar las maletas", "Pasear y fotografiar sin perder de vista el equipaje"] },
+    station: { alt: "Una familia subiendo escaleras de estación con equipaje pesado", items: ["Escaleras y transbordos se convierten en una carga", "Se pierde tiempo buscando consignas", "No se puede ir con libertad al siguiente hotel"] },
+  },
+  concept: {
+    heading: ["Separar al viajero", "de su equipaje, por un tiempo."],
+    body: ["El viajero disfruta de Japón sin cargas.", "BondEx entrega el equipaje en el siguiente hotel."],
+    alt: "Una familia paseando por Kioto sin equipaje",
+    travelerLabel: "Viajero",
+    luggageLabel: "Equipaje",
+    enjoy: "Enjoy Japan",
+  },
+  story: {
+    heading: ["Registre el itinerario.", "El equipaje va al siguiente hotel."],
+    steps: [
+      { title: "Envíe el itinerario y la fecha de envío", body: "Vale un PDF, Excel o imagen. Solo indique cuándo y desde qué hotel se envía.", alt: "Portal de agencias de BondEx" },
+      { title: "Recogida en el hotel", body: "BondEx emite la etiqueta y el voucher, contacta con el hotel y organiza la recogida.", alt: "Entrega del equipaje al mensajero en la recepción del hotel" },
+      { title: "Envío a la siguiente ciudad", body: "Transportistas asociados como Sagawa Express y Yamato Transport llevan el equipaje. Seguimiento por número.", alt: "Camión de reparto en autopista con el monte Fuji al fondo" },
+      { title: "Recepción en el siguiente hotel", body: "Los viajeros hacen turismo sin equipaje y lo recogen en el siguiente hotel.", alt: "Una familia recogiendo su equipaje en el siguiente hotel" },
+      { title: "Aviso de entrega por email", body: "BondEx avisa a su empresa cuando se recoge y cuando se entrega el equipaje.", alt: "Personal comprobando un aviso de entrega completada" },
+    ],
+  },
+  segments: {
+    heading: ["De viajeros individuales a grupos,", "para cualquier viaje."],
+    fit: { label: "FIT", title: "Individuales y grupos pequeños", items: ["Disponible desde una sola reserva", "Envíos gestionados por reserva", "Envíos adicionales durante el viaje bajo petición"], alt: "Una pareja visitando Kioto sin equipaje" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Grupos de 10 o más", items: ["Grupos de 10 o más viajeros", "Equipaje de 30–45 personas gestionado de forma centralizada", "Varios bultos confirmados a la vez", "Descuentos por volumen según el número de bultos"], alt: "Equipaje de un grupo reunido en el vestíbulo de un hotel" },
+    privacy: { title: "Solo la información necesaria para el envío.", body: "No hace falta compartir el itinerario completo. BondEx recopila y utiliza únicamente la información mínima para organizar el envío. Al leer itinerarios en línea, solo se extraen los datos relativos al envío." },
+  },
+  manage: {
+    heading: ["Todos los envíos,", "en una sola pantalla."],
+    body: "El portal de agencias muestra el estado desde la emisión hasta la entrega en cualquier momento. Vouchers y etiquetas se descargan desde la misma pantalla.",
+    alt: "Lista de reservas en el portal de agencias de BondEx",
+    features: ["Estado del envío", "Etiqueta / voucher", "Fechas / bultos", "FIT / Grupo", "Varios bultos", "Seguimiento", "Facturación"],
+  },
+  support: {
+    heading: ["Nunca damos por hecho", "que nada saldrá mal."],
+    alt: "Personal de BondEx supervisando envíos",
+    items: [
+      { label: "PICKUP ISSUE", title: "No se ha recogido el equipaje", body: "Confirmamos con el transportista, verificamos la situación y le informamos." },
+      { label: "DELAY", title: "El envío se retrasa", body: "Confirmamos el estado y la causa, y comunicamos la llegada prevista." },
+      { label: "DAMAGE / LOSS", title: "Pérdida, daño o entrega errónea", body: "Gestionamos la confirmación con el transportista y tramitamos los pasos necesarios." },
+      { label: "GUEST INQUIRY", title: "Consultas de los viajeros", body: "Atendemos la consulta del viajero y hacemos de enlace con el transportista." },
+    ],
+    monitoring: { label: "PROACTIVE MONITORING", title: "Retrasos detectados antes de que alguien pregunte.", body: "Si el estado de un envío no cambia a la hora prevista, salta una alerta interna. Comprobamos primero la causa e informamos a la agencia con los hechos claros." },
+    note: "El contrato de transporte se establece entre el viajero o la agencia y el transportista. BondEx se encarga de la confirmación, la comunicación y la intermediación.",
+  },
+  closingAlt: "Entrega de una maleta etiquetada",
   deliverables: {
     eyebrow: "Documentos",
     heading: { first: "Todos los documentos que necesita,", second: "preparados en conjunto." },
@@ -1167,6 +1408,7 @@ const fr: LandingMessages = {
     tryDemo: "Voir la démo",
     consult: "Commencer",
     agencyLogin: "Espace agence",
+    signup: "Créer un compte agence",
     menuOpen: "Ouvrir le menu",
     menuClose: "Fermer le menu",
   },
@@ -1309,6 +1551,55 @@ const fr: LandingMessages = {
       { title: "Partagé via Drive", desc: "Notifié par e-mail / Slack" },
     ],
   },
+  challenge: {
+    heading: ["Voyager au Japon est merveilleux.", "Mais les bagages pèsent-ils", "à chaque déplacement ?"],
+    lead: "Après le check-out, il reste à rejoindre l'hôtel suivant. Des heures précieuses de visite ou de travail sont perdues à cause des bagages.",
+    street: { alt: "Voyageurs tirant leurs valises dans une rue de Kyoto", items: ["On renonce aux achats faute de pouvoir tout porter", "Dans les petits restaurants, aucune place pour les valises", "Balades et photos gâchées par la surveillance des bagages"] },
+    station: { alt: "Une famille montant les escaliers d'une gare avec de lourds bagages", items: ["Escaliers et correspondances deviennent une corvée", "Du temps perdu à chercher une consigne", "Impossible de rejoindre l'hôtel suivant librement"] },
+  },
+  concept: {
+    heading: ["Séparer le voyageur", "de ses bagages, le temps du trajet."],
+    body: ["Le voyageur profite du Japon les mains libres.", "BondEx livre les bagages à l'hôtel suivant."],
+    alt: "Une famille se promenant à Kyoto les mains libres",
+    travelerLabel: "Voyageur",
+    luggageLabel: "Bagages",
+    enjoy: "Enjoy Japan",
+  },
+  story: {
+    heading: ["Enregistrez l'itinéraire.", "Les bagages partent vers l'hôtel suivant."],
+    steps: [
+      { title: "Envoyez l'itinéraire et la date d'expédition", body: "PDF, Excel ou image, peu importe. Indiquez seulement quand et depuis quel hôtel expédier.", alt: "Portail agences BondEx" },
+      { title: "Enlèvement à l'hôtel", body: "BondEx émet l'étiquette et le bon, contacte l'hôtel et organise l'enlèvement.", alt: "Remise des bagages au livreur à la réception de l'hôtel" },
+      { title: "Livraison vers la ville suivante", body: "Des transporteurs partenaires comme Sagawa Express et Yamato Transport acheminent les bagages. Suivi par numéro.", alt: "Camion de livraison sur l'autoroute avec le mont Fuji" },
+      { title: "Réception à l'hôtel suivant", body: "Les voyageurs visitent les mains libres et récupèrent simplement leurs bagages à l'hôtel suivant.", alt: "Une famille récupérant ses bagages à l'hôtel suivant" },
+      { title: "Livraison confirmée par e-mail", body: "BondEx informe votre société lors de l'enlèvement et de la livraison des bagages.", alt: "Une collaboratrice consultant un avis de livraison" },
+    ],
+  },
+  segments: {
+    heading: ["Du voyageur individuel au groupe,", "pour tous les voyages."],
+    fit: { label: "FIT", title: "Individuels et petits groupes", items: ["Dès une seule réservation", "Expéditions gérées par réservation", "Expéditions supplémentaires en cours de voyage sur demande"], alt: "Un couple visitant Kyoto les mains libres" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Groupes de 10 personnes et plus", items: ["Voyages de groupe de 10 personnes et plus", "Bagages de 30 à 45 personnes gérés de façon centralisée", "Plusieurs colis confirmés ensemble", "Remises de volume selon le nombre de colis"], alt: "Bagages d'un groupe rassemblés dans le hall d'un hôtel" },
+    privacy: { title: "Seules les informations nécessaires à la livraison.", body: "Inutile de partager l'itinéraire complet. BondEx ne collecte et n'utilise que le minimum nécessaire à l'organisation de la livraison. Lors de la lecture d'itinéraires en ligne, seules les données liées à la livraison sont extraites." },
+  },
+  manage: {
+    heading: ["Toutes les livraisons,", "sur un seul écran."],
+    body: "Le portail agences affiche à tout moment l'état, de l'émission à la livraison. Bons et étiquettes se téléchargent depuis le même écran.",
+    alt: "Liste des réservations du portail agences BondEx",
+    features: ["Statut de livraison", "Étiquette / bon", "Dates / colis", "FIT / Groupe", "Colis multiples", "Suivi", "Facturation"],
+  },
+  support: {
+    heading: ["Nous ne partons jamais du principe", "que tout se passera bien."],
+    alt: "Équipe BondEx surveillant les livraisons",
+    items: [
+      { label: "PICKUP ISSUE", title: "Bagages non enlevés", body: "Nous vérifions auprès du transporteur, faisons le point et vous informons." },
+      { label: "DELAY", title: "Livraison en retard", body: "Nous confirmons l'état et la cause, et indiquons l'arrivée prévue." },
+      { label: "DAMAGE / LOSS", title: "Perte, dommage ou erreur de livraison", body: "Nous gérons la vérification avec le transporteur et relayons les démarches nécessaires." },
+      { label: "GUEST INQUIRY", title: "Demandes des voyageurs", body: "Nous recevons la demande du voyageur et assurons la liaison avec le transporteur." },
+    ],
+    monitoring: { label: "PROACTIVE MONITORING", title: "Les retards détectés avant toute demande.", body: "Si le statut d'une livraison n'évolue pas à l'heure prévue, une alerte interne se déclenche. Nous vérifions d'abord la cause, puis informons l'agence avec des faits précis." },
+    note: "Le contrat de transport est conclu entre le voyageur ou l'agence et le transporteur. BondEx assure la vérification, la communication et l'intermédiation.",
+  },
+  closingAlt: "Remise d'une valise étiquetée",
   deliverables: {
     eyebrow: "Documents",
     heading: { first: "Tous les documents nécessaires,", second: "préparés ensemble." },
@@ -1464,6 +1755,7 @@ const zh: LandingMessages = {
     tryDemo: "试用演示",
     consult: "开始使用",
     agencyLogin: "代理商登录",
+    signup: "代理商注册（免费）",
     menuOpen: "打开菜单",
     menuClose: "关闭菜单",
   },
@@ -1606,6 +1898,55 @@ const zh: LandingMessages = {
       { title: "通过 Drive 共享", desc: "以邮件 / Slack 通知" },
     ],
   },
+  challenge: {
+    heading: ["日本之旅令人向往。", "但每次移动，", "行李是否成了负担？"],
+    lead: "退房后还要前往下一家酒店。观光或商务的宝贵时间，往往被行李所占用。",
+    street: { alt: "拖着行李箱走在京都街头的旅客", items: ["想购物却因行李太多而放弃", "在小餐馆里行李无处安放", "散步拍照也要时刻盯着行李"] },
+    station: { alt: "带着大件行李攀登车站楼梯的一家人", items: ["车站楼梯与换乘成为沉重负担", "寻找储物柜或寄存处浪费时间", "无法轻装前往下一家酒店"] },
+  },
+  concept: {
+    heading: ["让旅客与行李，", "暂时分开。"],
+    body: ["旅客轻装畅游日本。", "行李由 BondEx 送到下一家酒店。"],
+    alt: "轻装漫步京都街头的一家人",
+    travelerLabel: "旅客",
+    luggageLabel: "行李",
+    enjoy: "Enjoy Japan",
+  },
+  story: {
+    heading: ["登记行程。", "之后行李自动送往下一家酒店。"],
+    steps: [
+      { title: "发送行程与配送日期", body: "PDF、Excel 或图片均可。只需指定“何时、从哪家酒店发出”。", alt: "BondEx 旅行社门户界面" },
+      { title: "从酒店取件", body: "运单与兑换券由 BondEx 开具，联系酒店与安排取件也由 BondEx 完成。", alt: "在酒店前台将行李交给快递员" },
+      { title: "运往下一座城市", body: "由佐川急便、大和运输等合作物流公司配送，可凭单号追踪。", alt: "行驶在富士山前高速公路上的配送卡车" },
+      { title: "在下一家酒店领取", body: "旅客轻装观光，只需在下一家酒店领取行李。", alt: "在下一家酒店领取行李的一家人" },
+      { title: "邮件通知配送完成", body: "取件完成与配送完成时，BondEx 都会邮件通知贵公司。", alt: "查看配送完成通知的工作人员" },
+    ],
+  },
+  segments: {
+    heading: ["从个人旅行到团体旅行，", "各类行程均可对应。"],
+    fit: { label: "FIT", title: "个人旅行 · 少人数", items: ["1 件起即可使用", "按预订逐一管理配送", "旅途中追加配送亦可商议"], alt: "轻装游览京都的情侣" },
+    group: { label: "GROUP / 10+ GUESTS", title: "10 人以上团体亦可对应", items: ["支持 10 人以上团体旅行", "30〜45 人规模的行李统一管理", "多件行李一并确认", "按件数提供批量折扣"], alt: "在酒店大堂集中受理团体行李" },
+    privacy: { title: "只需提供配送所需的信息。", body: "无需共享完整行程表。BondEx 仅获取并使用安排配送所需的最少信息。在线读取行程表时，也只提取与配送相关的信息。" },
+  },
+  manage: {
+    heading: ["所有配送，", "尽在一个界面。"],
+    body: "通过旅行社门户，可随时查看从开具到送达的状态。兑换券与运单也可在同一界面下载。",
+    alt: "BondEx 旅行社门户的预订列表",
+    features: ["配送状态", "运单 / 兑换券", "日期 / 件数", "FIT / 团体", "多件行李", "追踪", "账单信息"],
+  },
+  support: {
+    heading: ["我们从不假设", "一切都不会出问题。"],
+    alt: "监控配送状况的 BondEx 工作人员",
+    items: [
+      { label: "PICKUP ISSUE", title: "行李未被取件", body: "向物流公司确认，掌握情况后联系贵公司。" },
+      { label: "DELAY", title: "配送延误", body: "确认配送状态与原因，告知预计到达时间。" },
+      { label: "DAMAGE / LOSS", title: "丢失 · 破损 · 误送", body: "代为向物流公司确认、联络，并转办所需手续。" },
+      { label: "GUEST INQUIRY", title: "旅客咨询", body: "受理旅客咨询，并代为与物流公司确认、联络。" },
+    ],
+    monitoring: { label: "PROACTIVE MONITORING", title: "在收到咨询之前，先发现延误。", body: "若配送状态在预计时间前未更新，内部警报会自动触发。我们会先行确认原因，掌握情况后再向旅行社说明。" },
+    note: "运输合同由旅客／旅行社与物流公司之间成立。BondEx 代为确认、联络与转办。",
+  },
+  closingAlt: "交接挂有标签的行李箱",
   deliverables: {
     eyebrow: "交付物",
     heading: { first: "所需的每份文件，", second: "一并备妥。" },
@@ -1761,6 +2102,7 @@ const it: LandingMessages = {
     tryDemo: "Prova la demo",
     consult: "Inizia",
     agencyLogin: "Accesso agenzie",
+    signup: "Registra la tua agenzia",
     menuOpen: "Apri il menu",
     menuClose: "Chiudi il menu",
   },
@@ -1903,6 +2245,55 @@ const it: LandingMessages = {
       { title: "Condiviso via Drive", desc: "Notifica via e-mail / Slack" },
     ],
   },
+  challenge: {
+    heading: ["Viaggiare in Giappone è meraviglioso.", "Ma i bagagli pesano", "a ogni spostamento?"],
+    lead: "Dopo il check-out bisogna ancora raggiungere l'hotel successivo. Ore preziose di visite o di lavoro vanno perse per colpa dei bagagli.",
+    street: { alt: "Viaggiatori che trascinano le valigie per una via di Kyoto", items: ["Si rinuncia allo shopping perché c'è già troppo da portare", "Nei piccoli ristoranti non c'è posto per le valigie", "Passeggiate e foto rovinate dal dover sorvegliare i bagagli"] },
+    station: { alt: "Una famiglia che sale le scale della stazione con bagagli pesanti", items: ["Scale e cambi di treno diventano un peso", "Tempo perso a cercare armadietti o depositi", "Impossibile raggiungere liberamente l'hotel successivo"] },
+  },
+  concept: {
+    heading: ["Separare il viaggiatore", "dai bagagli, per un tratto."],
+    body: ["Il viaggiatore si gode il Giappone a mani libere.", "BondEx consegna i bagagli all'hotel successivo."],
+    alt: "Una famiglia a passeggio per Kyoto a mani libere",
+    travelerLabel: "Viaggiatore",
+    luggageLabel: "Bagagli",
+    enjoy: "Enjoy Japan",
+  },
+  story: {
+    heading: ["Registra l'itinerario.", "I bagagli vanno all'hotel successivo."],
+    steps: [
+      { title: "Invia l'itinerario e la data di spedizione", body: "Va bene un PDF, un Excel o un'immagine. Indica solo quando e da quale hotel spedire.", alt: "Portale agenzie BondEx" },
+      { title: "Ritiro in hotel", body: "BondEx emette etichetta e voucher, contatta l'hotel e organizza il ritiro.", alt: "Consegna dei bagagli al corriere alla reception dell'hotel" },
+      { title: "Spedizione verso la città successiva", body: "Corrieri partner come Sagawa Express e Yamato Transport trasportano i bagagli. Tracciabili con il numero.", alt: "Camion di consegna in autostrada con il monte Fuji" },
+      { title: "Ritiro all'hotel successivo", body: "I viaggiatori visitano a mani libere e ritirano semplicemente i bagagli all'hotel successivo.", alt: "Una famiglia che ritira i bagagli all'hotel successivo" },
+      { title: "Consegna confermata via e-mail", body: "BondEx avvisa la vostra azienda al ritiro e alla consegna dei bagagli.", alt: "Una collaboratrice che controlla un avviso di consegna" },
+    ],
+  },
+  segments: {
+    heading: ["Dal viaggiatore individuale ai gruppi,", "per ogni tipo di viaggio."],
+    fit: { label: "FIT", title: "Individuali e piccoli gruppi", items: ["Disponibile da una sola prenotazione", "Spedizioni gestite per prenotazione", "Spedizioni aggiuntive durante il viaggio su richiesta"], alt: "Una coppia in visita a Kyoto a mani libere" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Gruppi da 10 persone in su", items: ["Viaggi di gruppo da 10 persone in su", "Bagagli di 30–45 persone gestiti in modo centralizzato", "Più colli confermati insieme", "Sconti volume in base al numero di colli"], alt: "Bagagli di un gruppo raccolti nella hall di un hotel" },
+    privacy: { title: "Solo le informazioni necessarie alla consegna.", body: "Non serve condividere l'itinerario completo. BondEx raccoglie e utilizza solo il minimo necessario a organizzare la consegna. Quando gli itinerari vengono letti online, si estraggono solo i dati relativi alla spedizione." },
+  },
+  manage: {
+    heading: ["Tutte le spedizioni,", "in un'unica schermata."],
+    body: "Il portale agenzie mostra in ogni momento lo stato dall'emissione alla consegna. Voucher ed etichette si scaricano dalla stessa schermata.",
+    alt: "Elenco prenotazioni nel portale agenzie BondEx",
+    features: ["Stato spedizione", "Etichetta / voucher", "Date / colli", "FIT / Gruppo", "Più colli", "Tracciamento", "Fatturazione"],
+  },
+  support: {
+    heading: ["Non diamo mai per scontato", "che tutto vada liscio."],
+    alt: "Staff BondEx che monitora le spedizioni",
+    items: [
+      { label: "PICKUP ISSUE", title: "Bagagli non ritirati", body: "Verifichiamo con il corriere, chiariamo la situazione e vi informiamo." },
+      { label: "DELAY", title: "Consegna in ritardo", body: "Confermiamo stato e causa e comunichiamo l'arrivo previsto." },
+      { label: "DAMAGE / LOSS", title: "Smarrimento, danno o consegna errata", body: "Gestiamo la verifica con il corriere e inoltriamo le pratiche necessarie." },
+      { label: "GUEST INQUIRY", title: "Richieste dei viaggiatori", body: "Riceviamo la richiesta del viaggiatore e facciamo da tramite con il corriere." },
+    ],
+    monitoring: { label: "PROACTIVE MONITORING", title: "Ritardi rilevati prima che qualcuno chieda.", body: "Se lo stato di una spedizione non cambia entro l'ora prevista, scatta un avviso interno. Verifichiamo prima la causa e informiamo l'agenzia con i fatti alla mano." },
+    note: "Il contratto di trasporto è tra il viaggiatore o l'agenzia e il corriere. BondEx si occupa di verifica, comunicazione e intermediazione.",
+  },
+  closingAlt: "Consegna di una valigia etichettata",
   deliverables: {
     eyebrow: "Documenti",
     heading: { first: "Ogni documento necessario,", second: "preparato insieme." },

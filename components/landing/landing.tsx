@@ -1,79 +1,119 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
-import {
-  ArrowRight,
-  Clock,
-  Shield,
-  Handshake,
-  Lock,
-  Plus,
-  Minus,
-  Ban,
-  Menu,
-  X,
-  ClipboardList,
-  Hotel,
-  Luggage,
-  Receipt,
-} from "lucide-react"
+import { ArrowRight, Menu, X, Plus, Minus } from "lucide-react"
 import { messages, type Locale } from "@/lib/landing-messages"
 import { PRICING, formatYen, fill } from "@/lib/pricing"
 import { LangSwitcher } from "./lang-switcher"
 
-// ナビゲーションのハッシュリンクは両言語で共通 (#function 等)。ラベルのみ辞書化。
-// 3者の困りごとセクションのペルソナ用アイコン (細線・BondExレッド)。
-function PainIcon({ kind }: { kind: "agency" | "hotel" | "traveler" }) {
-  // サイト全体で使う lucide に統一 (手配=ClipboardList / ホテル=Hotel / 旅行者=Luggage)。
-  const Icon = kind === "agency" ? ClipboardList : kind === "hotel" ? Hotel : Luggage
-  return <Icon className="w-[22px] h-[22px]" strokeWidth={1.8} aria-hidden />
-}
+// ─────────────────────────────────────────────────────────────
+// BondEx ランディング (6言語共通)
+//
+// 2026-09-15 リニューアル: 営業資料「BondEx サービス概要」(docs/collateral/service-overview)
+// と同じ構成・同じイラストで組み直した。方針:
+//   - セクションごとに型を変える (画像+文章の2カラム / 実物スクリーンショット / 比較表)。
+//     「小見出し + 2行見出し + 白カード3枚」の繰り返しはしない。
+//   - アイコン (丸の中の線画) と装飾 SVG は使わない。イラストと実物だけ。
+//   - 画像は public/lp/*.webp (scripts/build-lp-images.mjs で生成)。角丸・影は付けない。
+//   - 英語の小見出し (THE CHALLENGE 等) は資料と共通のブランド要素なので全言語で英語固定。
+// ─────────────────────────────────────────────────────────────
 
 const NAV_HREFS = ["#function", "#difference", "#deliverables", "#trust", "#price", "#faq"] as const
 
 // 導入相談の遷移先。BondEx 専用のオンサイトフォーム (/contact) に統一。
-// (旧: JOJO 共通 Google フォーム。無関係な選択肢・内部向け説明文が公開されていたため差し替え)
 const CONTACT_FORM_URL = "/contact"
 
-// ─────────────────────────────────────────────────────────────
 // Design tokens (white-based palette, red brand accent)
-//   bg-base   #FFFFFF (white)
-//   bg-alt    #F7F8FA (cool off-white for alternating sections)
-//   text-1    #0F172A (slate-900, headings)
-//   text-2    #334155 (slate-700, body)
-//   text-3    #64748B (slate-500, muted)
-//   border    #E5E7EB (subtle)
-//   red       #C8102E (brand)
-//   red-hover #A00D25
-// ─────────────────────────────────────────────────────────────
+//   text-1 #0F172A / text-2 #334155 / text-3 #64748B / border #E5E7EB / red #C8102E / alt-bg #F7F8FA
 
-// Bilingual eyebrow (Latin tracked, localized label natural)
-function Eyebrow({ en, label, dark = false }: { en: string; label: string; dark?: boolean }) {
+// ── LP 画像の台帳 (幅・高さは CLS 防止のため必須。widths は srcset の候補) ──
+type LpImage = { w: number; h: number; widths: number[] }
+const LP_IMAGES = {
+  "hero-desktop": { w: 1672, h: 941, widths: [1672, 1200, 900] },
+  "hero-mobile": { w: 1122, h: 1402, widths: [1122, 750] },
+  "pain-street": { w: 1536, h: 1024, widths: [1536, 900, 600] },
+  "pain-station": { w: 1536, h: 1024, widths: [1536, 900, 600] },
+  "concept-family": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "portal-new": { w: 1060, h: 1325, widths: [1060, 750, 500] },
+  "flow-02-handover": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "flow-03-truck": { w: 1003, h: 1254, widths: [1003, 750, 500] },
+  "flow-04-receive": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "flow-05-mail": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "fit-couple": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "group-lobby": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "portal-list": { w: 2000, h: 391, widths: [2000, 1200, 800] },
+  "japan-map": { w: 1294, h: 918, widths: [1294, 800] },
+  "support-operator": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+  "closing-handshake": { w: 1122, h: 1402, widths: [1122, 750, 500] },
+} satisfies Record<string, LpImage>
+type LpImageName = keyof typeof LP_IMAGES
+
+function Pic({
+  name,
+  alt,
+  sizes,
+  className = "",
+  priority = false,
+}: {
+  name: LpImageName
+  alt: string
+  /** srcset 用の sizes。省略時は「PC は半幅・スマホは全幅」 */
+  sizes?: string
+  className?: string
+  priority?: boolean
+}) {
+  const img = LP_IMAGES[name]
+  const srcSet = img.widths
+    .map((w, i) => `/lp/${name}${i === 0 ? "" : `-${w}`}.webp ${w}w`)
+    .join(", ")
   return (
-    <p
-      className={`text-[12px] font-medium mb-5 ${dark ? "text-white/90" : "text-[#64748B]"}`}
-    >
-      <span className="tracking-[0.2em] uppercase">{en}</span>
-      <span className={dark ? "mx-2 text-white/40" : "mx-2 text-[#CBD5E1]"}>/</span>
-      <span className="tracking-normal">{label}</span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/lp/${name}.webp`}
+      srcSet={srcSet}
+      sizes={sizes ?? "(min-width: 768px) 50vw, 100vw"}
+      width={img.w}
+      height={img.h}
+      alt={alt}
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : undefined}
+      decoding="async"
+      className={`block w-full h-auto ${className}`}
+    />
+  )
+}
+
+// 英語の小見出し (資料と共通)。dark は赤背景セクション用。
+function Eyebrow({ en, dark = false }: { en: string; label?: string; dark?: boolean }) {
+  return (
+    <p className={`text-[11px] font-semibold tracking-[0.24em] uppercase mb-5 ${dark ? "text-white/85" : "text-[#C8102E]"}`}>
+      {en}
     </p>
   )
 }
 
-// H2 heading — mobile-safe: natural wrap, no forced atomic spans
-function SectionH2({
-  first,
-  second,
-  className = "",
-}: {
-  first: string
-  second?: string
-  className?: string
-}) {
+// 複数行の見出し。行ごとに改行する (資料の見出しと同じ)。
+function H2({ lines, className = "" }: { lines: string[]; className?: string }) {
   return (
     <h2
-      className={`text-3xl sm:text-[34px] md:text-[40px] lg:text-[44px] font-bold tracking-normal leading-[1.4] text-[#0F172A] ${className}`}
+      className={`text-[28px] sm:text-[34px] md:text-[40px] lg:text-[44px] font-bold tracking-normal leading-[1.35] text-[#0F172A] text-balance ${className}`}
+    >
+      {lines.map((line, i) => (
+        <span key={i}>
+          {i > 0 && <br />}
+          {line}
+        </span>
+      ))}
+    </h2>
+  )
+}
+
+// 既存辞書の TwoLine 見出し用 (md 以上でのみ改行)。
+function SectionH2({ first, second, className = "" }: { first: string; second?: string; className?: string }) {
+  return (
+    <h2
+      className={`text-[28px] sm:text-[34px] md:text-[40px] lg:text-[44px] font-bold tracking-normal leading-[1.35] text-[#0F172A] ${className}`}
     >
       {first}
       {second && (
@@ -86,299 +126,47 @@ function SectionH2({
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// HeroDemo — 「15秒でわかる BondEx」自動再生ループ
-// 動画ファイルの代わりにコードで描く軽量プロダクトデモ (4シーン × 約3.8秒)。
-// 通信量ゼロ・自動再生・ループ。シーンの絵は LP のラインアート言語に揃える。
-// 絵 (art) は言語非依存のイラストのため辞書に入れず、ここに保持する。
-// テキスト (step/title/body) は messages[lang].demo から取得。
-// ─────────────────────────────────────────────────────────────
-const DEMO_ART = [
-  <svg key="art-1" viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
-    <rect x="52" y="24" width="88" height="120" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <line x1="68" y1="52" x2="124" y2="52" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <line x1="68" y1="70" x2="112" y2="70" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <line x1="68" y1="88" x2="124" y2="88" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <line x1="68" y1="106" x2="100" y2="106" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <g className="bdx-slide">
-      <path d="M 156 84 L 216 84 M 202 70 L 216 84 L 202 98" stroke="#C8102E" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </g>
-    <rect x="232" y="56" width="56" height="56" rx="10" fill="#C8102E" />
-    <text x="260" y="94" textAnchor="middle" fontSize="30" fontWeight="bold" fill="#FFFFFF" fontStyle="italic">
-      B
-    </text>
-  </svg>,
-  <svg key="art-2" viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
-    <g className="bdx-rise">
-      <rect x="64" y="34" width="86" height="112" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-      <rect x="64" y="34" width="86" height="20" rx="6" fill="#C8102E" />
-      <text x="107" y="48" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#FFFFFF">VOUCHER</text>
-      <line x1="78" y1="72" x2="136" y2="72" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-      <line x1="78" y1="88" x2="124" y2="88" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-      <rect x="78" y="104" width="26" height="26" fill="none" stroke="#0F172A" strokeWidth="2" opacity="0.5" />
-      <rect x="84" y="110" width="6" height="6" fill="#0F172A" opacity="0.5" />
-      <rect x="94" y="120" width="6" height="6" fill="#0F172A" opacity="0.5" />
-    </g>
-    <g className="bdx-rise-delay">
-      <rect x="176" y="46" width="86" height="100" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-      <text x="219" y="66" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0F172A">送り状</text>
-      <line x1="190" y1="82" x2="248" y2="82" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-      <line x1="190" y1="98" x2="236" y2="98" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-      <g>
-        {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
-          <rect key={k} x={190 + k * 8} y={112} width={k % 3 === 0 ? 4 : 2.5} height="22" fill="#0F172A" opacity="0.7" />
-        ))}
-      </g>
-      <circle cx="256" cy="52" r="12" fill="#C8102E" />
-      <path d="M 250 52 L 254.5 56.5 L 262 48" stroke="#FFFFFF" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </g>
-  </svg>,
-  <svg key="art-3" viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
-    <rect x="24" y="52" width="56" height="76" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="38" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="56" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="38" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="56" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="44" y="106" width="16" height="22" fill="#0F172A" opacity="0.45" />
-    <text x="52" y="46" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#64748B">HOTEL A</text>
-    <rect x="240" y="52" width="56" height="76" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="254" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="272" y="66" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="254" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="272" y="84" width="10" height="10" fill="#0F172A" opacity="0.25" />
-    <rect x="260" y="106" width="16" height="22" fill="#0F172A" opacity="0.45" />
-    <text x="268" y="46" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#64748B">HOTEL B</text>
-    <line x1="88" y1="128" x2="232" y2="128" stroke="#CBD5E1" strokeWidth="2" strokeDasharray="2 8" strokeLinecap="round" />
-    <g className="bdx-truck">
-      <rect x="0" y="96" width="34" height="22" rx="3" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" />
-      <path d="M 34 104 h 10 l 7 8 v 6 h -17 z" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx="10" cy="120" r="5" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" />
-      <circle cx="42" cy="120" r="5" fill="#FFFFFF" stroke="#C8102E" strokeWidth="2.5" />
-      <rect x="8" y="102" width="12" height="10" rx="1.5" fill="#C8102E" />
-    </g>
-  </svg>,
-  <svg key="art-4" viewBox="0 0 320 168" className="w-full h-full" aria-hidden="true">
-    <rect x="70" y="20" width="76" height="132" rx="12" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="84" y="40" width="48" height="48" fill="none" stroke="#0F172A" strokeWidth="2" opacity="0.6" />
-    <rect x="92" y="48" width="10" height="10" fill="#0F172A" opacity="0.6" />
-    <rect x="114" y="48" width="10" height="10" fill="#0F172A" opacity="0.6" />
-    <rect x="92" y="70" width="10" height="10" fill="#0F172A" opacity="0.6" />
-    <rect x="110" y="66" width="6" height="6" fill="#0F172A" opacity="0.6" />
-    <g className="bdx-pulse">
-      <circle cx="108" cy="112" r="7" fill="#C8102E" />
-    </g>
-    <line x1="90" y1="112" x2="126" y2="112" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
-    <text x="108" y="136" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#64748B">配送中</text>
-    <rect x="180" y="36" width="86" height="100" rx="6" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <text x="223" y="58" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#0F172A">月次請求書</text>
-    <line x1="194" y1="74" x2="252" y2="74" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <line x1="194" y1="90" x2="240" y2="90" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <line x1="194" y1="106" x2="252" y2="106" stroke="#0F172A" strokeWidth="2.5" opacity="0.3" strokeLinecap="round" />
-    <circle cx="252" cy="120" r="11" fill="#C8102E" />
-    <text x="252" y="124.5" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#FFFFFF">¥</text>
-  </svg>,
-]
-
-// Value-in-3 のピクトグラム (言語非依存)。
-const VALUE_ICONS = [
-  <svg key="v-1" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
-    <rect x="18" y="12" width="52" height="72" rx="4" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" />
-    <line x1="28" y1="30" x2="60" y2="30" stroke="#0F172A" strokeWidth="2" opacity="0.3" strokeLinecap="round" />
-    <line x1="28" y1="42" x2="52" y2="42" stroke="#0F172A" strokeWidth="2" opacity="0.3" strokeLinecap="round" />
-    <line x1="28" y1="54" x2="60" y2="54" stroke="#0F172A" strokeWidth="2" opacity="0.3" strokeLinecap="round" />
-    <line x1="28" y1="66" x2="46" y2="66" stroke="#0F172A" strokeWidth="2" opacity="0.3" strokeLinecap="round" />
-    <path d="M 70 48 L 86 48 M 80 42 L 86 48 L 80 54" stroke="#C8102E" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>,
-  <svg key="v-2" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
-    <rect x="22" y="26" width="42" height="56" rx="3" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" opacity="0.6" />
-    <rect x="30" y="18" width="42" height="56" rx="3" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" opacity="0.8" />
-    <rect x="38" y="10" width="42" height="56" rx="3" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <line x1="46" y1="24" x2="72" y2="24" stroke="#0F172A" strokeWidth="2" opacity="0.4" strokeLinecap="round" />
-    <line x1="46" y1="34" x2="66" y2="34" stroke="#0F172A" strokeWidth="2" opacity="0.4" strokeLinecap="round" />
-    <line x1="46" y1="44" x2="72" y2="44" stroke="#0F172A" strokeWidth="2" opacity="0.4" strokeLinecap="round" />
-    <circle cx="72" cy="58" r="6" fill="#C8102E" />
-    <path d="M 69 58 L 71 60 L 75 56" stroke="#FFFFFF" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>,
-  <svg key="v-3" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
-    <rect x="16" y="20" width="64" height="60" rx="4" fill="#F7F8FA" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="16" y="20" width="64" height="14" fill="#0F172A" />
-    <line x1="30" y1="12" x2="30" y2="26" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
-    <line x1="66" y1="12" x2="66" y2="26" stroke="#0F172A" strokeWidth="2.5" strokeLinecap="round" />
-    <circle cx="30" cy="46" r="2" fill="#64748B" />
-    <circle cx="42" cy="46" r="2" fill="#64748B" />
-    <circle cx="54" cy="46" r="2" fill="#64748B" />
-    <circle cx="66" cy="46" r="2" fill="#64748B" />
-    <circle cx="30" cy="58" r="2" fill="#64748B" />
-    <circle cx="42" cy="58" r="2" fill="#64748B" />
-    <circle cx="54" cy="58" r="2" fill="#64748B" />
-    <circle cx="66" cy="58" r="4" fill="#C8102E" />
-    <text x="66" y="61.5" textAnchor="middle" fontSize="6" fontWeight="bold" fill="#FFFFFF">
-      ¥
-    </text>
-    <circle cx="30" cy="70" r="2" fill="#64748B" />
-    <circle cx="42" cy="70" r="2" fill="#64748B" />
-  </svg>,
-]
-
-// Flow 5 ステップの円形アイコン (言語非依存)。
-const FLOW_ICONS = [
-  <svg key="f-1" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-    <circle cx="60" cy="60" r="52" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
-    <rect x="34" y="30" width="42" height="54" rx="3" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="40" y="38" width="18" height="4" rx="1" fill="#0F172A" />
-    <line x1="40" y1="50" x2="70" y2="50" stroke="#0F172A" strokeWidth="1.8" opacity="0.3" strokeLinecap="round" />
-    <line x1="40" y1="58" x2="64" y2="58" stroke="#0F172A" strokeWidth="1.8" opacity="0.3" strokeLinecap="round" />
-    <line x1="40" y1="66" x2="70" y2="66" stroke="#0F172A" strokeWidth="1.8" opacity="0.3" strokeLinecap="round" />
-    <line x1="40" y1="74" x2="58" y2="74" stroke="#0F172A" strokeWidth="1.8" opacity="0.3" strokeLinecap="round" />
-    <path d="M 78 60 L 92 54 L 84 62 L 92 54 L 82 68 Z" fill="#C8102E" stroke="#C8102E" strokeWidth="1.5" strokeLinejoin="round" />
-  </svg>,
-  <svg key="f-2" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-    <circle cx="60" cy="60" r="52" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
-    <rect x="28" y="32" width="42" height="54" rx="3" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="34" y="42" width="24" height="4" rx="1" fill="#C8102E" opacity="0.85" />
-    <rect x="34" y="52" width="30" height="4" rx="1" fill="#C8102E" opacity="0.85" />
-    <rect x="34" y="62" width="22" height="4" rx="1" fill="#0F172A" opacity="0.3" />
-    <rect x="34" y="72" width="28" height="4" rx="1" fill="#0F172A" opacity="0.3" />
-    <circle cx="76" cy="62" r="20" fill="#FFFFFF" fillOpacity="0.92" stroke="#0F172A" strokeWidth="2.5" />
-    <line x1="90" y1="76" x2="98" y2="86" stroke="#0F172A" strokeWidth="3.5" strokeLinecap="round" />
-  </svg>,
-  <svg key="f-3" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-    <circle cx="60" cy="60" r="52" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
-    <path
-      d="M 28 40 L 82 40 L 82 54 Q 76 58 82 62 L 82 84 L 28 84 L 28 62 Q 34 58 28 54 Z"
-      fill="#FFFFFF"
-      stroke="#0F172A"
-      strokeWidth="2.5"
-      strokeLinejoin="round"
-    />
-    <line x1="28" y1="58" x2="82" y2="58" stroke="#0F172A" strokeWidth="1.2" strokeDasharray="2 2" opacity="0.5" />
-    <rect x="34" y="46" width="20" height="4" rx="1" fill="#0F172A" />
-    <rect x="34" y="68" width="30" height="3" rx="0.5" fill="#0F172A" opacity="0.3" />
-    <rect x="34" y="76" width="24" height="3" rx="0.5" fill="#0F172A" opacity="0.3" />
-    {/* QR mini */}
-    <rect x="66" y="66" width="14" height="14" fill="#FFFFFF" stroke="#0F172A" strokeWidth="1.2" />
-    <rect x="68" y="68" width="3" height="3" fill="#0F172A" />
-    <rect x="75" y="68" width="3" height="3" fill="#0F172A" />
-    <rect x="68" y="75" width="3" height="3" fill="#0F172A" />
-    <rect x="72" y="72" width="2" height="2" fill="#0F172A" />
-    <rect x="76" y="76" width="2" height="2" fill="#0F172A" />
-    {/* Seal */}
-    <circle cx="90" cy="46" r="9" fill="#C8102E" />
-    <path d="M 86 46 L 89 49 L 94 43" stroke="#FFFFFF" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>,
-  <svg key="f-4" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-    <defs>
-      <pattern id="flow-barcode" x="0" y="0" width="4" height="14" patternUnits="userSpaceOnUse">
-        <rect x="0" y="0" width="1" height="14" fill="#0F172A" />
-        <rect x="1.5" y="0" width="1.5" height="14" fill="#0F172A" />
-      </pattern>
-    </defs>
-    <circle cx="60" cy="60" r="52" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
-    <rect x="28" y="34" width="64" height="52" rx="3" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-    <rect x="28" y="34" width="64" height="12" fill="#0F172A" />
-    <rect x="34" y="52" width="24" height="3" rx="0.5" fill="#0F172A" opacity="0.3" />
-    <rect x="34" y="60" width="20" height="3" rx="0.5" fill="#0F172A" opacity="0.3" />
-    <path d="M 62 55 L 68 55 M 66 53 L 68 55 L 66 57" stroke="#C8102E" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    <rect x="70" y="52" width="18" height="3" rx="0.5" fill="#0F172A" opacity="0.3" />
-    <rect x="70" y="60" width="16" height="3" rx="0.5" fill="#0F172A" opacity="0.3" />
-    <rect x="34" y="70" width="54" height="12" fill="url(#flow-barcode)" />
-  </svg>,
-  <svg key="f-5" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-    <circle cx="60" cy="60" r="52" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
-    <path
-      d="M 28 60 Q 26 42 44 44 Q 50 30 66 36 Q 82 30 86 48 Q 100 48 96 62 Q 100 74 84 74 L 44 74 Q 28 74 28 60 Z"
-      fill="#F7F8FA"
-      stroke="#0F172A"
-      strokeWidth="2.5"
-      strokeLinejoin="round"
-      opacity="0.65"
-    />
-    <path
-      d="M 32 76 Q 32 70 38 70 L 52 70 L 58 76 L 82 76 Q 88 76 88 82 L 88 96 Q 88 102 82 102 L 38 102 Q 32 102 32 96 Z"
-      fill="#FFFFFF"
-      stroke="#0F172A"
-      strokeWidth="2.5"
-      strokeLinejoin="round"
-    />
-    <rect x="40" y="82" width="40" height="3" rx="1" fill="#0F172A" opacity="0.4" />
-    <rect x="40" y="90" width="34" height="3" rx="1" fill="#0F172A" opacity="0.4" />
-    <circle cx="92" cy="76" r="10" fill="#C8102E" />
-    <path
-      d="M 88 74 Q 88 69 92 69 Q 96 69 96 74 L 96 78 Q 97 80 94 80 L 90 80 Q 87 80 88 78 Z M 90 82 Q 90 84 92 84 Q 94 84 94 82"
-      fill="#FFFFFF"
-    />
-  </svg>,
-]
-
-const DEMO_INTERVAL_MS = 3800 // 4シーン × 3.8秒 ≒ 15秒ループ
-
-function HeroDemo({ lang }: { lang: Locale }) {
-  const t = messages[lang].demo
-  const [scene, setScene] = useState(0)
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setScene((v) => (v + 1) % DEMO_ART.length)
-    }, DEMO_INTERVAL_MS)
-    return () => window.clearInterval(id)
-  }, [])
-  const s = t.scenes[scene]
-
+// 箇条書き (資料と同じ「・」始まりの静かなリスト)
+function Dots({ items, className = "" }: { items: string[]; className?: string }) {
   return (
-    <div className="rounded-2xl border border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
-      <style>{`
-        /* 注: すべて transform のみで動かす (opacity を 0 から始めない)。
-           CSS アニメーションが無効・凍結された環境でも内容が読めるようにするため。 */
-        @keyframes bdx-truck { 0% { transform: translateX(78px); } 100% { transform: translateX(196px); } }
-        .bdx-truck { animation: bdx-truck ${DEMO_INTERVAL_MS}ms linear infinite; }
-        @keyframes bdx-slide { 0% { transform: translateX(-14px); } 30% { transform: translateX(0); } 100% { transform: translateX(0); } }
-        .bdx-slide { animation: bdx-slide 1.4s ease-out both; }
-        @keyframes bdx-rise { 0% { transform: translateY(8px); } 100% { transform: translateY(0); } }
-        .bdx-rise { animation: bdx-rise 0.6s ease-out both; }
-        .bdx-rise-delay { animation: bdx-rise 0.6s ease-out 0.3s both; }
-        @keyframes bdx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-        .bdx-pulse { animation: bdx-pulse 1.2s ease-in-out infinite; }
-        @keyframes bdx-progress { from { width: 0%; } to { width: 100%; } }
-        .bdx-progress { animation: bdx-progress ${DEMO_INTERVAL_MS}ms linear both; }
-        @media (prefers-reduced-motion: reduce) {
-          .bdx-truck, .bdx-slide, .bdx-rise, .bdx-rise-delay, .bdx-pulse, .bdx-progress { animation: none; }
-        }
-      `}</style>
+    <ul className={`space-y-2 ${className}`}>
+      {items.map((it) => (
+        <li key={it} className="flex gap-2 text-[14px] leading-[1.8] text-[#334155]">
+          <span className="text-[#94A3B8] select-none" aria-hidden>
+            ·
+          </span>
+          <span>{it}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
-      <div className="flex items-center justify-between px-5 pt-4">
-        <p className="text-[12px] font-bold tracking-[0.12em] text-[#0F172A]">
-          {t.header.a}
-          <span className="text-[#C8102E]">{t.header.brand}</span>
-          {t.header.b}
-        </p>
-        <div className="flex items-center gap-1.5">
-          {t.scenes.map((_, i) => (
-            <button
-              key={i}
-              aria-label={`${t.sceneAria} ${i + 1}`}
-              onClick={() => setScene(i)}
-              className={`h-1.5 rounded-full transition-all ${
-                i === scene ? "w-6 bg-[#C8102E]" : "w-1.5 bg-[#E5E7EB]"
-              }`}
-            />
-          ))}
-        </div>
+
+// 中間 CTA 帯。導入相談 (主) と代理店登録 (副) を、流れ・サポートの各セクション末尾に置く。
+function CtaBand({ heading, note, consult, signup, contactHref }: { heading: string; note: string; consult: string; signup: string; contactHref: string }) {
+  return (
+    <div className="mt-16 md:mt-20 border-t border-[#0F172A]/15 pt-10 md:pt-12 flex flex-col md:flex-row md:items-center md:justify-between gap-6 md:gap-10">
+      <div>
+        <p className="text-[20px] md:text-[24px] font-bold text-[#0F172A] leading-[1.5]">{heading}</p>
+        <p className="mt-1.5 text-[13px] text-[#64748B]">{note}</p>
       </div>
-
-      {/* シーン描画エリア */}
-      <div key={scene} className="relative h-36 sm:h-56 mx-5 mt-3 rounded-xl bg-[#F7F8FA]">
-        {DEMO_ART[scene]}
-      </div>
-
-      {/* キャプション */}
-      <div key={`cap-${scene}`} className="px-5 pt-4 pb-3 bdx-rise">
-        <p className="text-[11px] font-mono tracking-widest text-[#C8102E] font-bold">{s.step}</p>
-        <p className="text-[16px] font-bold text-[#0F172A] mt-1">{s.title}</p>
-        <p className="text-[13px] text-[#334155] mt-0.5 leading-relaxed">{s.body}</p>
-      </div>
-
-      {/* 進行バー */}
-      <div className="h-1 bg-[#F1F5F9]">
-        <div key={`bar-${scene}`} className="bdx-progress h-full bg-[#C8102E]/70" />
+      <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+        <a
+          href={contactHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 px-7 h-[50px] rounded-md bg-[#C8102E] text-white text-[15px] font-bold hover:bg-[#A00D25]"
+        >
+          {consult}
+          <ArrowRight className="w-4 h-4" strokeWidth={2} />
+        </a>
+        <Link
+          href="/agency/signup"
+          className="inline-flex items-center justify-center px-7 h-[50px] rounded-md border-2 border-[#0F172A] bg-white text-[15px] font-bold text-[#0F172A] hover:bg-[#0F172A] hover:text-white"
+        >
+          {signup}
+        </Link>
       </div>
     </div>
   )
@@ -388,7 +176,6 @@ export function Landing({ lang }: { lang: Locale }) {
   const t = messages[lang]
   // 導入ご相談は選択中の言語を引き継ぐ（/contact 側で ?lang を読んで出し分け）
   const contactHref = lang === "ja" ? CONTACT_FORM_URL : `${CONTACT_FORM_URL}?lang=${lang}`
-  // デスクトップの上部ナビは 5 本に絞ってヘッダーを軽く保つ (安心の理由はモバイルメニューへ)。
   const navItems = [
     { href: NAV_HREFS[0], label: t.nav.flow },
     { href: NAV_HREFS[1], label: t.nav.difference },
@@ -396,12 +183,14 @@ export function Landing({ lang }: { lang: Locale }) {
     { href: NAV_HREFS[4], label: t.nav.price },
     { href: NAV_HREFS[5], label: t.nav.faq },
   ]
-  // モバイル/タブレットメニューにだけ載せる補助リンク (デスクトップ上部からは省く)。
   const mobileExtraNav = [
     { href: NAV_HREFS[3], label: t.nav.trust },
     { href: "/demo", label: t.nav.tryDemo },
   ]
   const [menuOpen, setMenuOpen] = useState(false)
+
+  const storyImages: LpImageName[] = ["portal-new", "flow-02-handover", "flow-03-truck", "flow-04-receive", "flow-05-mail"]
+
   return (
     <main className="min-h-screen bg-white text-[#0F172A]">
       {/* ═══════════════ Header ═══════════════ */}
@@ -411,31 +200,32 @@ export function Landing({ lang }: { lang: Locale }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/bondex-logo.png" alt="BondEx" className="h-10 w-auto object-contain" />
           </Link>
-          {/* セクションナビ (デスクトップ ≥lg)。タブレット以下はハンバーガーへ集約。 */}
           <nav className="hidden lg:flex items-center gap-6">
             {navItems.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
-                className="whitespace-nowrap text-[14px] font-medium tracking-wide text-[#1F2937] hover:text-[#C8102E] underline-offset-8 decoration-transparent hover:decoration-[#C8102E]/60"
+                className="whitespace-nowrap text-[14px] font-medium tracking-wide text-[#1F2937] hover:text-[#C8102E]"
               >
                 {item.label}
               </a>
             ))}
           </nav>
           <div className="flex items-center gap-2.5 lg:gap-3">
-            {/* 代理店ログイン (既存顧客導線) — デスクトップのみ。デモ等はモバイルメニュー/本文へ */}
             <Link
               href="/agency/login"
               className="hidden lg:inline text-[13px] font-medium text-[#64748B] hover:text-[#0F172A] whitespace-nowrap"
             >
               {t.nav.agencyLogin}
             </Link>
-            {/* 言語切替 (コンパクト・デスクトップ) */}
             <LangSwitcher current={lang} align="right" className="hidden lg:block" />
-            {/* 区切り — ユーティリティ群と主 CTA を視覚的に分離 */}
             <span className="hidden lg:block h-5 w-px bg-[#E5E7EB]" aria-hidden="true" />
-            {/* 主 CTA (常時・ひとつだけ強調) */}
+            <Link
+              href="/agency/signup"
+              className="hidden lg:inline-flex items-center whitespace-nowrap text-[13px] font-semibold px-4 py-2 rounded-md border border-[#0F172A]/30 text-[#0F172A] hover:border-[#0F172A]"
+            >
+              {t.nav.signup}
+            </Link>
             <a
               href={contactHref}
               target="_blank"
@@ -444,7 +234,6 @@ export function Landing({ lang }: { lang: Locale }) {
             >
               {t.nav.consult}
             </a>
-            {/* ハンバーガー (タブレット以下) */}
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -457,13 +246,8 @@ export function Landing({ lang }: { lang: Locale }) {
             </button>
           </div>
         </div>
-
-        {/* モバイル/タブレットメニュー (ドロップダウン) */}
         {menuOpen && (
-          <nav
-            id="mobile-menu"
-            className="lg:hidden border-t border-[#E5E7EB] bg-white px-6 py-4"
-          >
+          <nav id="mobile-menu" className="lg:hidden border-t border-[#E5E7EB] bg-white px-6 py-4">
             <ul className="flex flex-col divide-y divide-[#F1F5F9]">
               {[...navItems, ...mobileExtraNav].map((item) => (
                 <li key={item.href}>
@@ -476,6 +260,15 @@ export function Landing({ lang }: { lang: Locale }) {
                   </a>
                 </li>
               ))}
+              <li>
+                <Link
+                  href="/agency/signup"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-3 text-[15px] font-bold text-[#C8102E]"
+                >
+                  {t.nav.signup}
+                </Link>
+              </li>
               <li>
                 <Link
                   href="/agency/login"
@@ -493,682 +286,465 @@ export function Landing({ lang }: { lang: Locale }) {
         )}
       </header>
 
-      {/* ═══════════════ Hero (mobile) — メッセージ先行 ═══════════════
-          スマホでは写真より先に「これは何か・何が楽になるか・次の一歩」を
-          1 スクロールで伝える。写真は下部に帯として残す。 */}
-      <section className="md:hidden px-5 pt-10 pb-4">
-        <p className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wide text-[#C8102E] border border-[#C8102E]/30 bg-[#C8102E]/5 rounded-full px-3 py-1.5 mb-5">
-          {t.hero.badgeMobile}
-        </p>
-        {/* モバイルの見出し。DOM 内 h1 は desktop 側のみ (重複回避) のため、
-            ここは視覚上の見出しとして p で表現する */}
-        <p className="text-[30px] font-bold leading-[1.4] text-[#0F172A] mb-4">
-          {t.hero.titleMobile.map((line, i) => (
-            <span key={i}>
-              {i > 0 && <br />}
-              {line}
-            </span>
-          ))}
-        </p>
-        <p className="text-[14px] text-[#334155] leading-[1.9] mb-5">
-          {t.hero.subtitleMobile}
-        </p>
-        <ul className="space-y-2.5 mb-7">
-          {t.hero.bullets.map((b) => (
-            <li key={b} className="flex items-start gap-2.5 text-[14px] font-medium text-[#0F172A]">
-              <svg viewBox="0 0 20 20" className="w-5 h-5 shrink-0 mt-[1px]" aria-hidden="true">
-                <circle cx="10" cy="10" r="9" fill="none" stroke="#C8102E" strokeWidth="1.8" />
-                <path d="M 6 10.5 L 8.8 13.2 L 14 7.5" fill="none" stroke="#C8102E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {b}
-            </li>
-          ))}
-        </ul>
-        <a
-          href={contactHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full h-[52px] rounded-xl bg-[#C8102E] text-white text-[15px] font-bold hover:bg-[#A00D25]"
-        >
-          {t.hero.ctaConsult}
-          <ArrowRight className="w-4 h-4" strokeWidth={2} />
-        </a>
-        <a
-          href="/samples/bondex-sample-voucher.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2.5 flex items-center justify-center gap-2 w-full h-[48px] rounded-xl border border-[#CBD5E1] bg-white text-[14px] font-bold text-[#0F172A] hover:bg-[#F7F8FA]"
-        >
-          {t.hero.ctaSample}
-        </a>
-        <a
-          href="/demo"
-          className="mt-3 flex items-center justify-center gap-1.5 text-[13px] font-medium text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1] hover:decoration-[#C8102E]"
-        >
-          {t.hero.heroTryDemo}
-          <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-        </a>
-        <div className="flex items-center justify-between mt-3 mb-5">
-          <p className="text-[11px] text-[#64748B]">{t.hero.replyNote}</p>
-          <a href="#price" className="text-[12px] font-medium text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1]">
-            {t.hero.seePricing}
-          </a>
+      {/* ═══════════════ Hero ═══════════════
+          資料の表紙と同じ「空の上に見出し」。PC は横長イラストに左からの白フェード、
+          スマホは縦長イラストに上からの白フェードを重ねて、文字は常に白地の上に載せる。
+          文字色は本文も #0F172A (濃紺) に固定し、グレーは使わない。 */}
+      <section className="relative overflow-hidden border-b border-[#E5E7EB] bg-[#EAF2FB]">
+        {/* PC: 横長イラストを全面に敷く + 左からの白フェード */}
+        <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
+          <Pic name="hero-desktop" alt="" priority sizes="100vw" className="h-full w-full object-cover object-[72%_100%]" />
+          <div className="absolute inset-y-0 left-0 w-[68%] bg-gradient-to-r from-white from-30% via-white/80 via-70% to-transparent" />
         </div>
-        {/* 数字で即判断できる安心材料 (CV 導線) */}
-        <div className="grid grid-cols-2 gap-2 mb-6">
-          {t.hero.stats.map((stat) => (
-            <div key={stat.k} className="rounded-xl border border-[#E5E7EB] bg-[#F7F8FA] px-3.5 py-2.5">
-              <p className="text-[10px] text-[#64748B]">{stat.k}</p>
-              <p className="text-[15px] font-bold text-[#0F172A]">{stat.v}</p>
-            </div>
-          ))}
+        {/* スマホ・タブレット: 縦長イラストを全面に敷き、白を重ねて薄くした上に文字を載せる (谷口さん指示 2026-09-15) */}
+        <div className="absolute inset-0 lg:hidden" aria-hidden="true">
+          <Pic name="hero-mobile" alt="" priority sizes="100vw" className="h-full w-full object-cover object-[50%_35%]" />
+          <div className="absolute inset-0 bg-white/72" />
         </div>
-        {/* サービス理解の順番: メッセージ → 仕組みデモ → ゲスト体験の写真 */}
-        <div className="mb-6">
-          <HeroDemo lang={lang} />
-        </div>
-        {/* 写真は「ゲスト体験」を語るビジュアルとしてキャプション付きで使う */}
-        <div
-          className="relative h-52 rounded-2xl overflow-hidden bg-cover bg-center"
-          style={{ backgroundImage: "url('/hero-family.webp')" }}
-          role="img"
-          aria-label={t.hero.photoAlt}
-        >
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-          <div className="absolute bottom-4 left-4 right-4">
-            <p className="text-white text-[16px] font-bold leading-snug drop-shadow">
-              {t.hero.photoTitle}
-            </p>
-            <p className="text-white/85 text-[11.5px] mt-1 drop-shadow">
-              {t.hero.photoBody}
-            </p>
-          </div>
-        </div>
-      </section>
 
-      {/* ═══════════════ Hero (desktop) — Full-bleed family image ═══════════════ */}
-      <section
-        className="relative w-full min-h-[calc(100vh-4rem)] overflow-hidden bg-cover bg-center bg-no-repeat bg-[#0F172A] hidden md:flex items-end"
-        style={{
-          // 背景色 #0F172A を土台に敷く: 画像読込中/失敗時も暗背景となり白文字が消えない。
-          // グラデも全体に基礎的な暗幕を足し、見出し位置(中〜下部)のコントラストを確保。
-          backgroundImage:
-            "linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.18) 34%, rgba(0,0,0,0.48) 66%, rgba(0,0,0,0.85) 100%), url('/hero-family.webp')",
-        }}
-      >
-        <div className="w-full max-w-6xl mx-auto px-6 pt-24 md:pt-28 pb-16 md:pb-40 text-white">
-          <p className="text-[12px] font-medium tracking-[0.15em] text-white/90 mb-5 drop-shadow">
-            {t.hero.badgeDesktop}
-          </p>
-          <h1 className="text-3xl sm:text-4xl md:text-[42px] lg:text-[50px] font-bold leading-[1.18] tracking-normal text-balance mb-8 drop-shadow-lg max-w-4xl">
-            {t.hero.titleDesktop.first}
-            <br className="hidden md:inline" />
-            {t.hero.titleDesktop.second}
-          </h1>
-          <p className="text-base md:text-[17px] font-medium text-white/95 max-w-2xl leading-[1.8] mb-10 drop-shadow">
-            {t.hero.subtitleDesktop.first}
-            <br className="hidden md:inline" />
-            {t.hero.subtitleDesktop.second}
-          </p>
-          <div className="flex flex-col items-start gap-3">
-            <div className="flex items-center gap-3">
+        <div className="relative max-w-6xl mx-auto px-5 sm:px-6 pt-12 pb-14 md:pt-20 md:pb-20 lg:pt-28 lg:pb-36">
+          <div className="max-w-xl md:max-w-2xl">
+            <p className="text-[11px] md:text-[12px] font-bold tracking-[0.18em] text-[#C8102E] mb-5">
+              {t.hero.badgeDesktop}
+            </p>
+            <h1 className="text-[30px] sm:text-[36px] md:text-[42px] lg:text-[50px] font-bold leading-[1.28] tracking-normal text-[#0F172A] mb-6">
+              <span className="md:hidden">
+                {t.hero.titleMobile.map((line, i) => (
+                  <span key={i}>
+                    {i > 0 && <br />}
+                    {line}
+                  </span>
+                ))}
+              </span>
+              <span className="hidden md:inline">
+                {t.hero.titleDesktop.first}
+                <br />
+                {t.hero.titleDesktop.second}
+              </span>
+            </h1>
+            <p className="text-[15px] md:text-[17px] font-medium text-[#0F172A] leading-[1.9] mb-8 max-w-[34em]">
+              <span className="md:hidden">{t.hero.subtitleMobile}</span>
+              <span className="hidden md:inline">
+                {t.hero.subtitleDesktop.first}
+                {t.hero.subtitleDesktop.second}
+              </span>
+            </p>
+            {/* CTA: 導入相談 (主) / 代理店登録 (副) / サンプル PDF (テキストリンク) */}
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
               <a
                 href={contactHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-7 py-4 rounded-md bg-[#C8102E] text-white text-[15px] font-medium hover:bg-[#A00D25]"
+                className="inline-flex items-center justify-center gap-2 px-7 h-[52px] rounded-md bg-[#C8102E] text-white text-[15px] font-bold hover:bg-[#A00D25]"
               >
                 {t.hero.ctaConsult}
-                <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
+                <ArrowRight className="w-4 h-4" strokeWidth={2} />
               </a>
+              <Link
+                href="/agency/signup"
+                className="inline-flex items-center justify-center gap-2 px-7 h-[52px] rounded-md border-2 border-[#0F172A] bg-white text-[15px] font-bold text-[#0F172A] hover:bg-[#0F172A] hover:text-white"
+              >
+                {t.nav.signup}
+              </Link>
               <a
                 href="/samples/bondex-sample-voucher.pdf"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-7 py-4 rounded-md border border-white/60 bg-white/10 backdrop-blur text-white text-[15px] font-medium hover:bg-white/20"
+                className="inline-flex items-center justify-center gap-1.5 h-[52px] sm:px-2 text-[14px] font-bold text-[#0F172A] underline underline-offset-4 decoration-[#0F172A]/40 hover:decoration-[#C8102E] hover:text-[#C8102E]"
               >
                 {t.hero.ctaSample}
-              </a>
-              <a
-                href="/demo"
-                className="inline-flex items-center gap-1.5 text-[14px] font-medium text-white/90 underline underline-offset-4 decoration-white/40 hover:text-white hover:decoration-white/70"
-              >
-                {t.hero.heroTryDemo}
-                <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
               </a>
             </div>
-            <p className="text-[12px] text-white/85 drop-shadow ml-1">
-              {t.hero.replyNote}
-            </p>
-          </div>
-        </div>
-      </section>
+            <p className="mt-3 text-[12.5px] font-medium text-[#0F172A]/80">{t.hero.replyNote}</p>
 
-      {/* ═══════════════ すぐにわかる BondEx の仕組み (自動再生デモ) ═══════════════
-          モバイルはヒーロー内に表示済みのため md 以上のみ。
-          ヒーロー写真の下端に重ねてファーストビューから見えるようにする。 */}
-      <section className="hidden md:block relative z-10 max-w-6xl mx-auto px-6 -mt-28">
-        <div className="max-w-2xl mx-auto">
-          <HeroDemo lang={lang} />
-        </div>
-      </section>
-
-      {/* ═══════════════ BondEx の哲学 (一元管理と異常検知) ═══════════════ */}
-      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
-        <div className="max-w-3xl mx-auto">
-          <div className="relative rounded-2xl border border-[#E5E7EB] bg-white p-7 sm:p-10 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <span className="absolute left-0 top-7 bottom-7 w-1 rounded-full bg-[#C8102E]" aria-hidden />
-            <p className="pl-5 text-[11px] font-semibold tracking-[0.2em] uppercase text-[#C8102E] mb-3">
-              {t.philosophy.eyebrow}
-            </p>
-            <p className="pl-5 text-[18px] sm:text-[21px] md:text-[25px] font-bold leading-[1.75] tracking-[0.01em] text-[#0F172A] text-balance">
-              {t.philosophy.body}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════ 3者の困りごと → BondEx が解決 ═══════════════ */}
-      {t.pains && (
-        <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
-          <p className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.22em] uppercase text-[#C8102E] mb-3.5">
-            <span className="w-[22px] h-0.5 rounded-full bg-[#C8102E]" aria-hidden />
-            {t.pains.eyebrow}
-          </p>
-          <h2 className="text-[23px] md:text-[32px] font-extrabold leading-[1.35] tracking-[0.01em] text-[#0F172A] text-balance mb-3">
-            {t.pains.title.pre}
-            <span className="text-[#C8102E]">{t.pains.title.hl}</span>
-            {t.pains.title.post}
-          </h2>
-          <p className="text-[15px] text-[#47536A] max-w-3xl leading-relaxed mb-7">{t.pains.lead}</p>
-
-          {/* 3枚の上に共通で1回だけ出す問いかけ (各カードの重複見出しを廃止) */}
-          <div className="flex items-center gap-3 mb-5">
-            <span className="inline-flex items-center gap-2 text-[13px] md:text-[15px] font-extrabold text-[#0F172A]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#C8102E]" aria-hidden />
-              こんな「困った」、ありませんか?
-            </span>
-            <span className="flex-1 h-px bg-gradient-to-r from-[#E2E6EC] to-transparent" aria-hidden />
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-5">
-            {t.pains.personas.map((p) => (
-              <article
-                key={p.name}
-                className="flex flex-col bg-white border border-[#E7EAEF] rounded-[18px] overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.05)]"
-              >
-                <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-                  <span className="flex-none w-[42px] h-[42px] rounded-xl grid place-items-center bg-[#F1F3F7] text-[#C8102E] border border-[#E7EAEF]">
-                    <PainIcon kind={p.icon} />
-                  </span>
-                  <div>
-                    <div className="text-[16px] font-extrabold text-[#0F172A] leading-tight">{p.name}</div>
-                    <div className="text-[12px] text-[#6B7686] mt-0.5">{p.role}</div>
-                  </div>
+            {/* 数字で即判断できる材料 — PC はヒーロー内、スマホは下の白帯 */}
+            <dl className="hidden lg:grid mt-10 grid-cols-4 gap-x-6 gap-y-4 border-t border-[#0F172A]/20 pt-5">
+              {t.hero.stats.map((stat) => (
+                <div key={stat.k}>
+                  <dt className="text-[11px] font-medium text-[#0F172A]/70">{stat.k}</dt>
+                  <dd className="text-[16px] font-bold text-[#0F172A] mt-0.5">{stat.v}</dd>
                 </div>
-                <ul className="flex-1 flex flex-col gap-2 px-5 pt-1 pb-5">
-                  {p.items.map((it) => (
-                    <li key={it} className="relative pl-6 text-[13.5px] leading-[1.6] text-[#47536A]">
-                      <span className="absolute left-1 top-[9px] w-[11px] h-0.5 rounded-full bg-[#6B7686]/60" aria-hidden />
-                      {it}
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-auto bg-[#FDF3F5] border-t border-[#F5D9DF] px-5 pt-[18px] pb-5 md:min-h-[152px]">
-                  <div className="inline-flex items-center gap-1.5 text-[12px] font-extrabold text-[#C8102E] mb-2">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" className="w-[15px] h-[15px]">
-                      <path d="M5 12h14M13 6l6 6-6 6" />
-                    </svg>
-                    BondEx なら
-                  </div>
-                  <p className="text-[13.5px] leading-[1.72] text-[#0F172A] font-medium">{p.solve}</p>
-                </div>
-              </article>
-            ))}
+              ))}
+            </dl>
           </div>
-
-          <div className="mt-8 flex items-center gap-4 bg-white border border-[#E7EAEF] rounded-2xl px-6 py-6 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.05)]">
-            <span className="flex-none w-1 self-stretch rounded bg-[#C8102E]" aria-hidden />
-            <p className="text-[15px] md:text-[19px] font-extrabold leading-[1.7] tracking-[0.01em] text-[#0F172A]">
-              {t.pains.closer.pre}
-              <span className="text-[#C8102E]">{t.pains.closer.hl}</span>
-              {t.pains.closer.post}
-            </p>
-          </div>
-        </section>
-      )}
-
-      {/* ═══════════════ 実物サンプル (信頼材料は早く見せる) ═══════════════ */}
-      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 md:pt-20">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              <p className="text-[12px] font-medium text-[#64748B] mb-2">
-                <span className="tracking-[0.2em] uppercase">Sample</span>
-                <span className="mx-2 text-[#CBD5E1]">/</span>
-                {t.sample.eyebrow}
-              </p>
-              <h2 className="text-[20px] md:text-[26px] font-bold text-[#0F172A] leading-snug">
-                {t.sample.heading}
-              </h2>
+        </div>
+      </section>
+      <div className="lg:hidden border-b border-[#E5E7EB] bg-white">
+        <dl className="max-w-6xl mx-auto px-5 sm:px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
+          {t.hero.stats.map((stat) => (
+            <div key={stat.k}>
+              <dt className="text-[11px] font-medium text-[#64748B]">{stat.k}</dt>
+              <dd className="text-[16px] font-bold text-[#0F172A] mt-0.5">{stat.v}</dd>
             </div>
-            <a
-              href="/samples/bondex-sample-voucher.pdf"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 text-[13px] font-medium text-[#C8102E] hover:text-[#A00D25] underline underline-offset-4 shrink-0"
-            >
-              {t.sample.openPdf}
-              <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-            </a>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:gap-5">
-            {[
-              { src: "/samples/voucher-page-1.png" },
-              { src: "/samples/voucher-page-2.jpg" },
-            ].map((pg, i) => {
-              const label = t.sample.pageLabels[i]
-              return (
-                <figure key={pg.src}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={pg.src}
-                    alt={`${t.sample.altPrefix}${label}`}
-                    loading="lazy"
-                    className="w-full h-auto rounded-lg border border-[#E5E7EB] shadow-[0_1px_2px_rgba(15,23,42,0.05),0_10px_28px_rgba(15,23,42,0.08)] bg-white"
-                  />
-                  <figcaption className="mt-2 text-[11px] md:text-[12px] font-medium text-[#64748B] text-center">
-                    {label}
-                  </figcaption>
-                </figure>
-              )
-            })}
-          </div>
-          <p className="mt-3 text-[11px] text-[#94A3B8] text-center">
-            {t.sample.caption}
-          </p>
-          <a
-            href="/samples/bondex-sample-voucher.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="sm:hidden mt-4 flex items-center justify-center gap-2 w-full h-[46px] rounded-xl border border-[#CBD5E1] bg-white text-[13.5px] font-bold text-[#0F172A]"
-          >
-            {t.sample.openPdfMobile}
-          </a>
-        </div>
-      </section>
+          ))}
+        </dl>
+      </div>
 
-      {/* ═══════════════ Value in 3 (compact pictograms) ═══════════════ */}
-      <section className="max-w-6xl mx-auto px-5 sm:px-6 pt-12 pb-16 md:pt-20 md:pb-32">
-        <div className="grid gap-7 md:grid-cols-3 md:gap-16">
-          {t.value.items.map((item, i) => {
-            const n = String(i + 1).padStart(2, "0")
-            return (
-              <div key={n} className="flex items-start gap-4 md:block">
-                {/* モバイル: 枠付きの小アイコンを左に、テキストを右に (縦の間延び防止) */}
-                <div className="w-14 h-14 shrink-0 rounded-2xl border border-[#E5E7EB] bg-[#F7F8FA] flex items-center justify-center [&_svg]:w-9 [&_svg]:h-9 md:w-auto md:h-auto md:border-0 md:bg-transparent md:rounded-none md:block md:mb-6 md:[&_svg]:w-16 md:[&_svg]:h-16">
-                  {VALUE_ICONS[i]}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-mono tracking-widest text-[#64748B] mb-1 md:mb-3">{n}</p>
-                  <h3 className="text-[16px] md:text-xl font-bold tracking-tight mb-1 md:mb-4 text-[#0F172A]">{item.title}</h3>
-                  <p className="text-[13px] md:text-[15px] font-medium text-[#334155] leading-[1.75] md:leading-[1.85]">{item.body}</p>
-                </div>
+      {/* ═══════════════ THE CHALLENGE ═══════════════ */}
+      <section className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="The Challenge" />
+            <H2 lines={t.challenge.heading} />
+            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9] max-w-2xl">{t.challenge.lead}</p>
+          </div>
+
+          <div className="mt-12 md:mt-16 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12">
+            <figure>
+              <Pic name="pain-street" alt={t.challenge.street.alt} />
+              <Dots items={t.challenge.street.items} className="mt-6" />
+            </figure>
+            <figure>
+              <Pic name="pain-station" alt={t.challenge.station.alt} />
+              <Dots items={t.challenge.station.items} className="mt-6" />
+            </figure>
+          </div>
+
+          {/* 3者(代理店/ホテル/旅行者)の困りごと — 日本語のみ。罫線だけの3カラム */}
+          {t.pains && (
+            <div className="mt-16 md:mt-24 border-t border-[#0F172A]/15 pt-10 md:pt-14">
+              <h3 className="text-[22px] md:text-[28px] font-bold leading-[1.45] text-[#0F172A] text-balance">
+                {t.pains.title.pre}
+                <span className="text-[#C8102E]">{t.pains.title.hl}</span>
+                {t.pains.title.post}
+              </h3>
+              <p className="mt-4 text-[15px] text-[#334155] max-w-3xl leading-[1.9]">{t.pains.lead}</p>
+              <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
+                {t.pains.personas.map((p) => (
+                  <div key={p.name} className="md:border-l md:border-[#E5E7EB] md:pl-6 first:md:border-0 first:md:pl-0">
+                    <p className="text-[11px] tracking-[0.18em] uppercase text-[#94A3B8]">{p.role}</p>
+                    <h4 className="mt-1 text-[17px] font-bold text-[#0F172A]">{p.name}</h4>
+                    <Dots items={p.items} className="mt-4 [&_li]:text-[13.5px] [&_li]:leading-[1.7]" />
+                    <div className="mt-5 border-t border-[#C8102E]/30 pt-4">
+                      <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-[#C8102E]">BondEx</p>
+                      <p className="mt-1.5 text-[14px] leading-[1.8] text-[#0F172A]">{p.solve}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )
-          })}
+              <p className="mt-12 text-[17px] md:text-[21px] font-bold leading-[1.7] text-[#0F172A]">
+                {t.pains.closer.pre}
+                <span className="text-[#C8102E]">{t.pains.closer.hl}</span>
+                {t.pains.closer.post}
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* ═══════════════ Carrier trust — 配送網のスケールを社会的証明に ═══════════════
-          BondEx 自体は新しいため、実配送を担う佐川・ヤマトのスケールを引用して信頼を担保する。
-          既存の Eyebrow + SectionH2 + ヘアライン区切りの 3 スタットで統一。新色・画像・ロゴは足さない。 */}
-      <section className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
-        <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
-          <div className="mb-12 md:mb-14 max-w-2xl">
-            <Eyebrow en="CARRIERS" label={t.carriers.eyebrow} />
-            <SectionH2 first={t.carriers.heading.first} second={t.carriers.heading.second} />
-            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
-              {t.carriers.body}
+      {/* ═══════════════ OUR CONCEPT ═══════════════ */}
+      <section className="border-b border-[#E5E7EB] bg-[#F7F8FA]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-12 items-center">
+          <div className="md:col-span-7">
+            <Eyebrow en="Our Concept" />
+            <H2 lines={t.concept.heading} />
+            <p className="mt-7 text-[16px] md:text-[18px] text-[#0F172A] leading-[1.9]">
+              {t.concept.body.map((line, i) => (
+                <span key={i}>
+                  {i > 0 && <br />}
+                  {line}
+                </span>
+              ))}
             </p>
-          </div>
 
-          {t.carriers.stats.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-[#0F172A]/15 divide-y sm:divide-y-0 sm:divide-x divide-[#0F172A]/10">
-              {t.carriers.stats.map((stat, i) => (
-                <div key={i} className="py-8 sm:py-10 sm:px-8 sm:first:pl-0 sm:last:pr-0">
-                  <p className="text-4xl md:text-[44px] font-bold tracking-tight text-[#0F172A] leading-none">
-                    {stat.value}
-                  </p>
-                  <p className="mt-3 text-[13px] md:text-[14px] text-[#64748B] leading-[1.7]">
-                    {stat.label}
-                  </p>
+            {/* 資料 p3 の「旅行者 / 荷物」の2本線ダイアグラム */}
+            <div className="mt-10 grid grid-cols-2 gap-8 max-w-md text-center">
+              {[
+                { label: t.concept.travelerLabel, mid: <span className="font-serif italic text-[18px] text-[#0F172A]">{t.concept.enjoy}</span> },
+                {
+                  label: t.concept.luggageLabel,
+                  // eslint-disable-next-line @next/next/no-img-element
+                  mid: <img src="/bondex-logo.png" alt="BondEx" className="h-6 w-auto mx-auto" />,
+                },
+              ].map((col) => (
+                <div key={col.label} className="flex flex-col items-center">
+                  <p className="text-[11px] tracking-[0.18em] uppercase text-[#94A3B8]">{col.label}</p>
+                  <p className="mt-2 text-[15px] text-[#334155]">Hotel A</p>
+                  <span className="my-2 h-10 w-px bg-[#CBD5E1]" aria-hidden />
+                  <div className="h-8 flex items-center">{col.mid}</div>
+                  <span className="my-2 h-10 w-px bg-[#CBD5E1]" aria-hidden />
+                  <p className="text-[15px] text-[#334155]">Hotel B</p>
                 </div>
               ))}
             </div>
-          )}
-
-          {t.carriers.footnote && (
-            <p className="mt-8 text-[12px] text-[#94A3B8] leading-[1.8]">
-              {t.carriers.footnote}
-            </p>
-          )}
-        </div>
-      </section>
-
-      {/* ═══════════════ Difference — 旅行商品の付加価値化 ═══════════════ */}
-      <section id="difference" className="border-y border-[#E5E7EB] bg-white">
-        <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
-          <div className="mb-14 md:mb-16 max-w-2xl">
-            <Eyebrow en="DIFFERENCE" label={t.difference.eyebrow} />
-            <SectionH2 first={t.difference.heading.first} second={t.difference.heading.second} />
-            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">
-              {t.difference.intro}
-            </p>
           </div>
-
-          {/* Quiet editorial comparison — hairline rules only, no icons/circles/timeline */}
-          <div className="grid md:grid-cols-2 border-t border-[#0F172A]/15 divide-y md:divide-y-0 md:divide-x divide-[#0F172A]/10 mb-14 md:mb-16">
-            <div className="py-8 md:py-10 md:pr-12">
-              <p className="text-[11px] font-mono tracking-widest uppercase text-[#94A3B8] mb-3">
-                Conventional
-              </p>
-              <h3 className="text-[16px] font-bold text-[#64748B] mb-4">{t.difference.conventionalHeading}</h3>
-              <p className="text-[14px] text-[#64748B] leading-[1.95]">
-                {t.difference.conventionalBody}
-              </p>
-            </div>
-            <div className="py-8 md:py-10 md:pl-12">
-              <p className="text-[11px] font-mono tracking-widest uppercase text-[#C8102E] mb-3">
-                BondEx
-              </p>
-              <h3 className="text-[16px] font-bold text-[#0F172A] mb-4">{t.difference.bondexHeading}</h3>
-              <p className="text-[14px] text-[#334155] leading-[1.95]">
-                {t.difference.bondexBody}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-4 md:gap-5">
-            {t.difference.cards.map((c, i) => {
-              const n = String(i + 1).padStart(2, "0")
-              return (
-                <div
-                  key={n}
-                  className="rounded-lg border border-[#E5E7EB] bg-white p-6 md:p-7 border-l-2 border-l-[#C8102E]"
-                >
-                  <p className="text-[11px] font-mono tracking-widest text-[#94A3B8] mb-4">
-                    {n}
-                  </p>
-                  <h3 className="text-[17px] md:text-[18px] font-bold tracking-tight text-[#0F172A] mb-3 leading-[1.5]">
-                    {c.title}
-                  </h3>
-                  <p className="text-[14px] text-[#334155] leading-[1.9]">{c.body}</p>
-                </div>
-              )
-            })}
+          <div className="md:col-span-5">
+            <Pic name="concept-family" alt={t.concept.alt} className="max-w-[420px] mx-auto md:ml-auto" sizes="(min-width: 768px) 420px, 100vw" />
           </div>
         </div>
       </section>
 
-      {/* ═══════════════ FLOW (5-step visual with connecting line) ═══════════════ */}
-      <section id="function" className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
-        <div className="max-w-6xl mx-auto px-6 py-24 md:py-32">
-          <div className="mb-16 max-w-2xl">
-            <Eyebrow en="FLOW" label={t.flow.eyebrow} />
-            <SectionH2 first={t.flow.heading.first} second={t.flow.heading.second} />
+      {/* ═══════════════ HOW IT WORKS ═══════════════ (資料 p5 と同じ 3 + 2 の並び) */}
+      <section id="function" className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="How It Works" />
+            <H2 lines={t.story.heading} />
           </div>
 
           {(() => {
-            const flowSteps = t.flow.steps.map((step, i) => ({
-              n: String(i + 1).padStart(2, "0"),
-              title: step.title,
-              desc: step.desc,
-              svg: FLOW_ICONS[i],
-            }))
-
+            const steps = t.story.steps.map((s, i) => ({ ...s, n: String(i + 1).padStart(2, "0"), img: storyImages[i] }))
+            const Step = ({ s, sizes }: { s: (typeof steps)[number]; sizes: string }) => (
+              <div className="flex gap-5 md:block">
+                <div className="w-[38%] shrink-0 md:w-auto">
+                  <Pic name={s.img} alt={s.alt} sizes={sizes} className="border border-[#E5E7EB]" />
+                </div>
+                <div className="min-w-0 md:mt-5">
+                  <p className="text-[11px] font-semibold tracking-[0.2em] text-[#C8102E]">STEP {s.n}</p>
+                  <h3 className="mt-1.5 text-[16px] md:text-[18px] font-bold text-[#0F172A] leading-snug">{s.title}</h3>
+                  <p className="mt-2 text-[13.5px] md:text-[14px] text-[#334155] leading-[1.8]">{s.body}</p>
+                </div>
+              </div>
+            )
             return (
               <>
-                {/* Mobile: compact horizontal list, fixed-size icons — no full-width blow-up */}
-                <div className="md:hidden divide-y divide-[#E5E7EB] border-t border-b border-[#E5E7EB]">
-                  {flowSteps.map((step) => (
-                    <div key={step.n} className="flex items-center gap-4 py-5">
-                      <div className="w-14 h-14 shrink-0 rounded-full bg-white border border-[#E5E7EB] flex items-center justify-center p-2">
-                        {step.svg}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-mono font-bold tracking-widest text-[#C8102E] mb-1">
-                          {step.n}
-                        </p>
-                        <h3 className="text-[14px] font-bold tracking-tight text-[#0F172A] mb-0.5 leading-snug">
-                          {step.title}
-                        </h3>
-                        <p className="text-[12px] text-[#64748B] leading-[1.6]">{step.desc}</p>
-                      </div>
-                    </div>
+                <div className="mt-12 md:mt-16 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
+                  {steps.slice(0, 3).map((s) => (
+                    <Step key={s.n} s={s} sizes="(min-width: 768px) 33vw, 38vw" />
                   ))}
                 </div>
-
-                {/* Desktop: 5-col circles with connecting dashed line */}
-                <div className="hidden md:block relative">
-                  <div className="absolute top-[92px] left-[5%] right-[5%] h-px border-t-2 border-dashed border-[#CBD5E1] z-0" />
-                  <div className="grid grid-cols-5 gap-4 relative z-10">
-                    {flowSteps.map((step) => (
-                      <div key={step.n} className="flex flex-col">
-                        <div className="aspect-square rounded-full bg-white border border-[#E5E7EB] shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)] mb-5 flex items-center justify-center p-3">
-                          {step.svg}
-                        </div>
-                        <p className="text-[13px] font-mono font-bold tracking-widest text-[#C8102E] mb-2">
-                          {step.n}
-                        </p>
-                        <h3 className="text-[15px] font-bold tracking-tight text-[#0F172A] mb-2 leading-snug">
-                          {step.title}
-                        </h3>
-                        <p className="text-[12px] text-[#64748B] leading-[1.85]">{step.desc}</p>
-                      </div>
-                    ))}
-                  </div>
+                {/* 4/5 段目は資料と同じく中央寄せ (6分割グリッドで 2 列ずつ・2 列目から開始) */}
+                <div className="mt-10 md:mt-14 grid grid-cols-1 gap-10 md:grid-cols-6 md:gap-8">
+                  {steps.slice(3).map((s, i) => (
+                    <div key={s.n} className={`md:col-span-2 ${i === 0 ? "md:col-start-2" : ""}`}>
+                      <Step s={s} sizes="(min-width: 768px) 33vw, 38vw" />
+                    </div>
+                  ))}
                 </div>
               </>
             )
           })()}
+          <CtaBand heading={t.contact.heading} note={t.hero.replyNote} consult={t.hero.ctaConsult} signup={t.nav.signup} contactHref={contactHref} />
         </div>
       </section>
 
-      {/* ═══════════════ Deliverables (Voucher / Waybill) ═══════════════ */}
-      <section id="deliverables" className="border-y border-[#E5E7EB] bg-[#F7F8FA]"><div className="max-w-6xl mx-auto px-6 py-24 md:py-32">
-        <div className="mb-14 max-w-2xl">
-          <Eyebrow en="DELIVERABLES" label={t.deliverables.eyebrow} />
-          <SectionH2 first={t.deliverables.heading.first} second={t.deliverables.heading.second} />
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* ─── Voucher card ─── */}
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white overflow-hidden flex flex-col shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="aspect-[16/9] bg-[#F7F8FA] border-b border-[#E5E7EB] flex items-center justify-center p-6">
-              <svg
-                viewBox="0 0 320 200"
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-full h-auto max-h-[220px]"
-              >
-                <defs>
-                  <pattern id="qr" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
-                    <rect x="0" y="0" width="2" height="2" fill="#0F172A" />
-                    <rect x="2" y="2" width="2" height="2" fill="#0F172A" />
-                  </pattern>
-                </defs>
-                <path
-                  d="M 20 20 L 220 20 L 220 92 Q 208 100 220 108 L 220 180 L 20 180 Z"
-                  fill="#FFFFFF"
-                  stroke="#0F172A"
-                  strokeWidth="2.5"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M 220 20 L 300 20 L 300 180 L 220 180 L 220 108 Q 232 100 220 92 Z"
-                  fill="#F1F3F5"
-                  stroke="#0F172A"
-                  strokeWidth="2.5"
-                  strokeLinejoin="round"
-                />
-                <line
-                  x1="220"
-                  y1="20"
-                  x2="220"
-                  y2="180"
-                  stroke="#0F172A"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                  opacity="0.4"
-                />
-                <rect x="35" y="35" width="90" height="8" rx="1.5" fill="#C8102E" />
-                <rect x="35" y="52" width="60" height="4" rx="1" fill="#0F172A" opacity="0.4" />
-                <rect x="35" y="82" width="35" height="4" rx="1" fill="#0F172A" opacity="0.6" />
-                <rect x="35" y="92" width="120" height="5" rx="1" fill="#0F172A" opacity="0.3" />
-                <rect x="35" y="114" width="35" height="4" rx="1" fill="#0F172A" opacity="0.6" />
-                <rect x="35" y="124" width="140" height="5" rx="1" fill="#0F172A" opacity="0.3" />
-                <rect x="35" y="146" width="35" height="4" rx="1" fill="#0F172A" opacity="0.6" />
-                <rect x="35" y="156" width="90" height="5" rx="1" fill="#0F172A" opacity="0.3" />
-                <g transform="translate(238, 60)">
-                  <rect x="0" y="0" width="46" height="46" fill="#FFFFFF" stroke="#0F172A" strokeWidth="1.5" />
-                  <g fill="#0F172A">
-                    <rect x="3" y="3" width="10" height="10" />
-                    <rect x="5" y="5" width="6" height="6" fill="#F1F3F5" />
-                    <rect x="7" y="7" width="2" height="2" fill="#0F172A" />
-                    <rect x="33" y="3" width="10" height="10" />
-                    <rect x="35" y="5" width="6" height="6" fill="#F1F3F5" />
-                    <rect x="37" y="7" width="2" height="2" fill="#0F172A" />
-                    <rect x="3" y="33" width="10" height="10" />
-                    <rect x="5" y="35" width="6" height="6" fill="#F1F3F5" />
-                    <rect x="7" y="37" width="2" height="2" fill="#0F172A" />
-                  </g>
-                  <rect x="15" y="15" width="16" height="16" fill="url(#qr)" opacity="0.85" />
-                  <rect x="15" y="33" width="10" height="10" fill="url(#qr)" opacity="0.85" />
-                  <rect x="33" y="15" width="10" height="16" fill="url(#qr)" opacity="0.85" />
-                  <rect x="33" y="33" width="10" height="10" fill="url(#qr)" opacity="0.85" />
-                </g>
-              </svg>
-            </div>
-            <div className="p-8 md:p-10">
-              <p className="text-[10px] tracking-widest text-[#64748B] mb-2 uppercase">Voucher</p>
-              <h3 className="text-2xl font-bold tracking-tight mb-4 text-[#0F172A]">
-                {t.deliverables.voucherHeading}
-              </h3>
-              <p className="text-[15px] text-[#334155] leading-[1.85]">
-                {t.deliverables.voucherBody.a}
-                <strong className="text-[#0F172A]">{t.deliverables.voucherBody.strong}</strong>
-                {t.deliverables.voucherBody.b}
-              </p>
-            </div>
+      {/* ═══════════════ FOR EVERY TRIP ═══════════════ */}
+      <section className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="For Every Trip" />
+            <H2 lines={t.segments.heading} />
           </div>
-
-          {/* ─── Waybill card ─── */}
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white overflow-hidden flex flex-col shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="aspect-[16/9] bg-[#F7F8FA] border-b border-[#E5E7EB] flex items-center justify-center p-6">
-              <svg
-                viewBox="0 0 320 200"
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-full h-auto max-h-[220px]"
-              >
-                <defs>
-                  <pattern id="barcode" x="0" y="0" width="7" height="30" patternUnits="userSpaceOnUse">
-                    <rect x="0" y="0" width="1.5" height="30" fill="#0F172A" />
-                    <rect x="2.5" y="0" width="2" height="30" fill="#0F172A" />
-                    <rect x="5.5" y="0" width="1" height="30" fill="#0F172A" />
-                  </pattern>
-                </defs>
-                <rect x="20" y="20" width="280" height="160" rx="4" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-                <rect x="20" y="20" width="280" height="26" fill="#0F172A" />
-                <text x="35" y="38" fill="#FFFFFF" fontSize="10" fontWeight="bold" letterSpacing="2" fontFamily="monospace">
-                  SHIPPING LABEL
-                </text>
-                <rect x="35" y="58" width="110" height="52" rx="2" fill="none" stroke="#0F172A" strokeWidth="1.5" opacity="0.55" />
-                <rect x="43" y="64" width="24" height="3.5" rx="0.5" fill="#0F172A" opacity="0.7" />
-                <rect x="43" y="76" width="65" height="4.5" rx="0.5" fill="#0F172A" />
-                <rect x="43" y="88" width="70" height="3" rx="0.5" fill="#0F172A" opacity="0.4" />
-                <rect x="43" y="97" width="55" height="3" rx="0.5" fill="#0F172A" opacity="0.4" />
-                <path d="M 152 84 L 168 84 M 162 78 L 168 84 L 162 90" stroke="#C8102E" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="175" y="58" width="110" height="52" rx="2" fill="none" stroke="#0F172A" strokeWidth="1.5" opacity="0.55" />
-                <rect x="183" y="64" width="16" height="3.5" rx="0.5" fill="#0F172A" opacity="0.7" />
-                <rect x="183" y="76" width="60" height="4.5" rx="0.5" fill="#0F172A" />
-                <rect x="183" y="88" width="72" height="3" rx="0.5" fill="#0F172A" opacity="0.4" />
-                <rect x="183" y="97" width="50" height="3" rx="0.5" fill="#0F172A" opacity="0.4" />
-                <rect x="35" y="122" width="250" height="42" fill="#F7F8FA" stroke="#0F172A" strokeWidth="1.5" strokeOpacity="0.25" />
-                <rect x="45" y="130" width="214" height="26" fill="url(#barcode)" />
-                <rect x="102" y="168" width="116" height="5" rx="0.5" fill="#0F172A" opacity="0.55" />
-              </svg>
-            </div>
-            <div className="p-8 md:p-10">
-              <p className="text-[10px] tracking-widest text-[#64748B] mb-2 uppercase">
-                Shipping Label
-              </p>
-              <h3 className="text-2xl font-bold tracking-tight mb-4 text-[#0F172A]">
-                {t.deliverables.waybillHeading}
-              </h3>
-              <p className="text-[15px] text-[#334155] leading-[1.85]">
-                {t.deliverables.waybillBody.a}
-                <strong className="text-[#0F172A]">{t.deliverables.waybillBody.strong}</strong>
-                {t.deliverables.waybillBody.b}
-              </p>
-            </div>
+          <div className="mt-12 md:mt-16 grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
+            {[t.segments.fit, t.segments.group].map((seg, i) => (
+              <div key={seg.label} className="flex gap-5 md:block">
+                <div className="w-[38%] shrink-0 md:w-auto md:max-w-[360px]">
+                  <Pic
+                    name={i === 0 ? "fit-couple" : "group-lobby"}
+                    alt={seg.alt}
+                    sizes="(min-width: 768px) 360px, 38vw"
+                    className="border border-[#E5E7EB]"
+                  />
+                </div>
+                <div className="min-w-0 md:mt-6">
+                  <p className="text-[11px] font-semibold tracking-[0.2em] text-[#C8102E]">{seg.label}</p>
+                  <h3 className="mt-1.5 text-[18px] md:text-[21px] font-bold text-[#0F172A]">{seg.title}</h3>
+                  <Dots items={seg.items} className="mt-4" />
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+          <div className="mt-14 md:mt-20 border-t border-[#0F172A]/15 pt-10 grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-10">
+            <h3 className="md:col-span-5 text-[20px] md:text-[24px] font-bold leading-[1.5] text-[#0F172A]">
+              {t.segments.privacy.title}
+            </h3>
+            <p className="md:col-span-7 text-[14.5px] md:text-[15px] text-[#334155] leading-[1.9]">{t.segments.privacy.body}</p>
+          </div>
         </div>
       </section>
 
-      {/* ═══════════════ Trust band — ご安心いただける理由 ═══════════════ */}
-      <section id="trust" className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
-        <div className="max-w-6xl mx-auto px-6 py-24 md:py-32">
-          <div className="mb-14 max-w-2xl">
-            <Eyebrow en="TRUST" label={t.trust.eyebrow} />
-            <SectionH2 first={t.trust.heading.first} second={t.trust.heading.second} />
+      {/* ═══════════════ FOR TRAVEL COMPANIES (従来手配との違い) ═══════════════ */}
+      <section id="difference" className="border-b border-[#E5E7EB] bg-[#F7F8FA]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="For Travel Companies" />
+            <SectionH2 first={t.difference.heading.first} second={t.difference.heading.second} />
+            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9] max-w-2xl">{t.difference.intro}</p>
           </div>
-          <div
-            className={`grid gap-5 ${
-              t.trust.cards.length >= 4 ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-3"
-            }`}
-          >
-            {t.trust.cards.map((card, i) => {
-              // アイコンはカード順に対応 (補償=Shield / 取次=Handshake / 個人情報=Lock / 精算=Receipt)。
-              const Icon = [Shield, Handshake, Lock, Receipt][i] ?? Shield
-              return (
+
+          <div className="mt-12 md:mt-16 grid grid-cols-1 md:grid-cols-2 border-t border-[#0F172A]/15 divide-y md:divide-y-0 md:divide-x divide-[#0F172A]/10">
+            <div className="py-8 md:py-10 md:pr-12">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-[#94A3B8] mb-3">Conventional</p>
+              <h3 className="text-[16px] font-bold text-[#64748B] mb-4">{t.difference.conventionalHeading}</h3>
+              <p className="text-[14px] text-[#64748B] leading-[1.95]">{t.difference.conventionalBody}</p>
+            </div>
+            <div className="py-8 md:py-10 md:pl-12">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-[#C8102E] mb-3">BondEx</p>
+              <h3 className="text-[16px] font-bold text-[#0F172A] mb-4">{t.difference.bondexHeading}</h3>
+              <p className="text-[14px] text-[#334155] leading-[1.95]">{t.difference.bondexBody}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 border-t border-b border-[#0F172A]/15 divide-y md:divide-y-0 md:divide-x divide-[#0F172A]/10">
+            {t.difference.cards.map((c, i) => (
+              <div key={c.title} className="py-7 md:py-8 md:px-8 first:md:pl-0 last:md:pr-0">
+                <p className="text-[11px] tracking-[0.2em] text-[#94A3B8] mb-3">{String(i + 1).padStart(2, "0")}</p>
+                <h3 className="text-[17px] font-bold text-[#0F172A] leading-[1.5] mb-2">{c.title}</h3>
+                <p className="text-[14px] text-[#334155] leading-[1.9]">{c.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ DELIVERABLES (実物) ═══════════════ */}
+      <section id="deliverables" className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="Deliverables" />
+            <SectionH2 first={t.deliverables.heading.first} second={t.deliverables.heading.second} />
+          </div>
+          <div className="mt-12 md:mt-16 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-12 items-start">
+            <div className="md:col-span-7">
+              <div className="grid grid-cols-2 gap-4 md:gap-6">
+                {[{ src: "/samples/voucher-page-1.png" }, { src: "/samples/voucher-page-2.jpg" }].map((pg, i) => {
+                  const label = t.sample.pageLabels[i]
+                  return (
+                    <figure key={pg.src}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={pg.src}
+                        alt={`${t.sample.altPrefix}${label}`}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-auto border border-[#E5E7EB] bg-white"
+                      />
+                      <figcaption className="mt-2 text-[11px] md:text-[12px] text-[#64748B]">{label}</figcaption>
+                    </figure>
+                  )
+                })}
+              </div>
+              <p className="mt-3 text-[11px] text-[#94A3B8]">{t.sample.caption}</p>
+            </div>
+            <div className="md:col-span-5 divide-y divide-[#0F172A]/10 border-t border-[#0F172A]/15">
+              <div className="py-6">
+                <p className="text-[11px] tracking-[0.2em] uppercase text-[#94A3B8] mb-2">Voucher</p>
+                <h3 className="text-[19px] font-bold text-[#0F172A] mb-3">{t.deliverables.voucherHeading}</h3>
+                <p className="text-[14px] text-[#334155] leading-[1.9]">
+                  {t.deliverables.voucherBody.a}
+                  <strong className="text-[#0F172A]">{t.deliverables.voucherBody.strong}</strong>
+                  {t.deliverables.voucherBody.b}
+                </p>
+              </div>
+              <div className="py-6">
+                <p className="text-[11px] tracking-[0.2em] uppercase text-[#94A3B8] mb-2">Shipping Label</p>
+                <h3 className="text-[19px] font-bold text-[#0F172A] mb-3">{t.deliverables.waybillHeading}</h3>
+                <p className="text-[14px] text-[#334155] leading-[1.9]">
+                  {t.deliverables.waybillBody.a}
+                  <strong className="text-[#0F172A]">{t.deliverables.waybillBody.strong}</strong>
+                  {t.deliverables.waybillBody.b}
+                </p>
+              </div>
+              <div className="py-6">
                 <a
-                  key={i}
-                  href="#faq"
-                  className="rounded-2xl bg-white border border-[#E5E7EB] p-7 hover:border-[#C8102E]/30 hover:shadow-[0_4px_16px_rgba(200,16,46,0.06)] transition-all block group"
+                  href="/samples/bondex-sample-voucher.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#C8102E] hover:text-[#A00D25] underline underline-offset-4"
                 >
-                  <div className="w-11 h-11 rounded-full bg-[#C8102E]/8 flex items-center justify-center mb-5">
-                    <Icon className="w-5 h-5 text-[#C8102E]" strokeWidth={1.8} />
-                  </div>
-                  <p className="text-[10px] tracking-widest text-[#64748B] mb-2 uppercase">
-                    {card.title}
-                  </p>
-                  <h3 className="text-[17px] font-bold tracking-tight text-[#0F172A] mb-3 leading-snug">
-                    {card.head}
-                  </h3>
-                  <p className="text-[13px] text-[#334155] leading-[1.85]">{card.body}</p>
+                  {t.sample.openPdf}
+                  <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
                 </a>
-              )
-            })}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ═══════════════ PRICE — 料金 + 直接手配との比較 + フロー + CTA を1セクションに集約 ═══════════════
-          通常料金を見た直後に、同じ画面内で「なぜその価格か = 直接手配なら全部自分でやる」を
-          理解させるコンバージョンポイント。数値はすべて lib/pricing.ts の PRICING から生成する。 */}
-      <section id="price" className="border-y border-[#E5E7EB] bg-[#F7F8FA]">
-        <div className="max-w-5xl mx-auto px-5 sm:px-6 py-20 md:py-28">
+      {/* ═══════════════ MANAGE EFFORTLESSLY (代理店ポータル実画面) ═══════════════ */}
+      <section className="border-b border-[#E5E7EB] bg-[#F7F8FA]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="Manage Effortlessly" />
+            <H2 lines={t.manage.heading} />
+            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9] max-w-2xl">{t.manage.body}</p>
+          </div>
+          <div className="mt-10 md:mt-14 overflow-x-auto">
+            <Pic name="portal-list" alt={t.manage.alt} sizes="(min-width: 1152px) 1104px, 100vw" className="min-w-[720px] border border-[#E5E7EB] bg-white" />
+          </div>
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-[#334155]">
+            {t.manage.features.map((f) => (
+              <li key={f} className="flex items-center gap-2">
+                <span className="w-1 h-1 bg-[#C8102E]" aria-hidden />
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ═══════════════ CARRIERS (配送ネットワーク) ═══════════════ */}
+      <section className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-12 items-center">
+          <div className="md:col-span-6">
+            <Eyebrow en="Carriers" />
+            <SectionH2 first={t.carriers.heading.first} second={t.carriers.heading.second} />
+            <p className="mt-7 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">{t.carriers.body}</p>
+            {t.carriers.footnote && <p className="mt-6 text-[12px] text-[#94A3B8] leading-[1.8]">{t.carriers.footnote}</p>}
+          </div>
+          <div className="md:col-span-6">
+            <Pic name="japan-map" alt="" sizes="(min-width: 768px) 50vw, 100vw" className="max-w-[520px] mx-auto" />
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ SUPPORT WHEN IT MATTERS ═══════════════ */}
+      <section id="trust" className="border-b border-[#E5E7EB] bg-[#F7F8FA]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-3xl">
+            <Eyebrow en="Support When It Matters" />
+            <H2 lines={t.support.heading} />
+          </div>
+          <div className="mt-12 md:mt-16 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-14 items-start">
+            <div className="md:col-span-5">
+              <Pic name="support-operator" alt={t.support.alt} sizes="(min-width: 768px) 40vw, 100vw" className="max-w-[440px] border border-[#E5E7EB]" />
+            </div>
+            <div className="md:col-span-7">
+              <div className="divide-y divide-[#0F172A]/10 border-t border-[#0F172A]/15">
+                {t.support.items.map((it) => (
+                  <div key={it.label} className="py-5">
+                    <p className="text-[11px] font-semibold tracking-[0.2em] text-[#C8102E]">{it.label}</p>
+                    <h3 className="mt-1 text-[17px] md:text-[18px] font-bold text-[#0F172A]">{it.title}</h3>
+                    <p className="mt-1.5 text-[14px] text-[#334155] leading-[1.8]">{it.body}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-8 border-l-2 border-[#C8102E] pl-5 md:pl-6">
+                <p className="text-[11px] font-semibold tracking-[0.2em] text-[#C8102E]">{t.support.monitoring.label}</p>
+                <h3 className="mt-1 text-[17px] md:text-[19px] font-bold text-[#0F172A]">{t.support.monitoring.title}</h3>
+                <p className="mt-2 text-[14px] text-[#334155] leading-[1.85]">{t.support.monitoring.body}</p>
+              </div>
+              <p className="mt-6 text-[12.5px] text-[#64748B] leading-[1.8]">{t.support.note}</p>
+            </div>
+          </div>
+
+          {/* 補償 / 取次 / 個人情報 / 精算 — 罫線のみの4カラム */}
+          <div className="mt-16 md:mt-20 border-t border-[#0F172A]/15 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8">
+            {t.trust.cards.map((card) => (
+              <a key={card.title} href="#faq" className="block py-6 group">
+                <p className="text-[11px] tracking-[0.2em] uppercase text-[#94A3B8] mb-2">{card.title}</p>
+                <h3 className="text-[15.5px] font-bold text-[#0F172A] leading-snug mb-2 group-hover:text-[#C8102E]">{card.head}</h3>
+                <p className="text-[13px] text-[#334155] leading-[1.8]">{card.body}</p>
+              </a>
+            ))}
+          </div>
+          <CtaBand heading={t.contact.heading} note={t.hero.replyNote} consult={t.hero.ctaConsult} signup={t.nav.signup} contactHref={contactHref} />
+        </div>
+      </section>
+
+      {/* ═══════════════ PRICE — 料金 + 直接手配との比較 + フロー + CTA ═══════════════
+          数値はすべて lib/pricing.ts の PRICING から生成する。 */}
+      <section id="price" className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
           <div className="max-w-2xl mb-10 md:mb-12">
-            <Eyebrow en="PRICE" label={t.price.eyebrow} />
+            <Eyebrow en="Simple Pricing" />
             <SectionH2 first={t.price.heading.first} second={t.price.heading.second} />
             <p className="mt-6 text-[15px] md:text-[16px] text-[#334155] leading-[1.9]">{t.price.sub}</p>
           </div>
 
-          {/* 料金カード */}
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 md:p-8">
-            <div className="grid gap-6 md:grid-cols-[1fr_1.4fr_1fr] md:gap-8 md:items-center">
-              {/* 初期 / 月額 */}
+          <div className="border border-[#E5E7EB] bg-white p-6 md:p-8">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_1.4fr_1fr] md:gap-8 md:items-center">
               <div className="flex gap-8 md:block md:space-y-4">
                 <div>
                   <p className="text-[12px] text-[#64748B]">{t.price.setup}</p>
@@ -1179,9 +755,7 @@ export function Landing({ lang }: { lang: Locale }) {
                   <p className="text-[22px] font-bold text-[#0F172A]">{t.price.free}</p>
                 </div>
               </div>
-
-              {/* 通常料金 (主役) + 初回トライアル */}
-              <div className="rounded-xl border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5 md:order-none">
+              <div className="border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5">
                 <p className="text-[12px] font-semibold tracking-wide text-[#C8102E]">{t.price.regular}</p>
                 <p className="mt-1 flex items-baseline gap-1 flex-wrap">
                   <span className="text-[44px] md:text-[52px] font-bold leading-none text-[#0F172A] tabular-nums">
@@ -1190,24 +764,18 @@ export function Landing({ lang }: { lang: Locale }) {
                   <span className="text-[15px] font-medium text-[#334155]">{t.price.perItem}</span>
                   <span className="ml-1 text-[12px] text-[#64748B]">（{t.price.tax}）</span>
                 </p>
-                <div className="mt-4 rounded-lg bg-white border border-[#E5E7EB] px-4 py-3">
+                <div className="mt-4 bg-white border border-[#E5E7EB] px-4 py-3">
                   <p className="text-[12px] font-semibold text-[#0F172A]">{t.price.trial}</p>
                   <p className="mt-0.5 flex items-baseline gap-1 flex-wrap">
-                    <span className="text-[22px] font-bold text-[#0F172A] tabular-nums">
-                      {formatYen(PRICING.trialPrice)}
-                    </span>
+                    <span className="text-[22px] font-bold text-[#0F172A] tabular-nums">{formatYen(PRICING.trialPrice)}</span>
                     <span className="text-[13px] text-[#334155]">{t.price.perItem}</span>
                     <span className="ml-1 text-[11px] text-[#64748B]">（{t.price.tax}）</span>
                   </p>
-                  <p className="mt-0.5 text-[11px] text-[#64748B]">
-                    {fill(t.price.trialNote, { limit: PRICING.trialLimit })}
-                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#64748B]">{fill(t.price.trialNote, { limit: PRICING.trialLimit })}</p>
                 </div>
               </div>
-
-              {/* ボリューム + 団体 */}
               <div className="space-y-4">
-                <div className="rounded-lg bg-[#F7F8FA] border border-[#E5E7EB] px-4 py-3">
+                <div className="bg-[#F7F8FA] border border-[#E5E7EB] px-4 py-3">
                   <p className="text-[13px] font-semibold text-[#0F172A]">
                     {fill(t.price.volume, { n: PRICING.volumeThreshold, d: PRICING.volumeDiscount })}
                   </p>
@@ -1218,7 +786,6 @@ export function Landing({ lang }: { lang: Locale }) {
                 </div>
               </div>
             </div>
-
             <div className="mt-6 border-t border-[#F1F5F9] pt-4 space-y-1">
               {t.price.notes.map((n) => (
                 <p key={n} className="text-[11px] text-[#94A3B8] leading-relaxed">
@@ -1230,33 +797,13 @@ export function Landing({ lang }: { lang: Locale }) {
 
           {/* 比較 — 違うのは送料だけではない */}
           <div className="mt-14 md:mt-16">
-            <h3 className="text-[20px] md:text-[26px] font-bold text-[#0F172A] leading-snug">
-              {t.price.compareLead}
-            </h3>
-            <p className="mt-3 max-w-2xl text-[14px] md:text-[15px] text-[#334155] leading-[1.9]">
-              {t.price.compareSub}
-            </p>
+            <h3 className="text-[20px] md:text-[26px] font-bold text-[#0F172A] leading-snug">{t.price.compareLead}</h3>
+            <p className="mt-3 max-w-2xl text-[14px] md:text-[15px] text-[#334155] leading-[1.9]">{t.price.compareSub}</p>
 
-            {/* モバイル: 各項目をカードで縦積み (BondEx列を必ず見せる・横スクロールを避ける) */}
-            <div className="mt-6 space-y-2 md:hidden">
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3">
-                <p className="text-[13px] font-semibold text-[#0F172A] mb-2">{t.price.costLabel}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-[#94A3B8]">{t.price.colDirect}</p>
-                    <p className="text-[13px] text-[#334155]">{t.price.costDirect}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-[#C8102E]">{t.price.colBondex}</p>
-                    <p className="text-[13px] font-semibold text-[#0F172A] tabular-nums">
-                      {formatYen(PRICING.regularPrice)}
-                      {t.price.perItem}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              {t.price.rows.map((row) => (
-                <div key={row.item} className="rounded-lg border border-[#E5E7EB] bg-white p-3">
+            {/* モバイル: 各項目を縦積み */}
+            <div className="mt-6 divide-y divide-[#E5E7EB] border-t border-b border-[#E5E7EB] md:hidden">
+              {[{ item: t.price.costLabel, direct: t.price.costDirect, bondex: `${formatYen(PRICING.regularPrice)}${t.price.perItem}` }, ...t.price.rows].map((row) => (
+                <div key={row.item} className="py-3">
                   <p className="text-[13px] font-semibold text-[#0F172A] mb-2">{row.item}</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1278,12 +825,8 @@ export function Landing({ lang }: { lang: Locale }) {
                 <thead>
                   <tr className="border-b border-[#0F172A]/15">
                     <th className="text-left py-3 pr-3 font-medium text-[12px] text-[#64748B]" />
-                    <th className="text-left py-3 px-3 font-medium text-[12px] text-[#64748B]">
-                      {t.price.colDirect}
-                    </th>
-                    <th className="text-left py-3 pl-3 font-semibold text-[12px] text-[#C8102E]">
-                      {t.price.colBondex}
-                    </th>
+                    <th className="text-left py-3 px-3 font-medium text-[12px] text-[#64748B]">{t.price.colDirect}</th>
+                    <th className="text-left py-3 pl-3 font-semibold text-[12px] text-[#C8102E]">{t.price.colBondex}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1307,45 +850,34 @@ export function Landing({ lang }: { lang: Locale }) {
             </div>
           </div>
 
-          {/* 業務フロー比較 — BondEx 側が極端に短いことを見せる */}
-          <div className="mt-12 grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-[#E5E7EB] bg-white p-5">
-              <p className="text-[11px] font-mono tracking-widest uppercase text-[#94A3B8] mb-3">
-                {t.price.flowDirect}
-              </p>
+          {/* 業務フロー比較 */}
+          <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="border border-[#E5E7EB] bg-white p-5">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-[#94A3B8] mb-3">{t.price.flowDirect}</p>
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
                 {t.price.flowDirectSteps.map((s, i) => (
                   <span key={s} className="inline-flex items-center gap-1.5">
                     {i > 0 && <ArrowRight className="w-3 h-3 text-[#CBD5E1]" strokeWidth={2} />}
-                    <span className="rounded-md bg-[#F1F5F9] px-2 py-1 text-[11px] text-[#334155]">{s}</span>
+                    <span className="bg-[#F1F5F9] px-2 py-1 text-[11px] text-[#334155]">{s}</span>
                   </span>
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5">
-              <p className="text-[11px] font-mono tracking-widest uppercase text-[#C8102E] mb-3">
-                {t.price.flowBondex}
-              </p>
+            <div className="border-2 border-[#C8102E]/20 bg-[#C8102E]/[0.03] p-5">
+              <p className="text-[11px] tracking-[0.2em] uppercase text-[#C8102E] mb-3">{t.price.flowBondex}</p>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
                 {t.price.flowBondexSteps.map((s, i) => (
                   <span key={s} className="inline-flex items-center gap-2">
                     {i > 0 && <ArrowRight className="w-3.5 h-3.5 text-[#C8102E]/60" strokeWidth={2} />}
-                    <span className="rounded-md bg-white border border-[#C8102E]/20 px-3 py-1.5 text-[13px] font-semibold text-[#0F172A]">
-                      {s}
-                    </span>
+                    <span className="bg-white border border-[#C8102E]/20 px-3 py-1.5 text-[13px] font-semibold text-[#0F172A]">{s}</span>
                   </span>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* 締めコピー */}
-          <p className="mt-12 text-center text-[19px] md:text-[24px] font-bold text-[#0F172A] leading-[1.6]">
-            {t.price.closer}
-          </p>
-
-          {/* CTA — 既存の /contact 導線を再利用 (新規導線は増やさない) */}
-          <div className="mt-8 flex flex-col items-center gap-2">
+          <p className="mt-12 text-center text-[19px] md:text-[24px] font-bold text-[#0F172A] leading-[1.6]">{t.price.closer}</p>
+          <div className="mt-8 flex flex-col sm:flex-row sm:flex-wrap items-center justify-center gap-3">
             <a
               href={contactHref}
               target="_blank"
@@ -1355,95 +887,89 @@ export function Landing({ lang }: { lang: Locale }) {
               {fill(t.price.ctaMain, { limit: PRICING.trialLimit })}
               <ArrowRight className="w-4 h-4" strokeWidth={1.8} />
             </a>
-            <p className="text-[12px] text-[#64748B] text-center">
+            <Link
+              href="/agency/signup"
+              className="inline-flex items-center justify-center px-8 py-4 rounded-md border-2 border-[#0F172A] bg-white text-[15px] font-bold text-[#0F172A] hover:bg-[#0F172A] hover:text-white"
+            >
+              {t.nav.signup}
+            </Link>
+            <p className="w-full text-[12px] text-[#64748B] text-center">
               {t.price.ctaSubFree} ・ {fill(t.price.ctaSubTrial, { limit: PRICING.trialLimit, price: formatYen(PRICING.trialPrice) })}
             </p>
           </div>
         </div>
       </section>
 
-      {/* ═══════════════ FAQ (with 3 anxiety callouts + accordion) ═══════════════ */}
-      <section id="faq" className="border-t border-[#E5E7EB] bg-white">
-        <div className="max-w-4xl mx-auto px-6 py-24 md:py-32">
-          <div className="mb-14 max-w-2xl">
-            <Eyebrow en="FAQ" label={t.faq.eyebrow} />
+      {/* ═══════════════ FAQ ═══════════════ */}
+      <section id="faq" className="border-b border-[#E5E7EB]">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28">
+          <div className="max-w-2xl">
+            <Eyebrow en="FAQ" />
             <SectionH2 first={t.faq.heading.first} second={t.faq.heading.second} />
           </div>
 
-          {/* Top 3 anxiety callout cards */}
-          <div className="grid md:grid-cols-3 gap-4 mb-10">
-            {[
-              { icon: Shield },
-              { icon: Clock },
-              { icon: Ban },
-            ].map((c, i) => {
-              const Icon = c.icon
-              const callout = t.faq.callouts[i]
-              return (
-                <div
-                  key={i}
-                  className="rounded-xl border border-[#E5E7EB] bg-[#F7F8FA] p-5 flex gap-3 items-start"
-                >
-                  <div className="w-10 h-10 shrink-0 rounded-full bg-[#C8102E]/10 flex items-center justify-center">
-                    <Icon className="w-4 h-4 text-[#C8102E]" strokeWidth={2} />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-mono tracking-widest text-[#64748B] mb-1 uppercase">
-                      {callout.label}
-                    </p>
-                    <p className="text-[14px] font-medium text-[#0F172A] leading-[1.7]">{callout.text}</p>
-                  </div>
-                </div>
-              )
-            })}
+          <div className="mt-10 md:mt-12 max-w-4xl grid grid-cols-1 md:grid-cols-3 border-t border-b border-[#0F172A]/15 divide-y md:divide-y-0 md:divide-x divide-[#0F172A]/10">
+            {t.faq.callouts.map((c) => (
+              <div key={c.label} className="py-5 md:py-6 md:px-6 first:md:pl-0 last:md:pr-0">
+                <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-[#C8102E] mb-1.5">{c.label}</p>
+                <p className="text-[14px] text-[#0F172A] leading-[1.75]">{c.text}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Full accordion */}
-          <div className="space-y-3">
+          <div className="mt-8 max-w-4xl divide-y divide-[#E5E7EB] border-b border-[#E5E7EB]">
             {t.faq.items.map((f, i) => (
-              <details
-                key={i}
-                className="group rounded-xl border border-[#E5E7EB] bg-white p-6 open:bg-[#F7F8FA]"
-              >
-                <summary className="cursor-pointer text-[17px] font-semibold flex items-center justify-between gap-4 list-none tracking-normal leading-[1.55] text-[#0F172A]">
+              <details key={i} className="group py-5">
+                <summary className="cursor-pointer text-[16px] md:text-[17px] font-semibold flex items-center justify-between gap-4 list-none leading-[1.55] text-[#0F172A] [&::-webkit-details-marker]:hidden">
                   <span>{f.q}</span>
-                  <span className="w-7 h-7 shrink-0 rounded-full border border-[#E5E7EB] flex items-center justify-center group-open:bg-[#C8102E] group-open:border-[#C8102E] transition-colors">
+                  <span className="w-7 h-7 shrink-0 border border-[#E5E7EB] flex items-center justify-center group-open:bg-[#C8102E] group-open:border-[#C8102E]">
                     <Plus className="w-3.5 h-3.5 text-[#64748B] group-open:hidden" strokeWidth={2} />
                     <Minus className="w-3.5 h-3.5 text-white hidden group-open:inline-block" strokeWidth={2} />
                   </span>
                 </summary>
-                <p className="mt-5 text-[15px] text-[#334155] leading-[1.9]">{f.a}</p>
+                <p className="mt-4 text-[15px] text-[#334155] leading-[1.9] max-w-3xl">{f.a}</p>
               </details>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ═══════════════ CTA (Red brand section) ═══════════════ */}
+      {/* ═══════════════ A LIGHTER JOURNEY (Contact) ═══════════════ */}
       <section id="contact" className="bg-[#C8102E] text-white">
-        <div className="max-w-4xl mx-auto px-6 py-24 md:py-32 text-center">
-          <p className="text-[12px] font-medium tracking-[0.2em] text-white/80 mb-6 uppercase">
-            Contact
-          </p>
-          <h2 className="text-3xl sm:text-4xl md:text-[46px] lg:text-[52px] font-bold tracking-normal leading-[1.35] mb-10">
-            {t.contact.heading}
-          </h2>
-          <p className="text-[16px] text-white/95 leading-[1.85] mb-12 max-w-2xl mx-auto">
-            {t.contact.body.first}
-            <br className="hidden md:inline" />
-            {t.contact.body.second}
-          </p>
-          <div className="flex flex-col items-center gap-3">
-            <a
-              href={contactHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-3 px-8 py-4 rounded-md bg-white text-[#C8102E] text-[15px] font-bold hover:bg-white/95"
-            >
-              {t.contact.cta}
-              <ArrowRight className="w-4 h-4" strokeWidth={2} />
-            </a>
-            <p className="text-[12px] text-white/85">{t.contact.replyNote}</p>
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-16 md:py-28 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-12 items-center">
+          <div className="md:col-span-7">
+            <Eyebrow en="A Lighter Journey" dark />
+            <h2 className="text-[30px] sm:text-[36px] md:text-[44px] lg:text-[52px] font-bold tracking-normal leading-[1.3] mb-8">
+              {t.contact.heading}
+            </h2>
+            <p className="text-[15px] md:text-[16px] text-white/95 leading-[1.9] mb-10 max-w-xl">
+              {t.contact.body.first}
+              <br className="hidden md:inline" />
+              {t.contact.body.second}
+            </p>
+            <div className="flex flex-col items-start gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a
+                  href={contactHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-3 px-8 py-4 rounded-md bg-white text-[#C8102E] text-[15px] font-bold hover:bg-white/95"
+                >
+                  {t.contact.cta}
+                  <ArrowRight className="w-4 h-4" strokeWidth={2} />
+                </a>
+                <Link
+                  href="/agency/signup"
+                  className="inline-flex items-center justify-center px-8 py-4 rounded-md border-2 border-white text-white text-[15px] font-bold hover:bg-white/10"
+                >
+                  {t.nav.signup}
+                </Link>
+              </div>
+              <p className="text-[12px] text-white/85">{t.contact.replyNote}</p>
+            </div>
+          </div>
+          <div className="md:col-span-5">
+            <Pic name="closing-handshake" alt={t.closingAlt} sizes="(min-width: 768px) 40vw, 100vw" className="max-w-[420px] md:ml-auto" />
           </div>
         </div>
       </section>
@@ -1473,9 +999,7 @@ export function Landing({ lang }: { lang: Locale }) {
             <Link href="/track" className="hover:text-[#C8102E]">{t.footer.tracking}</Link>
             <Link href="/legal/terms" className="hover:text-[#C8102E]">{t.footer.terms}</Link>
             <Link href="/legal/privacy" className="hover:text-[#C8102E]">{t.footer.privacy}</Link>
-            <Link href="/legal/commercial-transactions" className="hover:text-[#C8102E]">
-              {t.footer.commercial}
-            </Link>
+            <Link href="/legal/commercial-transactions" className="hover:text-[#C8102E]">{t.footer.commercial}</Link>
           </div>
         </div>
         <div className="border-t border-[#E5E7EB]">
@@ -1483,12 +1007,7 @@ export function Landing({ lang }: { lang: Locale }) {
             {t.footer.disclaimer}
             <br />
             © {new Date().getFullYear()}{" "}
-            <a
-              href="https://www.jojotokyo.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-[#C8102E]"
-            >
+            <a href="https://www.jojotokyo.com" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[#C8102E]">
               {t.footer.operatorName}
             </a>
             {t.footer.copyrightSuffix}
