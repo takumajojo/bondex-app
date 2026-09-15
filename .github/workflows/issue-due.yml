@@ -1,7 +1,8 @@
-name: Issue-due daily digest
+name: Issue-due daily auto-issue
 
-# 発行漏れ防止のデイリーダイジェスト。発送日が今日〜30日先で未発行の予約を
-# 毎朝まとめて BondEx 運用へ通知する (/api/cron/issue-due)。
+# 送り状の自動発行 (既定)。発送日が今日〜30日先で未発行の予約を毎朝拾い、
+# 送り状を自動発行 → Drive 格納 → 代理店へ通知する (/api/cron/issue-due)。
+# AUTO_ISSUE_ENABLED="false" のときのみ「発行してください」ダイジェスト通知に切り替わる。
 #
 # 事前設定 (sync-tracking と共通):
 #   Repository → Settings → Secrets and variables → Actions

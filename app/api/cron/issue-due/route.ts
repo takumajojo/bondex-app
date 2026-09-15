@@ -14,13 +14,14 @@ export const maxDuration = 300 // 複数区間の Ship&co 発行 + Drive 格納�
  * 入れば再発行が通るケース (E1-0046 など) の自動リカバリー。
  *
  * ── 2モード (docs/issuance-rules.md) ─────────────────────────────
- *  1) 既定 (AUTO_ISSUE_ENABLED != "true"): 運用へ「発行してください」ダイジェスト通知のみ。
- *  2) 自動発行 (AUTO_ISSUE_ENABLED == "true" かつ OPERATOR_PASSWORD あり):
+ *  1) 自動発行【既定】(OPERATOR_PASSWORD あり・AUTO_ISSUE_ENABLED != "false"):
  *     発送30日前に入った区間の送り状を **自動発行** し、成功したら書類一式を Drive へ格納、
- *     代理店へ「送り状を発行しました」メールを送る。
+ *     代理店へ「送り状を発行しました」メールを送る。← 標準の仕様 (2026-09-15 谷口さん決定)。
+ *  2) ダイジェストのみ (AUTO_ISSUE_ENABLED == "false" または OPERATOR_PASSWORD なし):
+ *     運用へ「発行してください」ダイジェスト通知のみ (自動発行を止める安全弁)。
  *
  * ── 安全設計 ────────────────────────────────────────────────────
- *  - フラグ AUTO_ISSUE_ENABLED を立てるまで自動発行しない (Ship&co 従量課金の暴発防止)。
+ *  - 自動発行が既定。止めたいときだけ AUTO_ISSUE_ENABLED="false" を設定する (暴発時の緊急停止弁)。
  *  - 発行は運営と同じ /api/shipandco/create を OPERATOR_PASSWORD で呼ぶ。
  *  - 冪等: 発行済み区間は listIssueDue の対象外 + shipandco/create が既存ラベルを返す
  *    (二重課金なし)。発行後 status=issued になり翌日以降スキップ。
@@ -117,7 +118,8 @@ export async function GET(req: NextRequest) {
       byBooking.set(s.booking_id, arr)
     }
 
-    const autoIssue = process.env.AUTO_ISSUE_ENABLED === "true"
+    // 自動発行が既定 (2026-09-15 谷口さん決定)。AUTO_ISSUE_ENABLED="false" のときだけ止める。
+    const autoIssue = process.env.AUTO_ISSUE_ENABLED !== "false"
     const opPw = process.env.OPERATOR_PASSWORD
 
     // ── モード1: ダイジェスト通知のみ (自動発行 OFF、または鍵なし) ──
