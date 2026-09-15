@@ -514,13 +514,13 @@ const ja: LandingMessages = {
     fit: {
       label: "FIT",
       title: "個人旅行・少人数",
-      items: ["1 件から利用可能", "予約ごとに配送を管理", "旅行中の追加配送も相談可能"],
+      items: ["1 件から利用可能", "予約ごとに配送を管理", "旅行中の追加配送も相談可能", "受付は集荷前日 16:00（日本時間）まで"],
       alt: "京都を手ぶらで観光するカップル",
     },
     group: {
       label: "GROUP / 10+ GUESTS",
       title: "10 名以上の団体にも対応",
-      items: ["10 名以上の団体旅行に対応", "30〜45 名規模の荷物も一元管理", "複数個口をまとめて確認", "個数に応じたボリュームディスカウント"],
+      items: ["10 名以上の団体旅行に対応", "30〜45 名規模の荷物も一元管理", "複数個口をまとめて確認", "個数に応じたボリュームディスカウント", "ご予約は原則 5 日前まで。急な変更もできる限り対応"],
       alt: "ホテルのロビーで団体の荷物を預かる場面",
     },
     privacy: {
@@ -642,7 +642,7 @@ const ja: LandingMessages = {
     heading: { first: "はじめての方の、", second: "よくあるご質問。" },
     callouts: [
       { label: "補償", text: "提携物流会社の約款で 1 個あたり最大 30 万円まで。" },
-      { label: "締切", text: "旅程受領即日でバウチャー発行。送り状は集荷 1 ヶ月前。" },
+      { label: "締切", text: "個人は集荷前日 16:00 まで、団体は原則 5 日前。急な変更もまずご相談ください。" },
       {
         label: "キャンセル",
         text: "集荷完了前のご連絡なら無償。集荷後は配送手続き開始のため不可。",
@@ -672,6 +672,10 @@ const ja: LandingMessages = {
       {
         q: "契約から運用開始まで、どのくらい?",
         a: "業務委託契約 (取次業として明記) の締結後、代理店ポータルのアカウントを発行して即日運用開始できます。初回旅程 PDF で当日中にテスト発行いただけます。",
+      },
+      {
+        q: "急な依頼や変更は、いつまで対応できますか?",
+        a: "個人旅行は集荷前日の 16:00（日本時間）まで受け付けます。団体は原則 5 日前までにご予約ください。それ以降の急な変更（個数の増減・ホテル変更・日程変更）も実際によくあることですので、可能な限り調整します。まずはご連絡ください。",
       },
     ],
   },
@@ -884,8 +888,8 @@ const en: LandingMessages = {
   },
   segments: {
     heading: ["From individual travelers to groups,", "for every kind of trip."],
-    fit: { label: "FIT", title: "Individuals and small parties", items: ["Available from a single booking", "Deliveries managed per reservation", "Extra deliveries mid-trip on request"], alt: "A couple sightseeing hands-free in Kyoto" },
-    group: { label: "GROUP / 10+ GUESTS", title: "Groups of 10 or more", items: ["Group tours of 10 or more guests", "Luggage for 30–45 guests managed in one place", "Multiple pieces confirmed together", "Volume discounts by piece count"], alt: "Group luggage collected in a hotel lobby" },
+    fit: { label: "FIT", title: "Individuals and small parties", items: ["Available from a single booking", "Deliveries managed per reservation", "Extra deliveries mid-trip on request", "Requests accepted until 16:00 JST the day before pickup"], alt: "A couple sightseeing hands-free in Kyoto" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Groups of 10 or more", items: ["Group tours of 10 or more guests", "Luggage for 30–45 guests managed in one place", "Multiple pieces confirmed together", "Volume discounts by piece count", "Book 5 days ahead as a rule; last-minute changes handled wherever possible"], alt: "Group luggage collected in a hotel lobby" },
     privacy: { title: "Only the information needed for delivery.", body: "There is no need to share the full itinerary. BondEx collects and uses only the minimum information required to arrange delivery. When itineraries are read online, only delivery-related details are extracted." },
   },
   manage: {
@@ -995,7 +999,7 @@ const en: LandingMessages = {
       { label: "Compensation", text: "Up to ¥300,000 per item under our partner carrier's terms." },
       {
         label: "Deadlines",
-        text: "Vouchers are issued the day the itinerary arrives; shipping labels one month before pickup.",
+        text: "FIT: until 16:00 JST the day before pickup. Groups: 5 days ahead as a rule. Last-minute changes: contact us first.",
       },
       {
         label: "Cancellation",
@@ -1026,6 +1030,10 @@ const en: LandingMessages = {
       {
         q: "How long does it take from contract to going live?",
         a: "Once the service agreement (which clearly states our role as an intermediary) is signed, we issue your agency portal account and you can go live the same day. You can run a test issuance from your first itinerary PDF that same day.",
+      },
+      {
+        q: "How late can we book or change a shipment?",
+        a: "For individual travelers we accept requests until 16:00 JST on the day before pickup. For groups, please book at least 5 days ahead as a rule. Sudden changes after that — extra bags, a different hotel, a new date — do happen, and we will do our best to accommodate them. Contact us first.",
       },
     ],
   },
@@ -1232,8 +1240,8 @@ const es: LandingMessages = {
   },
   segments: {
     heading: ["De viajeros individuales a grupos,", "para cualquier viaje."],
-    fit: { label: "FIT", title: "Individuales y grupos pequeños", items: ["Disponible desde una sola reserva", "Envíos gestionados por reserva", "Envíos adicionales durante el viaje bajo petición"], alt: "Una pareja visitando Kioto sin equipaje" },
-    group: { label: "GROUP / 10+ GUESTS", title: "Grupos de 10 o más", items: ["Grupos de 10 o más viajeros", "Equipaje de 30–45 personas gestionado de forma centralizada", "Varios bultos confirmados a la vez", "Descuentos por volumen según el número de bultos"], alt: "Equipaje de un grupo reunido en el vestíbulo de un hotel" },
+    fit: { label: "FIT", title: "Individuales y grupos pequeños", items: ["Disponible desde una sola reserva", "Envíos gestionados por reserva", "Envíos adicionales durante el viaje bajo petición", "Solicitudes hasta las 16:00 (hora de Japón) del día anterior a la recogida"], alt: "Una pareja visitando Kioto sin equipaje" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Grupos de 10 o más", items: ["Grupos de 10 o más viajeros", "Equipaje de 30–45 personas gestionado de forma centralizada", "Varios bultos confirmados a la vez", "Descuentos por volumen según el número de bultos", "Reserva con 5 días de antelación como norma; cambios de última hora atendidos siempre que sea posible"], alt: "Equipaje de un grupo reunido en el vestíbulo de un hotel" },
     privacy: { title: "Solo la información necesaria para el envío.", body: "No hace falta compartir el itinerario completo. BondEx recopila y utiliza únicamente la información mínima para organizar el envío. Al leer itinerarios en línea, solo se extraen los datos relativos al envío." },
   },
   manage: {
@@ -1343,7 +1351,7 @@ const es: LandingMessages = {
       { label: "Cobertura", text: "Hasta ¥300,000 por artículo según las condiciones de nuestro transportista asociado." },
       {
         label: "Plazos",
-        text: "Los vouchers se emiten el día en que llega el itinerario; las etiquetas de envío, un mes antes de la recogida.",
+        text: "Individuales: hasta las 16:00 (Japón) del día anterior. Grupos: 5 días antes como norma. Cambios de última hora: consúltenos.",
       },
       {
         label: "Cancelación",
@@ -1374,6 +1382,10 @@ const es: LandingMessages = {
       {
         q: "¿Cuánto se tarda desde el contrato hasta la puesta en marcha?",
         a: "Una vez firmado el contrato de servicio (que indica claramente nuestro papel como intermediario), emitimos la cuenta de su portal de agencia y puede empezar a operar el mismo día. Puede hacer una emisión de prueba con su primer PDF de itinerario ese mismo día.",
+      },
+      {
+        q: "¿Hasta cuándo se puede reservar o modificar un envío?",
+        a: "Para viajeros individuales aceptamos solicitudes hasta las 16:00 (hora de Japón) del día anterior a la recogida. Para grupos, reserve al menos con 5 días de antelación como norma. Los cambios repentinos posteriores (más bultos, otro hotel, otra fecha) ocurren, y haremos todo lo posible por atenderlos. Contáctenos primero.",
       },
     ],
   },
@@ -1580,8 +1592,8 @@ const fr: LandingMessages = {
   },
   segments: {
     heading: ["Du voyageur individuel au groupe,", "pour tous les voyages."],
-    fit: { label: "FIT", title: "Individuels et petits groupes", items: ["Dès une seule réservation", "Expéditions gérées par réservation", "Expéditions supplémentaires en cours de voyage sur demande"], alt: "Un couple visitant Kyoto les mains libres" },
-    group: { label: "GROUP / 10+ GUESTS", title: "Groupes de 10 personnes et plus", items: ["Voyages de groupe de 10 personnes et plus", "Bagages de 30 à 45 personnes gérés de façon centralisée", "Plusieurs colis confirmés ensemble", "Remises de volume selon le nombre de colis"], alt: "Bagages d'un groupe rassemblés dans le hall d'un hôtel" },
+    fit: { label: "FIT", title: "Individuels et petits groupes", items: ["Dès une seule réservation", "Expéditions gérées par réservation", "Expéditions supplémentaires en cours de voyage sur demande", "Demandes acceptées jusqu'à 16 h (heure du Japon) la veille de l'enlèvement"], alt: "Un couple visitant Kyoto les mains libres" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Groupes de 10 personnes et plus", items: ["Voyages de groupe de 10 personnes et plus", "Bagages de 30 à 45 personnes gérés de façon centralisée", "Plusieurs colis confirmés ensemble", "Remises de volume selon le nombre de colis", "Réservation 5 jours à l'avance en principe ; changements de dernière minute pris en charge dans la mesure du possible"], alt: "Bagages d'un groupe rassemblés dans le hall d'un hôtel" },
     privacy: { title: "Seules les informations nécessaires à la livraison.", body: "Inutile de partager l'itinéraire complet. BondEx ne collecte et n'utilise que le minimum nécessaire à l'organisation de la livraison. Lors de la lecture d'itinéraires en ligne, seules les données liées à la livraison sont extraites." },
   },
   manage: {
@@ -1691,7 +1703,7 @@ const fr: LandingMessages = {
       { label: "Indemnisation", text: "Jusqu'à ¥300,000 par article selon les conditions de notre transporteur partenaire." },
       {
         label: "Délais",
-        text: "Les bons sont émis le jour de la réception de l'itinéraire ; les étiquettes d'expédition, un mois avant l'enlèvement.",
+        text: "Individuels : jusqu'à 16 h (Japon) la veille. Groupes : 5 jours à l'avance en principe. Changements de dernière minute : contactez-nous.",
       },
       {
         label: "Annulation",
@@ -1722,6 +1734,10 @@ const fr: LandingMessages = {
       {
         q: "Combien de temps entre le contrat et le démarrage ?",
         a: "Une fois le contrat de service signé (indiquant clairement notre rôle d'intermédiaire), nous créons votre compte sur le portail agence et vous pouvez démarrer le jour même. Vous pouvez effectuer une émission de test à partir de votre premier PDF d'itinéraire le jour même.",
+      },
+      {
+        q: "Jusqu'à quand peut-on réserver ou modifier une expédition ?",
+        a: "Pour les voyageurs individuels, nous acceptons les demandes jusqu'à 16 h (heure du Japon) la veille de l'enlèvement. Pour les groupes, réservez au moins 5 jours à l'avance en principe. Les changements soudains après ce délai (bagages supplémentaires, autre hôtel, autre date) arrivent, et nous ferons notre possible pour les prendre en charge. Contactez-nous d'abord.",
       },
     ],
   },
@@ -1928,8 +1944,8 @@ const zh: LandingMessages = {
   },
   segments: {
     heading: ["从个人旅行到团体旅行，", "各类行程均可对应。"],
-    fit: { label: "FIT", title: "个人旅行 · 少人数", items: ["1 件起即可使用", "按预订逐一管理配送", "旅途中追加配送亦可商议"], alt: "轻装游览京都的情侣" },
-    group: { label: "GROUP / 10+ GUESTS", title: "10 人以上团体亦可对应", items: ["支持 10 人以上团体旅行", "30〜45 人规模的行李统一管理", "多件行李一并确认", "按件数提供批量折扣"], alt: "在酒店大堂集中受理团体行李" },
+    fit: { label: "FIT", title: "个人旅行 · 少人数", items: ["1 件起即可使用", "按预订逐一管理配送", "旅途中追加配送亦可商议", "受理截止：取件前一天 16:00（日本时间）"], alt: "轻装游览京都的情侣" },
+    group: { label: "GROUP / 10+ GUESTS", title: "10 人以上团体亦可对应", items: ["支持 10 人以上团体旅行", "30〜45 人规模的行李统一管理", "多件行李一并确认", "按件数提供批量折扣", "原则上提前 5 天预订；临时变更也会尽力协调"], alt: "在酒店大堂集中受理团体行李" },
     privacy: { title: "只需提供配送所需的信息。", body: "无需共享完整行程表。BondEx 仅获取并使用安排配送所需的最少信息。在线读取行程表时，也只提取与配送相关的信息。" },
   },
   manage: {
@@ -2039,7 +2055,7 @@ const zh: LandingMessages = {
       { label: "赔偿", text: "依据合作物流公司的条款，每件最高 ¥300,000。" },
       {
         label: "时限",
-        text: "行程送达当日开具兑换券；运单于取件前一个月开具。",
+        text: "个人：取件前一天 16:00（日本时间）前。团体：原则上提前 5 天。临时变更请先联系我们。",
       },
       {
         label: "取消",
@@ -2070,6 +2086,10 @@ const zh: LandingMessages = {
       {
         q: "从签约到正式上线需要多久？",
         a: "在签署业务委托合同（其中明确注明我方居间方身份）后，我们即开通您的代理商门户账户，可当日上线。您可用首份行程 PDF 于当日进行测试开具。",
+      },
+      {
+        q: "临时预订或变更最晚可以到什么时候？",
+        a: "个人旅行的申请受理至取件前一天 16:00（日本时间）。团体请原则上提前 5 天预订。此后的临时变更（增减件数、更换酒店、更改日期）在实际中很常见，我们会尽力协调，请先与我们联系。",
       },
     ],
   },
@@ -2276,8 +2296,8 @@ const it: LandingMessages = {
   },
   segments: {
     heading: ["Dal viaggiatore individuale ai gruppi,", "per ogni tipo di viaggio."],
-    fit: { label: "FIT", title: "Individuali e piccoli gruppi", items: ["Disponibile da una sola prenotazione", "Spedizioni gestite per prenotazione", "Spedizioni aggiuntive durante il viaggio su richiesta"], alt: "Una coppia in visita a Kyoto a mani libere" },
-    group: { label: "GROUP / 10+ GUESTS", title: "Gruppi da 10 persone in su", items: ["Viaggi di gruppo da 10 persone in su", "Bagagli di 30–45 persone gestiti in modo centralizzato", "Più colli confermati insieme", "Sconti volume in base al numero di colli"], alt: "Bagagli di un gruppo raccolti nella hall di un hotel" },
+    fit: { label: "FIT", title: "Individuali e piccoli gruppi", items: ["Disponibile da una sola prenotazione", "Spedizioni gestite per prenotazione", "Spedizioni aggiuntive durante il viaggio su richiesta", "Richieste accettate fino alle 16:00 (ora del Giappone) del giorno prima del ritiro"], alt: "Una coppia in visita a Kyoto a mani libere" },
+    group: { label: "GROUP / 10+ GUESTS", title: "Gruppi da 10 persone in su", items: ["Viaggi di gruppo da 10 persone in su", "Bagagli di 30–45 persone gestiti in modo centralizzato", "Più colli confermati insieme", "Sconti volume in base al numero di colli", "Prenotazione 5 giorni prima di norma; modifiche dell'ultimo minuto gestite ove possibile"], alt: "Bagagli di un gruppo raccolti nella hall di un hotel" },
     privacy: { title: "Solo le informazioni necessarie alla consegna.", body: "Non serve condividere l'itinerario completo. BondEx raccoglie e utilizza solo il minimo necessario a organizzare la consegna. Quando gli itinerari vengono letti online, si estraggono solo i dati relativi alla spedizione." },
   },
   manage: {
@@ -2387,7 +2407,7 @@ const it: LandingMessages = {
       { label: "Risarcimento", text: "Fino a ¥300,000 per collo secondo le condizioni del nostro corriere partner." },
       {
         label: "Scadenze",
-        text: "I voucher sono emessi il giorno in cui arriva l'itinerario; le etichette di spedizione un mese prima del ritiro.",
+        text: "Individuali: entro le 16:00 (Giappone) del giorno prima. Gruppi: 5 giorni prima di norma. Modifiche dell'ultimo minuto: contattaci.",
       },
       {
         label: "Annullamento",
@@ -2418,6 +2438,10 @@ const it: LandingMessages = {
       {
         q: "Quanto tempo passa dal contratto all'avvio?",
         a: "Una volta firmato il contratto di servizio (che indica chiaramente il nostro ruolo di intermediario), emettiamo l'account del tuo portale agenzia e puoi partire in giornata. Puoi effettuare un'emissione di prova dal tuo primo PDF di itinerario lo stesso giorno.",
+      },
+      {
+        q: "Fino a quando è possibile prenotare o modificare una spedizione?",
+        a: "Per i viaggiatori individuali accettiamo richieste fino alle 16:00 (ora del Giappone) del giorno prima del ritiro. Per i gruppi, prenotate almeno 5 giorni prima di norma. Le modifiche improvvise successive (colli in più, un altro hotel, un'altra data) capitano, e faremo il possibile per gestirle. Contattateci prima.",
       },
     ],
   },
