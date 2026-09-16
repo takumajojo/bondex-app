@@ -16,6 +16,18 @@ function todayJst(): string {
 /** urgency の並び順 (overdue が最優先)。 */
 const URGENCY_RANK: Record<string, number> = { overdue: 0, urgent: 1, due: 2 }
 
+export interface SagawaPickupTask {
+  shipmentId: string
+  bookingId: string
+  legIndex: number
+  representative: string
+  tourNumber: string | null
+  fromHotel: string
+  fromHotelJa: string | null
+  shipmentDate: string
+  urgency: string
+}
+
 export interface HotelTodoTask {
   shipmentId: string
   bookingId: string
@@ -125,12 +137,39 @@ export async function GET(req: NextRequest) {
     return (a.deadline ?? "").localeCompare(b.deadline ?? "")
   })
 
+  // 佐川への集荷依頼タスク: 発行済み・集荷依頼未・発送日が今日/明日(JST)の区間。
+  // 集荷の前日に佐川へ連絡が必要なので、明日発送分を今日出す(+今日発送で未依頼は overdue)。
+  const tomorrow = new Date(Date.now() + 9 * 3600 * 1000 + 86_400_000).toISOString().slice(0, 10)
+  let sagawaPickupTasks: SagawaPickupTask[] = []
+  if (sb) {
+    const { data: pk } = await sb
+      .from("shipments")
+      .select("id, booking_id, leg_index, representative, tour_number, from_hotel, from_hotel_ja, shipment_date")
+      .eq("status", "issued")
+      .is("pickup_requested_at", null)
+      .gte("shipment_date", today)
+      .lte("shipment_date", tomorrow)
+      .order("shipment_date", { ascending: true })
+    sagawaPickupTasks = (pk ?? []).map((r) => ({
+      shipmentId: r.id as string,
+      bookingId: r.booking_id as string,
+      legIndex: r.leg_index as number,
+      representative: (r.representative as string) ?? "",
+      tourNumber: (r.tour_number as string | null) ?? null,
+      fromHotel: (r.from_hotel as string) ?? "",
+      fromHotelJa: (r.from_hotel_ja as string | null) ?? null,
+      shipmentDate: r.shipment_date as string,
+      urgency: (r.shipment_date as string) <= today ? "overdue" : "due",
+    }))
+  }
+
   // 他カテゴリの件数 (チップ表示・既存フィルタへ誘導)。
   const counts = (await countBoardViews(today)) ?? {}
 
   const total =
     hotelTasks.length +
+    sagawaPickupTasks.length +
     Object.entries(counts).reduce((s, [, n]) => s + (typeof n === "number" ? n : 0), 0)
 
-  return NextResponse.json({ today, total, hotelTasks, counts })
+  return NextResponse.json({ today, total, hotelTasks, sagawaPickupTasks, counts })
 }

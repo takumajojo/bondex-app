@@ -26,10 +26,23 @@ interface HotelTask {
   firstTime: boolean
 }
 
+interface SagawaPickupTask {
+  shipmentId: string
+  bookingId: string
+  legIndex: number
+  representative: string
+  tourNumber: string | null
+  fromHotel: string
+  fromHotelJa: string | null
+  shipmentDate: string
+  urgency: string
+}
+
 interface TodoData {
   today: string
   total: number
   hotelTasks: HotelTask[]
+  sagawaPickupTasks?: SagawaPickupTask[]
   counts: Record<string, number>
 }
 
@@ -82,6 +95,22 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
     setBusy("")
   }
 
+  const markPickupRequested = async (t: SagawaPickupTask) => {
+    setBusy("pk-" + t.shipmentId)
+    try {
+      const res = await fetch("/api/operator/sagawa-pickup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId: t.shipmentId }),
+      })
+      if (!res.ok) throw new Error("更新に失敗しました")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "更新に失敗しました")
+    }
+    setBusy("")
+  }
+
   if (error && !data) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
@@ -106,6 +135,10 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
   const overdue = data.hotelTasks.filter((t) => t.urgency === "overdue" || t.urgency === "urgent")
   const dueToday = data.hotelTasks.filter((t) => t.urgency === "due")
 
+  const sagawaPickups = data.sagawaPickupTasks ?? []
+  const pkOverdue = sagawaPickups.filter((t) => t.urgency === "overdue")
+  const pkDue = sagawaPickups.filter((t) => t.urgency !== "overdue")
+
   const categoryChips = Object.entries(CATEGORY_LABEL)
     .map(([view, label]) => ({ view, label, count: data.counts[view] ?? 0 }))
     .filter((c) => c.count > 0)
@@ -129,11 +162,16 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
       </div>
 
       {/* カテゴリチップ (件数・クリックで一覧フィルタへ) */}
-      {(data.hotelTasks.length > 0 || categoryChips.length > 0) && (
+      {(data.hotelTasks.length > 0 || sagawaPickups.length > 0 || categoryChips.length > 0) && (
         <div className="flex items-center gap-2 flex-wrap px-5 py-2.5 border-b border-slate-100">
           <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF2F2] text-[#C8102E] border border-[#FECACA] px-3 py-1 text-[11px] font-semibold">
             <Phone className="w-3 h-3" strokeWidth={1.8} /> ホテル連絡 {data.hotelTasks.length}
           </span>
+          {sagawaPickups.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 text-[11px] font-semibold">
+              🚚 佐川集荷依頼 {sagawaPickups.length}
+            </span>
+          )}
           {categoryChips.map((c) => (
             <button
               key={c.view}
@@ -146,10 +184,21 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
         </div>
       )}
 
-      {data.hotelTasks.length === 0 && categoryChips.length === 0 ? (
+      {data.hotelTasks.length === 0 && sagawaPickups.length === 0 && categoryChips.length === 0 ? (
         <div className="px-5 py-6 text-center text-sm text-muted-foreground">今日のホテル連絡・対応タスクはありません 🎉</div>
       ) : (
         <div>
+          {sagawaPickups.length > 0 && (
+            <>
+              <div className="px-5 pt-3 pb-1 text-[11px] font-bold text-blue-700">🚚 佐川へ集荷依頼（集荷の前日までに連絡）</div>
+              {pkOverdue.map((t) => (
+                <SagawaPickupRow key={t.shipmentId} t={t} overdue busy={busy} onDone={markPickupRequested} />
+              ))}
+              {pkDue.map((t) => (
+                <SagawaPickupRow key={t.shipmentId} t={t} busy={busy} onDone={markPickupRequested} />
+              ))}
+            </>
+          )}
           {overdue.length > 0 && (
             <>
               <div className="px-5 pt-3 pb-1 text-[11px] font-bold text-red-700">🔴 期限超過（今すぐ）</div>
@@ -223,6 +272,60 @@ function HotelTaskRow({
         >
           {isBusy ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.8} /> : <Check className="w-3 h-3" strokeWidth={2} />}
           連絡済みにする
+        </button>
+        <a href={`/operator/bookings/${encodeURIComponent(t.bookingId)}`} className="text-[11px] text-blue-600 hover:underline">
+          詳細 →
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// 佐川への集荷依頼タスク1行。「依頼済み」で pickup_requested_at を記録し TODO から消す。
+function SagawaPickupRow({
+  t,
+  overdue,
+  busy,
+  onDone,
+}: {
+  t: SagawaPickupTask
+  overdue?: boolean
+  busy: string
+  onDone: (t: SagawaPickupTask) => void
+}) {
+  const isBusy = busy === "pk-" + t.shipmentId
+  const md = (() => {
+    const d = new Date(`${t.shipmentDate}T00:00:00+09:00`)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  })()
+  return (
+    <div className="flex items-start gap-3 px-5 py-3 border-t border-slate-100">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center flex-wrap gap-1.5">
+          <span className="font-mono text-[12px] font-medium text-foreground">
+            {t.bookingId}-L{t.legIndex + 1}
+          </span>
+          {overdue ? (
+            <span className="rounded bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-bold">本日発送・至急</span>
+          ) : (
+            <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">明日発送</span>
+          )}
+          <span className="text-[11px] text-muted-foreground">発送 {md}</span>
+          {t.tourNumber && <span className="text-[11px] text-muted-foreground">・ツアー {t.tourNumber}</span>}
+        </div>
+        <p className="mt-0.5 text-[12px] text-foreground">
+          集荷場所：{t.fromHotelJa || t.fromHotel}
+          {t.representative ? <span className="text-muted-foreground">（{t.representative} 様）</span> : null}
+        </p>
+      </div>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <button
+          onClick={() => onDone(t)}
+          disabled={isBusy}
+          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isBusy ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.8} /> : <Check className="w-3 h-3" strokeWidth={2} />}
+          依頼済みにする
         </button>
         <a href={`/operator/bookings/${encodeURIComponent(t.bookingId)}`} className="text-[11px] text-blue-600 hover:underline">
           詳細 →
