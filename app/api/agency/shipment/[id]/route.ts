@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { notifyBondEx } from "@/lib/notify"
+import { jstTodayYmd } from "@/lib/yamato-delivery"
 
 export const runtime = "nodejs"
 
@@ -140,8 +141,9 @@ export async function PATCH(
         { status: 400 },
       )
     }
-    const today = new Date()
-    const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+    // 「今日」は必ず JST で判定する。サーバは UTC 稼働のため new Date() ローカル値だと
+    // 0:00-8:59 JST の間だけ前日扱いになり、過去日の発送が素通りして自動発行から漏れる。
+    const todayYmd = jstTodayYmd()
     if (newShip < todayYmd) {
       return NextResponse.json(
         { error: en ? "The ship date can't be in the past." : "発送日に過去の日付は指定できません。" },
