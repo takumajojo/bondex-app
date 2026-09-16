@@ -322,6 +322,10 @@ export async function GET(req: NextRequest) {
         if (currentRank < progressionRank("picked_up") && bestRank >= progressionRank("picked_up")) {
           updatePayload.picked_up_at = new Date().toISOString()
         }
+        // 配達完了に到達 → delivered_at を記録 (2営業日経過で過去履歴へ移すための基準)。
+        if (bestStatus === "delivered") {
+          updatePayload.delivered_at = new Date().toISOString()
+        }
       }
 
       if (Object.keys(updatePayload).length === 0) {

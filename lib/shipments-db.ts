@@ -1,6 +1,7 @@
 import { getSupabase } from "@/lib/supabase"
 import type { ResidenceAddress } from "@/lib/residence"
 import { changeDeadlineAt } from "./change-deadline"
+import { businessDaysBefore } from "./business-days"
 
 /**
  * shipments テーブル CRUD.
@@ -401,6 +402,8 @@ export async function listShipments(filter?: {
   todayYmd?: string
   /** 並び順。既定=created_desc (依頼が新しい順)。 */
   sort?: string
+  /** true=過去履歴(配達完了して2営業日超のみ) / 既定=アクティブ(それを除外)。 */
+  archived?: boolean
   limit?: number
 }): Promise<ShipmentRecord[]> {
   const sb = getSupabase()
@@ -427,6 +430,23 @@ export async function listShipments(filter?: {
       q = q.or(
         `booking_id.ilike.%${s}%,representative.ilike.%${s}%,recipient.ilike.%${s}%,tour_number.ilike.%${s}%`,
       )
+    }
+  }
+  // 配達完了して2営業日経った区間: 既定=アクティブ一覧から除外 / archived=履歴として抽出。
+  // view(要対応タイル)使用時は対象外。基準=「配達完了日 <= 2営業日前」→ delivered_at < (2営業日前+1日)0時JST。
+  if (!filter?.view) {
+    const todayForArchive =
+      filter?.todayYmd ?? new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+    const thresholdDate = businessDaysBefore(todayForArchive, 2)
+    if (thresholdDate) {
+      const d = new Date(`${thresholdDate}T00:00:00+09:00`)
+      d.setUTCDate(d.getUTCDate() + 1) // 閾値日の翌日0時JSTより前=履歴
+      const archiveBeforeTs = d.toISOString()
+      if (filter?.archived) {
+        q = q.eq("status", "delivered").lt("delivered_at", archiveBeforeTs)
+      } else {
+        q = q.or(`status.neq.delivered,delivered_at.gte.${archiveBeforeTs}`)
+      }
     }
   }
   q = q.limit(filter?.limit ?? 100)

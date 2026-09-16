@@ -380,6 +380,8 @@ export default function DashboardPage() {
   const [filterStatus, setFilterStatus] = useState<"" | ShipmentStatus>("")
   // 一覧の並び順
   const [sortBy, setSortBy] = useState("created_desc")
+  // 過去履歴 (配達完了して2営業日超) の表示切替。既定=アクティブのみ。
+  const [showArchived, setShowArchived] = useState(false)
   // 検索 (予約番号 / 代表者 / 受取人 / ツアー番号) — 入力値と適用値を分離し
   // Enter / ボタンで適用 (1 文字ごとの API 叩きを防ぐ)
   const [searchInput, setSearchInput] = useState("")
@@ -503,6 +505,7 @@ export default function DashboardPage() {
       if (filterStatus) sp.set("status", filterStatus)
       if (search) sp.set("search", search)
       if (sortBy) sp.set("sort", sortBy)
+      if (showArchived) sp.set("archived", "1")
       const res = await fetch(`/api/shipments?${sp.toString()}`)
       const text = await res.text()
       if (!res.ok) {
@@ -522,7 +525,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [filterAgency, filterStatus, search, sortBy])
+  }, [filterAgency, filterStatus, search, sortBy, showArchived])
 
   useEffect(() => {
     void load()
@@ -1220,6 +1223,18 @@ export default function DashboardPage() {
             <option value="ship_asc">発送日が近い順（集荷が近い）</option>
             <option value="ship_desc">発送日が遠い順</option>
           </select>
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            title="配達完了して2営業日経った過去の配送を表示（一覧からは自動で外れます）"
+            className={`h-9 px-3 rounded-lg border text-sm ${
+              showArchived
+                ? "bg-foreground text-background border-foreground"
+                : "border-border bg-white text-muted-foreground hover:bg-slate-50"
+            }`}
+          >
+            {showArchived ? "過去の履歴を表示中" : "過去の履歴"}
+          </button>
           <div className="flex items-center gap-1.5">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" strokeWidth={1.5} />

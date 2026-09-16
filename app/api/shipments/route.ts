@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
       search: sp.get("search") || undefined,
       view,
       sort: sp.get("sort") || undefined,
+      archived: sp.get("archived") === "1" || sp.get("archived") === "true",
       todayYmd: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
       limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
     })
@@ -210,6 +211,16 @@ export async function PATCH(req: NextRequest) {
       ? await updateShipmentStatus(id, patch.status)
       : await updateShipmentFields(id, patch)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+
+  // 手動で picked_up / delivered にした場合、記録時刻を初回のみセット
+  // (集荷通知の picked_up_at / 過去履歴の delivered_at。既にあれば上書きしない)。
+  if (patch.status === "delivered" || patch.status === "picked_up") {
+    const sbTs = getSupabase()
+    if (sbTs) {
+      const col = patch.status === "delivered" ? "delivered_at" : "picked_up_at"
+      await sbTs.from("shipments").update({ [col]: new Date().toISOString() }).eq("id", id).is(col, null)
+    }
+  }
 
   // 手動でステータスを集荷完了以降に変えた場合の副作用 (自動同期 cron と同じ)。
   // いずれも best-effort — 更新自体は既に成立しているので失敗しても 200 を返す。
