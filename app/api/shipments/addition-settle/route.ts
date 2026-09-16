@@ -138,11 +138,34 @@ export async function POST(req: NextRequest) {
       cancel_url: `${origin}/?checkout=cancel`,
     })
 
-    await sb
+    // 冪等 + 競合防止: 「まだリンクが無い時だけ」書き込む (charged_at ガードと同じ流儀)。
+    // 同時押し/リトライで別リクエストが並走しても、DBに載る決済リンクは常に1本に保たれる。
+    const { data: claimed, error: updErr } = await sb
       .from("shipments")
       .update({ stripe_checkout_session_id: session.id, stripe_checkout_url: session.url })
       .eq("id", id)
+      .is("stripe_checkout_url", null)
+      .select("stripe_checkout_url")
+      .maybeSingle()
+    if (updErr) {
+      console.error("[addition-settle] checkout URL 保存失敗:", updErr.message)
+      return NextResponse.json(
+        { error: "決済リンクの保存に失敗しました。時間をおいて再度お試しください。" },
+        { status: 500 },
+      )
+    }
+    if (!claimed) {
+      // 競合で他リクエストが先にリンクを確定 → 既存を返す (メールは送らない = 二重送付防止)。
+      const latest = await getShipment(id)
+      return NextResponse.json({
+        ok: true,
+        settlement: "card",
+        url: latest?.stripe_checkout_url ?? null,
+        reused: true,
+      })
+    }
 
+    // 勝者のみ決済リンクをメール送信。
     await sendAdditionEmail(agency.contact_email, legRef, [
       "旅行中の追加のご依頼を承りました。下記の内容で手配いたします。",
       "",
