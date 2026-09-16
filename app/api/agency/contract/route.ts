@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { ContractDocument, CONTRACT_VERSION, type ContractInput } from "@/lib/contract-pdf"
+import { contentDisposition } from "@/lib/content-disposition"
 import { sendMail, mailerConfigured } from "@/lib/mailer"
 import { putContractDocument } from "@/lib/google-drive"
 import { notifyBondEx } from "@/lib/notify"
@@ -199,7 +200,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="bondex-contract-${agencyName.replace(/\s+/g, "_")}.pdf"`,
+        "Content-Disposition": contentDisposition("inline", `bondex-contract-${agencyName.replace(/\s+/g, "_")}.pdf`),
         "Cache-Control": "no-store",
       },
     })
@@ -238,7 +239,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Disposition": contentDisposition("attachment", fileName),
         "Cache-Control": "no-store",
       },
     })

@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { ContractDocument } from "@/lib/contract-pdf"
+import { contentDisposition } from "@/lib/content-disposition"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -81,7 +82,8 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
+        // 代理店名に日本語が含まれても 500 にならないよう ASCII+RFC5987 で組み立てる。
+        "Content-Disposition": contentDisposition("attachment", fileName),
         "Cache-Control": "no-store",
       },
     })
