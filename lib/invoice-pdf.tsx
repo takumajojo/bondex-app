@@ -10,13 +10,15 @@ import {
   Image,
   Font,
 } from "@react-pdf/renderer"
+import { loadImageDataUri } from "./pdf-image"
 
 // ---------------------------------------------------------------------------
 // Fonts (voucher-pdf.tsx と同じ Noto Sans JP)
 // ---------------------------------------------------------------------------
 
 const FONT_DIR = path.join(process.cwd(), "public", "fonts")
-const LOGO_PATH = path.join(process.cwd(), "public", "bondex-logo.png")
+// ロゴは data URI 化して埋め込む (パス参照だと本番で画像が黙って消える恐れ。lib/pdf-image.ts 参照)。
+const LOGO_PATH = loadImageDataUri("bondex-logo.png", "image/png")
 
 try {
   Font.register({
