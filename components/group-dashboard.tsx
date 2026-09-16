@@ -15,6 +15,7 @@ import {
   Loader2,
   Pencil,
   Phone,
+  Printer,
   RefreshCw,
   Search,
   Truck,
@@ -71,6 +72,7 @@ const T = {
       issue: "要対応あり",
       cancelled: "キャンセル",
     } as Record<string, string>,
+    printBtn: "名簿を印刷（添乗員用）",
     // 編集モーダル
     shareBtn: "共有リンク（添乗員用）",
     shareTitle: "添乗員向け共有リンク",
@@ -139,6 +141,7 @@ const T = {
       issue: "Needs attention",
       cancelled: "Cancelled",
     } as Record<string, string>,
+    printBtn: "Print roster (tour leader)",
     shareBtn: "Share link (tour leader)",
     shareTitle: "Tour leader share link",
     shareHint: "Creates a time-limited link that shows this group only (no pricing or billing, read-only). Send it via LINE / WhatsApp.",
@@ -244,6 +247,149 @@ export function GroupDashboard({
       ? `${data.legs[0].fromHotel} → ${data.legs[data.legs.length - 1].toHotel}`
       : ""
 
+  // 添乗員用「確定名簿」を印刷用シートとして別ウィンドウに出力する。
+  // 団体は同一配送番号の配下に番号が付与される想定で、伝票番号が誰に付くかは未確定のため、
+  // 名前＋個数を主とし、伝票番号は現場で記入できる空欄(個数ぶん)を用意する。
+  const printRoster = () => {
+    const isJa = locale === "ja"
+    const L = isJa
+      ? {
+          title: "手荷物名簿（添乗員用）",
+          printed: "印刷日",
+          group: "団体名",
+          booking: "予約番号",
+          agency: "代理店",
+          tour: "ツアー番号",
+          route: "区間",
+          pickup: "集荷日",
+          delivery: "到着予定",
+          leader: "添乗員",
+          summary: (g: number, b: number) => `${g} 名 ・ ${b} 個`,
+          no: "No.",
+          guest: "ゲスト名",
+          bags: "個数",
+          tracking: "伝票番号 / 確認欄",
+          total: "合計",
+          note: "※ 伝票番号は各荷物にタグ付けされ次第、右欄にご記入・チェックしてください。",
+          unnamed: "（名前未登録）",
+          none: "名簿が未登録です。",
+        }
+      : {
+          title: "Luggage Roster (Tour Leader)",
+          printed: "Printed",
+          group: "Group",
+          booking: "Booking",
+          agency: "Agency",
+          tour: "Tour no.",
+          route: "Route",
+          pickup: "Pickup",
+          delivery: "Expected delivery",
+          leader: "Tour leader",
+          summary: (g: number, b: number) => `${g} guests ・ ${b} bags`,
+          no: "No.",
+          guest: "Guest",
+          bags: "Bags",
+          tracking: "Tracking no. / check",
+          total: "Total",
+          note: "* Write in / check each tracking number here once the bags are tagged.",
+          unnamed: "(unnamed)",
+          none: "No roster registered.",
+        }
+
+    const esc = (v: string) =>
+      v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string)
+
+    // 名簿は全区間で同一のため、最初の区間の荷物をゲスト単位に集約する。
+    const firstLeg = data.luggage.length ? Math.min(...data.luggage.map((l) => l.legIndex)) : 0
+    const pieces = data.luggage.filter((l) => l.legIndex === firstLeg)
+    const byGuest = new Map<string, { name: string; bags: number }>()
+    for (const p of pieces) {
+      const key = (p.guestName || "").trim() || " unnamed"
+      const g = byGuest.get(key) ?? { name: p.guestName || "", bags: 0 }
+      g.bags += 1
+      byGuest.set(key, g)
+    }
+    const roster = [...byGuest.values()]
+    const totalBags = roster.reduce((sum, g) => sum + g.bags, 0)
+
+    const box = '<span class="bx">☐</span><span class="ln"></span>'
+    const rows = roster.length
+      ? roster
+          .map((g, i) => {
+            const cells = Array.from({ length: g.bags }, () => box).join("")
+            return `<tr><td class="c">${i + 1}</td><td>${esc(g.name) || `<span class="mut">${L.unnamed}</span>`}</td><td class="c b">${g.bags}</td><td class="tk">${cells}</td></tr>`
+          })
+          .join("")
+      : `<tr><td colspan="4" class="none">${L.none}</td></tr>`
+
+    const meta: Array<[string, string]> = [
+      [L.group, data.groupName || data.bookingId],
+      [L.booking, data.bookingId],
+      [L.agency, data.agency || "—"],
+    ]
+    if (data.tourNumber) meta.push([L.tour, data.tourNumber])
+    meta.push([L.route, legRoute || "—"])
+    if (data.legs[0]) meta.push([L.pickup, data.legs[0].shipmentDate || "—"])
+    if (data.legs[data.legs.length - 1]) meta.push([L.delivery, data.legs[data.legs.length - 1].expectedArrival || "—"])
+    if (data.leaderName) meta.push([L.leader, [data.leaderName, data.leaderPhone].filter(Boolean).join(" ・ ")])
+
+    const metaHtml = meta
+      .map(([k, v]) => `<div class="mrow"><span class="mk">${esc(k)}</span><span class="mv">${esc(v)}</span></div>`)
+      .join("")
+
+    const printedAt = new Date().toLocaleString(isJa ? "ja-JP" : "en-US", {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+
+    const html = `<!doctype html><html lang="${isJa ? "ja" : "en"}"><head><meta charset="utf-8" />
+<title>${esc(L.title)} — ${esc(data.groupName || data.bookingId)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif; color: #0F172A; margin: 24px; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  .sub { font-size: 12px; color: #64748B; margin: 0 0 14px; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; margin-bottom: 12px; }
+  .mrow { display: flex; gap: 8px; font-size: 12px; padding: 2px 0; border-bottom: 1px dotted #E5E7EB; }
+  .mk { color: #64748B; min-width: 84px; }
+  .mv { color: #0F172A; font-weight: 600; }
+  .tot { font-size: 13px; font-weight: 700; margin: 6px 0 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #CBD5E1; padding: 7px 8px; font-size: 12px; text-align: left; vertical-align: middle; }
+  thead th { background: #F1F5F9; font-size: 11px; letter-spacing: .04em; }
+  thead { display: table-header-group; }
+  td.c { text-align: center; width: 40px; }
+  td.b { font-weight: 700; width: 48px; }
+  td.tk { }
+  .bx { font-size: 15px; margin-right: 4px; }
+  .ln { display: inline-block; width: 96px; border-bottom: 1px solid #94A3B8; margin: 0 14px 0 2px; height: 14px; vertical-align: bottom; }
+  .mut { color: #94A3B8; }
+  .none { text-align: center; color: #94A3B8; padding: 28px; }
+  .note { font-size: 11px; color: #64748B; margin-top: 10px; }
+  @media print { body { margin: 12mm; } .noprint { display: none; } tr { break-inside: avoid; } }
+</style></head><body>
+<h1>${esc(L.title)}</h1>
+<p class="sub">${L.printed}: ${esc(printedAt)}</p>
+<div class="meta">${metaHtml}</div>
+<p class="tot">${esc(L.summary(roster.length, totalBags))}</p>
+<table><thead><tr>
+  <th class="c">${esc(L.no)}</th><th>${esc(L.guest)}</th><th class="c">${esc(L.bags)}</th><th>${esc(L.tracking)}</th>
+</tr></thead><tbody>${rows}</tbody></table>
+<p class="note">${esc(L.note)}</p>
+<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>
+</body></html>`
+
+    const w = window.open("", "_blank", "width=900,height=1000")
+    if (!w) return
+    w.document.open()
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+  }
+
   const tiles: { key: Filter; label: string; count: number; cls: string; active: string }[] = [
     { key: "all", label: t.total, count: s.total, cls: "bg-white border-border", active: "ring-foreground" },
     { key: "delivered", label: t.delivered, count: s.delivered, cls: "bg-emerald-50 border-emerald-200 text-emerald-900", active: "ring-emerald-500" },
@@ -290,13 +436,26 @@ export function GroupDashboard({
                 )}
               </p>
             )}
-            {onCreateShare && (
-              <button
-                onClick={() => setShareOpen(true)}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
-              >
-                {t.shareBtn}
-              </button>
+            {(!readOnly || onCreateShare) && (
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                {!readOnly && (
+                  <button
+                    onClick={printRoster}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
+                  >
+                    <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    {t.printBtn}
+                  </button>
+                )}
+                {onCreateShare && (
+                  <button
+                    onClick={() => setShareOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
+                  >
+                    {t.shareBtn}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
