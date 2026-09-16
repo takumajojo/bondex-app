@@ -98,7 +98,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 30,
   },
-  coverLogo: { width: 140, height: 70, marginBottom: 14 },
+  // ロゴ実寸 1255×254px (≈4.94:1)。既定の objectFit:"fill" だと枠比率に合わせて
+  // 伸びるため、実比率に合わせた寸法 + objectFit:"contain" で歪みを防ぐ。
+  coverLogo: { width: 120, height: 24.3, objectFit: "contain", marginBottom: 14 },
   coverTitle: {
     fontSize: 24,
     fontWeight: 500,
