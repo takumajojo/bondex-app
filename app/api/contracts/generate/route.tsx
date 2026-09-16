@@ -44,8 +44,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Agency not found" }, { status: 404 })
     }
 
-    const today = new Date()
-    const contractNumber = `BDX-CONTRACT-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}-${(agencyName.length % 100).toString().padStart(3, "0")}`
+    // 契約番号/ファイル名の年月は JST 基準 (サーバUTCのままだと月境界の深夜に1日ずれる)。
+    const today = new Date(Date.now() + 9 * 3600 * 1000)
+    const contractNumber = `BDX-CONTRACT-${today.getUTCFullYear()}${String(today.getUTCMonth() + 1).padStart(2, "0")}-${(agencyName.length % 100).toString().padStart(3, "0")}`
 
     const doc = (
       <ContractDocument
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
     )
 
     const buf = await renderToBuffer(doc)
-    const fileName = `bondex-contract-${agencyName.replace(/\s+/g, "_")}-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}.pdf`
+    const fileName = `bondex-contract-${agencyName.replace(/\s+/g, "_")}-${today.getUTCFullYear()}${String(today.getUTCMonth() + 1).padStart(2, "0")}.pdf`
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

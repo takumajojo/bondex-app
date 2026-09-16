@@ -8,6 +8,7 @@ import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
 import { notifyBondEx } from "@/lib/notify"
+import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
 import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
 import { bulkInsertLuggage } from "@/lib/group-luggage-db"
@@ -454,10 +455,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // 「今日」は JST 基準。UTC の new Date() だと 0:00-8:59 JST に前日扱いになり、
+  // 30日ちょうどの区間が31日と誤算され「即発行(≤30日)」を取りこぼす。両端を UTC 深夜アンカーで比較。
+  const today = new Date(`${jstTodayYmd()}T00:00:00Z`)
   const daysUntilShip = (d: string) =>
-    Math.round((new Date(`${d}T00:00:00`).getTime() - today.getTime()) / 86_400_000)
+    Math.round((new Date(`${d}T00:00:00Z`).getTime() - today.getTime()) / 86_400_000)
 
   // ── 1ヶ月以内(≤30日)の区間は即発行して即DL。直ランオペ=1ヶ月超は 'requested' のまま
   //    (発行窓の外なので発行しない)。発行は運営と同じ /api/shipandco/create を

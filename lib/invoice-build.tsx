@@ -126,7 +126,8 @@ export async function buildMonthlyInvoice(
   const taxExempt = agencyRow?.is_domestic === false
   const totalYen = taxExempt ? netYen : grossOf(netYen) // 請求総額
 
-  const issuedDate = formatJpDate(new Date(), locale)
+  // 発行日は JST。サーバUTCのまま new Date() だと 0:00-8:59 JST に前日表記になる (適格請求書の日付ずれ)。
+  const issuedDate = formatJpDate(new Date(Date.now() + 9 * 3600 * 1000), locale)
   const closingDate = formatJpDate(new Date(year, mon, 0), locale) // 当月末
   const dueDate = formatJpDate(new Date(year, mon + 1, 0), locale) // 翌月末払い
   const period = fmtPeriod(year, mon, locale, true)
@@ -223,7 +224,8 @@ export async function buildChargeInvoice(
     },
   ]
 
-  const issuedDate = formatJpDate(new Date(chargedAt), locale)
+  // 発行日は決済日(JST)に統一。chargedAt(UTC)のままだと paidDate とズレ、深夜帯に前日表記になる。
+  const issuedDate = formatJpDate(chargedJst, locale)
   // 対象期間は発送月
   const sm = /^(\d{4})-(\d{2})/.exec(shipment.shipment_date || "")
   const period = sm ? fmtPeriod(Number(sm[1]), Number(sm[2]), locale, false) : issuedDate
