@@ -399,11 +399,22 @@ export async function listShipments(filter?: {
   /** 要対応カテゴリでの絞り込み (todayYmd 必須)。 */
   view?: BoardView
   todayYmd?: string
+  /** 並び順。既定=created_desc (依頼が新しい順)。 */
+  sort?: string
   limit?: number
 }): Promise<ShipmentRecord[]> {
   const sb = getSupabase()
   if (!sb) return []
-  let q = sb.from("shipments").select("*").order("created_at", { ascending: false })
+  // 並び替え: 依頼順(created_at) / 発送日順(shipment_date)。同値は created_at 降順で安定化。
+  const SORT_MAP: Record<string, { col: string; asc: boolean }> = {
+    created_desc: { col: "created_at", asc: false },
+    created_asc: { col: "created_at", asc: true },
+    ship_asc: { col: "shipment_date", asc: true },
+    ship_desc: { col: "shipment_date", asc: false },
+  }
+  const s = SORT_MAP[filter?.sort ?? "created_desc"] ?? SORT_MAP.created_desc
+  let q = sb.from("shipments").select("*").order(s.col, { ascending: s.asc })
+  if (s.col !== "created_at") q = q.order("created_at", { ascending: false })
   if (filter?.view && filter?.todayYmd) q = applyBoardView(q, filter.view, filter.todayYmd)
   if (filter?.agency) q = q.eq("agency", filter.agency)
   if (filter?.status) q = q.eq("status", filter.status)

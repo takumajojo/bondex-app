@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
       toDate: sp.get("toDate") || undefined,
       search: sp.get("search") || undefined,
       view,
+      sort: sp.get("sort") || undefined,
       todayYmd: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
       limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
     })

@@ -378,6 +378,8 @@ export default function DashboardPage() {
   const [error, setError] = useState("")
   const [filterAgency, setFilterAgency] = useState("")
   const [filterStatus, setFilterStatus] = useState<"" | ShipmentStatus>("")
+  // 一覧の並び順
+  const [sortBy, setSortBy] = useState("created_desc")
   // 検索 (予約番号 / 代表者 / 受取人 / ツアー番号) — 入力値と適用値を分離し
   // Enter / ボタンで適用 (1 文字ごとの API 叩きを防ぐ)
   const [searchInput, setSearchInput] = useState("")
@@ -500,6 +502,7 @@ export default function DashboardPage() {
       if (filterAgency) sp.set("agency", filterAgency)
       if (filterStatus) sp.set("status", filterStatus)
       if (search) sp.set("search", search)
+      if (sortBy) sp.set("sort", sortBy)
       const res = await fetch(`/api/shipments?${sp.toString()}`)
       const text = await res.text()
       if (!res.ok) {
@@ -519,7 +522,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [filterAgency, filterStatus, search])
+  }, [filterAgency, filterStatus, search, sortBy])
 
   useEffect(() => {
     void load()
@@ -1205,6 +1208,17 @@ export default function DashboardPage() {
                 {a}
               </option>
             ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-border bg-white text-sm"
+            title="並び順"
+          >
+            <option value="created_desc">依頼が新しい順</option>
+            <option value="created_asc">依頼が古い順</option>
+            <option value="ship_asc">発送日が近い順（集荷が近い）</option>
+            <option value="ship_desc">発送日が遠い順</option>
           </select>
           <div className="flex items-center gap-1.5">
             <div className="relative">
