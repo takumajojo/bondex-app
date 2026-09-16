@@ -5,11 +5,14 @@ import { getShipment } from "@/lib/shipments-db"
 import { sendMail } from "@/lib/mailer"
 import { notifyBondEx } from "@/lib/notify"
 import { grossOf } from "@/lib/tax"
+import { PRICING } from "@/lib/pricing"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
 
-const PRICE_PER = 5000 // 税抜単価
+// 税抜単価。発行時(shipandco/create)と同一の一元管理値を使い、経路で単価がズレないようにする
+// (旧: 5000 ハードコード → 発行時 4980 と不一致で、個数修正すると単価が変わっていた。2026-09-16 統一)。
+const PRICE_PER = PRICING.regularPrice
 
 type ReasonCode = "mismatch" | "not_collected" | "customer_change" | "other"
 const REASON_LABEL_JA: Record<ReasonCode, string> = {
