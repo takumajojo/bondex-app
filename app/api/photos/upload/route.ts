@@ -22,8 +22,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing 'file' field" }, { status: 400 })
   }
 
-  const mediaType = file.type || ""
-  if (!mediaType.startsWith("image/")) {
+  // charset 等のパラメータを除去し、ASCII の image/<subtype> のみ許可。
+  // (非ASCII混入値をそのまま保存すると配信時に Content-Type ヘッダ構築で throw する)
+  const mediaType = (file.type || "").split(";")[0].trim().toLowerCase()
+  if (!/^image\/[a-z0-9.+-]+$/.test(mediaType)) {
     return NextResponse.json({ error: "Only image/* is accepted" }, { status: 400 })
   }
   if (file.size > MAX_BYTES) {

@@ -223,7 +223,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const bookingId = asString(body.bookingId).trim() || generateBookingId()
+  // bookingId は X-Booking-Id ヘッダにも載る。非ASCII等の不正値だと Response 構築で throw して
+  // 500 になるため、形式検証し不正なら生成する (姉妹ルート voucher/regenerate・agency/voucher と同じ)。
+  const rawBookingId = asString(body.bookingId).trim()
+  const bookingId = /^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(rawBookingId) ? rawBookingId : generateBookingId()
   const totalAmount = shipments.reduce(
     (sum, s) => sum + s.suitcaseCount * FLAT_RATE_YEN,
     0,

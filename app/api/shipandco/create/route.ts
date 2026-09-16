@@ -660,7 +660,7 @@ export async function POST(req: NextRequest) {
   const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
   // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
   const deliveryDate = rawDeliveryDate && isValidYmd(rawDeliveryDate) ? rawDeliveryDate : ""
-  const suitcaseCount = Math.max(1, Math.floor(Number(body.suitcaseCount) || 1))
+  const suitcaseCount = Math.min(50, Math.max(1, Math.floor(Number(body.suitcaseCount) || 1))) // 上限50 (呼び出し側の1-50クランプと整合)
 
   const fromInput = (body.from ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string; residence?: unknown }
   const toInput = (body.to ?? {}) as { hotel?: string; recipient?: string; placeId?: string; city?: string; residence?: unknown }

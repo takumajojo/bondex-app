@@ -112,7 +112,12 @@ export async function regenerateVoucherPdf(
         if (n && !hasJapanese(n)) { out.to = n; wb.to_hotel_en = n }
       }
       if (Object.keys(wb).length) {
-        await sb.from("shipments").update(wb).eq("booking_id", bookingId).eq("leg_index", s.leg_index)
+        const { error: cacheErr } = await sb
+          .from("shipments")
+          .update(wb)
+          .eq("booking_id", bookingId)
+          .eq("leg_index", s.leg_index)
+        if (cacheErr) console.error("[voucher-regen] 英語ホテル名キャッシュ更新失敗:", cacheErr.message)
       }
       enName.set(s.leg_index, out)
     }),
