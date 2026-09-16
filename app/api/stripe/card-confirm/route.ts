@@ -54,8 +54,19 @@ export async function POST(req: NextRequest) {
       invoice_settings: { default_payment_method: paymentMethodId },
     })
 
-    // agencies に反映
-    await sb.from("agencies").update({ card_on_file: true }).eq("id", agency.id)
+    // agencies に反映。ここで失敗すると card_on_file=false のままになり、以後の自動課金が
+    // charge.ts で拒否される (画面は「登録済み」なのに課金できない静かな障害)。失敗は握り潰さず返す。
+    const { error: updErr } = await sb
+      .from("agencies")
+      .update({ card_on_file: true })
+      .eq("id", agency.id)
+    if (updErr) {
+      console.error("[stripe/card-confirm] card_on_file 更新失敗:", updErr.message)
+      return NextResponse.json(
+        { error: "カード情報の保存に失敗しました。時間をおいて再度お試しください。" },
+        { status: 500 },
+      )
+    }
 
     return NextResponse.json({ ok: true, cardOnFile: true })
   } catch (err) {

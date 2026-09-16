@@ -64,7 +64,19 @@ export async function POST(req: NextRequest) {
         metadata: { agency_id: agency.id },
       })
       customerId = customer.id
-      await sb.from("agencies").update({ stripe_customer_id: customerId }).eq("id", agency.id)
+      // 顧客IDをDBに残せないと、次の card-confirm で不一致403になり、リトライ毎に
+      // Stripe 顧客が量産される。握り潰さず、ここで失敗を返す。
+      const { error: linkErr } = await sb
+        .from("agencies")
+        .update({ stripe_customer_id: customerId })
+        .eq("id", agency.id)
+      if (linkErr) {
+        console.error("[stripe/setup-intent] stripe_customer_id 保存失敗:", linkErr.message)
+        return NextResponse.json(
+          { error: "カード登録の準備に失敗しました。時間をおいて再度お試しください。" },
+          { status: 500 },
+        )
+      }
     }
 
     const intent = await stripe.setupIntents.create({
