@@ -151,7 +151,7 @@ const messages = {
     rosterBuildBtn: "Create luggage list",
     rosterSampleBtn: "Download sample (CSV)",
     rosterUploadBtn: "Import roster from file",
-    rosterUploadHint: "Excel/CSV with columns: guest name, bags",
+    rosterUploadHint: "Excel/CSV with columns: guest name, bags (0 = no bags, still listed)",
     rosterOr: "or",
     rosterImportedMsg: (n: number) => `Imported ${n} guest(s) from your file.`,
     rosterImportErr: "Couldn't read the file. Please use the sample format (guest name, bags).",
@@ -402,7 +402,7 @@ const messages = {
     rosterBuildBtn: "荷物リストを作成",
     rosterSampleBtn: "サンプルをダウンロード（CSV）",
     rosterUploadBtn: "名簿ファイルから取り込み",
-    rosterUploadHint: "列: ゲスト名／スーツケース個数（Excel・CSV対応）",
+    rosterUploadHint: "列: ゲスト名／スーツケース個数（Excel・CSV対応。0=荷物なしでも名簿に残ります）",
     rosterOr: "または",
     rosterImportedMsg: (n: number) => `ファイルから ${n} 名を取り込みました。`,
     rosterImportErr: "ファイルを読み取れませんでした。サンプルの形式（ゲスト名, スーツケース個数）でお試しください。",
@@ -897,8 +897,9 @@ export default function AgencyNewBookingPage() {
     if (names.length > 0) setLuggageEntries(names.map((name) => ({ name, bags: 1 })))
   }
   // API へは「1要素=1個」のフラット配列で送る (名前の繰り返し=複数個。API/DB/バウチャー集約は既存のまま)
+  // 個数0のゲスト (荷物なしだが名簿では管理したい人) は0個=展開されない。
   const luggageNames = luggageEntries.flatMap((e) =>
-    Array.from({ length: Math.max(1, Math.min(9, e.bags)) }, () => e.name.trim()),
+    Array.from({ length: Math.max(0, Math.min(9, e.bags)) }, () => e.name.trim()),
   ).slice(0, 50)
 
   // ── 名簿ファイル取り込み (サンプルDL → 記入 → アップロードで一括入力) ────────
@@ -907,10 +908,11 @@ export default function AgencyNewBookingPage() {
   // Excelでそのまま開ける CSV サンプルを生成 (UTF-8 BOM 付き・列: ゲスト名, スーツケース個数)。
   const downloadSampleRoster = () => {
     const rows: string[][] = [
-      ["ゲスト名 / Guest name", "スーツケース個数 / Bags"],
+      ["ゲスト名 / Guest name", "スーツケース個数 / Bags (0=荷物なし/no bags)"],
       ["Rahul Patel", "1"],
       ["Amit Sharma", "2"],
       ["Priya Singh", "1"],
+      ["Meera Nair", "0"],
     ]
     const csv = rows
       .map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(","))
@@ -936,18 +938,34 @@ export default function AgencyNewBookingPage() {
       if (!name) continue
       // 1行目がヘッダ (「ゲスト」「name」「氏名」等) の場合はスキップ。
       if (out.length === 0 && /ゲスト|guest|name|氏名|お名前/i.test(name)) continue
-      const bagsNum = parseInt((cells[1] || "").replace(/[^\d]/g, ""), 10)
-      const bags = Number.isFinite(bagsNum) && bagsNum > 0 ? Math.min(9, bagsNum) : 1
+      // 個数: 未記入は1個とみなす。0を明記した人は0個(荷物なし)としてそのまま残す。
+      const bagsRaw = (cells[1] || "").replace(/[^\d]/g, "")
+      const bagsNum = parseInt(bagsRaw, 10)
+      const bags = bagsRaw === "" ? 1 : Math.max(0, Math.min(9, Number.isFinite(bagsNum) ? bagsNum : 1))
       out.push({ name, bags })
       if (out.length >= 50) break
     }
     return out
   }
+  // Excel(日本語Windows)が保存するCSVは Shift-JIS のことが多い。UTF-8で読んで
+  // 文字化け(置換文字)が出たら Shift-JIS で読み直す。日本語のゲスト名にも対応する。
+  const decodeBytes = (buf: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buf)
+    const utf8 = new TextDecoder("utf-8").decode(bytes)
+    if (!utf8.includes("�")) return utf8
+    try {
+      return new TextDecoder("shift_jis").decode(bytes)
+    } catch {
+      return utf8
+    }
+  }
   const handleRosterFile = (file: File) => {
     setRosterImportMsg(null)
     const reader = new FileReader()
     reader.onload = () => {
-      const entries = parseRosterFile(String(reader.result || ""))
+      const buf = reader.result
+      const text = buf instanceof ArrayBuffer ? decodeBytes(buf) : String(buf || "")
+      const entries = parseRosterFile(text)
       if (entries.length === 0) {
         setRosterImportMsg(t.rosterImportErr)
         return
@@ -957,7 +975,7 @@ export default function AgencyNewBookingPage() {
       setRosterImportMsg(t.rosterImportedMsg(entries.length))
     }
     reader.onerror = () => setRosterImportMsg(t.rosterImportErr)
-    reader.readAsText(file, "UTF-8")
+    reader.readAsArrayBuffer(file)
   }
 
   const [legs, setLegs] = useState<Leg[]>([emptyLeg()])
@@ -1799,7 +1817,7 @@ export default function AgencyNewBookingPage() {
                         <span className="font-mono text-[10px] text-[#94A3B8] mr-1.5">{String(i + 1).padStart(2, "0")}</span>
                         {e.name || "—"}
                       </span>
-                      <span className={`tabular-nums font-bold ${e.bags > 1 ? "text-[#C8102E]" : "text-[#334155]"}`}>
+                      <span className={`tabular-nums font-bold ${e.bags === 0 ? "text-[#94A3B8]" : e.bags > 1 ? "text-[#C8102E]" : "text-[#334155]"}`}>
                         ×{e.bags}
                       </span>
                     </div>
@@ -2395,14 +2413,14 @@ export default function AgencyNewBookingPage() {
                               type="button"
                               onClick={() =>
                                 setLuggageEntries((prev) =>
-                                  prev.map((x, xi) => (xi === i ? { ...x, bags: Math.max(1, x.bags - 1) } : x)),
+                                  prev.map((x, xi) => (xi === i ? { ...x, bags: Math.max(0, x.bags - 1) } : x)),
                                 )
                               }
                               className="w-7 h-7 rounded-lg border border-[#E5E7EB] text-[#334155] hover:bg-slate-50 text-[14px] leading-none"
                             >
                               −
                             </button>
-                            <span className={`w-8 text-center text-[13px] tabular-nums font-bold ${e.bags > 1 ? "text-[#C8102E]" : "text-[#0F172A]"}`}>
+                            <span className={`w-8 text-center text-[13px] tabular-nums font-bold ${e.bags === 0 ? "text-[#94A3B8]" : e.bags > 1 ? "text-[#C8102E]" : "text-[#0F172A]"}`}>
                               {e.bags}
                             </span>
                             <button
