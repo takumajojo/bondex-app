@@ -6,6 +6,7 @@ import { buildVoucherFileName } from "@/lib/utils"
 import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
+import { PRICING } from "@/lib/pricing"
 import {
   VoucherDocument,
   OperationsDocument,
@@ -21,7 +22,7 @@ import {
 export const runtime = "nodejs"
 export const maxDuration = 60
 
-const FLAT_RATE_YEN = 5000
+const FLAT_RATE_YEN = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
 
 interface RequestShipment {
   shipmentDate: unknown

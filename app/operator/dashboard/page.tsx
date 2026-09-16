@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { PRICING } from "@/lib/pricing"
 import {
   ArrowLeft,
   Loader2,
@@ -1840,7 +1841,7 @@ function AdjustCountModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const PRICE = 5000
+  const PRICE = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
   const [reasonCode, setReasonCode] = useState<
     "mismatch" | "not_collected" | "customer_change" | "other"
   >("mismatch")

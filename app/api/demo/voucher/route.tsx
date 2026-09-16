@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
 import { WHATSAPP_URL } from "@/lib/contact-links"
+import { PRICING } from "@/lib/pricing"
 import {
   VoucherDocument,
   SUPPORT_DEFAULTS,
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
         fromCheckIn: shipDate || undefined,
       },
     ],
-    totalAmount: 5000,
+    totalAmount: PRICING.regularPrice,
     supportPhone: SUPPORT_DEFAULTS.phone,
     supportEmail: SUPPORT_DEFAULTS.email,
     contactPersonName: SUPPORT_DEFAULTS.contactPersonName,

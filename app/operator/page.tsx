@@ -46,8 +46,9 @@ import { buildVoucherFileName } from "@/lib/utils"
 import { generateBookingId } from "@/lib/booking-id"
 import { normalizeGuestLanguage, type GuestLanguage } from "@/lib/guest-language"
 import { cleanResidence, type ResidenceAddress } from "@/lib/residence"
+import { PRICING } from "@/lib/pricing"
 
-const FLAT_RATE_YEN = 5000
+const FLAT_RATE_YEN = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
 
 // ---------------------------------------------------------------------------
 // i18n

@@ -2,6 +2,7 @@
 import React from "react"
 import path from "path"
 import fs from "fs"
+import { PRICING } from "./pricing"
 import {
   Document,
   Page,
@@ -2221,7 +2222,7 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
             <View style={ops.kvRow}>
               <Text style={ops.kvKey}>Suitcases</Text>
               <Text style={ops.kvValue}>
-                {s.suitcaseCount} × ¥5,000 = ¥{(s.suitcaseCount * 5000).toLocaleString()}
+                {s.suitcaseCount} × ¥{PRICING.regularPrice.toLocaleString()} = ¥{(s.suitcaseCount * PRICING.regularPrice).toLocaleString()}
               </Text>
             </View>
           </View>
