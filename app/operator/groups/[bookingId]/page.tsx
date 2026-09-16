@@ -101,6 +101,15 @@ export default function OperatorGroupPage({
                 return { ok: false, error: "network error" }
               }
             }}
+            onGetShareLink={async () => {
+              try {
+                const res = await fetch(`/api/groups/${encodeURIComponent(bookingId)}/share`)
+                const d = await res.json().catch(() => ({}))
+                return res.ok ? (d.url as string) : null
+              } catch {
+                return null
+              }
+            }}
           />
         ) : null}
       </div>

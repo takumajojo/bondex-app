@@ -134,6 +134,18 @@ export default function AgencyGroupPage({
                 return { ok: false, error: "network error" }
               }
             }}
+            onGetShareLink={async () => {
+              if (!token) return null
+              try {
+                const res = await fetch(`/api/agency/group/${encodeURIComponent(bookingId)}/share`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                })
+                const d = await res.json().catch(() => ({}))
+                return res.ok ? (d.url as string) : null
+              } catch {
+                return null
+              }
+            }}
           />
         ) : null}
       </div>

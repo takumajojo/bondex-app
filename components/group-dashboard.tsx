@@ -202,6 +202,7 @@ export function GroupDashboard({
   onPatch,
   onReload,
   onCreateShare,
+  onGetShareLink,
 }: {
   data: GroupViewPayload
   locale: Locale
@@ -213,6 +214,8 @@ export function GroupDashboard({
   onReload: () => void
   /** 指定時、ヘッダーに「共有リンク発行」ボタンを表示 (運営/代理店)。 */
   onCreateShare?: (days: number) => Promise<{ ok: boolean; url?: string; expiresAt?: string; error?: string }>
+  /** 印刷シートの「配達状況」QR用。有効な共有リンクを取得(無ければ発行)して返す。 */
+  onGetShareLink?: () => Promise<string | null>
 }) {
   const t = T[locale]
   const [filter, setFilter] = useState<Filter>("all")
@@ -249,7 +252,13 @@ export function GroupDashboard({
       : ""
 
   // 添乗員用「確定名簿」を印刷用シートとして別ウィンドウに出力する (共通処理を利用)。
-  const printRoster = () => openRosterPrintWindow(data, locale)
+  // ポップアップブロック回避のためウィンドウはクリック同期で先に開き、共有リンク取得後に書き込む。
+  const printRoster = async () => {
+    const win = window.open("", "_blank", "width=900,height=1000")
+    if (win) win.document.write("<p style='font-family:sans-serif;padding:24px;color:#64748B'>Loading…</p>")
+    const shareUrl = onGetShareLink ? await onGetShareLink().catch(() => null) : null
+    await openRosterPrintWindow(data, locale, { targetWin: win, shareUrl })
+  }
 
   const tiles: { key: Filter; label: string; count: number; cls: string; active: string }[] = [
     { key: "all", label: t.total, count: s.total, cls: "bg-white border-border", active: "ring-foreground" },
@@ -301,7 +310,7 @@ export function GroupDashboard({
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
                 {!readOnly && (
                   <button
-                    onClick={printRoster}
+                    onClick={() => void printRoster()}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
                   >
                     <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />

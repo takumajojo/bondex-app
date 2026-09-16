@@ -641,7 +641,17 @@ export default function AgencyDashboard() {
           return
         }
         const data = (await res.json()) as GroupViewPayload
-        openRosterPrintWindow(data, locale, win)
+        // 配達状況QR用の共有リンク (有効なものを再利用/無ければ発行)。失敗しても名簿は出す。
+        let shareUrl: string | null = null
+        try {
+          const sres = await fetch(`/api/agency/group/${encodeURIComponent(bookingId)}/share`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (sres.ok) shareUrl = ((await sres.json()) as { url?: string }).url ?? null
+        } catch {
+          /* QRなしで続行 */
+        }
+        await openRosterPrintWindow(data, locale, { targetWin: win, shareUrl })
       } catch {
         win?.close()
         setDlError(messages[locale].dlError)
