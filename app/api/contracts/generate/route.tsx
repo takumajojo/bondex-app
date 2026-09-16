@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
             email: "support@bondex.express",
             bankInfo: "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO",
           },
-          pricePerSuitcaseYen: 5000,
+          // 価格は contract-pdf 既定 CONTRACT_PRICE_YEN(現行v3=4,980) に委ねる (旧: 5000上書き)。
           serviceBrandName: "BondEx",
         }}
       />

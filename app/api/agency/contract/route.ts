@@ -152,7 +152,8 @@ function buildData(
     effectiveDate: signature?.signedDate ?? (locale === "en" ? "____________, 20__" : "　　　　年　　月　　日"),
     agency: { name: agencyName, address: agencyAddress || undefined },
     bondex: BONDEX,
-    pricePerSuitcaseYen: 5000,
+    // 価格は contract-pdf 側の既定 CONTRACT_PRICE_YEN(現行v3=4,980) に委ねる (旧: 5000で上書きしていた)。
+    // 署名済み v1/v2 は条文側で¥5,000固定のため再現価格は影響なし (contract-content.ts)。
     serviceBrandName: "BondEx",
     signature: signature
       ? {

@@ -20,6 +20,7 @@ import {
 } from "@/lib/label-delivery"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
+import { PRICING } from "@/lib/pricing"
 import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
 import { EMPTY_RESIDENCE, residenceError, type ResidenceAddress } from "@/lib/residence"
 import { ITEM_TYPES, type ItemTypeKey } from "@/lib/item-types"
@@ -118,7 +119,7 @@ const messages = {
     signInNewTab: "Sign in again in a new tab (your input here is kept)",
     totalLabel: "Total (fixed at issuance)",
     totalNote: "Charged when pickup is completed — never at booking.",
-    totalFormula: (pieces: number) => `${pieces} pieces × ¥5,000 = ¥${(pieces * 5000).toLocaleString()} (excl. tax)`,
+    totalFormula: (pieces: number) => `${pieces} pieces × ¥${PRICING.regularPrice.toLocaleString()} = ¥${(pieces * PRICING.regularPrice).toLocaleString()} (excl. tax)`,
     dueImpossible: "With these ship dates, one combined mailing cannot arrive in time. Choose per-hotel mailing (labels are issuable only from 30 days before each ship date).",
     ldDueLabel: "Labels needed by (mailing deadline)",
     ldDueHint:
@@ -363,7 +364,7 @@ const messages = {
     signInNewTab: "新しいタブでサインインし直す（この画面の入力は保持されます）",
     totalLabel: "合計（発行時に確定）",
     totalNote: "課金は集荷完了時です。ご依頼の時点では課金されません。",
-    totalFormula: (pieces: number) => `${pieces}個 × ¥5,000 = ¥${(pieces * 5000).toLocaleString()}（税抜）`,
+    totalFormula: (pieces: number) => `${pieces}個 × ¥${PRICING.regularPrice.toLocaleString()} = ¥${(pieces * PRICING.regularPrice).toLocaleString()}（税抜）`,
     dueImpossible: "この発送日の組み合わせでは、まとめて1通の郵送は間に合いません。「区間ごとに各ホテルへ送る」をお選びください（伝票は各発送日の30日前から発行できるため）。",
     ldDueLabel: "いつまでに送り状が必要ですか（投函期限）",
     ldDueHint:
