@@ -3,6 +3,7 @@ import { PDFDocument } from "pdf-lib"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { carrierFileLabel } from "@/lib/utils"
+import { contentDisposition } from "@/lib/content-disposition"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="BondEx_${bookingId}_${carrierName}_Labels.pdf"`,
+        "Content-Disposition": contentDisposition("attachment", `BondEx_${bookingId}_${carrierName}_Labels.pdf`),
         "Cache-Control": "no-store",
       },
     })

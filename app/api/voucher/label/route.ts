@@ -3,6 +3,7 @@ import { PDFDocument } from "pdf-lib"
 import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName, carrierFileLabel } from "@/lib/utils"
 import { getSupabase } from "@/lib/supabase"
+import { contentDisposition } from "@/lib/content-disposition"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -126,7 +127,7 @@ export async function GET(req: NextRequest) {
         status: 200,
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="${a5Name}"`,
+          "Content-Disposition": contentDisposition("inline", a5Name),
           "Cache-Control": "no-store",
         },
       })
@@ -139,7 +140,7 @@ export async function GET(req: NextRequest) {
           status: 200,
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `inline; filename="${fileName}"`,
+            "Content-Disposition": contentDisposition("inline", fileName),
             "Cache-Control": "no-store",
           },
         })
@@ -152,7 +153,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Content-Disposition": contentDisposition("attachment", fileName),
       "Cache-Control": "no-store",
     },
   })

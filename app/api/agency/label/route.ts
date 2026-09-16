@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
 import { buildVoucherFileName, carrierFileLabel } from "@/lib/utils"
+import { contentDisposition } from "@/lib/content-disposition"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
     headers: {
       "Content-Type": "application/pdf",
       // inline(印刷ページで表示) だが、DLボタン用にファイル名も入れておく
-      "Content-Disposition": `inline; filename="${fileName}"`,
+      "Content-Disposition": contentDisposition("inline", fileName),
       "Cache-Control": "no-store",
     },
   })

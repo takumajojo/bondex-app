@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { regenerateVoucherPdf } from "@/lib/voucher-regen"
+import { contentDisposition } from "@/lib/content-disposition"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${outcome.fileName}"`,
+        "Content-Disposition": contentDisposition("attachment", outcome.fileName),
         "X-Booking-Id": bookingId,
         "Cache-Control": "no-store",
       },

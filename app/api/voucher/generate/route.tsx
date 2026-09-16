@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName } from "@/lib/utils"
+import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
 import {
@@ -338,7 +339,7 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Disposition": contentDisposition("attachment", fileName),
         "X-Booking-Id": bookingId,
         "Cache-Control": "no-store",
       },
