@@ -1022,6 +1022,16 @@ export default function AgencyNewBookingPage() {
     })
   }, [router])
 
+  // 団体は個数=荷物リストの総数。各区間の suitcaseCount を名簿の合計個数に同期させ、
+  // 送信ペイロード・確認画面の個数表示が「1個」のまま取り残されないようにする。
+  useEffect(() => {
+    if (bookingType !== "group") return
+    const count = luggageNames.length
+    setLegs((prev) =>
+      prev.every((l) => l.suitcaseCount === count) ? prev : prev.map((l) => ({ ...l, suitcaseCount: count })),
+    )
+  }, [bookingType, luggageNames.length])
+
   // 差出人「貴社名義」を選べるかの判定に使う。RLS で自社行のみ返る。
   useEffect(() => {
     const sb = getBrowserSupabase()
