@@ -149,6 +149,12 @@ const messages = {
     rosterPasteLabel: "Guest names (paste, one per line)",
     rosterPastePh: "Rahul Patel\nAmit Sharma\nPriya Singh",
     rosterBuildBtn: "Create luggage list",
+    rosterSampleBtn: "Download sample (CSV)",
+    rosterUploadBtn: "Import roster from file",
+    rosterUploadHint: "Excel/CSV with columns: guest name, bags",
+    rosterOr: "or",
+    rosterImportedMsg: (n: number) => `Imported ${n} guest(s) from your file.`,
+    rosterImportErr: "Couldn't read the file. Please use the sample format (guest name, bags).",
     lugListTitle: "Luggage list — set bags per guest",
     lugColGuest: "Guest",
     lugColBags: "Bags",
@@ -394,6 +400,12 @@ const messages = {
     rosterPasteLabel: "ゲスト名（1行に1名ずつ貼り付け）",
     rosterPastePh: "Rahul Patel\nAmit Sharma\nPriya Singh",
     rosterBuildBtn: "荷物リストを作成",
+    rosterSampleBtn: "サンプルをダウンロード（CSV）",
+    rosterUploadBtn: "名簿ファイルから取り込み",
+    rosterUploadHint: "列: ゲスト名／スーツケース個数（Excel・CSV対応）",
+    rosterOr: "または",
+    rosterImportedMsg: (n: number) => `ファイルから ${n} 名を取り込みました。`,
+    rosterImportErr: "ファイルを読み取れませんでした。サンプルの形式（ゲスト名, スーツケース個数）でお試しください。",
     lugListTitle: "荷物リスト — ゲストごとに個数を設定",
     lugColGuest: "ゲスト",
     lugColBags: "個数",
@@ -888,6 +900,65 @@ export default function AgencyNewBookingPage() {
   const luggageNames = luggageEntries.flatMap((e) =>
     Array.from({ length: Math.max(1, Math.min(9, e.bags)) }, () => e.name.trim()),
   ).slice(0, 50)
+
+  // ── 名簿ファイル取り込み (サンプルDL → 記入 → アップロードで一括入力) ────────
+  const rosterFileRef = useRef<HTMLInputElement | null>(null)
+  const [rosterImportMsg, setRosterImportMsg] = useState<string | null>(null)
+  // Excelでそのまま開ける CSV サンプルを生成 (UTF-8 BOM 付き・列: ゲスト名, スーツケース個数)。
+  const downloadSampleRoster = () => {
+    const rows: string[][] = [
+      ["ゲスト名 / Guest name", "スーツケース個数 / Bags"],
+      ["Rahul Patel", "1"],
+      ["Amit Sharma", "2"],
+      ["Priya Singh", "1"],
+    ]
+    const csv = rows
+      .map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(","))
+      .join("\r\n")
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "bondex-roster-sample.csv"
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+  // CSV/TSV 両対応。1列目=ゲスト名, 2列目=個数(未記入なら1)。ヘッダ行はスキップ。最大50名・個数1-9。
+  const parseRosterFile = (text: string): Array<{ name: string; bags: number }> => {
+    const clean = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n")
+    const lines = clean.split("\n").map((l) => l.trim()).filter((l) => l.length > 0)
+    const out: Array<{ name: string; bags: number }> = []
+    for (const line of lines) {
+      const cells = line.split(/[,\t]/).map((c) => c.replace(/^"|"$/g, "").trim())
+      const name = (cells[0] || "").slice(0, 80)
+      if (!name) continue
+      // 1行目がヘッダ (「ゲスト」「name」「氏名」等) の場合はスキップ。
+      if (out.length === 0 && /ゲスト|guest|name|氏名|お名前/i.test(name)) continue
+      const bagsNum = parseInt((cells[1] || "").replace(/[^\d]/g, ""), 10)
+      const bags = Number.isFinite(bagsNum) && bagsNum > 0 ? Math.min(9, bagsNum) : 1
+      out.push({ name, bags })
+      if (out.length >= 50) break
+    }
+    return out
+  }
+  const handleRosterFile = (file: File) => {
+    setRosterImportMsg(null)
+    const reader = new FileReader()
+    reader.onload = () => {
+      const entries = parseRosterFile(String(reader.result || ""))
+      if (entries.length === 0) {
+        setRosterImportMsg(t.rosterImportErr)
+        return
+      }
+      setLuggageEntries(entries)
+      setRosterText("")
+      setRosterImportMsg(t.rosterImportedMsg(entries.length))
+    }
+    reader.onerror = () => setRosterImportMsg(t.rosterImportErr)
+    reader.readAsText(file, "UTF-8")
+  }
 
   const [legs, setLegs] = useState<Leg[]>([emptyLeg()])
   const [dupMatches, setDupMatches] = useState<
@@ -2240,6 +2311,44 @@ export default function AgencyNewBookingPage() {
                   >
                     {t.rosterBuildBtn} →
                   </button>
+
+                  {/* ── または: 名簿ファイル(スーツケース個数入り)を取り込んで一括入力 ── */}
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="h-px flex-1 bg-[#E5E7EB]" />
+                    <span className="text-[11px] text-[#94A3B8]">{t.rosterOr}</span>
+                    <span className="h-px flex-1 bg-[#E5E7EB]" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadSampleRoster}
+                      className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl border border-[#E5E7EB] bg-white text-[13px] font-medium text-[#334155] hover:bg-slate-50"
+                    >
+                      ↓ {t.rosterSampleBtn}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => rosterFileRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl border border-[#0F172A] bg-white text-[13px] font-bold text-[#0F172A] hover:bg-slate-50"
+                    >
+                      ⇪ {t.rosterUploadBtn}
+                    </button>
+                    <input
+                      ref={rosterFileRef}
+                      type="file"
+                      accept=".csv,.txt,.tsv,text/csv,text/plain"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) handleRosterFile(f)
+                        e.target.value = "" // 同じファイルを再選択できるようにリセット
+                      }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#94A3B8]">{t.rosterUploadHint}</p>
+                  {rosterImportMsg && (
+                    <p className="text-[12px] font-medium text-[#C8102E]">{rosterImportMsg}</p>
+                  )}
                 </>
               ) : (
                 // ── ステップ2: ゲストごとに個数を手入力 (＋名前修正・行追加/削除)
@@ -2251,6 +2360,7 @@ export default function AgencyNewBookingPage() {
                       onClick={() => {
                         setLuggageEntries([])
                         setRosterText("")
+                        setRosterImportMsg(null)
                       }}
                       className="text-[11px] text-[#64748B] hover:text-[#0F172A] underline underline-offset-2"
                     >
