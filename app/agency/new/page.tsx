@@ -124,6 +124,9 @@ const messages = {
     totalLabel: "Total (fixed at issuance)",
     totalNote: "Charged when pickup is completed — never at booking.",
     totalFormula: (pieces: number) => `${pieces} pieces × ¥${PRICING.regularPrice.toLocaleString()} = ¥${(pieces * PRICING.regularPrice).toLocaleString()} (excl. tax)`,
+    grpQuoteLabel: "Estimate",
+    grpQuoteHeadline: "To be quoted",
+    grpQuoteMsg: "For group bookings, we'll prepare a quote. The confirmed amount will appear in your dashboard.",
     dueImpossible: "With these ship dates, one combined mailing cannot arrive in time. Choose per-hotel mailing (labels are issuable only from 30 days before each ship date).",
     ldDueLabel: "Labels needed by (mailing deadline)",
     ldDueHint:
@@ -375,6 +378,9 @@ const messages = {
     totalLabel: "合計（発行時に確定）",
     totalNote: "課金は集荷完了時です。ご依頼の時点では課金されません。",
     totalFormula: (pieces: number) => `${pieces}個 × ¥${PRICING.regularPrice.toLocaleString()} = ¥${(pieces * PRICING.regularPrice).toLocaleString()}（税抜）`,
+    grpQuoteLabel: "お見積もり",
+    grpQuoteHeadline: "見積もり後に確定",
+    grpQuoteMsg: "見積もり金額が確定したらダッシュボードに反映されます。",
     dueImpossible: "この発送日の組み合わせでは、まとめて1通の郵送は間に合いません。「区間ごとに各ホテルへ送る」をお選びください（伝票は各発送日の30日前から発行できるため）。",
     ldDueLabel: "いつまでに送り状が必要ですか（投函期限）",
     ldDueHint:
@@ -1788,16 +1794,27 @@ export default function AgencyNewBookingPage() {
             </div>
 
             {/* 合計金額 (2026-08-31 監査対応: 依頼フローに金額が一度も出ていなかった)。
-                発行 = 金額確定なので、確定前に必ず見せる。 */}
-            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 mt-3 flex items-baseline justify-between gap-3 flex-wrap">
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-[#94A3B8]">{t.totalLabel}</p>
-                <p className="text-[15px] font-bold text-[#0F172A] mt-0.5">
-                  {t.totalFormula(legs.reduce((sum, l) => sum + l.suitcaseCount, 0))}
-                </p>
+                発行 = 金額確定なので、確定前に必ず見せる。
+                団体は見積もり後に金額確定するため、固定単価ではなく「見積もり反映」を案内する。 */}
+            {bookingType === "group" ? (
+              <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 mt-3 flex items-baseline justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-[#94A3B8]">{t.grpQuoteLabel}</p>
+                  <p className="text-[15px] font-bold text-[#0F172A] mt-0.5">{t.grpQuoteHeadline}</p>
+                </div>
+                <p className="text-[11px] text-[#64748B] max-w-[280px] text-right">{t.grpQuoteMsg}</p>
               </div>
-              <p className="text-[11px] text-[#64748B]">{t.totalNote}</p>
-            </div>
+            ) : (
+              <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 mt-3 flex items-baseline justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-[#94A3B8]">{t.totalLabel}</p>
+                  <p className="text-[15px] font-bold text-[#0F172A] mt-0.5">
+                    {t.totalFormula(legs.reduce((sum, l) => sum + l.suitcaseCount, 0))}
+                  </p>
+                </div>
+                <p className="text-[11px] text-[#64748B]">{t.totalNote}</p>
+              </div>
+            )}
 
             {/* 団体: 添乗員と荷物リストも確認画面で必ず見せる */}
             {bookingType === "group" && (
