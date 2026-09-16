@@ -41,10 +41,12 @@ interface LegInput {
   fromHotel: string
   fromPlaceId: string
   fromCity: string
+  fromPrefecture: string
   fromResidence: ResidenceAddress | null
   toHotel: string
   toPlaceId: string
   toCity: string
+  toPrefecture: string
   toResidence: ResidenceAddress | null
   shipmentDate: string
   expectedArrival: string
@@ -117,10 +119,12 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     fromHotel,
     fromPlaceId: fromKind === "residence" ? "" : s(o.fromPlaceId),
     fromCity: fromKind === "residence" ? `${fromResidence?.prefecture ?? ""}${fromResidence?.city ?? ""}` : s(o.fromCity),
+    fromPrefecture: fromKind === "residence" ? (fromResidence?.prefecture ?? "") : s(o.fromPrefecture),
     fromResidence,
     toHotel,
     toPlaceId: toKind === "residence" ? "" : s(o.toPlaceId),
     toCity: toKind === "residence" ? `${toResidence?.prefecture ?? ""}${toResidence?.city ?? ""}` : s(o.toCity),
+    toPrefecture: toKind === "residence" ? (toResidence?.prefecture ?? "") : s(o.toPrefecture),
     toResidence,
     shipmentDate,
     expectedArrival,
@@ -394,10 +398,12 @@ export async function POST(req: NextRequest) {
       delivery_time: leg.deliveryTime || null,
       from_hotel: leg.fromHotel,
       from_city: leg.fromCity || null,
+      from_prefecture: leg.fromPrefecture || null,
       from_place_id: leg.fromPlaceId || null,
       from_residence: leg.fromResidence,
       to_hotel: leg.toHotel,
       to_city: leg.toCity || null,
+      to_prefecture: leg.toPrefecture || null,
       to_place_id: leg.toPlaceId || null,
       to_residence: leg.toResidence,
       recipient: leg.recipient || leg.toHotel,

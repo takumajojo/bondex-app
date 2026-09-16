@@ -33,11 +33,13 @@ type Leg = {
   fromHotel: string
   fromPlaceId: string
   fromCity: string
+  fromPrefecture: string
   fromResidence: ResidenceAddress
   toKind: EndpointKind
   toHotel: string
   toPlaceId: string
   toCity: string
+  toPrefecture: string
   toResidence: ResidenceAddress
   shipmentDate: string
   expectedArrival: string
@@ -57,11 +59,13 @@ const emptyLeg = (): Leg => ({
   fromHotel: "",
   fromPlaceId: "",
   fromCity: "",
+  fromPrefecture: "",
   fromResidence: { ...EMPTY_RESIDENCE },
   toKind: "hotel",
   toHotel: "",
   toPlaceId: "",
   toCity: "",
+  toPrefecture: "",
   toResidence: { ...EMPTY_RESIDENCE },
   shipmentDate: "",
   expectedArrival: "",
@@ -718,12 +722,16 @@ function EndpointField({
   const residence = isFrom ? leg.fromResidence : leg.toResidence
   const setKind = (k: EndpointKind) => update(isFrom ? { fromKind: k } : { toKind: k })
   const onHotelChange = (v: string) =>
-    update(isFrom ? { fromHotel: v, fromPlaceId: "" } : { toHotel: v, toPlaceId: "" })
+    update(
+      isFrom
+        ? { fromHotel: v, fromPlaceId: "", fromPrefecture: "" }
+        : { toHotel: v, toPlaceId: "", toPrefecture: "" },
+    )
   const onHotelSelect = (c: PlaceCandidate) =>
     update(
       isFrom
-        ? { fromHotel: c.name, fromPlaceId: c.placeId, fromCity: c.city }
-        : { toHotel: c.name, toPlaceId: c.placeId, toCity: c.city },
+        ? { fromHotel: c.name, fromPlaceId: c.placeId, fromCity: c.city, fromPrefecture: c.prefecture }
+        : { toHotel: c.name, toPlaceId: c.placeId, toCity: c.city, toPrefecture: c.prefecture },
     )
 
   const tabBase =
@@ -969,11 +977,13 @@ export default function AgencyNewBookingPage() {
             fromHotel: fromRes ? "" : ((r.from_hotel as string) ?? ""),
             fromPlaceId: (r.from_place_id as string) ?? "",
             fromCity: (r.from_city as string) ?? "",
+            fromPrefecture: (r.from_prefecture as string) ?? "",
             fromResidence: { ...EMPTY_RESIDENCE, ...(fromRes ?? {}) },
             toKind: (toRes ? "residence" : "hotel") as "hotel" | "residence",
             toHotel: toRes ? "" : ((r.to_hotel as string) ?? ""),
             toPlaceId: (r.to_place_id as string) ?? "",
             toCity: (r.to_city as string) ?? "",
+            toPrefecture: (r.to_prefecture as string) ?? "",
             toResidence: { ...EMPTY_RESIDENCE, ...(toRes ?? {}) },
             // 日付は新しい旅なので全て空 (発送日入力で連動オートフィル)
             shipmentDate: "",
@@ -1243,13 +1253,15 @@ export default function AgencyNewBookingPage() {
           // 旅程表はホテル前提。個人宅は手動でトグルして入力する。
           fromKind: "hotel" as const,
           fromHotel: s.from?.hotel || "",
-          fromPlaceId: "", // AI 解析では placeId は付かない → 必要なら候補から選び直す
+          fromPlaceId: "", // AI 解析では placeId は付かない → 候補から選び直し時に都道府県も入る
           fromCity: s.from?.city || "",
+          fromPrefecture: "",
           fromResidence: { ...EMPTY_RESIDENCE },
           toKind: "hotel" as const,
           toHotel: s.to?.hotel || "",
           toPlaceId: "",
           toCity: s.to?.city || "",
+          toPrefecture: "",
           toResidence: { ...EMPTY_RESIDENCE },
           shipmentDate: ymd(s.shipmentDate),
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),

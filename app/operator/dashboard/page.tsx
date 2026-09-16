@@ -15,6 +15,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Building2,
+  BarChart3,
   Mail,
   Search,
   Pencil,
@@ -791,6 +792,13 @@ export default function DashboardPage() {
             >
               <Building2 className="w-4 h-4" strokeWidth={1.5} />
               代理店管理
+            </Link>
+            <Link
+              href="/operator/reports"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <BarChart3 className="w-4 h-4" strokeWidth={1.5} />
+              実績レポート
             </Link>
             <Link
               href="/operator/claims"
