@@ -317,6 +317,11 @@ export async function GET(req: NextRequest) {
       const statusAdvances = bestStatus !== null && bestRank > currentRank
       if (statusAdvances) {
         updatePayload.status = bestStatus
+        // 集荷ライン(picked_up)を初めて越えたら picked_up_at を記録
+        // (ダッシュボードの「本日集荷されました」通知用・未読/既読は pickup_ack_at)。
+        if (currentRank < progressionRank("picked_up") && bestRank >= progressionRank("picked_up")) {
+          updatePayload.picked_up_at = new Date().toISOString()
+        }
       }
 
       if (Object.keys(updatePayload).length === 0) {

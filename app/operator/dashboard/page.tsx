@@ -416,6 +416,41 @@ export default function DashboardPage() {
   // 決済再試行の実行中 shipment id
   const [chargingId, setChargingId] = useState<string | null>(null)
 
+  // 「本日集荷されました」通知 (未読のみ・クリックで既読=消える)
+  type PickupAlert = {
+    id: string
+    booking_id: string
+    leg_index: number
+    agency: string | null
+    from_hotel: string
+    to_hotel: string
+    suitcase_count: number
+    picked_up_at: string
+  }
+  const [pickupAlerts, setPickupAlerts] = useState<PickupAlert[]>([])
+  const loadPickupAlerts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/operator/pickup-alerts")
+      if (!res.ok) return
+      const d = (await res.json()) as { alerts?: PickupAlert[] }
+      setPickupAlerts(Array.isArray(d.alerts) ? d.alerts : [])
+    } catch {
+      /* best-effort */
+    }
+  }, [])
+  const ackPickupAlert = useCallback(async (id: string) => {
+    setPickupAlerts((prev) => prev.filter((a) => a.id !== id)) // 楽観的に消す
+    try {
+      await fetch("/api/operator/pickup-alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }),
+      })
+    } catch {
+      /* 失敗しても次回リロードで再取得される */
+    }
+  }, [])
+
   const loadBoard = useCallback(async () => {
     try {
       const res = await fetch("/api/operator/board-stats")
@@ -454,7 +489,8 @@ export default function DashboardPage() {
   }, [])
   useEffect(() => {
     void loadBoard()
-  }, [loadBoard])
+    void loadPickupAlerts()
+  }, [loadBoard, loadPickupAlerts])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -791,6 +827,58 @@ export default function DashboardPage() {
             </p>
           </div>
         ) : null}
+
+        {/* 本日集荷されました通知 — 集荷を検知した区間を表示。クリック(確認)で既読=消える。 */}
+        {pickupAlerts.length > 0 && (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-900">
+                🔔 集荷されました（{pickupAlerts.length}件）
+              </h2>
+              <button
+                onClick={() => pickupAlerts.forEach((a) => void ackPickupAlert(a.id))}
+                className="text-xs text-emerald-800 hover:underline"
+              >
+                すべて確認
+              </button>
+            </div>
+            <ul className="space-y-1.5">
+              {pickupAlerts.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-white px-3 py-2"
+                >
+                  <div className="min-w-0 text-xs text-foreground">
+                    <span className="font-mono font-medium">
+                      {a.booking_id}-L{a.leg_index + 1}
+                    </span>
+                    {a.agency ? <span className="text-muted-foreground"> ・ {a.agency}</span> : null}
+                    <span className="text-muted-foreground">
+                      {" "}
+                      ・ {a.from_hotel} → {a.to_hotel} ・ {a.suitcase_count}個
+                    </span>
+                    <span className="ml-1 text-emerald-700">
+                      {new Date(a.picked_up_at).toLocaleString("ja-JP", {
+                        timeZone: "Asia/Tokyo",
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      集荷
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => void ackPickupAlert(a.id)}
+                    className="shrink-0 rounded-md border border-emerald-200 px-2 py-1 text-[11px] text-emerald-800 hover:bg-emerald-100"
+                  >
+                    確認
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* 今日のTODO — 運用担当が今日やること (中心=ホテル連絡)。 */}
         <TodayTodo onSelectView={(v) => setViewFilter(v as typeof viewFilter)} />
