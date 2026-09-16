@@ -35,6 +35,36 @@ export async function createGroupShare(
   return { ok: true, token, expiresAt }
 }
 
+/** 有効(未失効・未期限切れ)な共有リンクが既にあれば返す。無ければ null。 */
+export async function getActiveGroupShare(
+  bookingId: string,
+): Promise<{ token: string; expiresAt: string } | null> {
+  const sb = getSupabase()
+  if (!sb) return null
+  const { data } = await sb
+    .from("group_shares")
+    .select("token, expires_at, revoked_at")
+    .eq("booking_id", bookingId)
+    .is("revoked_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) return null
+  return { token: data.token as string, expiresAt: data.expires_at as string }
+}
+
+/** 有効な共有リンクを再利用し、無ければ新規発行する (印刷シートのQR等・乱発を防ぐ)。 */
+export async function getOrCreateGroupShare(
+  bookingId: string,
+  days: number,
+  createdBy: string,
+): Promise<{ ok: boolean; token?: string; expiresAt?: string; error?: string }> {
+  const existing = await getActiveGroupShare(bookingId)
+  if (existing) return { ok: true, token: existing.token, expiresAt: existing.expiresAt }
+  return createGroupShare(bookingId, days, createdBy)
+}
+
 /** token を検証して booking_id を返す (無効/期限切れ/失効は null)。 */
 export async function resolveShareToken(token: string): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null

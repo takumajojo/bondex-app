@@ -1,10 +1,38 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
-import { createGroupShare } from "@/lib/group-shares"
+import { createGroupShare, getOrCreateGroupShare } from "@/lib/group-shares"
 import { buildGroupView } from "@/lib/group-view"
 
 export const runtime = "nodejs"
+
+/**
+ * GET /api/agency/group/[bookingId]/share — 有効な共有リンクを取得(無ければ発行)。
+ *   印刷シートのQR用。乱発を防ぐため既存の有効リンクを再利用する。→ { url, expiresAt }
+ */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ bookingId: string }> },
+) {
+  const limit = rateLimit(req, "agency-group-share")
+  if (!limit.ok) return limit.response
+  const auth = await resolveAgencyFromRequest(req)
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { bookingId } = await params
+  if (!/^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(bookingId)) {
+    return NextResponse.json({ error: "invalid bookingId" }, { status: 400 })
+  }
+  const bid = bookingId.toUpperCase()
+
+  const view = await buildGroupView(bid)
+  if (view.status !== 200 || view.payload.agency !== auth.agency.name) {
+    return NextResponse.json({ error: "not found" }, { status: 404 })
+  }
+  const r = await getOrCreateGroupShare(bid, 30, auth.agency.name)
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+  return NextResponse.json({ ok: true, url: `https://bondex.express/g/${r.token}`, expiresAt: r.expiresAt })
+}
 
 /**
  * POST /api/agency/group/[bookingId]/share — 添乗員向け共有リンクの発行 (代理店・自社予約のみ)。
