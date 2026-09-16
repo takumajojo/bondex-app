@@ -29,6 +29,8 @@ import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { TrackingStepper, carrierTrackUrl, TRACK_STEPS } from "@/components/tracking-stepper"
 import { AgencyContactFab } from "@/components/agency-contact-fab"
 import { WHATSAPP_URL } from "@/lib/contact-links"
+import { openRosterPrintWindow } from "@/lib/roster-print"
+import type { GroupViewPayload } from "@/lib/group-view"
 
 interface Shipment {
   id: string
@@ -100,6 +102,7 @@ const messages = {
     waybillPrint: "A5 print",
     waybillPrintTitle: "Opens the A5 print page (Chrome/Edge open the dialog with A5 preset).",
     voucher: "Voucher",
+    rosterList: "Roster",
     invoice: "Invoice / Receipt",
     driveFolder: "Folder",
     preparing: "Preparing",
@@ -224,6 +227,7 @@ const messages = {
     waybillPrint: "A5印刷",
     waybillPrintTitle: "A5印刷ページを開きます（Chrome/Edgeは印刷ダイアログがA5で開きます）。",
     voucher: "バウチャー",
+    rosterList: "名簿リスト",
     invoice: "請求書/領収書",
     driveFolder: "フォルダ",
     preparing: "準備中",
@@ -348,6 +352,7 @@ export default function AgencyDashboard() {
   const [cardOnFile, setCardOnFile] = useState<boolean>(false)
   const [cardDismissed, setCardDismissed] = useState<boolean>(false)
   const [voucherBusy, setVoucherBusy] = useState<string | null>(null) // booking_id being fetched
+  const [rosterBusy, setRosterBusy] = useState<string | null>(null) // booking_id being fetched (名簿リスト)
   const [labelBusy, setLabelBusy] = useState<string | null>(null) // shipment id being fetched (送り状DL)
   const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null) // shipment_id being fetched
   const [dlError, setDlError] = useState("")
@@ -602,6 +607,50 @@ export default function AgencyDashboard() {
       setVoucherBusy(null)
     }
   }, [locale])
+
+  // 団体「確定名簿」を添乗員用の印刷シートとして出力。JWT で自社限定エンドポイントから
+  // 名簿を取得し、共通処理でシートを生成する。ポップアップブロック回避のため、ウィンドウは
+  // クリック同期で先に開き、取得完了後に書き込む。
+  const printRoster = useCallback(
+    async (bookingId: string) => {
+      setDlError("")
+      const win = window.open("", "_blank", "width=900,height=1000")
+      if (win) win.document.write("<p style='font-family:sans-serif;padding:24px;color:#64748B'>Loading…</p>")
+      setRosterBusy(bookingId)
+      try {
+        const sb = getBrowserSupabase()
+        const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+        if (!token) {
+          win?.close()
+          setDlError(messages[locale].dlError)
+          return
+        }
+        const res = await fetch(`/api/agency/group/${encodeURIComponent(bookingId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        })
+        if (res.status === 401) {
+          win?.close()
+          setSessionExpired(true)
+          setDlError(messages[locale].sessionExpired)
+          return
+        }
+        if (!res.ok) {
+          win?.close()
+          setDlError(messages[locale].dlError)
+          return
+        }
+        const data = (await res.json()) as GroupViewPayload
+        openRosterPrintWindow(data, locale, win)
+      } catch {
+        win?.close()
+        setDlError(messages[locale].dlError)
+      } finally {
+        setRosterBusy(null)
+      }
+    },
+    [locale],
+  )
 
   // 送り状(A5 PDF)を自社限定エンドポイントから DL。全ブラウザ/プリンターで確実な主導線。
   // ファイル名は API 側で旅程番号込みに整形される。
@@ -1235,6 +1284,23 @@ export default function AgencyDashboard() {
                             )}
                             {voucherBusy === it.booking_id ? t.downloading : t.voucher}
                           </button>
+                          {/* 団体のみ: 確定名簿(添乗員用)を印刷シートとして取得 */}
+                          {it.booking_type === "group" && (
+                            <button
+                              type="button"
+                              onClick={() => printRoster(it.booking_id)}
+                              disabled={rosterBusy === it.booking_id}
+                              className="inline-flex items-center gap-1 text-xs text-foreground hover:text-[#C8102E] disabled:opacity-50"
+                              title={`${t.rosterList} (${it.booking_id})`}
+                            >
+                              {rosterBusy === it.booking_id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
+                              ) : (
+                                <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
+                              )}
+                              {rosterBusy === it.booking_id ? t.downloading : t.rosterList}
+                            </button>
+                          )}
                           {it.yamato_label_url && (
                             <div className="inline-flex items-center gap-3">
                               {/* 主導線: 送り状PDF(A5)をDL。全ブラウザ/プリンターで確実。印刷は実寸(100%)推奨。 */}
