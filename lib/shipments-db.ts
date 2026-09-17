@@ -40,6 +40,8 @@ export interface ShipmentRecord {
   from_hotel_ja: string | null
   from_place_id: string | null
   from_check_in: string | null
+  /** 集荷元(発送元)ホテルのチェックイン日 (代理店入力・任意)。お届け先の from_check_in とは別。 */
+  origin_check_in: string | null
   /** 発送元が個人宅のときの構造化住所。null=ホテル (Places 解決)。 */
   from_residence: ResidenceAddress | null
   to_hotel: string
@@ -181,6 +183,7 @@ export async function saveShipment(
     from_prefecture: input.from_prefecture ?? null,
     from_place_id: input.from_place_id ?? null,
     from_check_in: input.from_check_in ?? null,
+    origin_check_in: input.origin_check_in ?? null,
     from_residence: input.from_residence ?? null,
     to_hotel: input.to_hotel ?? "",
     to_city: input.to_city ?? null,

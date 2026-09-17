@@ -44,6 +44,7 @@ type Leg = {
   shipmentDate: string
   expectedArrival: string
   fromCheckIn: string
+  originCheckIn: string
   toCheckOut: string
   deliveryTime: string
   recipient: string
@@ -70,6 +71,7 @@ const emptyLeg = (): Leg => ({
   shipmentDate: "",
   expectedArrival: "",
   fromCheckIn: "",
+  originCheckIn: "",
   toCheckOut: "",
   deliveryTime: "before-noon", // 既定は午前中着 (ランオペの基本希望)。翌日着×午前中はタイト警告を出す
   recipient: "",
@@ -232,6 +234,7 @@ const messages = {
     grpDashboardLink: "Open group dashboard",
     fromCheckIn: "Check-in date at the delivery hotel",
     toCheckOut: "Check-out at delivery hotel (optional)",
+    originCheckIn: "Check-in at pickup hotel (optional)",
     deliveryTime: "Delivery time slot",
     nextDayRisk:
       "This schedule is tight — with a morning slot we can't promise the arrival date. To lock the date in, remove the time slot. Keep \"Before noon\" anyway?",
@@ -486,6 +489,7 @@ const messages = {
     grpDashboardLink: "団体ダッシュボードを開く",
     fromCheckIn: "お届け先ホテルのチェックイン日（お客様の到着日）",
     toCheckOut: "お届け先ホテルのチェックアウト日（任意）",
+    originCheckIn: "集荷元ホテルのチェックイン日（任意）",
     deliveryTime: "配達時間帯",
     nextDayRisk:
       "この日程だと「午前中」では配達日をお約束できません。日付を確実にするには時間指定を外してください。それでも午前中にしますか？",
@@ -1094,6 +1098,7 @@ export default function AgencyNewBookingPage() {
             shipmentDate: "",
             expectedArrival: "",
             fromCheckIn: "",
+            originCheckIn: "",
             toCheckOut: "",
             deliveryTime: ((r.delivery_time as string) || "before-noon"),
             recipient: "",
@@ -1373,6 +1378,7 @@ export default function AgencyNewBookingPage() {
           // お届け先ホテルのチェックイン日(お客様の到着日)/チェックアウト日:
           // 旅程表に記載があれば転記、なければ発送日を自動で入れる(谷口さん要望)。
           fromCheckIn: ymd(s.to?.checkIn) || ymd(s.shipmentDate),
+          originCheckIn: "",
           toCheckOut: ymd(s.to?.checkOut) || ymd(s.shipmentDate),
           deliveryTime: "before-noon",
           recipient: s.recipient || "",
@@ -2553,6 +2559,11 @@ export default function AgencyNewBookingPage() {
                       onChange={(e) => updateLeg(i, { suitcaseCount: Math.max(1, Math.floor(Number(e.target.value) || 1)) })}
                       required />
                   )}
+                </Field>
+                {/* 集荷元ホテルのチェックイン日 (任意)。集荷側の運用メモ用。日付のみ。 */}
+                <Field label={t.originCheckIn} htmlFor={`oci${i}`}>
+                  <input id={`oci${i}`} type="date" className={inputCls} value={leg.originCheckIn}
+                    onChange={(e) => updateLeg(i, { originCheckIn: e.target.value })} />
                 </Field>
                 {/* お届け先ホテルのチェックイン日 (=お客様の到着日)。受取ホテルが「予約名+
                     チェックイン日」で照合するため必須。早期配達を希望する人もいるので発送日

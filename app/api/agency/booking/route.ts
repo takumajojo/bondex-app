@@ -51,6 +51,7 @@ interface LegInput {
   shipmentDate: string
   expectedArrival: string
   fromCheckIn: string
+  originCheckIn: string
   toCheckOut: string
   deliveryTime: string
   recipient: string
@@ -112,6 +113,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   const rawDelivery = s(o.deliveryTime)
   const deliveryTime = DELIVERY_SLOT_SET.has(rawDelivery) ? rawDelivery : ""
   const fromCheckIn = DATE_RE.test(s(o.fromCheckIn)) ? s(o.fromCheckIn) : ""
+  const originCheckIn = DATE_RE.test(s(o.originCheckIn)) ? s(o.originCheckIn) : ""
   const toCheckOut = DATE_RE.test(s(o.toCheckOut)) ? s(o.toCheckOut) : ""
   const rawNoteTarget = s(o.noteTarget)
   const noteTarget = ["from", "to", "both"].includes(rawNoteTarget) ? rawNoteTarget : ""
@@ -129,6 +131,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     shipmentDate,
     expectedArrival,
     fromCheckIn,
+    originCheckIn,
     toCheckOut,
     deliveryTime,
     recipient,
@@ -394,6 +397,7 @@ export async function POST(req: NextRequest) {
       shipment_date: leg.shipmentDate,
       expected_arrival: leg.expectedArrival,
       from_check_in: leg.fromCheckIn || null,
+      origin_check_in: leg.originCheckIn || null,
       to_check_out: leg.toCheckOut || null,
       delivery_time: leg.deliveryTime || null,
       from_hotel: leg.fromHotel,
@@ -515,6 +519,7 @@ export async function POST(req: NextRequest) {
           travelerCount,
           bookingName,
           fromCheckIn: leg.fromCheckIn,
+          originCheckIn: leg.originCheckIn,
           toCheckOut: leg.toCheckOut,
           specialNote: leg.notes,
           noteTarget: leg.noteTarget,
