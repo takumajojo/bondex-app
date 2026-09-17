@@ -41,7 +41,9 @@ export interface DispatchResult {
   status: number
   /** ネットワーク例外時のメッセージ (それ以外は undefined)。 */
   networkError?: string
-  trackingNumbers: string[]
+  /** 追跡番号。不在時は null (現行 create/route.ts が `d.delivery?.tracking_numbers ?? null` で
+   *  DB 保存しているため、[] ではなく null を維持する)。 */
+  trackingNumbers: string[] | null
   labelUrl: string | null
   carrier: string
   method: string

@@ -12,6 +12,7 @@ import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
 import { PRICING } from "@/lib/pricing"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
+import { getDispatchProvider, type DispatchInput } from "@/lib/dispatch"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -45,7 +46,9 @@ export const maxDuration = 60
  * 詳細設計: docs/shipment-deferred-design.md
  */
 
-const SHIPANDCO_BASE = "https://api.shipandco.com/v1"
+// Ship&co 発行の HTTP・carrier_id・ペイロード構築は lib/dispatch/shipandco.ts へ移設。
+// この route は getDispatchProvider() 経由で発行し、住所解決・deferred・idempotency・
+// live/test判定・DB保存・課金/通知の副作用のみを担う。
 const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 
 const FALLBACK_PHONE = "0000000000"
@@ -338,32 +341,6 @@ interface CreateBody {
   isAddition?: unknown
   tourNumber?: unknown
   groupName?: unknown
-}
-
-// in-memory cache for carrier_id (キャリア種別ごと)
-const carrierIdCache = new Map<string, { id: string; at: number }>()
-const CARRIER_CACHE_MS = 10 * 60 * 1000
-
-// Ship&co の /carriers から、指定キャリア種別の有効な carrier_id を取得。
-// ヤマトは type が "yamato" または "yamato_takkyubin"、佐川は "sagawa"。
-async function getCarrierId(token: string, carrierType: string): Promise<string | null> {
-  const now = Date.now()
-  const cached = carrierIdCache.get(carrierType)
-  if (cached && now - cached.at < CARRIER_CACHE_MS) return cached.id
-  const res = await fetch(`${SHIPANDCO_BASE}/carriers`, {
-    headers: { "x-access-token": token, "Content-Type": "application/json" },
-  })
-  if (!res.ok) return null
-  const data = (await res.json()) as Array<{ id?: string; type?: string; state?: string }>
-  if (!Array.isArray(data)) return null
-  const match = data.find((c) => {
-    if (c.state === "disabled") return false
-    if (carrierType === "yamato") return c.type === "yamato" || c.type === "yamato_takkyubin"
-    return c.type === carrierType
-  })
-  if (!match?.id) return null
-  carrierIdCache.set(carrierType, { id: match.id, at: now })
-  return match.id
 }
 
 function pickComponent(components: AddressComponent[], type: string): string {
@@ -916,7 +893,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const carrierId = await getCarrierId(token, carrier.shipandcoType)
+  const provider = getDispatchProvider()
+  const carrierId = await provider.getCarrierId(carrier.shipandcoType)
   if (!carrierId) {
     return NextResponse.json(
       { error: `${carrier.labelEn} carrier not registered in Ship&co dashboard` },
@@ -957,58 +935,31 @@ export async function POST(req: NextRequest) {
   const isLive = process.env.SHIPANDCO_LIVE === "true"
   console.log(`[shipandco/create] mode=${isLive ? "LIVE(本番・実ラベル)" : "TEST(テスト)"} carrier=${carrier.id} ref=${refNumberWithDate}`)
 
-  const payload = {
-    from_address: fromAddr,
-    to_address: toAddr,
-    setup: {
-      carrier_id: carrierId,
-      service: carrier.shipandcoService, // 佐川=sagawa_regular / ヤマト=yamato_regular
-      ref_number: refNumberWithDate,  // BDX-XXX-LN + " 7/11着"
-      shipment_date: shipmentDate,
-      // 配達希望日 (チェックイン日) — 指定すると Yamato は当日まで荷物を保持して配達.
-      // 旅行者がチェックイン前に届いて受取拒否されるのを防ぐ.
-      // 公式ドキュメント上の正式フィールドは "date" (JP 国内のみ)。従来送っていた
-      // "delivery_date" はドキュメントに存在しない (無視されていた可能性が高い) ため
-      // 両方送り、実荷物での検証後に delivery_date を削除する。
-      ...(deliveryDate ? { date: deliveryDate, delivery_date: deliveryDate } : {}),
-      // 配達時間帯 — 標準で午前中 (before-noon)。
-      time: deliveryTime,
-      // 国内便の荷物サイズ (3辺合計区分)。未指定だと Ship&co が最小60(2kg)にして
-      // しまいスーツケースには小さすぎるため、キャリア既定 (佐川=160) を明示。
-      pack_size: carrier.packSize,
-      pack_amount: suitcaseCount,
-      test: !isLive, // SHIPANDCO_LIVE=true のときだけ本番(実ラベル)。既定はテスト。
-    },
-    // 品名は1行に集約 (スーツケース / 代表者名 / チェックイン日). 個数は quantity で持たせる.
-    products: [
-      {
-        name: productNameFull,
-        quantity: suitcaseCount,
-        price: 5000,
-        weight: 10, // kg/個
-      },
-    ],
+  // Ship&co への発行はプロバイダ経由 (payload構築・POST・レスポンス解析・エラー正規化は
+  // lib/dispatch/shipandco.ts へ移設)。HTTP内容・認証(x-access-token)・timeout・error処理・
+  // payload の形/キー順・test:!isLive は移設前と同一 (旧/新 payload はバイト一致を確認済み)。
+  const dispatchInput: DispatchInput = {
+    carrierId,
+    service: carrier.shipandcoService,
+    packSize: carrier.packSize,
+    fromAddress: fromAddr,
+    toAddress: toAddr,
+    refNumber: refNumberWithDate,
+    shipmentDate,
+    deliveryDate,
+    deliveryTime,
+    suitcaseCount,
+    productName: productNameFull,
+    live: isLive,
+  }
+  const result = await provider.postLabel(dispatchInput)
+
+  // ネットワーク例外は旧 catch と同じく DB 保存せず 502。
+  if (result.networkError) {
+    return NextResponse.json({ error: result.networkError }, { status: 502 })
   }
 
-  // POC デバッグ用: payload を console に出す (Vercel の Functions ログで確認可)
-  console.log("[shipandco] payload:", JSON.stringify(payload, null, 2))
-
   try {
-    const res = await fetch(`${SHIPANDCO_BASE}/shipments`, {
-      method: "POST",
-      headers: {
-        "x-access-token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    })
-    const text = await res.text()
-    let data: unknown = null
-    try {
-      if (text) data = JSON.parse(text)
-    } catch {
-      // non-JSON
-    }
     // 共通のメタ情報 (DB 保存用)
     const baseRecord = {
     guest_language: normalizeGuestLanguage(body.guestLanguage),
@@ -1052,31 +1003,18 @@ export async function POST(req: NextRequest) {
       is_addition: isAddition,
     }
 
-    if (!res.ok) {
-      const detail = data ?? text
-      const detailStr = typeof detail === "string" ? detail : JSON.stringify(detail)
-      const code = /ES003001|30日以内/.test(detailStr) ? "SHIPANDCO_DATE_WINDOW" : undefined
+    if (!result.ok) {
       // 失敗も DB に記録 — ダッシュボードで再試行できるように
-      await saveShipment({ ...baseRecord, status: "failed", error_message: detailStr.slice(0, 500) })
+      await saveShipment({ ...baseRecord, status: "failed", error_message: (result.errorDetailStr ?? "").slice(0, 500) })
       return NextResponse.json(
         {
-          error: `Ship&co error (${res.status})`,
-          code,
-          detail,
-          sentPayload: payload,
+          error: `Ship&co error (${result.status})`,
+          code: result.errorCode,
+          detail: result.errorDetail,
+          sentPayload: result.sentPayload,
         },
         { status: 502 },
       )
-    }
-    const d = data as {
-      id?: string
-      delivery?: {
-        carrier?: string
-        method?: string
-        tracking_numbers?: string[]
-        label?: string
-        estimated_delivery_date?: string
-      }
     }
     // 成功 — Yamato 送り状情報も保存。ヤマトは発行済み (取り消せない) なので、
     // DB 保存が失敗しても issued は返すが、savedToDb:false を明示して発行者が気づけるようにする
@@ -1084,8 +1022,8 @@ export async function POST(req: NextRequest) {
     const saved = await saveShipment({
       ...baseRecord,
       status: "issued",
-      yamato_tracking: d.delivery?.tracking_numbers ?? null,
-      yamato_label_url: d.delivery?.label ?? null,
+      yamato_tracking: result.trackingNumbers,
+      yamato_label_url: result.labelUrl,
     })
     if (!saved.ok) {
       console.error(
@@ -1096,8 +1034,8 @@ export async function POST(req: NextRequest) {
         subject: `【緊急】発行済みラベルのDB保存失敗（要手動リカバリ）: ${baseRecord.booking_id}-L${legIndex + 1}`,
         lines: [
           "送り状は発行済み（LIVE時は課金・取消不可の可能性）ですが、DBに保存できませんでした。",
-          `追跡番号: ${(d.delivery?.tracking_numbers ?? []).join(", ") || "-"}`,
-          `ラベルURL: ${d.delivery?.label ?? "-"}`,
+          `追跡番号: ${(result.trackingNumbers ?? []).join(", ") || "-"}`,
+          `ラベルURL: ${result.labelUrl ?? "-"}`,
           `代理店: ${agency || "-"} ／ 予約: ${baseRecord.booking_id} L${legIndex + 1}`,
           `エラー: ${saved.error ?? "unknown"}`,
           "→ ダッシュボードに出ないため、この情報から手動でリカバリしてください。",
@@ -1107,12 +1045,12 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({
       status: "issued",
-      id: d.id ?? "",
-      label: d.delivery?.label ?? "",
-      trackingNumbers: d.delivery?.tracking_numbers ?? [],
-      carrier: d.delivery?.carrier ?? "",
-      method: d.delivery?.method ?? "",
-      estimatedDeliveryDate: d.delivery?.estimated_delivery_date ?? "",
+      id: result.id,
+      label: result.labelUrl ?? "",
+      trackingNumbers: result.trackingNumbers ?? [],
+      carrier: result.carrier,
+      method: result.method,
+      estimatedDeliveryDate: result.estimatedDeliveryDate,
       savedToDb: saved.ok,
       ...(saved.ok ? {} : { saveError: saved.error }),
     })
