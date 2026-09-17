@@ -86,13 +86,13 @@ export const metadata: Metadata = {
     title: SITE_TITLE,
     description: SITE_DESC,
     locale: 'ja_JP',
-    images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: 'BondEx' }],
+    images: [{ url: '/og-image.jpg?v=2', width: 1200, height: 630, alt: 'BondEx' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: SITE_TITLE,
     description: SITE_DESC,
-    images: ['/og-image.jpg'],
+    images: ['/og-image.jpg?v=2'],
   },
   icons: {
     // BondEx モノグラム (赤地 + 白B)。再生成: python3 scripts/generate-favicons.py
