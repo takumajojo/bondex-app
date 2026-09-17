@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     title: SITE_TITLE_ZH,
     description: SITE_DESC_ZH,
     locale: "zh_CN",
-    images: [{ url: "/og-image.jpg", width: 1200, height: 630, alt: "BondEx" }],
+    images: [{ url: "/og-image.jpg?v=2", width: 1200, height: 630, alt: "BondEx" }],
   },
 }
 
