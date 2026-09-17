@@ -550,6 +550,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
 
   return (
     <Document
+      pdfVersion="1.4" // ロゴの透明画像(SMask)を印刷で落とさせないため 1.4 を明示
       title={`BondEx Invoice ${data.invoiceNumber}`}
       author={data.bondex.companyName}
       subject="Luggage Forwarding Invoice"

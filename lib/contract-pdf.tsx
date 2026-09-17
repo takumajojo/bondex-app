@@ -331,6 +331,7 @@ export function ContractDocument({ data }: { data: ContractInput }) {
 
   return (
     <Document
+      pdfVersion="1.4" // 社印/ロゴの透明画像(SMask)を印刷で落とさせないため 1.4 を明示
       title={`BondEx Agency Contract ${data.contractNumber ?? ""}`}
       author={data.bondex.companyName}
       subject="Agency Service Agreement"

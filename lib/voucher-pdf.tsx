@@ -1451,6 +1451,9 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
   const totalLegs = data.shipments.length
   return (
     <Document
+      // ロゴ/QR は透明PNG(SMask)。既定の PDF1.3 ヘッダだと SMask は仕様外扱いで一部の印刷経路が
+      // 画像を落とす(プレビューは見えるのに印刷で消える)。1.4 を明示して SMask を正規機能にする。
+      pdfVersion="1.4"
       title={`BondEx Voucher ${data.bookingId}`}
       author={data.companyName}
       subject="Luggage Forwarding Voucher"
@@ -2079,7 +2082,7 @@ export function HowToShipDocument({
   supportQrKind?: "whatsapp" | "email"
 }) {
   return (
-    <Document title={`BondEx How to Ship (${language.toUpperCase()})`} author="BondEx" subject="How to ship guide">
+    <Document pdfVersion="1.4" title={`BondEx How to Ship (${language.toUpperCase()})`} author="BondEx" subject="How to ship guide">
       <HowToShipPage language={language} supportQrDataUri={supportQrDataUri} supportQrKind={supportQrKind} />
     </Document>
   )
@@ -2142,6 +2145,7 @@ const ops = StyleSheet.create({
 export function OperationsDocument({ data }: { data: VoucherInput }) {
   return (
     <Document
+      pdfVersion="1.4" // 透明画像(SMask)を印刷で落とさせないため 1.4 を明示
       title={`BondEx Ops ${data.bookingId}`}
       author={data.companyName}
       subject="Operations Sheet"
