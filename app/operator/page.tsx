@@ -47,6 +47,7 @@ import { generateBookingId } from "@/lib/booking-id"
 import { normalizeGuestLanguage, type GuestLanguage } from "@/lib/guest-language"
 import { cleanResidence, type ResidenceAddress } from "@/lib/residence"
 import { PRICING } from "@/lib/pricing"
+import { toKatakanaReading } from "@/lib/romaji-kana"
 
 const FLAT_RATE_YEN = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
 
@@ -2363,6 +2364,9 @@ function ConfirmView({
         </p>
         <div className="space-y-1">
           <p className="text-xl font-semibold text-foreground">{representativeLabel}</p>
+          {toKatakanaReading(representativeLabel) && (
+            <p className="text-xs text-muted-foreground">読み(自動): {toKatakanaReading(representativeLabel)}</p>
+          )}
           <p className="text-sm text-muted-foreground">
             {t.tourCompany}:{" "}
             <span className="text-foreground/80 font-medium">{tourCompany || "—"}</span>
