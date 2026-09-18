@@ -3,7 +3,7 @@ import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { mailerConfigured } from "@/lib/mailer"
-import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
+import { listPickupMisses, markPickupAlerted, listDeliveryOverdue, markDeliveryOverdueAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { getTrackingProvider } from "@/lib/tracking"
@@ -494,7 +494,41 @@ export async function GET(req: NextRequest) {
       console.error("[sync-tracking] pickup-miss check failed:", err instanceof Error ? err.message : err)
     }
 
+    // ------------------------------------------------------------------
+    // 配達遅延アラート: 予定到着日を過ぎても未配達の区間を検知 (取りこぼしの自動発見)。
+    //   - delivery_overdue_alerted_at で二重通知を防止 (一度きり)。
+    // ------------------------------------------------------------------
+    let overdueAlertsSent = 0
+    try {
+      const todayJst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+      const overdue = await listDeliveryOverdue(todayJst)
+      const overdueIds: string[] = []
+      for (const s of overdue) {
+        await sendOpsAlert({
+          subject: `【配達遅延の可能性】${s.booking_id}-L${s.leg_index + 1} → ${s.to_hotel}`,
+          lines: [
+            `予約: ${s.booking_id} (区間 ${s.leg_index + 1}) / 代理店: ${s.agency}`,
+            `代表者: ${s.representative}`,
+            `予定到着日 ${s.expected_arrival} を過ぎても配達完了が確認できていません (現在: ${s.status})`,
+            `区間: ${s.from_hotel} → ${s.to_hotel}`,
+            `追跡番号: ${(s.yamato_tracking ?? []).join(", ") || "未発行"}`,
+            `対応: 追跡状況を確認し、遅延・不着なら配送業者へ照会してください。`,
+            `追跡: https://bondex.express/track/${s.booking_id}`,
+          ],
+          agencyEmail: null,
+        }).catch(() => {
+          /* アラート送信失敗で本処理を止めない */
+        })
+        overdueIds.push(s.id)
+        overdueAlertsSent++
+      }
+      await markDeliveryOverdueAlerted(overdueIds)
+    } catch (err) {
+      console.error("[sync-tracking] delivery-overdue check failed:", err instanceof Error ? err.message : err)
+    }
+
     return NextResponse.json({
+      overdueAlertsSent,
       pickupAlertsSent,
       checked: rows.length,
       tasksRun: tasks.length,

@@ -661,6 +661,36 @@ export async function markPickupAlerted(ids: string[]): Promise<void> {
 }
 
 /**
+ * 配達遅延の可能性: 予定到着日を過ぎても未配達 (delivered/cancelled/failed 以外) の区間。
+ * delivery_overdue_alerted_at で二重通知を防止 (一度きり)。
+ */
+export async function listDeliveryOverdue(todayJstYmd: string): Promise<ShipmentRecord[]> {
+  const sb = getSupabase()
+  if (!sb) return []
+  const { data, error } = await sb
+    .from("shipments")
+    .select("*")
+    .in("status", ["issued", "picked_up", "in_transit"])
+    .lt("expected_arrival", todayJstYmd)
+    .is("delivery_overdue_alerted_at", null)
+  if (error) {
+    console.error("[shipments-db] listDeliveryOverdue failed", error.message)
+    return []
+  }
+  return (data ?? []) as ShipmentRecord[]
+}
+
+export async function markDeliveryOverdueAlerted(ids: string[]): Promise<void> {
+  const sb = getSupabase()
+  if (!sb || ids.length === 0) return
+  const { error } = await sb
+    .from("shipments")
+    .update({ delivery_overdue_alerted_at: new Date().toISOString() })
+    .in("id", ids)
+  if (error) console.error("[shipments-db] markDeliveryOverdueAlerted failed", error.message)
+}
+
+/**
  * ID 1件取得 (課金・配達通知フックが手動更新パスから区間の詳細を引くため)。
  */
 export async function getShipment(id: string): Promise<ShipmentRecord | null> {
