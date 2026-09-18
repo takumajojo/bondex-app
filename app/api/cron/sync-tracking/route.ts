@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { mailerConfigured } from "@/lib/mailer"
 import { listPickupMisses, markPickupAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
@@ -385,16 +386,19 @@ export async function GET(req: NextRequest) {
         }
         // 配達完了 → 代理店へ通知 (delivered は次回以降 cron 対象外なので一度きり)
         if (bestStatus === "delivered") {
+          const agencyEmail = agencyEmailByName.get(row.agency as string) ?? null
+          const legRef = `${row.booking_id}-L${(row.leg_index as number) + 1}`
+          let emailSent = false
           try {
-            await sendAgencyStatusEmail(
+            // 送信結果を必ず捕捉する (旧: 戻り値を捨てており、実際は失敗しても "通知済み" に見えた)。
+            emailSent = await sendAgencyStatusEmail(
               "delivered",
               statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null),
-              agencyEmailByName.get(row.agency as string) ?? null,
+              agencyEmail,
               agencyForeignByName.get(row.agency as string) ?? false,
             )
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
             {
-              const legRef = `${row.booking_id}-L${(row.leg_index as number) + 1}`
               const rep = (row.representative as string) ?? ""
               const toHotel = (row.to_hotel as string) ?? ""
               await pushToAgency(row.agency as string, {
@@ -415,9 +419,25 @@ export async function GET(req: NextRequest) {
               link: `/track/${row.booking_id as string}`,
               linkLabel: "追跡ページで確認",
             })
-            deliveryNotified++
+            if (emailSent) deliveryNotified++
           } catch (e) {
             console.error("[sync-tracking] delivery notify failed:", e instanceof Error ? e.message : e)
+          }
+          // 送達確認: 宛先があるのに配達通知メールが送れなかった = お客様への「届いた報告」が飛んでいない。
+          // サイレント失敗を撲滅するため運用へ即アラート (手動フォローの起点)。
+          if (agencyEmail && !emailSent) {
+            await sendOpsAlert({
+              subject: `【配達通知メール未達】${legRef}`,
+              lines: [
+                `配達は完了しましたが、代理店(${row.agency})への配達通知メールを送信できませんでした。`,
+                `宛先: ${agencyEmail}`,
+                `→ メーラ設定(SMTP / Resend の bondex.express ドメイン認証)を確認し、必要なら手動で連絡してください。`,
+                `追跡: https://bondex.express/track/${row.booking_id}`,
+              ],
+              agencyEmail: null,
+            }).catch(() => {
+              /* アラート送信自体の失敗で本処理を止めない */
+            })
           }
         }
       }
@@ -483,6 +503,7 @@ export async function GET(req: NextRequest) {
       skipped,
       deliveryNotified,
       pickupNotified,
+      mailerConfigured: mailerConfigured(), // メール送信が構成済みか (秘密は出さない・送達診断用)
       unmapped,
       alertsSent,
       chargesMade,
