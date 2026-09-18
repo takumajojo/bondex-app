@@ -295,7 +295,7 @@ export default async function TrackPage({
                               {t.date && (
                                 <p className="text-[11px] text-muted-foreground flex gap-1.5">
                                   <span className="shrink-0">🕐</span>
-                                  <span>{new Date(t.date).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", { dateStyle: "medium", timeStyle: "short" })}</span>
+                                  <span>{new Date(t.date).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo" })} JST</span>
                                 </p>
                               )}
                             </div>
@@ -309,7 +309,7 @@ export default async function TrackPage({
 
                 <div className="pt-4 border-t border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   <span className="min-w-0 truncate">{tr.recipient}: {leg.recipient}</span>
-                  <span className="shrink-0">{tr.updated}: {new Date(leg.updatedAt).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", { dateStyle: "medium", timeStyle: "short" })}</span>
+                  <span className="shrink-0">{tr.updated}: {new Date(leg.updatedAt).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo" })} JST</span>
                 </div>
               </div>
             </section>

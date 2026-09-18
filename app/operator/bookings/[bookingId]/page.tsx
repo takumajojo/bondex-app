@@ -253,7 +253,7 @@ export default function OperatorBookingDetailPage() {
               <KV k="代理店" v={head.agency || "—"} />
               <KV k="代表者" v={`${head.representative}（${head.traveler_count}名）`} />
               <KV k="受取人" v={head.recipient || "—"} />
-              <KV k="依頼日" v={new Date(head.created_at).toLocaleString("ja-JP")} />
+              <KV k="依頼日" v={new Date(head.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} />
               {head.tour_number && <KV k="ツアー番号" v={<span className="font-mono">{head.tour_number}</span>} />}
               {head.booking_name && <KV k="貴社Ref" v={head.booking_name} />}
               {head.group_name && <KV k="団体名" v={head.group_name} />}
@@ -387,7 +387,7 @@ export default function OperatorBookingDetailPage() {
                       k="決済"
                       v={
                         r.charged_at
-                          ? `課金済 ¥${(r.charge_amount_yen ?? r.amount_yen).toLocaleString()}（${new Date(r.charged_at).toLocaleString("ja-JP")}）`
+                          ? `課金済 ¥${(r.charge_amount_yen ?? r.amount_yen).toLocaleString()}（${new Date(r.charged_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}）`
                           : r.charge_error
                             ? "課金失敗（上記エラー参照）"
                             : "未課金"
@@ -399,7 +399,7 @@ export default function OperatorBookingDetailPage() {
                       <p className="text-[10px] font-bold text-amber-800">個数の変更履歴</p>
                       {r.count_change_log.map((c, i) => (
                         <p key={i} className="text-[11px] text-amber-900">
-                          {new Date(c.at).toLocaleString("ja-JP")}｜
+                          {new Date(c.at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}｜
                           {c.cancelled ? `${c.from}個 → キャンセル` : `${c.from} → ${c.to}個`}（
                           {REASON_LABEL[c.reason] ?? c.reason}
                           {c.note ? `：${c.note}` : ""}）

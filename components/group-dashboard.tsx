@@ -191,7 +191,7 @@ function fmtTime(iso: string | null): string {
   if (!iso) return "—"
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
-  return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" })
 }
 
 export function GroupDashboard({
@@ -608,7 +608,7 @@ function ShareLinkModal({
               <p className="font-mono text-[11px] text-foreground break-all">{url}</p>
               {expiresAt && (
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  {t.shareExpires}: {new Date(expiresAt).toLocaleDateString("ja-JP")}
+                  {t.shareExpires}: {new Date(expiresAt).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}
                 </p>
               )}
             </div>

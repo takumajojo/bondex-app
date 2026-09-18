@@ -958,7 +958,7 @@ export function OrderDetailScreen({ orderId, onBack }: OrderDetailScreenProps) {
                   <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {new Date(msg.createdAt).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {new Date(msg.createdAt).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" })}
                     </span>
                     {msg.readAt ? (
                       <span className="text-green-600">Read</span>

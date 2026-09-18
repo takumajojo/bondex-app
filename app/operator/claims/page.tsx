@@ -341,7 +341,7 @@ export default function ClaimsPage() {
                 <div className="text-xs text-muted-foreground">
                   {c.reported_by ? `${REPORTER_LABEL[c.reported_by]} (${c.reporter_name || "—"}): ${c.reporter_contact || "連絡先なし"}` : ""}
                   {" · "}
-                  受付: {new Date(c.reported_at).toLocaleDateString("ja-JP")}
+                  受付: {new Date(c.reported_at).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}
                   {c.claim_amount_yen ? ` · 申請額 ¥${c.claim_amount_yen.toLocaleString()}` : ""}
                 </div>
 

@@ -1118,7 +1118,7 @@ export default function AgencyDashboard() {
                   {visibleShipments.map((it) => (
                     <tr key={it.id} className="border-t border-border hover:bg-muted/20">
                       <td className="p-3">
-                        {new Date(it.created_at).toLocaleDateString(t.dateLocale)}
+                        {new Date(it.created_at).toLocaleDateString(t.dateLocale, { timeZone: "Asia/Tokyo" })}
                       </td>
                       <td className="p-3">
                         {it.tour_number ? (

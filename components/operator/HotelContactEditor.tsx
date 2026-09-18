@@ -309,7 +309,7 @@ function RouteEditor({
           }`}
         >
           <Check className="w-3.5 h-3.5" strokeWidth={2} />
-          {notifiedAt ? `連絡済み（${new Date(notifiedAt).toLocaleDateString("ja-JP")}）` : "連絡済みにする"}
+          {notifiedAt ? `連絡済み（${new Date(notifiedAt).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}）` : "連絡済みにする"}
         </button>
         <button
           onClick={() => void save()}
@@ -415,7 +415,7 @@ function IntroEmailButton({
   return (
     <div className="mt-2">
       {introSentAt ? (
-        <p className="text-[10px] text-emerald-700">紹介メール送信済み（{new Date(introSentAt).toLocaleString("ja-JP")}）</p>
+        <p className="text-[10px] text-emerald-700">紹介メール送信済み（{new Date(introSentAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}）</p>
       ) : (
         <button
           onClick={() => void preview()}

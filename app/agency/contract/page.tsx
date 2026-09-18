@@ -313,7 +313,7 @@ export default function AgencyContractPage() {
             <p className="mt-1 text-sm text-emerald-800">
               {status?.signerName ? `${t.signerPrefix}${status.signerName}　` : ""}
               {status?.signedAt
-                ? new Date(status.signedAt).toLocaleString(locale === "en" ? "en-US" : "ja-JP")
+                ? new Date(status.signedAt).toLocaleString(locale === "en" ? "en-US" : "ja-JP", { timeZone: "Asia/Tokyo" })
                 : ""}
             </p>
             {emailInfo && (

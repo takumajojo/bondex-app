@@ -185,7 +185,7 @@ export function StatusDashboard({ data, onBack }: StatusDashboardProps) {
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">{msg.body}</p>
                     <p className="text-[10px] text-muted-foreground/60 mt-1.5">
-                      {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" })}
                     </p>
                   </div>
                 </div>

@@ -19,6 +19,7 @@ function fmt(ts: string): string {
   try {
     const d = new Date(ts)
     return d.toLocaleString("ja-JP", {
+      timeZone: "Asia/Tokyo",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
