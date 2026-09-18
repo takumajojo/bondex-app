@@ -380,6 +380,18 @@ export async function GET(req: NextRequest) {
               agencyForeignByName.get(row.agency as string) ?? false,
             )
             if (sent) pickupNotified++
+            // support@ へ社内通知 (メール + Slack)。代理店メールとは別経路。
+            await notifyBondEx({
+              kind: "pickup",
+              title: `${row.booking_id as string}-L${(row.leg_index as number) + 1}（${row.agency as string}）`,
+              lines: [
+                `集荷元: ${(row.from_hotel as string) ?? ""}`,
+                `お届け先: ${(row.to_hotel as string) ?? ""}`,
+                `代表者: ${(row.representative as string) ?? ""}`,
+              ],
+              link: `/track/${row.booking_id as string}`,
+              linkLabel: "追跡ページで確認",
+            })
           } catch (e) {
             console.error("[sync-tracking] pickup notify failed:", e instanceof Error ? e.message : e)
           }

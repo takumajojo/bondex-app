@@ -67,6 +67,12 @@ export interface ShipmentRecord {
   ship_ref_number: string | null
   status: ShipmentStatus
   error_message: string | null
+  /** キャンセル時刻 (migration 042)。null=未キャンセル。 */
+  cancelled_at: string | null
+  /** キャンセルの実行主体 (代理店名 / 'operator' など)。 */
+  cancelled_by: string | null
+  /** キャンセル経路: 'agency'(代理店セルフ) | 'operator'(運営) | 'system'(自動)。 */
+  cancel_source: string | null
   notes: string | null
   /** ホテルへの申し送りの掲載先: from=発送元のみ / to=お届け先のみ(既定) / both=両方。 */
   note_target: string | null

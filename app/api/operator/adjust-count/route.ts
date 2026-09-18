@@ -108,6 +108,10 @@ export async function POST(req: NextRequest) {
   if (cancel) {
     update.status = "cancelled"
     if (!wasCharged) update.amount_yen = 0
+    // 監査証跡 (migration 042): 個数調整由来の区間キャンセルも運営操作として記録。
+    update.cancelled_at = new Date().toISOString()
+    update.cancelled_by = "operator (個数調整)"
+    update.cancel_source = "operator"
   } else {
     update.suitcase_count = newCount
     if (!wasCharged) update.amount_yen = newAmount
@@ -197,9 +201,9 @@ export async function POST(req: NextRequest) {
     mailSent = r.sent
   }
 
-  // 社内 Slack（集約通知）
+  // 社内通知: キャンセルは support@ へメールも飛ばす(kind=cancel)。個数修正のみは Slack のみ(kind=adjust)。
   await notifyBondEx({
-    kind: "adjust",
+    kind: cancel ? "cancel" : "adjust",
     title: cancel
       ? `${legRef}（${shipment.agency}）区間キャンセル`
       : `${legRef}（${shipment.agency}）個数 ${oldCount}→${newCount}`,

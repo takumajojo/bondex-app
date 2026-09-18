@@ -12,7 +12,9 @@ export const runtime = "nodejs"
  */
 
 const SELECT =
-  "booking_id, leg_index, agency, representative, tour_number, picked_up_at, shipment_date, from_hotel, from_prefecture, from_city, to_hotel, to_prefecture, to_city, suitcase_count, amount_yen, status"
+  "booking_id, leg_index, agency, representative, tour_number, picked_up_at, shipment_date, from_hotel, from_prefecture, from_city, to_hotel, to_prefecture, to_city, suitcase_count, amount_yen, status, cancelled_at, cancelled_by, cancel_source"
+
+const CANCEL_SRC_JA: Record<string, string> = { agency: "代理店", operator: "運営", system: "自動" }
 
 function csvCell(v: unknown): string {
   const s = v == null ? "" : String(v)
@@ -63,6 +65,7 @@ export async function GET(req: NextRequest) {
       "発送元ホテル", "発送元都道府県", "発送元市区",
       "お届け先ホテル", "お届け先都道府県", "お届け先市区",
       "個数", "金額", "ステータス",
+      "取消経路", "取消実行者", "取消日時",
     ]
     const lines = [header.join(",")]
     for (const r of rows) {
@@ -74,6 +77,9 @@ export async function GET(req: NextRequest) {
           r.from_hotel, r.from_prefecture, r.from_city,
           r.to_hotel, r.to_prefecture, r.to_city,
           r.suitcase_count, r.amount_yen, r.status,
+          r.cancel_source ? (CANCEL_SRC_JA[String(r.cancel_source)] ?? r.cancel_source) : "",
+          r.cancelled_by ?? "",
+          r.cancelled_at ? new Date(r.cancelled_at as string).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) : "",
         ].map(csvCell).join(","),
       )
     }

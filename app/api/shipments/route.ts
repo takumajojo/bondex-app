@@ -222,6 +222,37 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  // 運営が手動でキャンセルにした場合の監査証跡 (migration 042) + support@ へ通知。
+  if (patch.status === "cancelled") {
+    const sbC = getSupabase()
+    if (sbC) {
+      // cancel_source が未記録のときだけ刻む (再操作で上書きしない)。
+      await sbC
+        .from("shipments")
+        .update({ cancelled_at: new Date().toISOString(), cancelled_by: "operator", cancel_source: "operator" })
+        .eq("id", id)
+        .is("cancel_source", null)
+    }
+    try {
+      const ship = await getShipment(id)
+      if (ship) {
+        await notifyBondEx({
+          kind: "cancel",
+          title: `${ship.booking_id}-L${ship.leg_index + 1}（${ship.agency}）区間を取り消し`,
+          lines: [
+            `区間: ${ship.from_hotel} → ${ship.to_hotel}`,
+            `発送日: ${ship.shipment_date}`,
+            `運営ダッシュボードでの取り消し`,
+          ],
+          link: `/track/${ship.booking_id}`,
+          linkLabel: "追跡ページで確認",
+        })
+      }
+    } catch (e) {
+      console.error("[shipments] cancel notify failed:", e instanceof Error ? e.message : e)
+    }
+  }
+
   // 手動でステータスを集荷完了以降に変えた場合の副作用 (自動同期 cron と同じ)。
   // いずれも best-effort — 更新自体は既に成立しているので失敗しても 200 を返す。
   if (patch.status && ["picked_up", "in_transit", "delivered"].includes(patch.status)) {
@@ -258,6 +289,20 @@ export async function PATCH(req: NextRequest) {
             agencyEmail,
             english,
           )
+          // 集荷完了 → support@ へ社内通知 (メール + Slack)。配達完了は下でまとめて通知。
+          if (patch.status === "picked_up") {
+            await notifyBondEx({
+              kind: "pickup",
+              title: `${ship.booking_id}-L${ship.leg_index + 1}（${ship.agency}）`,
+              lines: [
+                `集荷元: ${ship.from_hotel}`,
+                `お届け先: ${ship.to_hotel}`,
+                `代表者: ${ship.representative}`,
+              ],
+              link: `/track/${ship.booking_id}`,
+              linkLabel: "追跡ページで確認",
+            })
+          }
           if (patch.status === "delivered") {
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
             {

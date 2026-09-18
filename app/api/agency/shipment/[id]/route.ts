@@ -77,7 +77,15 @@ export async function PATCH(
     // 未発行状態のときだけ更新し、0行なら発行済みとして 409 を返す。
     const { data: upd, error } = await sb
       .from("shipments")
-      .update({ status: "cancelled" })
+      .update({
+        status: "cancelled",
+        // 監査証跡 (migration 042): 誰が・いつ・どの経路で取り消したかを必ず残す。
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: auth.agency.contact_email
+          ? `${auth.agency.name} <${auth.agency.contact_email}>`
+          : auth.agency.name,
+        cancel_source: "agency",
+      })
       .eq("id", id)
       .in("status", ["requested", "pending"])
       .select("id")
@@ -89,7 +97,7 @@ export async function PATCH(
       )
     }
     await notifyBondEx({
-      kind: "change",
+      kind: "cancel",
       title: `${legRef}（${shipment.agency}）区間を取り消し`,
       lines: [
         `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,

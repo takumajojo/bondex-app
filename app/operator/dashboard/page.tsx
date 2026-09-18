@@ -93,6 +93,10 @@ interface Shipment {
   charge_amount_yen: number | null
   count_change_log?: CountChange[] | null
   booking_type?: string | null
+  /** キャンセル監査 (migration 042)。誰が・いつ・どの経路で取り消したか。 */
+  cancelled_at?: string | null
+  cancelled_by?: string | null
+  cancel_source?: string | null
 }
 
 interface CountChange {
@@ -237,6 +241,27 @@ function deriveDelay(s: {
 // 未回収の課金失敗: charge_error があり、まだ課金成立していない (charged_at 未セット)。
 function isChargeFailed(s: { charged_at: string | null; charge_error: string | null }): boolean {
   return !!s.charge_error && !s.charged_at
+}
+
+/** キャンセル経路(cancel_source)を日本語1語に。migration 042。 */
+function cancelSourceLabel(src: string | null | undefined): string {
+  if (src === "agency") return "代理店"
+  if (src === "operator") return "運営"
+  if (src === "system") return "自動"
+  return "不明"
+}
+
+/** キャンセルバッジのツールチップ (誰が・いつ)。 */
+function cancelTooltip(s: {
+  cancel_source?: string | null
+  cancelled_by?: string | null
+  cancelled_at?: string | null
+}): string | undefined {
+  if (!s.cancelled_by && !s.cancel_source) return undefined
+  const at = s.cancelled_at
+    ? new Date(s.cancelled_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })
+    : ""
+  return `取消: ${cancelSourceLabel(s.cancel_source)}${s.cancelled_by ? `（${s.cancelled_by}）` : ""}${at ? ` ${at}` : ""}`
 }
 
 const STATUS_LABELS: Record<ShipmentStatus, { ja: string; cls: string }> = {
@@ -1493,8 +1518,12 @@ export default function DashboardPage() {
                           {/* 即時変更の select を廃止し、バッジ表示＋メニュー経由の確認モーダルに */}
                           <span
                             className={`inline-block px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${STATUS_LABELS[it.status].cls}`}
+                            title={it.status === "cancelled" ? cancelTooltip(it) : undefined}
                           >
                             {STATUS_LABELS[it.status].ja}
+                            {it.status === "cancelled" && it.cancel_source ? (
+                              <span className="ml-1 font-normal opacity-70">/ {cancelSourceLabel(it.cancel_source)}</span>
+                            ) : null}
                           </span>
                           <div className="relative">
                             <button
