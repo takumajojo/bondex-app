@@ -514,6 +514,29 @@ export async function updateShipmentFields(
 }
 
 /**
+ * 区間の失敗理由を error_message に記録する (ベストエフォート)。
+ * 自動発行(issue-due)の早期リジェクトは理由が残らず消えるため、ここで残して二度と失わない。
+ * status は変えない (requested のまま = 次回の自動発行/昇格で再試行される)。
+ */
+export async function setShipmentError(
+  bookingId: string,
+  legIndex: number,
+  message: string,
+): Promise<void> {
+  const sb = getSupabase()
+  if (!sb) return
+  try {
+    await sb
+      .from("shipments")
+      .update({ error_message: message.slice(0, 500) })
+      .eq("booking_id", bookingId)
+      .eq("leg_index", legIndex)
+  } catch {
+    /* 記録失敗で発行フローは止めない */
+  }
+}
+
+/**
  * 予約単位で Drive フォルダ URL を設定する。全区間 (同一 booking_id) に反映。
  * BondEx が発行後、書類を格納した Google Drive フォルダのリンクを登録する用途。
  */

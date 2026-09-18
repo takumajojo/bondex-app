@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
-import { listIssueDue, promoteDeferredInWindow, type ShipmentRecord } from "@/lib/shipments-db"
+import { listIssueDue, promoteDeferredInWindow, setShipmentError, type ShipmentRecord } from "@/lib/shipments-db"
 import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
 import { sendMail } from "@/lib/mailer"
 
@@ -217,9 +217,13 @@ export async function GET(req: NextRequest) {
             [d.code, asText(d.error), d.hint, asText(d.detail)].filter((x) => x && x.length).join(" / ") ||
             `HTTP ${res.status}`
           failed.push({ booking_id: s.booking_id, leg: s.leg_index, error: reason })
+          // 理由を予約データにも残す (早期リジェクトは従来 DB に残らず消えていた)。
+          await setShipmentError(s.booking_id, s.leg_index, reason)
         }
       } catch (e) {
-        failed.push({ booking_id: s.booking_id, leg: s.leg_index, error: e instanceof Error ? e.message : "network" })
+        const reason = e instanceof Error ? e.message : "network"
+        failed.push({ booking_id: s.booking_id, leg: s.leg_index, error: reason })
+        await setShipmentError(s.booking_id, s.leg_index, reason)
       }
     }
 
