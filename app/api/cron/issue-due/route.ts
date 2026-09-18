@@ -80,6 +80,17 @@ function toCreateBody(s: ShipmentRecord) {
   }
 }
 
+// 失敗理由を必ず読める文字列にする。オブジェクトを素で埋めると "[object Object]" になり真因が消える。
+function asText(v: unknown): string {
+  if (v == null) return ""
+  if (typeof v === "string") return v
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
+}
+
 export async function GET(req: NextRequest) {
   const expected = process.env.CRON_SECRET
   if (!expected) return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 })
@@ -189,8 +200,10 @@ export async function GET(req: NextRequest) {
         const d = (await res.json().catch(() => ({}))) as {
           label?: string
           status?: string
-          error?: string
+          error?: unknown
           code?: string
+          detail?: unknown
+          hint?: string
         }
         if (res.ok && d.label) {
           const arr = issuedByBooking.get(s.booking_id) ?? []
@@ -199,7 +212,11 @@ export async function GET(req: NextRequest) {
         } else if (d.status === "deferred") {
           deferred.push({ booking_id: s.booking_id, leg: s.leg_index })
         } else {
-          failed.push({ booking_id: s.booking_id, leg: s.leg_index, error: d.code || d.error || `HTTP ${res.status}` })
+          // code / メッセージ / hint / detail を読める形で連結 (旧: d.error がオブジェクトだと "[object Object]")。
+          const reason =
+            [d.code, asText(d.error), d.hint, asText(d.detail)].filter((x) => x && x.length).join(" / ") ||
+            `HTTP ${res.status}`
+          failed.push({ booking_id: s.booking_id, leg: s.leg_index, error: reason })
         }
       } catch (e) {
         failed.push({ booking_id: s.booking_id, leg: s.leg_index, error: e instanceof Error ? e.message : "network" })
