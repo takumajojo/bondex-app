@@ -132,6 +132,14 @@ export default function OperatorBookingDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [busyId, setBusyId] = useState("")
+  // 予約情報の修正 (代理店 / 配送番号)。代理店は agencies マスタから選ぶ。
+  const [agencies, setAgencies] = useState<string[]>([])
+  const [editingAgency, setEditingAgency] = useState(false)
+  const [agencyDraft, setAgencyDraft] = useState("")
+  const [editTrackId, setEditTrackId] = useState("")
+  const [trackDraft, setTrackDraft] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [editErr, setEditErr] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -172,6 +180,43 @@ export default function OperatorBookingDetailPage() {
       setError(e instanceof Error ? e.message : "更新に失敗しました")
     }
     setBusyId("")
+  }
+
+  // 代理店マスタ (変更ドロップダウン用)。取得失敗は握り潰す (編集ボタンは出さない)。
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/agencies", { cache: "no-store" })
+        const data = await res.json()
+        const names = ((data.agencies || []) as { name?: string }[])
+          .map((a) => a.name || "")
+          .filter(Boolean)
+        setAgencies(names)
+      } catch {
+        /* 一覧取得失敗時は代理店変更UIを出さない */
+      }
+    })()
+  }, [])
+
+  // 予約情報の修正を保存。代理店は全区間・配送番号は該当区間に反映 (サーバー側で振り分け)。
+  const saveEdit = async (id: string, payload: { agency?: string; tracking?: string }) => {
+    setSaving(true)
+    setEditErr("")
+    try {
+      const res = await fetch(`/api/operator/shipment/${id}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "更新に失敗しました")
+      setEditingAgency(false)
+      setEditTrackId("")
+      await load()
+    } catch (e) {
+      setEditErr(e instanceof Error ? e.message : "更新に失敗しました")
+    }
+    setSaving(false)
   }
 
   const head = rows[0]
@@ -250,7 +295,48 @@ export default function OperatorBookingDetailPage() {
         {head && (
           <section className="rounded-2xl border border-border bg-white p-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
-              <KV k="代理店" v={head.agency || "—"} />
+              <div className="flex items-baseline gap-2 text-xs">
+                <span className="w-24 shrink-0 text-muted-foreground">代理店</span>
+                {editingAgency ? (
+                  <span className="flex items-center gap-1.5 flex-wrap">
+                    <select
+                      value={agencyDraft}
+                      onChange={(e) => setAgencyDraft(e.target.value)}
+                      className="rounded border border-border bg-white px-2 py-1 text-xs max-w-[16rem]"
+                    >
+                      <option value="">代理店を選択</option>
+                      {agencies.map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => agencyDraft && void saveEdit(head.id, { agency: agencyDraft })}
+                      disabled={saving || !agencyDraft}
+                      className="rounded bg-[#C8102E] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                    >
+                      保存
+                    </button>
+                    <button
+                      onClick={() => { setEditingAgency(false); setEditErr("") }}
+                      className="text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      取消
+                    </button>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <span className="text-foreground">{head.agency || "—"}</span>
+                    {agencies.length > 0 && (
+                      <button
+                        onClick={() => { setEditingAgency(true); setAgencyDraft(head.agency || ""); setEditErr("") }}
+                        className="text-[11px] text-[#C8102E] hover:underline"
+                      >
+                        変更
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
               <KV k="代表者" v={`${head.representative}（${head.traveler_count}名）`} />
               <KV k="受取人" v={head.recipient || "—"} />
               <KV k="依頼日" v={new Date(head.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} />
@@ -259,6 +345,9 @@ export default function OperatorBookingDetailPage() {
               {head.group_name && <KV k="団体名" v={head.group_name} />}
               <KV k="バウチャー言語" v={(head.guest_language || "en").toUpperCase()} />
             </div>
+            {editingAgency && editErr && (
+              <p className="mt-2 text-[11px] text-red-700">{editErr}</p>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {head.booking_type === "group" && (
                 <a
@@ -410,14 +499,51 @@ export default function OperatorBookingDetailPage() {
                 </Section>
 
                 <Section title="追跡番号">
-                  {r.yamato_tracking && r.yamato_tracking.length > 0 ? (
-                    <div className="space-y-0.5">
-                      {r.yamato_tracking.map((t) => (
-                        <p key={t} className="text-xs font-mono text-foreground/90">{t}</p>
-                      ))}
+                  {editTrackId === r.id ? (
+                    <div className="space-y-1.5">
+                      <input
+                        value={trackDraft}
+                        onChange={(e) => setTrackDraft(e.target.value)}
+                        placeholder="例) 564833729073（複数はカンマ/空白区切り・空で消去）"
+                        className="w-full rounded border border-border bg-white px-2 py-1 text-xs font-mono"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => void saveEdit(r.id, { tracking: trackDraft })}
+                          disabled={saving}
+                          className="rounded bg-[#C8102E] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={() => { setEditTrackId(""); setEditErr("") }}
+                          className="text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          取消
+                        </button>
+                      </div>
+                      {editErr && editTrackId === r.id && (
+                        <p className="text-[11px] text-red-700">{editErr}</p>
+                      )}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">未発行</p>
+                    <div className="flex items-start gap-2">
+                      <div className="space-y-0.5">
+                        {r.yamato_tracking && r.yamato_tracking.length > 0 ? (
+                          r.yamato_tracking.map((t) => (
+                            <p key={t} className="text-xs font-mono text-foreground/90">{t}</p>
+                          ))
+                        ) : (
+                          <p className="text-xs text-muted-foreground">未発行</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => { setEditTrackId(r.id); setTrackDraft((r.yamato_tracking || []).join(", ")); setEditErr("") }}
+                        className="text-[11px] text-[#C8102E] hover:underline"
+                      >
+                        編集
+                      </button>
+                    </div>
                   )}
                   {r.yamato_label_url && (
                     <a
