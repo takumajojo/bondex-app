@@ -207,6 +207,7 @@ export interface LandingMessages {
     volume: string // "{n}" "{d}"
     group: string
     groupValue: string
+    uniform: string
     notes: string[]
     // 直接手配との比較
     compareLead: string
@@ -608,6 +609,7 @@ const ja: LandingMessages = {
     volume: "月間{n}個以上のご利用で {d}% OFF",
     group: "団体・大口案件",
     groupValue: "個別プランあり",
+    uniform: "サイズ・重さを問わず、1個あたり均一料金。",
     notes: [
       "配送手配・送り状発行・管理・追跡・異常時対応・多言語バウチャー・サポートを含む料金です。",
       "一部地域・大型荷物・特殊配送等は別途条件となる場合があります。",
@@ -963,6 +965,7 @@ const en: LandingMessages = {
     volume: "{d}% OFF at {n}+ items / month",
     group: "Groups & large accounts",
     groupValue: "Custom plan",
+    uniform: "One flat rate per item — any size, any weight.",
     notes: [
       "The price includes shipping arrangement, label issuance, management, tracking, exception handling, multilingual vouchers and support.",
       "Certain areas, oversized luggage and special handling may be subject to separate conditions.",
@@ -1315,6 +1318,7 @@ const es: LandingMessages = {
     volume: "{d}% OFF a partir de {n} artículos/mes",
     group: "Grupos y grandes cuentas",
     groupValue: "Plan personalizado",
+    uniform: "Tarifa única por artículo, sea cual sea el tamaño o el peso.",
     notes: [
       "El precio incluye la organización del envío, la emisión de etiquetas, la gestión, el seguimiento, la atención de incidencias, los vouchers multilingües y el soporte.",
       "Determinadas zonas, el equipaje de gran tamaño y los envíos especiales pueden estar sujetos a condiciones aparte.",
@@ -1667,6 +1671,7 @@ const fr: LandingMessages = {
     volume: "{d}% OFF dès {n} articles/mois",
     group: "Groupes et grands comptes",
     groupValue: "Offre sur mesure",
+    uniform: "Tarif unique par article, quelle que soit la taille ou le poids.",
     notes: [
       "Le tarif comprend l'organisation de l'expédition, l'émission des étiquettes, la gestion, le suivi, le traitement des incidents, les bons multilingues et l'assistance.",
       "Certaines régions, les bagages hors format et les livraisons spéciales peuvent être soumis à des conditions particulières.",
@@ -2019,6 +2024,7 @@ const zh: LandingMessages = {
     volume: "每月满 {n} 件享 {d}% OFF",
     group: "团体・大宗业务",
     groupValue: "专属方案",
+    uniform: "不论尺寸和重量，每件均一价格。",
     notes: [
       "价格已含配送安排、面单开具、管理、追踪、异常处理、多语种凭证与支持。",
       "部分地区、超大件行李及特殊配送等可能适用另行条件。",
@@ -2371,6 +2377,7 @@ const it: LandingMessages = {
     volume: "{d}% OFF da {n} colli/mese",
     group: "Gruppi e grandi clienti",
     groupValue: "Piano su misura",
+    uniform: "Tariffa unica per collo, indipendentemente da dimensioni e peso.",
     notes: [
       "Il prezzo include l'organizzazione della spedizione, l'emissione delle etichette, la gestione, il tracciamento, la gestione delle anomalie, i voucher multilingue e l'assistenza.",
       "Alcune zone, i bagagli fuori misura e le spedizioni speciali possono essere soggetti a condizioni a parte.",

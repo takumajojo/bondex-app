@@ -784,6 +784,7 @@ export function Landing({ lang }: { lang: Locale }) {
                   <span className="text-[15px] font-medium text-[#334155]">{t.price.perItem}</span>
                   <span className="ml-1 text-[12px] text-[#64748B]">（{t.price.tax}）</span>
                 </p>
+                <p className="mt-2 text-[12px] font-semibold text-[#C8102E]">{t.price.uniform}</p>
                 <div className="mt-4 bg-white border border-[#E5E7EB] px-4 py-3">
                   <p className="text-[12px] font-semibold text-[#0F172A]">{t.price.trial}</p>
                   <p className="mt-0.5 flex items-baseline gap-1 flex-wrap">
