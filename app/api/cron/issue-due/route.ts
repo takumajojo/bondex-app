@@ -33,11 +33,9 @@ export const maxDuration = 300 // 複数区間の Ship&co 発行 + Drive 格納�
 const HORIZON_DAYS = 30
 
 function trustedOrigin(): string {
-  return (
-    process.env.APP_BASE_URL?.replace(/\/+$/, "") ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
-    "https://bondex.express"
-  )
+  // VERCEL_URL は使わない: Vercel Deployment Protection の対象で、内部自己呼び出しが
+  // 401 "Protected deployment" で弾かれ自動発行が失敗するため。公開ドメイン直で呼ぶ。
+  return process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
 }
 
 // ShipmentRecord から /api/shipandco/create のリクエストボディを組み立てる。

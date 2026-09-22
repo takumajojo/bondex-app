@@ -25,11 +25,9 @@ export const runtime = "nodejs"
  */
 
 function trustedOrigin(): string {
-  return (
-    process.env.APP_BASE_URL?.replace(/\/+$/, "") ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
-    "https://bondex.express"
-  )
+  // VERCEL_URL は使わない: Vercel Deployment Protection の対象で、内部自己呼び出しが
+  // 401 "Protected deployment" で弾かれるため。公開ドメイン直で呼ぶ。
+  return process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
 }
 
 export async function POST(req: NextRequest) {
