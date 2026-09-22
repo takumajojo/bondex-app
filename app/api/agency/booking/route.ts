@@ -547,6 +547,23 @@ export async function POST(req: NextRequest) {
   const anyIssued = legOut.some((r) => r.issued)
   const issueFailures = legOut.filter((r) => r.reason === "failed")
   const farLegs = legOut.filter((r) => r.reason === "far") // 1ヶ月超先で発行窓の外(正常な待ち)
+
+  // 発行に失敗した区間は必ず DB に痕跡を残す(黙って status=requested・error_message=null の
+  // まま放置しない)。status=failed + 失敗理由を記録し、運用ダッシュボードの「失敗」に出す。
+  // 日次 issue-due cron は failed も再発行対象に拾うため、原因が解消すれば自動で復旧する。
+  if (issueFailures.length > 0) {
+    const sbFail = getSupabase()
+    if (sbFail) {
+      for (const f of issueFailures) {
+        const { error: upErr } = await sbFail
+          .from("shipments")
+          .update({ status: "failed", error_message: (f.error || "issue failed").slice(0, 500) })
+          .eq("booking_id", bookingId)
+          .eq("leg_index", f.legIndex)
+        if (upErr) console.error("[booking] 失敗記録の保存に失敗:", upErr.message)
+      }
+    }
+  }
   // 「1ヶ月前になったら書類を用意してご連絡します」の案内は、本当に 1ヶ月超先の
   // 未発行区間があるときだけ出す。1ヶ月以内なのに発行できなかった区間は "failed" で
   // 別扱い(運用が対応・代理店には issueFailures を画面表示)。1ヶ月以内の発行失敗に
