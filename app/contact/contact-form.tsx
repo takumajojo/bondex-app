@@ -39,38 +39,56 @@ export function ContactForm({
   const [website, setWebsite] = useState("") // ハニーポット (人間は空のまま)
   const [renderedAt] = useState(() => Date.now()) // 送信タイマーの起点
   const [token, setToken] = useState("") // Turnstile トークン
+  const [turnstileFailed, setTurnstileFailed] = useState(false) // 描画不能/タイムアウト時は素通し
+  const tokenRef = useRef("")
   const turnstileRef = useRef<HTMLDivElement>(null)
   const widgetId = useRef<string | null>(null)
   const turnstileEnabled = !!TURNSTILE_SITE_KEY
 
   // Turnstile ウィジェットの読み込み・描画 (サイトキー設定時のみ)。
+  // フェイルセーフ: 第三者ウィジェットの不調でフォームを詰まらせないため、描画に失敗
+  // またはトークンが8秒得られない場合は turnstileFailed=true にして送信を許可する
+  // (その場合もサーバー側の honeypot / 送信タイマー / 連投ブロックは有効)。
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY) return
+    const setTok = (v: string) => {
+      tokenRef.current = v
+      setToken(v)
+    }
     const render = () => {
       if (!window.turnstile || !turnstileRef.current || widgetId.current) return
-      widgetId.current = window.turnstile.render(turnstileRef.current, {
-        sitekey: TURNSTILE_SITE_KEY,
-        callback: (t: string) => setToken(t),
-        "expired-callback": () => setToken(""),
-        "error-callback": () => setToken(""),
-      })
+      try {
+        widgetId.current = window.turnstile.render(turnstileRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (t: string) => setTok(t),
+          "expired-callback": () => setTok(""),
+          "error-callback": () => setTurnstileFailed(true),
+        })
+      } catch {
+        setTurnstileFailed(true)
+      }
     }
     if (window.turnstile) {
       render()
-      return
+    } else {
+      const id = "cf-turnstile-script"
+      let script = document.getElementById(id) as HTMLScriptElement | null
+      if (!script) {
+        script = document.createElement("script")
+        script.id = id
+        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+        script.async = true
+        script.defer = true
+        script.addEventListener("error", () => setTurnstileFailed(true))
+        document.head.appendChild(script)
+      }
+      script.addEventListener("load", render)
     }
-    const id = "cf-turnstile-script"
-    let script = document.getElementById(id) as HTMLScriptElement | null
-    if (!script) {
-      script = document.createElement("script")
-      script.id = id
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-      script.async = true
-      script.defer = true
-      document.head.appendChild(script)
-    }
-    script.addEventListener("load", render)
-    return () => script?.removeEventListener("load", render)
+    // 保険: 8秒たってもトークンが取れなければ CAPTCHA 無しとして送信を許可。
+    const failTimer = setTimeout(() => {
+      if (!tokenRef.current) setTurnstileFailed(true)
+    }, 8000)
+    return () => clearTimeout(failTimer)
   }, [])
 
   const onSubmit = async (e: FormEvent) => {
@@ -203,7 +221,7 @@ export function ContactForm({
 
       <button
         type="submit"
-        disabled={status === "sending" || !email || !message || (turnstileEnabled && !token)}
+        disabled={status === "sending" || !email || !message || (turnstileEnabled && !token && !turnstileFailed)}
         className="w-full h-12 rounded-xl bg-[#C8102E] text-white text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#A00D25] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {status === "sending" ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} /> : t.submit}

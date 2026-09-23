@@ -56,7 +56,10 @@ function normalizeEmail(email: string): string {
 async function verifyTurnstile(token: string, ip: string | null): Promise<boolean | null> {
   const secret = process.env.TURNSTILE_SECRET_KEY
   if (!secret) return null // 未設定 = 検証しない
-  if (!token) return false
+  // トークン無し = ウィジェット未描画/失敗の可能性。ここで拒否するとフォームが詰まるため
+  // 素通し(null)にし、honeypot / 送信タイマー / 連投ブロックで守る。トークンが有る場合のみ
+  // 真偽を検証し、偽なら拒否する。
+  if (!token) return null
   try {
     const form = new URLSearchParams()
     form.set("secret", secret)
