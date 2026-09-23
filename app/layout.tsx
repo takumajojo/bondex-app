@@ -35,6 +35,18 @@ const STRUCTURED_DATA = {
       logo: `${SITE_URL}/bondex-logo.png`,
       description:
         '訪日旅行代理店・ランドオペレーター向けに、日本全国のホテル間で手荷物配送を手配する取次サービス。',
+      slogan: '荷物配送を、旅行商品の一部に。',
+      // 「BondEx＝配送」のエンティティを補強 (同名の塗料 Bondex 等と区別)。
+      knowsAbout: [
+        '荷物配送',
+        'ホテル間配送',
+        '手荷物配送',
+        '手ぶら観光',
+        '訪日旅行',
+        'ラゲッジ配送',
+        '送り状発行',
+        '配送追跡',
+      ],
       parentOrganization: {
         '@type': 'Organization',
         name: '株式会社JOJO',
@@ -61,6 +73,7 @@ const STRUCTURED_DATA = {
       '@id': `${SITE_URL}/#service`,
       name: 'BondEx — Luggage Forwarding for Inbound Travel Agencies in Japan',
       serviceType: 'Hotel-to-hotel luggage forwarding and delivery coordination',
+      keywords: 'BondEx, ボンデックス, 荷物配送, ホテル間配送, 手荷物配送, 手ぶら観光, 訪日旅行 配送, 送り状発行, 配送追跡',
       provider: { '@id': `${SITE_URL}/#organization` },
       areaServed: { '@type': 'Country', name: 'Japan' },
       audience: {
