@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { Loader2, Check } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
+import { useTurnstile } from "@/components/use-turnstile"
 
 type Region = "domestic" | "overseas"
 type Payment = "invoice" | "card"
@@ -117,6 +118,10 @@ export default function AgencySignupPage() {
   const [phone, setPhone] = useState("")
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [error, setError] = useState("")
+  // ── スパム対策 ──
+  const [website, setWebsite] = useState("") // ハニーポット (人間は空のまま)
+  const [renderedAt] = useState(() => Date.now()) // 送信タイマーの起点
+  const turnstile = useTurnstile()
 
   // 海外を選んだら請求書払いは不可 → card に強制
   const onRegionChange = (r: Region) => {
@@ -143,6 +148,9 @@ export default function AgencySignupPage() {
           locale,
           paymentMethod: payment,
           phone,
+          website, // ハニーポット
+          elapsedMs: Date.now() - renderedAt,
+          turnstileToken: turnstile.token,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -208,6 +216,20 @@ export default function AgencySignupPage() {
           method="post"
           className="rounded-2xl border border-[#E5E7EB] bg-white p-6 md:p-7 space-y-5"
         >
+          {/* ハニーポット: 画面外の隠しフィールド。人間は触れず空のまま。ボットが埋めたら破棄。 */}
+          <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, overflow: "hidden" }}>
+            <label htmlFor="website">Website</label>
+            <input
+              id="website"
+              name="website"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </div>
+
           {/* やり取りの言語（＝契約書・案内・請求の出力言語）。選ぶとフォーム全体もその言語に切替。 */}
           <div className="space-y-1.5">
             <span className="text-[12px] font-medium text-[#334155]">
@@ -307,9 +329,12 @@ export default function AgencySignupPage() {
             <p className="text-[13px] text-red-600" role="alert">{error}</p>
           )}
 
+          {/* Cloudflare Turnstile (サイトキー設定時のみ表示) */}
+          {turnstile.enabled && <div ref={turnstile.ref} className="min-h-[65px]" />}
+
           <button
             type="submit"
-            disabled={status === "submitting" || !agencyName || !email || password.length < 8}
+            disabled={status === "submitting" || !agencyName || !email || password.length < 8 || turnstile.blockSubmit}
             className="w-full h-12 rounded-xl bg-[#C8102E] text-white text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#A00D25] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {status === "submitting" ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} /> : t.submit}
