@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase"
 import { ensureAgencyFolder } from "@/lib/google-drive"
 import { sendMail } from "@/lib/mailer"
 import { notifyBondEx } from "@/lib/notify"
+import { looksAutomated, verifyTurnstile, clientIp } from "@/lib/anti-spam"
 
 export const runtime = "nodejs"
 
@@ -54,6 +55,25 @@ export async function POST(req: NextRequest) {
 
   // --- バリデーション --- (エラーは登録時に選ばれた言語で返す)
   const en = locale === "en"
+
+  // ── スパム対策 (honeypot / 送信タイマー / Turnstile) ──
+  // honeypot 反応・速すぎる送信は、ボットに検知させないよう成功を装って静かに破棄
+  // (アカウントは作らない)。
+  if (looksAutomated(body)) {
+    return NextResponse.json({ ok: true, status: "pending" })
+  }
+  const turnstile = await verifyTurnstile(s(body.turnstileToken), clientIp(req))
+  if (turnstile === false) {
+    return NextResponse.json(
+      {
+        error: en
+          ? "Verification failed. Please reload the page and try again."
+          : "認証に失敗しました。ページを再読み込みしてお試しください。",
+      },
+      { status: 400 },
+    )
+  }
+
   if (!EMAIL_RE.test(email)) {
     return NextResponse.json(
       { error: en ? "Please enter a valid email address." : "有効なメールアドレスをご入力ください。" },
