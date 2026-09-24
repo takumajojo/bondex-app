@@ -595,9 +595,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。全発行済みなら不要。
+  // 受付メール: 新運用 (送り状不要) では毎回送る (バウチャーをそのままお渡し + 区間ごとの予定表)。
+  // 従来運用では待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。
   let noticeEmailSent = false
-  if (needsLabelWait) {
+  if (!issuance) {
+    const locale: "ja" | "en" = auth.agency.locale === "en" ? "en" : "ja"
+    const mail = await sendBookingRequestEmail({
+      agencyEmail: auth.agency.contact_email,
+      agencyName,
+      bookingId,
+      tourNumber: tourNumber || null,
+      earliestShipDate: legs[0]?.shipmentDate ?? "",
+      needsLabelWait: false,
+      legCount: legs.length,
+      locale,
+      waybillNotNeeded: true,
+      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel })),
+    })
+    noticeEmailSent = mail.sent
+  } else if (needsLabelWait) {
     // 1ヶ月超先(far)の区間のうち最も早い発送日を「最短の出荷予定日」として案内する。
     const farShipDates = farLegs.map((r) => legs[r.legIndex].shipmentDate)
     const earliestShipDate = farShipDates.reduce((min, d) => (d < min ? d : min), farShipDates[0])

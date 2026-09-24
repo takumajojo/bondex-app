@@ -1737,13 +1737,13 @@ export default function AgencyNewBookingPage() {
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6">
             <p className="text-[13px] font-bold tracking-wide text-[#0F172A] mb-4">{t.doneNextHeading}</p>
             <div className="grid sm:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-slate-50 border border-[#E5E7EB] p-4">
+              <div className="rounded-xl bg-slate-50 border border-[#E5E7EB] p-4 flex flex-col">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/assets/icons/calendar.svg" alt="" className="w-12 h-12" />
                 <p className="text-[13.5px] font-bold text-[#0F172A] leading-[1.5] mt-3">{t.doneStep1Title}</p>
                 <p className="text-[12px] text-[#475569] leading-[1.8] mt-1.5">{t.doneStep1Body}</p>
                 {legDates.length > 0 && (
-                  <ul className="mt-3 space-y-1">
+                  <ul className="mt-auto pt-3 space-y-1">
                     {legDates.map((l) => (
                       <li key={l.n} className="flex items-baseline justify-between gap-2 text-[12px] rounded-lg bg-white border border-[#E5E7EB] px-2.5 py-1.5">
                         <span className="text-[#64748B] whitespace-nowrap">{t.doneLeg(l.n)}</span>
@@ -1755,13 +1755,13 @@ export default function AgencyNewBookingPage() {
                   </ul>
                 )}
               </div>
-              <div className="rounded-xl bg-slate-50 border border-[#E5E7EB] p-4">
+              <div className="rounded-xl bg-slate-50 border border-[#E5E7EB] p-4 flex flex-col">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/assets/icons/delivery-truck.svg" alt="" className="w-12 h-12" />
                 <p className="text-[13.5px] font-bold text-[#0F172A] leading-[1.5] mt-3">{t.doneStep2Title}</p>
                 <p className="text-[12px] text-[#475569] leading-[1.8] mt-1.5">{t.doneStep2Body}</p>
                 {legDates.length > 0 && (
-                  <ul className="mt-3 space-y-1">
+                  <ul className="mt-auto pt-3 space-y-1">
                     {legDates.map((l) => (
                       <li key={l.n} className="flex items-baseline justify-between gap-2 text-[12px] rounded-lg bg-white border border-[#E5E7EB] px-2.5 py-1.5">
                         <span className="text-[#64748B] whitespace-nowrap">{t.doneLeg(l.n)}</span>
@@ -1773,11 +1773,11 @@ export default function AgencyNewBookingPage() {
                   </ul>
                 )}
               </div>
-              <div className="rounded-xl bg-[#FFF7F7] border border-[#F5C4C9] p-4">
+              <div className="rounded-xl bg-[#FFF7F7] border border-[#F5C4C9] p-4 flex flex-col">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/assets/icons/reception.svg" alt="" className="w-12 h-12" />
                 <p className="text-[13.5px] font-bold text-[#0F172A] leading-[1.5] mt-3">{t.doneStep3Title}</p>
-                <p className="text-[12.5px] text-[#7F1D1D] leading-[1.9] mt-2 rounded-lg bg-white border border-[#F5C4C9] px-3 py-2.5">
+                <p className="text-[12.5px] text-[#7F1D1D] leading-[1.9] mt-auto pt-2 rounded-lg bg-white border border-[#F5C4C9] px-3 py-2.5">
                   「{t.doneStep3Quote}」
                 </p>
               </div>
