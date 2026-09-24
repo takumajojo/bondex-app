@@ -122,10 +122,11 @@ const s = StyleSheet.create({
   // title + QR
   h1: { fontSize: 15, fontWeight: 700, lineHeight: 1.1 },
   h1Ja: { fontSize: 9, marginTop: mm(0.8) },
-  qrModule: { width: mm(34), borderWidth: mm(0.3), borderColor: INK, marginLeft: mm(2.5) },
-  qrHead: { fontSize: 6, letterSpacing: 0.8, fontWeight: 700, color: WHITE, paddingVertical: mm(1), textAlign: "center" },
-  qrBody: { alignItems: "center", paddingVertical: mm(1.3), paddingHorizontal: mm(1) },
-  qrImg: { width: mm(15), height: mm(15) },
+  // 行の高さ (30mm・overflow hidden) の内側に枠線ごと収める: 見出し約4.4mm + 本体約22.6mm + 枠線 < 29mm
+  qrModule: { width: mm(34), height: mm(29), borderWidth: mm(0.3), borderColor: INK, marginLeft: mm(2.5), overflow: "hidden" },
+  qrHead: { fontSize: 5.6, letterSpacing: 0.4, fontWeight: 700, color: WHITE, paddingVertical: mm(1), paddingHorizontal: mm(0.8), textAlign: "center", maxLines: 1 },
+  qrBody: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: mm(1), paddingHorizontal: mm(1) },
+  qrImg: { width: mm(14), height: mm(14) },
   qrCap: { fontSize: 6.8, fontWeight: 700, marginTop: mm(1), textAlign: "center" },
   qrSub: { fontSize: 5.6, color: INK_SOFT, marginTop: mm(0.3), textAlign: "center" },
   // drop-off / collect cards
