@@ -2,6 +2,7 @@ import { getSupabase } from "@/lib/supabase"
 import type { ResidenceAddress } from "@/lib/residence"
 import { changeDeadlineAt } from "./change-deadline"
 import { businessDaysBefore } from "./business-days"
+import { LABEL_MAIL_ENABLED } from "./label-delivery"
 
 /**
  * shipments テーブル CRUD.
@@ -270,6 +271,8 @@ function applyBoardView(
     case "failed":
       return q.eq("status", "failed")
     case "label-mail":
+      // 郵送管理を取り下げている間は常に 0 件 (2026-09-24)。復活時は LABEL_MAIL_ENABLED を true に。
+      if (!LABEL_MAIL_ENABLED) return q.eq("id", "00000000-0000-0000-0000-000000000000")
       // 期限当日以前 (<= today) かつ未郵送。null = 旧予約は対象外。
       return q
         .in("status", ["requested", "pending", "issued", "failed"])

@@ -17,6 +17,7 @@ import {
 import {
   labelMailStatus,
   labelMailApplies,
+  LABEL_MAIL_ENABLED,
   todayJst,
   LABEL_TO_LABEL_JA,
   LABEL_SENDER_LABEL_JA,
@@ -565,6 +566,8 @@ export default function OperatorBookingDetailPage() {
                   )}
                 </Section>
 
+                {/* 送り状(紙)の郵送管理は 2026-09-24 に取り下げ (送り状は集荷員が持参)。LABEL_MAIL_ENABLED で復活可 */}
+                {LABEL_MAIL_ENABLED && (
                 <Section title="送り状（紙）の郵送">
                   <div className="space-y-1">
                     <KV k="送付先" v={LABEL_TO_LABEL_JA[(r.label_to as LabelTo) || "agency"]} />
@@ -628,6 +631,7 @@ export default function OperatorBookingDetailPage() {
                     )}
                   </div>
                 </Section>
+                )}
 
                 <div className="md:col-span-2">
                   <Section title="ホテル連絡">

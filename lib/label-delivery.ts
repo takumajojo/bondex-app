@@ -283,7 +283,15 @@ export function todayJst(now: Date = new Date()): string {
  * 対象外。キャンセルも当然対象外。
  * 「郵送済みにする」を押し忘れた過去分で毎朝鳴り続けるのを防ぐ。
  */
+/**
+ * 送り状の郵送管理を行うか。2026-09-24 谷口さん決定: 送り状は佐川が作成し集荷員が持参する運用に
+ * 変わったため郵送は不要 → 取り下げ (false)。運用画面の要対応タイル・予約詳細の郵送欄・cron が
+ * これに従う。従来運用へ戻すときだけ true にする (依頼時の郵送先データは DB に残っている)。
+ */
+export const LABEL_MAIL_ENABLED = false
+
 export function labelMailApplies(status: string | null | undefined): boolean {
+  if (!LABEL_MAIL_ENABLED) return false
   return status === "requested" || status === "pending" || status === "issued" || status === "failed"
 }
 
