@@ -1503,14 +1503,19 @@ function VoucherPage({
 // 団体お荷物リスト (GROUP LUGGAGE MANIFEST) — 団体予約のとき末尾に1枚追加。
 // 誰の荷物か・各何個かをホテル担当者様がチェックできる一覧。2列で最大50件想定。
 // ---------------------------------------------------------------------------
-function GroupManifestPage({ data }: { data: VoucherInput }) {
-  const list = data.groupLuggage ?? []
-  const totalBags = list.reduce((s, g) => s + Math.max(1, g.bags), 0)
+/** 1 ページに載せる行数 (2 列 × 24 行)。超える団体は複数ページに分ける (1 枚に収める前提を崩さない)。 */
+const MANIFEST_ROWS_PER_PAGE = 48
+function GroupManifestPage({ data, pageNo = 0, pageCount = 1 }: { data: VoucherInput; pageNo?: number; pageCount?: number }) {
+  const all = data.groupLuggage ?? []
+  const totalBags = all.reduce((s, g) => s + Math.max(1, g.bags), 0)
+  const offset = pageNo * MANIFEST_ROWS_PER_PAGE
+  const list = all.slice(offset, offset + MANIFEST_ROWS_PER_PAGE)
   const first = data.shipments[0]
   const route = first ? `${first.from.hotel} → ${first.to.hotel}` : ""
   // 2列に分割 (左=前半・右=後半)
   const mid = Math.ceil(list.length / 2)
   const cols = [list.slice(0, mid), list.slice(mid)]
+  const rowNo = (ci: number, k: number) => offset + ci * mid + k
   return (
     <Page
       size="A4"
@@ -1521,7 +1526,7 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
       <View style={vs.masthead}>
         <View>
           <Image style={logoSize(8.5)} src={LOGO_PATH} />
-          <Text style={[vs.copyTag, { color: RED }]}>GROUP LUGGAGE MANIFEST / 団体お荷物リスト</Text>
+          <Text style={[vs.copyTag, { color: RED }]}>{`GROUP LUGGAGE MANIFEST / 団体お荷物リスト${pageCount > 1 ? `  (${pageNo + 1}/${pageCount})` : ""}`}</Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Text style={vs.refLabel}>REF</Text>
@@ -1534,21 +1539,21 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <View style={{ flex: 1 }}>
             <Text style={vs.dk}>GROUP / 団体名</Text>
-            <Text style={[vs.dv, { fontSize: 11 }]}>{jb(data.groupName || data.tourCompany)}</Text>
+            <Text style={[vs.dv, { fontSize: 11, maxLines: 2, textOverflow: "ellipsis" }]}>{jb(data.groupName || data.tourCompany)}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={vs.dk}>TOUR LEADER / 添乗員</Text>
-            <Text style={[vs.dv, { fontSize: 11 }]}>{jb(data.tourLeader || "—")}</Text>
+            <Text style={[vs.dv, { fontSize: 11, maxLines: 2, textOverflow: "ellipsis" }]}>{jb(data.tourLeader || "—")}</Text>
           </View>
           <View style={{ width: "22%" }}>
             <Text style={vs.dk}>TOTAL / 合計</Text>
             <Text style={[vs.dv, { fontSize: 11 }]}>
-              {list.length} guests ・ {totalBags} bags
+              {all.length} guests ・ {totalBags} bags
             </Text>
           </View>
         </View>
         {route ? (
-          <Text style={{ fontSize: 8, color: MUTED, marginTop: mm(1.5) }}>{jb(route)}</Text>
+          <Text style={{ fontSize: 8, color: MUTED, marginTop: mm(1.5), maxLines: 1, textOverflow: "ellipsis" }}>{jb(route)}</Text>
         ) : null}
       </View>
 
@@ -1572,7 +1577,7 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
               <Text style={{ width: mm(9), fontSize: 6.5, color: MUTED, textAlign: "right" }}>✓</Text>
             </View>
             {col.map((g, i) => {
-              const no = ci === 0 ? i + 1 : mid + i + 1
+              const no = rowNo(ci, i) + 1
               const bags = Math.max(1, g.bags)
               return (
                 <View
@@ -1678,6 +1683,7 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
 
 export function VoucherDocument({ data }: { data: VoucherInput }) {
   const totalLegs = data.shipments.length
+  const manifestPages = Math.ceil((data.groupLuggage?.length ?? 0) / MANIFEST_ROWS_PER_PAGE)
   return (
     <Document
       // ロゴ/QR は透明PNG(SMask)。既定の PDF1.3 ヘッダだと SMask は仕様外扱いで一部の印刷経路が
@@ -1697,7 +1703,9 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
         <VoucherPage key={i} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />
       ))}
       {/* 団体: 誰の荷物か・各何個かの一覧 (ホテル担当者様のチェック用) を 1 枚追加 */}
-      {(data.groupLuggage?.length ?? 0) > 0 ? <GroupManifestPage data={data} /> : null}
+      {Array.from({ length: manifestPages }, (_, k) => (
+        <GroupManifestPage key={`manifest-${k}`} data={data} pageNo={k} pageCount={manifestPages} />
+      ))}
       {/* How to use ガイドを末尾に 1 枚だけ同梱 (複数区間でも 1 枚)。既定 ON。 */}
       {data.includeHowto !== false ? (
         resolveWaybillMode(data) === "driver_brings" ? (

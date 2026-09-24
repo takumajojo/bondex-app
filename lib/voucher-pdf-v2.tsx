@@ -82,6 +82,8 @@ const GRAY_BG = "#f4f4f5"
 const GRAY_LINE = "#e3e3e6"
 const WHITE = "#ffffff"
 const mm = (v: number) => v * 2.8346
+/** 行数上限 (超過分は … で切る)。各ブロックの高さを固定し、どんな入力でも 1 枚に収めるための共通ルール。 */
+const clamp = (n: number): Style => ({ maxLines: n, textOverflow: "ellipsis" })
 
 /** WhatsApp グリフは Meta Brand Resource Center の公式 SVG (public/assets/brand/whatsapp-glyph.svg) を無改変で使う (2026-09-24 谷口さん支給)。
  *  ガイドラインにより色変更・改変・他ロゴとの合成は不可。原図の黒丸+白抜きは色変更に当たるため採らず、公式の緑グリフをそのまま置く。 */
@@ -108,7 +110,7 @@ const s = StyleSheet.create({
   refK: { fontSize: 6, letterSpacing: 1.8, color: MUTED, textAlign: "right", marginTop: mm(2) },
   refV: { fontSize: 12, fontWeight: 700, textAlign: "right", marginTop: mm(0.3) },
   // red band
-  band: { backgroundColor: RED, flexDirection: "row", padding: mm(3.2), marginTop: mm(3) },
+  band: { backgroundColor: RED, flexDirection: "row", padding: mm(3.2), marginTop: mm(3), height: mm(30), overflow: "hidden" },
   bandKicker: { fontSize: 6.5, letterSpacing: 1.6, color: "#f4c4cc", fontWeight: 500 },
   bandLeg: { fontSize: 25, fontWeight: 700, color: WHITE, lineHeight: 1.05 },
   bandDivider: { width: mm(0.4), backgroundColor: "#e9a2ad", marginHorizontal: mm(4), alignSelf: "stretch" },
@@ -127,11 +129,11 @@ const s = StyleSheet.create({
   qrCap: { fontSize: 6.8, fontWeight: 700, marginTop: mm(1), textAlign: "center" },
   qrSub: { fontSize: 5.6, color: INK_SOFT, marginTop: mm(0.3), textAlign: "center" },
   // drop-off / collect cards
-  card: { flex: 1, borderWidth: mm(0.3), borderColor: INK },
+  card: { flex: 1, borderWidth: mm(0.3), borderColor: INK, overflow: "hidden" },
   cardHead: { flexDirection: "row", alignItems: "center", paddingVertical: mm(1.6), paddingHorizontal: mm(3) },
   cardNo: { fontSize: 15, fontWeight: 700, color: WHITE, marginRight: mm(3) },
   cardHeadText: { fontSize: 9.5, fontWeight: 700, color: WHITE, letterSpacing: 0.6 },
-  cardBody: { padding: mm(2.2), flexDirection: "row" },
+  cardBody: { padding: mm(2.2), flexDirection: "row", flex: 1, overflow: "hidden" },
   cardDate: { fontSize: 15, fontWeight: 700 },
   cardHotelEn: { fontSize: 13, fontWeight: 700 },
   cardHotelJa: { fontSize: 8.5, marginTop: mm(0.5) },
@@ -139,13 +141,13 @@ const s = StyleSheet.create({
   cardWhenEn: { fontSize: 8, fontWeight: 700 },
   cardWhenJa: { fontSize: 7, marginTop: mm(0.5) },
   // info row
-  infoRow: { flexDirection: "row", borderWidth: mm(0.3), borderColor: INK, marginTop: mm(3.5) },
+  infoRow: { flexDirection: "row", borderWidth: mm(0.3), borderColor: INK, marginTop: mm(3.5), height: mm(19), overflow: "hidden" },
   infoCell: { flex: 1, paddingVertical: mm(1.8), paddingHorizontal: mm(2.5), borderLeftWidth: mm(0.3), borderLeftColor: INK },
   infoK: { fontSize: 6, letterSpacing: 0.8, color: INK_SOFT },
   infoV: { fontSize: 11, fontWeight: 700, marginTop: mm(0.3) },
   infoS: { fontSize: 6.8, color: INK_SOFT, marginTop: mm(0.3) },
   // route
-  routeBox: { borderWidth: mm(0.3), borderColor: GRAY_LINE, backgroundColor: GRAY_BG, marginTop: mm(3), padding: mm(3) },
+  routeBox: { borderWidth: mm(0.3), borderColor: GRAY_LINE, backgroundColor: GRAY_BG, marginTop: mm(3), padding: mm(3), height: mm(40), overflow: "hidden" },
   routeHead: { fontSize: 7.5, letterSpacing: 1.6, fontWeight: 500 },
   node: { flex: 1, alignItems: "center" },
   nodeCircle: { width: mm(9), height: mm(9), borderRadius: mm(4.5), alignItems: "center", justifyContent: "center" },
@@ -155,7 +157,7 @@ const s = StyleSheet.create({
   nodeJa: { fontSize: 7.5, marginTop: mm(0.4) },
   nodeThis: { fontSize: 7.5, fontWeight: 700, color: RED, marginTop: mm(0.8) },
   // hotel staff band
-  staffBand: { backgroundColor: INK, marginTop: mm(3), padding: mm(2.8), flexDirection: "row", alignItems: "center" },
+  staffBand: { backgroundColor: INK, marginTop: mm(3), padding: mm(2.8), flexDirection: "row", alignItems: "center", height: mm(24), overflow: "hidden" },
   staffTitle: { fontSize: 15, fontWeight: 700, color: WHITE },
   staffJa: { fontSize: 10, fontWeight: 700, color: WHITE, lineHeight: 1.4 },
   staffEn: { fontSize: 7.5, color: "#d9d9de", marginTop: mm(1) },
@@ -169,18 +171,18 @@ const s = StyleSheet.create({
   hsTag: { backgroundColor: RED, paddingVertical: mm(1.5), paddingHorizontal: mm(3), alignItems: "flex-end" },
   hsTagEn: { fontSize: 9, fontWeight: 700, color: WHITE },
   hsTagJa: { fontSize: 6.5, color: WHITE, marginTop: mm(0.3) },
-  hsTitle: { fontSize: 19, fontWeight: 700, textAlign: "center", marginTop: mm(4) },
+  hsTitle: { fontSize: 18, fontWeight: 700, textAlign: "center", marginTop: mm(3.5) },
   hsTitleEn: { fontSize: 8, letterSpacing: 1, textAlign: "center", marginTop: mm(1.2) },
-  hsGreetJa: { fontSize: 9.2, lineHeight: 1.55, textAlign: "center", marginTop: mm(2.5) },
+  hsGreetJa: { fontSize: 9, lineHeight: 1.5, textAlign: "center", marginTop: mm(2) },
   hsGreetEn: { fontSize: 7.2, lineHeight: 1.5, textAlign: "center", color: INK_SOFT, marginTop: mm(1) },
-  hsPanel: { backgroundColor: GRAY_BG, flexDirection: "row", marginTop: mm(3.5), paddingVertical: mm(3) },
+  hsPanel: { backgroundColor: GRAY_BG, flexDirection: "row", marginTop: mm(3.5), paddingVertical: mm(3), height: mm(34), overflow: "hidden" },
   hsCell: { flex: 1, paddingHorizontal: mm(3.5), borderLeftWidth: mm(0.3), borderLeftColor: "#d5d5da" },
   hsK: { fontSize: 6.8, color: INK_SOFT, marginTop: mm(2.5) },
   hsV: { fontSize: 11.5, fontWeight: 700, marginTop: mm(1) },
   hsS: { fontSize: 7.5, color: INK_SOFT, marginTop: mm(0.6) },
   todoTab: { backgroundColor: RED, alignSelf: "flex-start", paddingVertical: mm(1.4), paddingHorizontal: mm(3.5), marginTop: mm(3.5) },
   todoTabText: { fontSize: 9.5, fontWeight: 700, color: WHITE },
-  todoPanel: { backgroundColor: RED_TINT, flexDirection: "row", padding: mm(3.5) },
+  todoPanel: { backgroundColor: RED_TINT, flexDirection: "row", padding: mm(3.5), height: mm(55), overflow: "hidden" },
   step: { flex: 1 },
   stepNo: { width: mm(7.5), height: mm(7.5), borderRadius: mm(3.75), backgroundColor: RED, alignItems: "center", justifyContent: "center" },
   stepNoText: { fontSize: 10.5, fontWeight: 700, color: WHITE },
@@ -188,7 +190,7 @@ const s = StyleSheet.create({
   stepJa: { fontSize: 7.6, lineHeight: 1.55, marginTop: mm(1.5) },
   stepEn: { fontSize: 6.8, lineHeight: 1.45, color: INK_SOFT, marginTop: mm(1.2) },
   stepArrow: { width: mm(9), alignItems: "center", justifyContent: "center" },
-  noteBox: { backgroundColor: GRAY_BG, flexDirection: "row", alignItems: "center", padding: mm(3), marginTop: mm(3) },
+  noteBox: { backgroundColor: GRAY_BG, flexDirection: "row", alignItems: "center", padding: mm(3), marginTop: mm(3), overflow: "hidden" },
   noteRed: { fontSize: 10, fontWeight: 700, color: RED },
   noteInk: { fontSize: 10, fontWeight: 700 },
   noteEn: { fontSize: 7.8, color: INK_SOFT, marginTop: mm(0.4) },
@@ -334,31 +336,31 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
       <View style={s.band}>
         <View style={{ justifyContent: "center", width: mm(40) }}>
           <Text style={s.bandKicker}>THIS VOUCHER IS FOR</Text>
-          <Text style={s.bandLeg}>{`LEG ${ctx.legIndex + 1} / ${ctx.totalLegs}`}</Text>
+          <Text style={[s.bandLeg, clamp(1)]}>{`LEG ${ctx.legIndex + 1} / ${ctx.totalLegs}`}</Text>
         </View>
         <View style={s.bandDivider} />
         <View style={{ justifyContent: "center", flex: 1 }}>
-          <Text style={[s.bandRouteEn, routeEnLen >= 22 ? { fontSize: 10 } : routeEnLen >= 15 ? { fontSize: 11.5 } : {}]}>{`${ctx.fromArea.en}  →  ${ctx.toArea.en}`}</Text>
-          <Text style={s.bandRouteJa}>{h.jb(`${ctx.fromArea.ja}  →  ${ctx.toArea.ja}`)}</Text>
+          <Text style={[s.bandRouteEn, routeEnLen >= 22 ? { fontSize: 10 } : routeEnLen >= 15 ? { fontSize: 11.5 } : {}, clamp(2)]}>{`${ctx.fromArea.en}  →  ${ctx.toArea.en}`}</Text>
+          <Text style={[s.bandRouteJa, clamp(1)]}>{h.jb(`${ctx.fromArea.ja}  →  ${ctx.toArea.ja}`)}</Text>
         </View>
         <View style={s.bandDivider} />
         <View style={{ flexDirection: "row", alignItems: "center", width: mm(62) }}>
           <VIcon name="calendar-white" size={mm(9)} style={{ marginRight: mm(3) }} />
           <View style={{ flex: 1 }}>
             <Text style={s.bandKicker}>USE THIS VOUCHER IN</Text>
-            <Text style={[s.bandUseIn, ctx.fromArea.en.length > 14 ? { fontSize: 11 } : ctx.fromArea.en.length > 8 ? { fontSize: 15 } : {}]}>{ctx.fromArea.en}</Text>
+            <Text style={[s.bandUseIn, ctx.fromArea.en.length > 14 ? { fontSize: 11 } : ctx.fromArea.en.length > 8 ? { fontSize: 15 } : {}, clamp(1)]}>{ctx.fromArea.en}</Text>
             <Text style={s.bandDate}>{`${h.formatEnDate(ctx.shipmentDate)}  ${h.dowLabel(ctx.shipmentDate)}`}</Text>
-            <Text style={s.bandNote}>{h.jb(`この用紙は${ctx.fromArea.ja}のホテルでご利用ください`)}</Text>
+            <Text style={[s.bandNote, clamp(1)]}>{h.jb(`この用紙は${ctx.fromArea.ja}のホテルでご利用ください`)}</Text>
           </View>
         </View>
       </View>
 
       {/* タイトル + QR */}
-      <View style={[s.row, { marginTop: mm(3.5), alignItems: "flex-start" }]}>
+      <View style={[s.row, { marginTop: mm(3.5), alignItems: "flex-start", height: mm(25), overflow: "hidden" }]}>
         <View style={{ flex: 1, paddingTop: mm(1) }}>
           <Text style={s.h1}>LUGGAGE FORWARDING VOUCHER</Text>
           <Text style={s.h1Ja}>{h.jb("荷物配送引換証")}</Text>
-          <Text style={[{ fontSize: 7, color: INK_SOFT, marginTop: mm(2.5), lineHeight: 1.45 }, zf]}>{h.jb(ctx.presentText)}</Text>
+          <Text style={[{ fontSize: 7, color: INK_SOFT, marginTop: mm(2.5), lineHeight: 1.45 }, zf, clamp(3)]}>{h.jb(ctx.presentText)}</Text>
         </View>
         <View style={s.qrModule}>
           <Text style={[s.qrHead, { backgroundColor: RED }]}>TRACKING / 追跡</Text>
@@ -372,7 +374,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
       </View>
 
       {/* DROP OFF / COLLECT */}
-      <View style={[s.row, { marginTop: mm(3.5), alignItems: "stretch" }]}>
+      <View style={[s.row, { marginTop: mm(3.5), alignItems: "stretch", height: mm(50) }]}>
         <View style={s.card}>
           <View style={[s.cardHead, { backgroundColor: RED }]}>
             <Text style={s.cardNo}>01</Text>
@@ -389,14 +391,14 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
               <View style={[s.row, { alignItems: "flex-start", marginTop: mm(2.5) }]}>
                 <VIcon name="hotel" size={mm(7)} style={{ marginRight: mm(2.5), marginTop: mm(0.5) }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.cardHotelEn}>{h.jb(ctx.fromHotelEn || ctx.fromHotelJa)}</Text>
-                  {ctx.fromHotelEn ? <Text style={s.cardHotelJa}>{h.jb(ctx.fromHotelJa)}</Text> : null}
-                  <Text style={s.cardAddr}>{h.jb(ctx.fromAddress)}</Text>
+                  <Text style={[s.cardHotelEn, (ctx.fromHotelEn || ctx.fromHotelJa).length > 26 ? { fontSize: 10.5 } : {}, clamp(2)]}>{h.jb(ctx.fromHotelEn || ctx.fromHotelJa)}</Text>
+                  {ctx.fromHotelEn ? <Text style={[s.cardHotelJa, clamp(1)]}>{h.jb(ctx.fromHotelJa)}</Text> : null}
+                  {ctx.fromAddress ? <Text style={[s.cardAddr, clamp(1)]}>{h.jb(ctx.fromAddress)}</Text> : null}
                 </View>
               </View>
               <View style={{ marginTop: mm(3) }}>
-                <Text style={[s.cardWhenEn, zf]}>{h.jb(ctx.dropWhenEn)}</Text>
-                <Text style={s.cardWhenJa}>{h.jb("チェックアウトまでにフロントへお預けください")}</Text>
+                <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.dropWhenEn)}</Text>
+                <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb("チェックアウトまでにフロントへお預けください")}</Text>
               </View>
             </View>
             <VIcon name="luggage" size={mm(13)} style={{ marginLeft: mm(2), marginTop: mm(3) }} />
@@ -421,14 +423,14 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
               <View style={[s.row, { alignItems: "flex-start", marginTop: mm(2.5) }]}>
                 <VIcon name="hotel" size={mm(7)} style={{ marginRight: mm(2.5), marginTop: mm(0.5) }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.cardHotelEn}>{h.jb(ctx.toHotelEn || ctx.toHotelJa)}</Text>
-                  {ctx.toHotelEn ? <Text style={s.cardHotelJa}>{h.jb(ctx.toHotelJa)}</Text> : null}
-                  <Text style={s.cardAddr}>{h.jb(ctx.toAddress)}</Text>
+                  <Text style={[s.cardHotelEn, (ctx.toHotelEn || ctx.toHotelJa).length > 26 ? { fontSize: 10.5 } : {}, clamp(2)]}>{h.jb(ctx.toHotelEn || ctx.toHotelJa)}</Text>
+                  {ctx.toHotelEn ? <Text style={[s.cardHotelJa, clamp(1)]}>{h.jb(ctx.toHotelJa)}</Text> : null}
+                  {ctx.toAddress ? <Text style={[s.cardAddr, clamp(1)]}>{h.jb(ctx.toAddress)}</Text> : null}
                 </View>
               </View>
               <View style={{ marginTop: mm(3) }}>
-                <Text style={[s.cardWhenEn, zf]}>{h.jb(ctx.pickWhenEn)}</Text>
-                <Text style={s.cardWhenJa}>{h.jb("チェックイン時にお受け取りいただけます")}</Text>
+                <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.pickWhenEn)}</Text>
+                <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb("チェックイン時にお受け取りいただけます")}</Text>
               </View>
             </View>
             <VIcon name="luggage" size={mm(13)} style={{ marginLeft: mm(2), marginTop: mm(3) }} />
@@ -443,8 +445,8 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
           <View style={[s.row, { alignItems: "center" }]}>
             <VIcon name={ctx.isGroup ? "group" : "person"} size={mm(6.5)} style={{ marginRight: mm(2) }} />
             <View style={{ flex: 1 }}>
-              <Text style={s.infoV}>{h.jb(ctx.guestName)}</Text>
-              {ctx.groupLine ? <Text style={s.infoS}>{h.jb(ctx.groupLine)}</Text> : null}
+              <Text style={[s.infoV, ctx.guestName.length > 18 ? { fontSize: 8.5 } : {}, clamp(1)]}>{h.jb(ctx.guestName)}</Text>
+              {ctx.groupLine ? <Text style={[s.infoS, clamp(1)]}>{h.jb(ctx.groupLine)}</Text> : null}
             </View>
           </View>
         </View>
@@ -453,7 +455,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
             <Text style={s.infoK}>TOUR LEADER  /  添乗員</Text>
             <View style={[s.row, { alignItems: "center" }]}>
               <VIcon name="person" size={mm(6.5)} style={{ marginRight: mm(2) }} />
-              <Text style={s.infoV}>{h.jb(ctx.tourLeader || "—")}</Text>
+              <Text style={[s.infoV, ctx.tourLeader.length > 14 ? { fontSize: 8.5 } : {}, clamp(1)]}>{h.jb(ctx.tourLeader || "—")}</Text>
             </View>
           </View>
         ) : null}
@@ -498,8 +500,8 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                   {n.end ? <VIcon name="location-pin" size={mm(5)} color={WHITE} /> : <Text style={s.nodeNo}>{n.no}</Text>}
                 </View>
                 <Text style={[s.nodeDate, { color: n.isCurrent ? RED : INK }]}>{n.date}</Text>
-                <Text style={[s.nodeEn, n.en.length > 14 ? { fontSize: 7.2 } : {}]}>{n.en}</Text>
-                <Text style={s.nodeJa}>{h.jb(n.ja)}</Text>
+                <Text style={[s.nodeEn, n.en.length > 14 ? { fontSize: 7.2 } : {}, clamp(2)]}>{n.en}</Text>
+                <Text style={[s.nodeJa, clamp(1)]}>{h.jb(n.ja)}</Text>
                 {n.isCurrent ? (
                   <View style={[s.row, { alignItems: "center", marginTop: mm(0.8) }]}>
                     <VIcon name="arrow-left-red" size={mm(3.2)} style={{ marginRight: mm(1) }} />
@@ -516,9 +518,9 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
 
       {/* 到着先ホテル向けの申し送り (あれば): ホテル用紙は発送元にしか渡さないため、ここに残す */}
       {ctx.noteForTo ? (
-        <View style={{ borderWidth: mm(0.3), borderColor: GRAY_LINE, padding: mm(2), marginTop: mm(2.5) }}>
+        <View style={{ borderWidth: mm(0.3), borderColor: GRAY_LINE, padding: mm(2), marginTop: mm(2.5), height: mm(13), overflow: "hidden" }}>
           <Text style={{ fontSize: 6.5, fontWeight: 700, color: INK_SOFT, letterSpacing: 0.6 }}>{h.jb("到着先ホテル様へ / TO THE DESTINATION HOTEL")}</Text>
-          <Text style={{ fontSize: 7.5, marginTop: mm(0.8), lineHeight: 1.5 }}>
+          <Text style={[{ fontSize: 7.5, marginTop: mm(0.8), lineHeight: 1.5 }, clamp(2)]}>
             {h.jb(`BondExよりご連絡済みのお荷物です。ご予約名「${ctx.guestName}」でご照合のうえ${who}へお渡しください。　・${ctx.noteForTo}`)}
           </Text>
         </View>
@@ -598,18 +600,18 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
       <View style={s.band}>
         <View style={{ flex: 1, justifyContent: "center", paddingRight: mm(2) }}>
           <Text style={s.bandKicker}>{h.jb("FROM  /  発送元ホテル")}</Text>
-          <Text style={[s.bandUseIn, { fontSize: ctx.fromHotelJa.length > 18 ? 14 : ctx.fromHotelJa.length > 11 ? 17 : 21, marginTop: mm(1) }]}>{h.jb(`${ctx.fromHotelJa} ご担当者様へ`)}</Text>
-          {fromEnUpper ? <Text style={[s.bandDate, { marginTop: mm(1) }]}>{`FOR ${fromEnUpper} STAFF`}</Text> : null}
+          <Text style={[s.bandUseIn, { fontSize: ctx.fromHotelJa.length > 18 ? 14 : ctx.fromHotelJa.length > 11 ? 17 : 21, marginTop: mm(1) }, clamp(2)]}>{h.jb(`${ctx.fromHotelJa} ご担当者様へ`)}</Text>
+          {fromEnUpper ? <Text style={[s.bandDate, { marginTop: mm(1) }, clamp(1)]}>{`FOR ${fromEnUpper} STAFF`}</Text> : null}
         </View>
         <View style={s.bandDivider} />
         <View style={{ justifyContent: "center", width: mm(58) }}>
           <Text style={[s.bandKicker, { color: WHITE, fontSize: 9.5, fontWeight: 700 }]}>{`LEG ${ctx.legIndex + 1} / ${ctx.totalLegs}`}</Text>
-          <Text style={[s.bandRouteEn, { fontSize: ctx.fromArea.en.length + ctx.toArea.en.length > 20 ? 9 : 11, marginTop: mm(1) }]}>{`${ctx.fromArea.en}  →  ${ctx.toArea.en}`}</Text>
-          <Text style={[s.bandRouteJa, { fontSize: 9 }]}>{h.jb(`${ctx.fromArea.ja}  →  ${ctx.toArea.ja}`)}</Text>
+          <Text style={[s.bandRouteEn, { fontSize: ctx.fromArea.en.length + ctx.toArea.en.length > 20 ? 9 : 11, marginTop: mm(1) }, clamp(2)]}>{`${ctx.fromArea.en}  →  ${ctx.toArea.en}`}</Text>
+          <Text style={[s.bandRouteJa, { fontSize: 9 }, clamp(1)]}>{h.jb(`${ctx.fromArea.ja}  →  ${ctx.toArea.ja}`)}</Text>
         </View>
       </View>
 
-      <Text style={s.hsTitle}>{h.jb("お荷物のお預かりをお願いいたします")}</Text>
+      <Text style={[s.hsTitle, clamp(1)]}>{h.jb("お荷物のお預かりをお願いいたします")}</Text>
       <Text style={s.hsTitleEn}>PLEASE KEEP THE LUGGAGE UNTIL COLLECTION</Text>
       <Text style={s.hsGreetJa}>
         {h.jb("平素より大変お世話になっております。ご宿泊のお客様のお荷物を、\n次のご宿泊先へ配送いたします。下記のとおりご対応くださいますようお願い申し上げます。")}
@@ -627,8 +629,8 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.hsCell}>
           <VIcon name={ctx.isGroup ? "group" : "person"} size={mm(8)} />
           <Text style={s.hsK}>{h.jb("ご予約名 / GUEST")}</Text>
-          <Text style={s.hsV}>{h.jb(ctx.guestName)}</Text>
-          {ctx.groupLine ? <Text style={s.hsS}>{h.jb(ctx.groupLine)}</Text> : null}
+          <Text style={[s.hsV, ctx.guestName.length > 16 ? { fontSize: 9 } : {}, clamp(2)]}>{h.jb(ctx.guestName)}</Text>
+          {ctx.groupLine ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.groupLine)}</Text> : null}
         </View>
         <View style={s.hsCell}>
           <VIcon name="luggage-solid" size={mm(8)} />
@@ -639,9 +641,9 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.hsCell}>
           <VIcon name="location-pin" size={mm(8)} />
           <Text style={s.hsK}>{h.jb("お届け先 / TO")}</Text>
-          <Text style={s.hsV}>{h.jb(ctx.toHotelJa)}</Text>
-          {ctx.toHotelEn ? <Text style={s.hsS}>{h.jb(ctx.toHotelEn)}</Text> : null}
-          <Text style={[s.hsS, { fontSize: 6.8 }]}>{h.jb(ctx.toAddress)}</Text>
+          <Text style={[s.hsV, ctx.toHotelJa.length > 14 ? { fontSize: 9 } : {}, clamp(2)]}>{h.jb(ctx.toHotelJa)}</Text>
+          {ctx.toHotelEn ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.toHotelEn)}</Text> : null}
+          {ctx.toAddress ? <Text style={[s.hsS, { fontSize: 6.8 }, clamp(1)]}>{h.jb(ctx.toAddress)}</Text> : null}
         </View>
       </View>
 
@@ -664,20 +666,20 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
                 </View>
                 <VIcon name={st.icon} size={mm(11)} style={{ marginLeft: mm(4) }} />
               </View>
-              <Text style={s.stepTitle}>{h.jb(st.title)}</Text>
-              <Text style={s.stepJa}>{h.jb(st.ja)}</Text>
-              <Text style={s.stepEn}>{st.en}</Text>
+              <Text style={[s.stepTitle, clamp(2)]}>{h.jb(st.title)}</Text>
+              <Text style={[s.stepJa, clamp(4)]}>{h.jb(st.ja)}</Text>
+              <Text style={[s.stepEn, clamp(3)]}>{st.en}</Text>
             </View>
           </React.Fragment>
         ))}
       </View>
       {ctx.noteForFrom ? (
-        <Text style={{ fontSize: 8, marginTop: mm(2), color: INK_SOFT }}>{h.jb(`申し送り: ${ctx.noteForFrom}`)}</Text>
+        <Text style={[{ fontSize: 8, marginTop: mm(2), color: INK_SOFT, lineHeight: 1.4, height: mm(9) }, clamp(2)]}>{h.jb(`申し送り: ${ctx.noteForFrom}`)}</Text>
       ) : null}
 
       {/* 送り状不要・料金徴収不要 */}
-      <View style={s.noteBox}>
-        <VIcon name="no-label" size={mm(16)} style={{ marginRight: mm(5) }} />
+      <View style={[s.noteBox, { height: mm(22) }]}>
+        <VIcon name="no-label" size={mm(15)} style={{ marginRight: mm(5) }} />
         <View style={{ flex: 1 }}>
           <Text style={s.noteRed}>{h.jb("送り状のご用意・お荷物への取付けは不要です。")}</Text>
           <Text style={s.noteEn}>No shipping labels are needed.</Text>
@@ -687,7 +689,7 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
       </View>
 
       {/* 到着先ホテルへの電話は不要 */}
-      <View style={s.noteBox}>
+      <View style={[s.noteBox, { height: mm(18) }]}>
         <VIcon name="info" size={mm(9)} style={{ marginRight: mm(4) }} />
         <View style={{ flex: 1 }}>
           <Text style={s.noteInk}>{h.jb("到着先ホテル様へのお電話は不要です。")}</Text>
@@ -705,13 +707,13 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
             <Text style={s.cV}>{h.jb("BondEx サポートデスク")}</Text>
             <View style={[s.row, { alignItems: "center", marginTop: mm(1) }]}>
               <VIcon name="envelope" size={mm(4.5)} style={{ marginRight: mm(2) }} />
-              <Text style={s.cS}>{ctx.supportEmail}{ctx.supportPhone ? `  ／  ${ctx.supportPhone}` : ""}</Text>
+              <Text style={[s.cS, clamp(1)]}>{ctx.supportEmail}{ctx.supportPhone ? `  ／  ${ctx.supportPhone}` : ""}</Text>
             </View>
           </View>
           <View style={[s.contactCol, { paddingLeft: mm(3) }]}>
             <Text style={s.cK}>{h.jb("ランドオペレーター / LAND OPERATOR")}</Text>
-            <Text style={s.cV}>{h.jb(ctx.tourCompany || "—")}</Text>
-            <Text style={s.cS}>{h.jb(ctx.landOperatorContact || " ")}</Text>
+            <Text style={[s.cV, ctx.tourCompany.length > 22 ? { fontSize: 8 } : {}, clamp(1)]}>{h.jb(ctx.tourCompany || "—")}</Text>
+            <Text style={[s.cS, clamp(1)]}>{h.jb(ctx.landOperatorContact || " ")}</Text>
           </View>
           <View style={{ width: mm(40), alignItems: "flex-end", justifyContent: "center", paddingTop: mm(1) }}>
             <Tagline />

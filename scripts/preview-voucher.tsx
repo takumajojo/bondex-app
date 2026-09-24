@@ -90,7 +90,38 @@ async function main() {
     shipments: [{ ...leg1, recipient: "Paul Woolterton", bookingName: "Paul Woolterton", suitcaseCount: 2 }],
   }
 
+  // 最悪ケース: 長いホテル名 (和英)・個人宅の長い住所・長い氏名/代理店名/添乗員名・長い申し送り・地名が引けない住所・70名の団体
+  const longLeg: VoucherShipment = {
+    shipmentDate: "2026-12-16",
+    expectedArrival: "2026-12-18",
+    from: { hotel: "ザ・プリンス パークタワー東京 タワーウイング ロイヤルクラブフロア ゲストリレーションズデスク", address: "〒105-8563 東京都港区芝公園4丁目8番1号 ザ・プリンス パークタワー東京 タワーウイング 33階 ロイヤルクラブラウンジ気付", city: "" },
+    to: { hotel: "HOTEL THE MITSUI KYOTO, a Luxury Collection Hotel & Spa, Nijo-jo Castle Front Garden Residence", address: "〒604-8371 京都府京都市中京区二条城町284番地 ホテル ザ ミツイ キョウト 別館ガーデンレジデンス棟 フロントデスク気付", city: "" },
+    recipient: "Maximilian Alexander von Hohenzollern-Sigmaringen",
+    suitcaseCount: 120,
+    bookingName: "Maximilian Alexander von Hohenzollern-Sigmaringen and Family Group",
+    fromCheckIn: "2026-12-18",
+    fromHotelEn: "The Prince Park Tower Tokyo, Tower Wing Royal Club Floor Guest Relations Desk",
+    toHotelEn: "HOTEL THE MITSUI KYOTO, a Luxury Collection Hotel & Spa, Nijo-jo Castle Front Garden Residence",
+    specialNote: "到着後はベルデスク奥の団体荷物置き場へお願いします。ハードケース40個とソフトケース30個が混在し、うち3個は車椅子用の大型ケースです。お客様は18時以降にチェックインされる予定で、翌朝7時には出発します。",
+    noteTarget: "both",
+  }
+  const stress: VoucherInput = {
+    ...base,
+    bookingId: "BDX-STRESS",
+    representativeLabel: "Maximilian Alexander von Hohenzollern-Sigmaringen",
+    tourCompany: "Discovery Hidden Japan Luxury Travel Concierge Services International 株式会社",
+    contactPersonName: "Alexandra Christina Featherstonehaugh-Cholmondeley",
+    contactPersonPhone: "+81 90 1234 5678",
+    supportPhone: "090-7005-4178",
+    groupName: "Hohenzollern Family & Friends Winter Grand Tour of Japan 2026 (Kyoto, Osaka, Hida)",
+    tourLeader: "Alexandra Christina Featherstonehaugh-Cholmondeley",
+    travelerCount: 70,
+    groupLuggage: Array.from({ length: 70 }, (_, i) => ({ name: `${NAMES[i % NAMES.length]} ${i >= NAMES.length ? "Jr." : ""} (Passenger ${i + 1})`, bags: (i % 5 === 0 ? 3 : 1) })),
+    shipments: [longLeg, { ...longLeg, shipmentDate: "2026-12-20", expectedArrival: "2026-12-22", from: longLeg.to, to: longLeg.from, fromHotelEn: longLeg.toHotelEn, toHotelEn: longLeg.fromHotelEn }, { ...longLeg, shipmentDate: "2026-12-23", expectedArrival: "2026-12-25" }],
+  }
   const cases: Array<[string, VoucherInput]> = [
+    ["voucher_stress_worstcase", stress],
+    ["voucher_stress_individual", { ...stress, groupName: undefined, tourLeader: undefined, groupLuggage: undefined, travelerCount: 2, shipments: [longLeg] }],
     ["voucher_group_3legs", { ...group, shipments: [leg1, leg2, leg3] }],
     ["voucher_group_1leg", group],
     ["voucher_individual_1leg", individual],
