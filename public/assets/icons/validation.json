@@ -1,0 +1,515 @@
+{
+  "status": "PASS",
+  "count": 29,
+  "originals": 18,
+  "extras": 11,
+  "missing": [
+    "whatsapp.svg (MISSING OFFICIAL ASSET)"
+  ],
+  "checks": [
+    "Exact 29 filenames (18 originals + 11 extras)",
+    "SVG rasterizer parse",
+    "64x64 viewBox",
+    "No raster / scripts / font / external dependencies",
+    "Padded-viewBox overflow and clipping check",
+    "Painted extent 43–60 units (arrows: long axis 43–60, short axis ≥40)",
+    "White variants: #FFFFFF only, visible on band color",
+    "24/32/48/64 render"
+  ],
+  "note": "Automated pass = syntax/geometry only. Visual match to masters is judged separately in icon-sheet.html.",
+  "results": [
+    {
+      "file": "calendar.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        11,
+        5.5,
+        52.75,
+        57.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "hotel.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        9,
+        7,
+        53.75,
+        58.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "luggage.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        12.75,
+        2,
+        50,
+        61.25
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "group.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        12,
+        60.75,
+        51.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "person.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        13,
+        7,
+        50.75,
+        55.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "route.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        4,
+        12,
+        58.5,
+        50
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "no-label.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "no-payment.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "info.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        5,
+        5,
+        58.75,
+        58.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "voucher.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        7.25,
+        3.5,
+        56,
+        60.25
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "reception.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3.5,
+        8.25,
+        60,
+        54.5
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "delivery.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        4,
+        15,
+        60.25,
+        48.25
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "passport.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "cash-card.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "medication.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "valuables.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "electronics.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "ticket.svg",
+      "pass": true,
+      "group": "original",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "luggage-solid.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        7.25,
+        3.5,
+        56.5,
+        60.25
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "location-pin.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        12.25,
+        3.5,
+        51.5,
+        60.25
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "clipboard-check.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        9.5,
+        3,
+        53.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "delivery-truck.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        2.25,
+        12.5,
+        61.5,
+        51.5
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "arrow-right-red.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        4.5,
+        10,
+        58.75,
+        53.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "arrow-right-black.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        4.5,
+        10,
+        58.75,
+        53.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "arrow-left-red.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        5,
+        10,
+        59.25,
+        53.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "envelope.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        5.5,
+        13,
+        58.25,
+        50.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "alert.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        3,
+        3,
+        60.75,
+        60.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "calendar-white.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        5.25,
+        4,
+        58.5,
+        59.75
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
+      "file": "hotel-white.svg",
+      "pass": true,
+      "group": "extra",
+      "paintedBounds": [
+        3.5,
+        4.5,
+        60.25,
+        59.25
+      ],
+      "renderedSizes": [
+        24,
+        32,
+        48,
+        64
+      ]
+    }
+  ]
+}
