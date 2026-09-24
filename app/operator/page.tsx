@@ -29,6 +29,7 @@ import {
   Trash2,
   LayoutDashboard,
 } from "lucide-react"
+import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -127,6 +128,7 @@ const messages = {
     newBooking: "Start a new booking",
     generationFailed: "Document generation failed",
     yamatoLabelsHeading: "Shipping labels",
+    waybillNotNeeded: "No shipping label to issue. Sagawa prepares the label and the pickup driver brings it on the day. Tracking numbers arrive from Sagawa after pickup.",
     labelPrintHint: "Labels are A5. “A5 print (clean)” re-lays the label onto an exact A5 page, inset slightly so printer edges don’t clip it — open it and print on A5 paper at “actual size (100%)”. “A5 original” is the raw Ship&co PDF.",
     labelPrintClean: "A5 print (clean)",
     labelPrintA5: "A5 original",
@@ -293,6 +295,7 @@ const messages = {
     newBooking: "新しい予約を開始",
     generationFailed: "書類の生成に失敗しました",
     yamatoLabelsHeading: "配送伝票",
+    waybillNotNeeded: "送り状の発行は不要です。佐川が伝票を作成し、集荷員が当日持参します。追跡番号は集荷後に佐川から届きます。",
     labelPrintHint: "送り状はA5です。「A5できれい印刷」は、ラベルを正確なA5ページに端が切れないよう少し内側に入れて載せ直して開きます。A5用紙に「実際のサイズ(100%)」で印刷すればきれいに出ます。「A5原本」はShip&coのPDFそのままです。",
     labelPrintClean: "A5できれい印刷",
     labelPrintA5: "A5原本",
@@ -582,7 +585,7 @@ interface YamatoLabel {
   legLabel: string // e.g. "Leg 1: Hyatt Hakone → Mitsui Kyoto"
   labelUrl: string
   trackingNumbers: string[]
-  status: "ok" | "failed" | "deferred"
+  status: "ok" | "failed" | "deferred" | "not_needed"
   error?: string
   issuableFrom?: string // deferred のとき: この日から発行可能 (YYYY-MM-DD)
 }
@@ -1113,6 +1116,10 @@ export default function OperatorPage() {
           label?: string
           trackingNumbers?: string[]
           issuableFrom?: string
+        }
+        // 2026-09-24〜 送り状は佐川が作成 (BondEx は発行しない)。区間は登録済み = 正常。
+        if (d.status === "not_needed") {
+          return { legIndex, legLabel, labelUrl: "", trackingNumbers: [], status: "not_needed" }
         }
         // 30日超の区間は発行延期 (deferred) — エラーではなく予約済みとして扱う
         if (d.status === "deferred") {
@@ -2835,16 +2842,31 @@ function GeneratedView({
         </p>
       )}
 
-      {/* Yamato 送り状 (Ship&co API) */}
-      {docs.yamatoLabels.length > 0 && (
+      {/* 2026-09-24〜 送り状は佐川が作成 (集荷員が持参)。発行・A5印刷の導線は出さない。 */}
+      {docs.yamatoLabels.length > 0 && docs.yamatoLabels.every((y) => y.status === "not_needed") && (
+        <section className="rounded-2xl border border-border bg-muted/40 px-4 py-3 flex items-start gap-2.5">
+          <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-foreground" strokeWidth={1.5} />
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
+              {t.yamatoLabelsHeading}
+            </p>
+            <p className="text-xs text-foreground/80 mt-1 leading-relaxed">{t.waybillNotNeeded}</p>
+          </div>
+        </section>
+      )}
+
+      {/* Yamato 送り状 (Ship&co API) — 従来運用 (WAYBILL_UI_ENABLED) のときだけ */}
+      {docs.yamatoLabels.some((y) => y.status !== "not_needed") && (
         <section className="space-y-3">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
             {t.yamatoLabelsHeading}
           </p>
-          <p className="text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 leading-relaxed">
-            🖨 {t.labelPrintHint}
-          </p>
-          {docs.yamatoLabels.map((y) => (
+          {WAYBILL_UI_ENABLED && (
+            <p className="text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 leading-relaxed">
+              🖨 {t.labelPrintHint}
+            </p>
+          )}
+          {docs.yamatoLabels.filter((y) => y.status !== "not_needed").map((y) => (
             <div
               key={y.legIndex}
               className="rounded-2xl border border-border bg-white p-4 flex items-start gap-3"
@@ -2864,7 +2886,7 @@ function GeneratedView({
                         {y.trackingNumbers.join(", ") || "—"}
                       </span>
                     </p>
-                    {y.labelUrl && (
+                    {y.labelUrl && WAYBILL_UI_ENABLED && (
                       <div className="flex items-center gap-4 mt-2">
                         {/* 主導線: A5ラベルを正確なA5ページに載せ直して inline 表示。A5用紙に実寸100%で
                             印刷すれば端が切れずきれいに出る (ズレ対策)。 */}

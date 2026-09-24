@@ -48,9 +48,9 @@ function copyFor(kind: StatusEmailKind, d: StatusEmailData, en: boolean): Copy {
       case "issued":
         return {
           accent: BRAND,
-          subject: `[BondEx] Shipping label ready (${d.bookingId})`,
-          title: "The shipping label is ready",
-          lead: "We have issued the shipping label and prepared this shipment. We will notify you again once the courier collects the luggage.",
+          subject: `[BondEx] Shipment arranged (${d.bookingId})`,
+          title: "The shipment has been arranged",
+          lead: "We have arranged this shipment with the courier. No shipping labels are needed — the courier brings and attaches them at pickup. We will notify you again once the luggage is collected.",
         }
       case "picked_up":
         return {
@@ -81,9 +81,9 @@ function copyFor(kind: StatusEmailKind, d: StatusEmailData, en: boolean): Copy {
     case "issued":
       return {
         accent: BRAND,
-        subject: `【BondEx】送り状を発行しました（${d.bookingId}）`,
-        title: "発送準備が整いました",
-        lead: "送り状を発行し、発送の準備が整いました。配送業者がお荷物を集荷しましたら、改めてご連絡します。",
+        subject: `【BondEx】配送の手配が完了しました（${d.bookingId}）`,
+        title: "配送の手配が完了しました",
+        lead: "配送業者への手配が完了しました。送り状のご用意は不要です（集荷ドライバーが持参・貼付します）。配送業者がお荷物を集荷しましたら、改めてご連絡します。",
       }
     case "picked_up":
       return {

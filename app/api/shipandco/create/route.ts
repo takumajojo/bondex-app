@@ -11,6 +11,7 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
 import { PRICING } from "@/lib/pricing"
+import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
 
 export const runtime = "nodejs"
@@ -728,7 +729,7 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
-  if (gap > carrier.maxLeadDays) {
+  if (gap > carrier.maxLeadDays && waybillIssuanceEnabled()) {
     // リードタイム超 (ヤマト30 / 佐川50) — 今は発行できない。Ship&co を呼ばず deferred。
     const issuableFrom = issuableFromYmd(shipmentDate, carrier.maxLeadDays)
     // 管理ダッシュボードに pending として登録 (issuableFrom 以降に自動発行する想定)
@@ -852,7 +853,7 @@ export async function POST(req: NextRequest) {
       // Ship&co を二重に叩けた (発行ごと課金 = 二重課金)。条件付き UPDATE で行を先取りし、
       // 10分以内に他プロセスが取得済みなら発行を中断する。行がまだ無い新規 (運営の初回発行)
       // は対象外だが、その経路は人が1画面から実行するため並走しない。
-      if (existing) {
+      if (existing && waybillIssuanceEnabled()) {
         const staleBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString()
         const claim = await sbIdem
           .from("shipments")
@@ -916,6 +917,70 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
+  const productName = rawProductName || "スーツケース"
+
+  // 共通のメタ情報 (DB 保存用)
+  const baseRecord = {
+  guest_language: normalizeGuestLanguage(body.guestLanguage),
+    booking_id: bookingId || refNumber,
+    leg_index: legIndex,
+    agency,
+    representative,
+    traveler_count: travelerCount,
+    booking_name: bookingName || null,
+    tour_number: tourNumber || null,
+    group_name: groupName || null,
+    shipment_date: shipmentDate,
+    // expected_arrival は NOT NULL。配達希望日が無ければ発送日にフォールバック
+    // (null を入れると保存が拒否され、発行済みなのに DB 無記録になるため)。
+    expected_arrival: deliveryDate || shipmentDate,
+    delivery_time: deliveryTime || null,
+    carrier: carrier.id,
+    from_hotel: fromHotel,
+    from_city: fromAddr?.city || (fromInput.city ?? "") || null,
+    // 都道府県 (日本語) と 日本語ホテル名 — 発行時に Google Places から解決した値。
+    // 管理ダッシュボードの区間表示を「東京都 新宿ワシントンホテル」の形にするため保存。
+    from_prefecture: fromAddr?.province || null,
+    from_hotel_ja: fromAddr?.nameJa || null,
+    from_place_id: fromPlaceId ?? null,
+    from_check_in: fromCheckIn || null,
+    from_residence: fromResidence,
+    to_hotel: toHotel,
+    to_city: toAddr?.city || (toInput.city ?? "") || null,
+    to_prefecture: toAddr?.province || null,
+    to_hotel_ja: toAddr?.nameJa || null,
+    to_place_id: toPlaceId ?? null,
+    to_check_out: toCheckOut || null,
+    to_residence: toResidence,
+    recipient: (toInput.recipient ?? "").trim(),
+    suitcase_count: suitcaseCount,
+    item_type: productName,
+    amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
+    ship_ref_number: refNumber,
+    notes: specialNote || null,
+    note_target: resolvedNoteTarget,
+    is_addition: isAddition,
+  }
+
+  // 2026-09-24〜 送り状は佐川が作成する運用 (AUTO_ISSUE_ENABLED 未設定/false)。
+  // Ship&co は呼ばず、区間を「手配済 (issued・伝票なし)」として登録するだけにする。
+  // 追跡番号は集荷後に佐川から届いたものを運用画面で入力する。
+  if (!waybillIssuanceEnabled()) {
+    const savedNotNeeded = await saveShipment({ ...baseRecord, status: "issued" })
+    if (!savedNotNeeded.ok) {
+      return NextResponse.json(
+        { error: "Failed to save shipment", code: "SAVE_FAILED", detail: savedNotNeeded.error },
+        { status: 500 },
+      )
+    }
+    return NextResponse.json({
+      status: "not_needed",
+      carrier: carrier.id,
+      savedToDb: true,
+    })
+  }
+
   const carrierId = await getCarrierId(token, carrier.shipandcoType)
   if (!carrierId) {
     return NextResponse.json(
@@ -927,8 +992,6 @@ export async function POST(req: NextRequest) {
   // 品名 (Yamato 送り状の品名欄、文字数制限 ~28 字):
   //   "スーツケース {苗字} 様" の形式 — 短くして切れないようにする.
   //   日付は記事欄 (ref_number) で表示する.
-  const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""
-  const productName = rawProductName || "スーツケース"
   // 品名(~28字)に「チェックイン{月}/{日}予定」を明示 (受取ホテルが予約照会しやすいように)。
   //   チェックイン日 = お客様がお届け先ホテルに入る日 (fromCheckIn)。荷物の到着日(deliveryDate)
   //   とは別 — 早期配達を希望するお客様がいるため到着日をそのまま流用しない。
@@ -1009,49 +1072,6 @@ export async function POST(req: NextRequest) {
     } catch {
       // non-JSON
     }
-    // 共通のメタ情報 (DB 保存用)
-    const baseRecord = {
-    guest_language: normalizeGuestLanguage(body.guestLanguage),
-      booking_id: bookingId || refNumber,
-      leg_index: legIndex,
-      agency,
-      representative,
-      traveler_count: travelerCount,
-      booking_name: bookingName || null,
-      tour_number: tourNumber || null,
-      group_name: groupName || null,
-      shipment_date: shipmentDate,
-      // expected_arrival は NOT NULL。配達希望日が無ければ発送日にフォールバック
-      // (null を入れると保存が拒否され、発行済みなのに DB 無記録になるため)。
-      expected_arrival: deliveryDate || shipmentDate,
-      delivery_time: deliveryTime || null,
-      carrier: carrier.id,
-      from_hotel: fromHotel,
-      from_city: fromAddr?.city || (fromInput.city ?? "") || null,
-      // 都道府県 (日本語) と 日本語ホテル名 — 発行時に Google Places から解決した値。
-      // 管理ダッシュボードの区間表示を「東京都 新宿ワシントンホテル」の形にするため保存。
-      from_prefecture: fromAddr?.province || null,
-      from_hotel_ja: fromAddr?.nameJa || null,
-      from_place_id: fromPlaceId ?? null,
-      from_check_in: fromCheckIn || null,
-      from_residence: fromResidence,
-      to_hotel: toHotel,
-      to_city: toAddr?.city || (toInput.city ?? "") || null,
-      to_prefecture: toAddr?.province || null,
-      to_hotel_ja: toAddr?.nameJa || null,
-      to_place_id: toPlaceId ?? null,
-      to_check_out: toCheckOut || null,
-      to_residence: toResidence,
-      recipient: (toInput.recipient ?? "").trim(),
-      suitcase_count: suitcaseCount,
-      item_type: productName,
-      amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
-      ship_ref_number: refNumber,
-      notes: specialNote || null,
-      note_target: resolvedNoteTarget,
-      is_addition: isAddition,
-    }
-
     if (!res.ok) {
       const detail = data ?? text
       const detailStr = typeof detail === "string" ? detail : JSON.stringify(detail)

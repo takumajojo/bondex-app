@@ -19,6 +19,8 @@ import {
 import type { GuestLanguage } from "./guest-language"
 import { normalizeGuestLanguage } from "./guest-language"
 import { carrierConfig } from "./carrier"
+import { voucherAreaOf, voucherAreaFallback, type VoucherArea } from "./voucher-area"
+import { TourLeaderPage, HotelStaffPage, HowToSendPage, type V2Ctx } from "./voucher-pdf-v2"
 
 // 外部モジュール向けの再エクスポート (これまで通り "@/lib/voucher-pdf" から import 可能)。
 export type { GuestLanguage } from "./guest-language"
@@ -189,6 +191,14 @@ export interface VoucherShipment {
   toHotelEn?: string
 }
 
+/**
+ * 送り状 (紙の伝票) を誰が用意するか。
+ * - driver_brings : 集荷ドライバーが印字済み送り状を持参し、その場で貼付する (佐川・全営業所で対応可 / 谷口さん 2026-09-18)。
+ *                   お客様・添乗員は送り状を持たず、荷物にも何も付けない。
+ * - guest_brings  : 従来運用。お客様が印字済み送り状を持参し、ストラップで荷物に取り付ける。
+ */
+export type WaybillMode = "driver_brings" | "guest_brings"
+
 export type ContactDisplayMode =
   | "bondex_support"
   | "travel_agency"
@@ -235,6 +245,21 @@ export interface VoucherInput {
   /** 団体のとき: 配送依頼ゲストの一覧 (名前ごとに個数を集約)。
    *  1件以上あるとバウチャー末尾に「団体お荷物リスト」ページを1枚追加する。 */
   groupLuggage?: Array<{ name: string; bags: number }>
+  /** 送り状の用意者。未指定はキャリアから導出 (佐川=driver_brings / それ以外=guest_brings)。 */
+  waybillMode?: WaybillMode
+  /** 団体 / 個人客。未指定は tourLeader・groupLuggage の有無から導出。 */
+  bookingType?: "group" | "individual"
+}
+
+export function resolveWaybillMode(data: Pick<VoucherInput, "waybillMode" | "carrier">): WaybillMode {
+  if (data.waybillMode) return data.waybillMode
+  return data.carrier === "yamato" ? "guest_brings" : "driver_brings"
+}
+
+/** 団体バウチャーか。団体は添乗員様・代表者様に渡す前提で文面を切り替える。 */
+export function isGroupVoucher(data: Pick<VoucherInput, "bookingType" | "tourLeader" | "groupLuggage">): boolean {
+  if (data.bookingType) return data.bookingType === "group"
+  return Boolean(data.tourLeader?.trim()) || (data.groupLuggage?.length ?? 0) > 0
 }
 
 function resolveContactMode(data: VoucherInput): ContactDisplayMode {
@@ -730,6 +755,13 @@ function JourneyArrowIcon() {
 const GUEST_L10N = {
   en: {
     copyTag: "GUEST COPY / お客様控え",
+    groupCopyTag: "TOUR LEADER COPY / 添乗員・代表者様控え",
+    presentGroup: "Tour leader: please present this voucher at the reception when dropping off and picking up the group's luggage.",
+    noLabel: "No shipping labels needed — the courier brings and attaches them at pickup.",
+    todoHead: "WHAT TO DO",
+    readerBandGroup: "FOR TOUR LEADER ・ KEEP THIS SHEET",
+    readerBandGuest: "FOR GUEST ・ KEEP THIS SHEET",
+    todo: ["Bring your bags to the reception by check-out.", "Show this voucher. No shipping labels needed.", "Collect your bags at the next hotel with this voucher."],
     kicker: "THIS VOUCHER IS FOR",
     dropLabel: "Drop-off: ",
     pickLabel: "Pick-up: ",
@@ -743,6 +775,13 @@ const GUEST_L10N = {
   },
   zh: {
     copyTag: "GUEST COPY / 旅客联",
+    groupCopyTag: "TOUR LEADER COPY / 领队联",
+    presentGroup: "请领队在寄存和领取团队行李时向前台出示本凭证。",
+    noLabel: "无需自备运单——快递员取件时会带来并贴好。",
+    todoHead: "办理步骤",
+    readerBandGroup: "领队专用 ・ 请自行保管",
+    readerBandGuest: "旅客专用 ・ 请自行保管",
+    todo: ["退房前将行李交到前台。", "出示本凭证即可，无需运单。", "在下一家酒店出示本凭证领取行李。"],
     kicker: "本凭证适用区间",
     dropLabel: "寄出 Drop-off: ",
     pickLabel: "领取 Pick-up: ",
@@ -756,6 +795,13 @@ const GUEST_L10N = {
   },
   it: {
     copyTag: "GUEST COPY / Copia ospite",
+    groupCopyTag: "TOUR LEADER COPY / Copia accompagnatore",
+    presentGroup: "Accompagnatore: presenti questo voucher alla reception alla consegna e al ritiro dei bagagli del gruppo.",
+    noLabel: "Nessuna etichetta da preparare: il corriere le porta e le applica al ritiro.",
+    todoHead: "COSA FARE",
+    readerBandGroup: "PER L'ACCOMPAGNATORE ・ DA CONSERVARE",
+    readerBandGuest: "PER L'OSPITE ・ DA CONSERVARE",
+    todo: ["Porti i bagagli alla reception entro il check-out.", "Mostri questo voucher. Nessuna etichetta necessaria.", "Ritiri i bagagli al prossimo hotel con questo voucher."],
     kicker: "QUESTO VOUCHER È PER",
     dropLabel: "Consegna: ",
     pickLabel: "Ritiro: ",
@@ -769,6 +815,13 @@ const GUEST_L10N = {
   },
   fr: {
     copyTag: "GUEST COPY / Copie client",
+    groupCopyTag: "TOUR LEADER COPY / Copie accompagnateur",
+    presentGroup: "Accompagnateur : présentez ce voucher à la réception lors du dépôt et du retrait des bagages du groupe.",
+    noLabel: "Aucune étiquette à préparer : le transporteur les apporte et les appose lors de l'enlèvement.",
+    todoHead: "À FAIRE",
+    readerBandGroup: "POUR L'ACCOMPAGNATEUR ・ À CONSERVER",
+    readerBandGuest: "POUR LE CLIENT ・ À CONSERVER",
+    todo: ["Apportez vos bagages à la réception avant le check-out.", "Présentez ce voucher. Aucune étiquette nécessaire.", "Récupérez vos bagages au prochain hôtel avec ce voucher."],
     kicker: "CE BON EST POUR",
     dropLabel: "Dépôt : ",
     pickLabel: "Retrait : ",
@@ -782,6 +835,13 @@ const GUEST_L10N = {
   },
   es: {
     copyTag: "GUEST COPY / Copia del huésped",
+    groupCopyTag: "TOUR LEADER COPY / Copia del guía",
+    presentGroup: "Guía: presente este voucher en recepción al entregar y recoger el equipaje del grupo.",
+    noLabel: "No necesita etiquetas: el transportista las trae y las coloca al recoger.",
+    todoHead: "QUÉ HACER",
+    readerBandGroup: "PARA EL GUÍA ・ CONSERVE ESTA HOJA",
+    readerBandGuest: "PARA EL HUÉSPED ・ CONSERVE ESTA HOJA",
+    todo: ["Lleve su equipaje a recepción antes del check-out.", "Muestre este voucher. No necesita etiquetas.", "Recoja su equipaje en el próximo hotel con este voucher."],
     kicker: "ESTE COMPROBANTE ES PARA",
     dropLabel: "Entrega: ",
     pickLabel: "Recogida: ",
@@ -904,6 +964,10 @@ function VoucherPage({
   const lang: GuestLanguage = normalizeGuestLanguage(data.guestLanguage)
   const L = GUEST_L10N[lang]
   const zf = lang === "zh" ? { fontFamily: "NotoSansSC" } : {}
+  const waybillMode = resolveWaybillMode(data)
+  const driverBrings = waybillMode === "driver_brings"
+  const isGroup = isGroupVoucher(data)
+  const hasManifest = (data.groupLuggage?.length ?? 0) > 0
   const dropWhenEn = L.dropWhen(shipment.dropOffTime?.trim() ? safeText(shipment.dropOffTime) : undefined)
   const pickWhenEn = L.pickWhen(shipment.pickUpNote?.trim() ? safeText(shipment.pickUpNote) : undefined)
 
@@ -972,7 +1036,7 @@ function VoucherPage({
         <View style={vs.masthead}>
           <View>
             <Image style={logoSize(8.5)} src={LOGO_PATH} />
-            <Text style={[vs.copyTag, zf]}>{jb(L.copyTag)}</Text>
+            <Text style={[vs.copyTag, zf]}>{jb(isGroup ? L.groupCopyTag : L.copyTag)}</Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={vs.refLabel}>REF</Text>
@@ -1000,8 +1064,15 @@ function VoucherPage({
             <View style={vs.presentStrip}>
               <CheckCircleIcon />
               <View style={vs.psWords}>
-                <Text style={[vs.psEn, zf]}>{jb(L.present)}</Text>
-                <Text style={vs.psJa}>{jb("お荷物のお預け時・お受け取り時に、本バウチャーを受付にご提示ください")}</Text>
+                <Text style={[vs.psEn, zf]}>{jb(isGroup ? L.presentGroup : L.present)}</Text>
+                <Text style={vs.psJa}>
+                  {jb(
+                    isGroup
+                      ? "添乗員様・代表者様が、お荷物のお預け時・お受け取り時に本バウチャーを受付にご提示ください"
+                      : "お荷物のお預け時・お受け取り時に、本バウチャーを受付にご提示ください",
+                  )}
+                </Text>
+
               </View>
             </View>
           </View>
@@ -1173,6 +1244,38 @@ function VoucherPage({
     </>
   )
 
+  // ホテル向け「ご対応の流れ」。送り状の用意者 (driverBrings) × 団体/個人客 で文面を切り替える。
+  type Step = { main: string; sub?: string }
+  const countRef = hasManifest ? "団体お荷物リスト（別紙）でご照合ください" : `合計 ${shipment.suitcaseCount} 個`
+  const fromSteps: Step[] = !driverBrings
+    ? [
+        { main: "お客様がチェックアウト時に荷物をお持ち込み", sub: "荷物と同数の印字済み送り状もお持ちになります" },
+        { main: "集荷までお預かりください", sub: "通常の出荷荷物としてお取り扱いください" },
+        { main: "荷物と送り状を集荷ドライバーへお渡し" },
+      ]
+    : isGroup
+      ? [
+          { main: "添乗員様（代表者様）が団体のお荷物をお持ち込み", sub: "送り状のご用意・お荷物への取付けは不要です" },
+          { main: "個数をご確認のうえ、集荷までお預かりください", sub: countRef },
+          { main: "集荷ドライバーが送り状を持参し、貼付して集荷します", sub: "ドライバーへご予約名と個数をお伝えください" },
+        ]
+      : [
+          { main: "お客様がチェックアウト時に荷物をお持ち込み", sub: "送り状のご用意・お荷物への取付けは不要です" },
+          { main: "ご予約名と個数を控えて、集荷までお預かりください", sub: "貴館のお預かり札等で他のお荷物と区別してください" },
+          { main: "集荷ドライバーが送り状を持参し、貼付して集荷します", sub: "ドライバーへご予約名と個数をお伝えください" },
+        ]
+  const toSteps: Step[] = isGroup
+    ? [
+        { main: "ドライバーが荷物をお届け", sub: `お届け予定　${formatJpDate(shipment.expectedArrival)}` },
+        { main: "団体のお荷物としてまとめてお預かりください", sub: countRef },
+        { main: "添乗員様（代表者様）へまとめてお渡し", sub: "お渡し時に個数をご確認ください" },
+      ]
+    : [
+        { main: "ドライバーが荷物をお届け", sub: `お届け予定　${formatJpDate(shipment.expectedArrival)}` },
+        { main: "到着済み荷物としてお預かりください", sub: "お部屋番号が確定していれば、お部屋までお運びください" },
+        { main: "チェックイン時にお客様へお渡し", sub: "バウチャー記載のご予約名で照合してください" },
+      ]
+
   const hotelBody = (
     <>
         {/* guest → hotel-staff 区切り。ホテルへは「依頼」なので挨拶文を添える (谷口さん 2026-08-27) */}
@@ -1200,9 +1303,9 @@ function VoucherPage({
               <Text style={vs.hcSection}>ご対応の流れ</Text>
               {/* 2026-08-27 文字量圧縮: 自明な補足 (2,3の sub) を削除し意味は保持 */}
               <View style={vs.hcSteps}>
-                <FlowStep color={RED} num="1" main="お客様がチェックアウト時に荷物をお持ち込み" sub="荷物と同数の印字済み送り状もお持ちになります" />
-                <FlowStep color={RED} num="2" main="集荷までお預かりください" sub="通常の出荷荷物としてお取り扱いください" />
-                <FlowStep color={RED} num="3" main="荷物と送り状を集荷ドライバーへお渡し" />
+                {fromSteps.map((st, k) => (
+                  <FlowStep key={k} color={RED} num={String(k + 1)} main={st.main} sub={st.sub} />
+                ))}
               </View>
 
               <View style={vs.noCallBox}>
@@ -1236,9 +1339,9 @@ function VoucherPage({
 
               <Text style={vs.hcSection}>ご対応の流れ</Text>
               <View style={vs.hcSteps}>
-                <FlowStep color={INK} num="1" main="ドライバーが荷物をお届け" sub={`お届け予定　${formatJpDate(shipment.expectedArrival)}`} />
-                <FlowStep color={INK} num="2" main="到着済み荷物としてお預かりください" sub="お部屋番号が確定していれば、お部屋までお運びください" />
-                <FlowStep color={INK} num="3" main="チェックイン時にお客様へお渡し" sub="バウチャー記載のご予約名で照合してください" />
+                {toSteps.map((st, k) => (
+                  <FlowStep key={k} color={INK} num={String(k + 1)} main={st.main} sub={st.sub} />
+                ))}
               </View>
 
               <Text style={vs.hcSection}>ご予約の照合</Text>
@@ -1267,6 +1370,95 @@ function VoucherPage({
   // 実測 (和名ホテル・住所・申し送りありの実データ): 2区間 296mm / 3区間 303mm。
   // 3区間以上はホテルご担当者様向けを次ページへ送り、全ページを A4 内に収める。
   const splitHotelPage = totalLegs >= 3
+
+  // ── v2 紙面 (driver_brings = 送り状はドライバー持参) ───────────────────────
+  // 区間ごとに Page A (添乗員様/お客様控え) + Page B (発送元ホテル様用)。到着先ホテル用の紙は作らない
+  // (到着先は事前連絡への「了解」で完結し、紙での依頼が要るのは発送元だけ / 谷口さん 2026-09-18)。
+  // 紙面は lib/voucher-pdf-v2.tsx。ここでは予約データから表示用の値を組み立てて渡すだけ。
+  if (driverBrings) {
+    const noteForTo = shipment.specialNote && shipment.noteTarget !== "from" ? shipment.specialNote : ""
+    const noteForFrom =
+      shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? shipment.specialNote : ""
+    const areaOf = (loc: VoucherShipmentLocation, hotelEn?: string): VoucherArea =>
+      voucherAreaOf(loc.address, loc.city, loc.hotel, hotelEn) ?? voucherAreaFallback(loc.city, safeText(loc.hotel), hotelEn)
+    const support: V2Ctx["support"] = (() => {
+      switch (contactMode) {
+        case "hidden":
+          return { kind: "hidden", headEn: "", value: "", small: "" }
+        case "travel_agency":
+        case "tour_operator":
+          return {
+            kind: "text",
+            headEn: contactMode === "travel_agency" ? "CONTACT / 旅行会社" : "CONTACT / ランドオペレーター",
+            value: realPhone(data.contactPersonPhone) || data.contactPersonName || "—",
+            small: data.contactPersonName && realPhone(data.contactPersonPhone) ? `担当：${safeText(data.contactPersonName)}` : "",
+          }
+        default:
+          return data.supportQrDataUri
+            ? {
+                kind: data.supportQrKind === "whatsapp" ? "whatsapp" : "email",
+                qrDataUri: data.supportQrDataUri,
+                headEn: "NEED HELP?  /  お困りのとき",
+                value: data.supportQrKind === "whatsapp" ? "WhatsApp" : "Email",
+                small: data.supportQrKind === "whatsapp" ? "Scan to chat" : "Scan to email",
+              }
+            : { kind: "text", headEn: "NEED HELP?  /  お困りのとき", value: realPhone(data.supportPhone) || data.supportEmail, small: "9:00 – 18:00 JST" }
+      }
+    })()
+    const ctx: V2Ctx = {
+      h: { jb, safeText, realPhone, formatJpDate, formatEnDate, formatEnDateShort, dowLabel, logoPath: LOGO_PATH, mm },
+      ref,
+      bookingId: data.bookingId,
+      legIndex,
+      totalLegs,
+      legs: data.shipments.map((sh, k) => ({
+        index: k,
+        shipmentDate: sh.shipmentDate,
+        expectedArrival: sh.expectedArrival,
+        fromArea: areaOf(sh.from, sh.fromHotelEn),
+        toArea: areaOf(sh.to, sh.toHotelEn),
+      })),
+      isGroup,
+      guestName,
+      groupLine: isGroup ? safeText(data.groupName || data.tourCompany) : "",
+      tourLeader: safeText(data.tourLeader),
+      tourCompany: safeText(data.tourCompany),
+      companyName: safeText(data.companyName),
+      shipmentDate: shipment.shipmentDate,
+      expectedArrival: shipment.expectedArrival,
+      fromHotelJa,
+      fromHotelEn: fromEn,
+      fromAddress: safeText(shipment.from.address),
+      toHotelJa,
+      toHotelEn: toEn,
+      toAddress: safeText(shipment.to.address),
+      fromArea: areaOf(shipment.from, shipment.fromHotelEn),
+      toArea: areaOf(shipment.to, shipment.toHotelEn),
+      bagCount: shipment.suitcaseCount,
+      totalBags: totalLuggage,
+      hasManifest,
+      dropWhenEn,
+      pickWhenEn,
+      presentText: isGroup ? L.presentGroup : L.present,
+      copyTagEn: isGroup ? "TOUR LEADER COPY" : "GUEST COPY",
+      copyTagJa: isGroup ? "添乗員様・代表者様 控え" : "お客様控え",
+      trackingQrDataUri: data.trackingQrDataUri,
+      trackingUrlText: `bondex.express/track/${data.bookingId}`,
+      support,
+      supportEmail: data.supportEmail,
+      supportPhone: realPhone(data.supportPhone),
+      landOperatorContact: [realPhone(data.contactPersonPhone), data.contactPersonName ? `担当：${safeText(data.contactPersonName)}` : ""].filter(Boolean).join("  "),
+      noteForFrom,
+      noteForTo,
+      zf,
+    }
+    return (
+      <>
+        <TourLeaderPage ctx={ctx} />
+        <HotelStaffPage ctx={ctx} />
+      </>
+    )
+  }
 
   if (!splitHotelPage) {
     return (
@@ -1311,21 +1503,30 @@ function VoucherPage({
 // 団体お荷物リスト (GROUP LUGGAGE MANIFEST) — 団体予約のとき末尾に1枚追加。
 // 誰の荷物か・各何個かをホテル担当者様がチェックできる一覧。2列で最大50件想定。
 // ---------------------------------------------------------------------------
-function GroupManifestPage({ data }: { data: VoucherInput }) {
-  const list = data.groupLuggage ?? []
-  const totalBags = list.reduce((s, g) => s + Math.max(1, g.bags), 0)
+/** 1 ページに載せる行数 (2 列 × 24 行)。超える団体は複数ページに分ける (1 枚に収める前提を崩さない)。 */
+const MANIFEST_ROWS_PER_PAGE = 48
+function GroupManifestPage({ data, pageNo = 0, pageCount = 1 }: { data: VoucherInput; pageNo?: number; pageCount?: number }) {
+  const all = data.groupLuggage ?? []
+  const totalBags = all.reduce((s, g) => s + Math.max(1, g.bags), 0)
+  const offset = pageNo * MANIFEST_ROWS_PER_PAGE
+  const list = all.slice(offset, offset + MANIFEST_ROWS_PER_PAGE)
   const first = data.shipments[0]
   const route = first ? `${first.from.hotel} → ${first.to.hotel}` : ""
   // 2列に分割 (左=前半・右=後半)
   const mid = Math.ceil(list.length / 2)
   const cols = [list.slice(0, mid), list.slice(mid)]
+  const rowNo = (ci: number, k: number) => offset + ci * mid + k
   return (
-    <Page size="A4" style={vs.page} wrap={false}>
+    <Page
+      size="A4"
+      style={[vs.page, ...(resolveWaybillMode(data) === "driver_brings" ? [{ minHeight: mm(297) }] : [])]}
+      wrap={false}
+    >
       {/* masthead */}
       <View style={vs.masthead}>
         <View>
           <Image style={logoSize(8.5)} src={LOGO_PATH} />
-          <Text style={[vs.copyTag, { color: RED }]}>GROUP LUGGAGE MANIFEST / 団体お荷物リスト</Text>
+          <Text style={[vs.copyTag, { color: RED }]}>{`GROUP LUGGAGE MANIFEST / 団体お荷物リスト${pageCount > 1 ? `  (${pageNo + 1}/${pageCount})` : ""}`}</Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Text style={vs.refLabel}>REF</Text>
@@ -1338,21 +1539,21 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <View style={{ flex: 1 }}>
             <Text style={vs.dk}>GROUP / 団体名</Text>
-            <Text style={[vs.dv, { fontSize: 11 }]}>{jb(data.groupName || data.tourCompany)}</Text>
+            <Text style={[vs.dv, { fontSize: 11, maxLines: 2, textOverflow: "ellipsis" }]}>{jb(data.groupName || data.tourCompany)}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={vs.dk}>TOUR LEADER / 添乗員</Text>
-            <Text style={[vs.dv, { fontSize: 11 }]}>{jb(data.tourLeader || "—")}</Text>
+            <Text style={[vs.dv, { fontSize: 11, maxLines: 2, textOverflow: "ellipsis" }]}>{jb(data.tourLeader || "—")}</Text>
           </View>
           <View style={{ width: "22%" }}>
             <Text style={vs.dk}>TOTAL / 合計</Text>
             <Text style={[vs.dv, { fontSize: 11 }]}>
-              {list.length} guests ・ {totalBags} bags
+              {all.length} guests ・ {totalBags} bags
             </Text>
           </View>
         </View>
         {route ? (
-          <Text style={{ fontSize: 8, color: MUTED, marginTop: mm(1.5) }}>{jb(route)}</Text>
+          <Text style={{ fontSize: 8, color: MUTED, marginTop: mm(1.5), maxLines: 1, textOverflow: "ellipsis" }}>{jb(route)}</Text>
         ) : null}
       </View>
 
@@ -1376,7 +1577,7 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
               <Text style={{ width: mm(9), fontSize: 6.5, color: MUTED, textAlign: "right" }}>✓</Text>
             </View>
             {col.map((g, i) => {
-              const no = ci === 0 ? i + 1 : mid + i + 1
+              const no = rowNo(ci, i) + 1
               const bags = Math.max(1, g.bags)
               return (
                 <View
@@ -1420,10 +1621,43 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
         ))}
       </View>
 
+      {/* 個数確認欄: 送り状を荷物に付けない運用では、このリストと個数が唯一の照合手段になる */}
+      {resolveWaybillMode(data) === "driver_brings" ? (
+        <View style={{ flexDirection: "row", marginTop: mm(4) }}>
+          {[
+            { en: "DROP-OFF CHECK", ja: "お預け時の個数確認" },
+            { en: "PICK-UP CHECK", ja: "お受け取り時の個数確認" },
+          ].map((b, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                marginLeft: i > 0 ? mm(4) : 0,
+                borderWidth: mm(0.3),
+                borderColor: INK,
+                padding: mm(2.5),
+              }}
+            >
+              <Text style={{ fontSize: 6.5, letterSpacing: 1.2, color: MUTED }}>{b.en}</Text>
+              <Text style={{ fontSize: 9, fontWeight: 700, marginTop: mm(0.5) }}>{jb(b.ja)}</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: mm(3) }}>
+                <Text style={{ fontSize: 8, color: INK_SOFT }}>{jb("個数")}</Text>
+                <View style={{ width: mm(16), borderBottomWidth: mm(0.3), borderBottomColor: INK, marginHorizontal: mm(1.5) }} />
+                <Text style={{ fontSize: 9, fontWeight: 700 }}>{`/ ${totalBags}`}</Text>
+                <Text style={{ fontSize: 8, color: INK_SOFT, marginLeft: mm(6) }}>{jb("確認者")}</Text>
+                <View style={{ flex: 1, borderBottomWidth: mm(0.3), borderBottomColor: INK, marginLeft: mm(1.5) }} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {/* 注記 */}
       <Text style={{ fontSize: 7.5, color: MUTED, marginTop: mm(3), lineHeight: 1.5 }}>
         {jb(
-          "ホテルご担当者様へ: お預かり・お渡しの際に本リストでご確認ください。×2 以上のゲストは複数個お預かりします。/ For hotel staff: please use this list to check bags at drop-off and pick-up. Guests marked ×2 or more have multiple bags.",
+          resolveWaybillMode(data) === "driver_brings"
+            ? "ホテルご担当者様へ: お預かり・お渡しの際に本リストで個数をご確認ください。送り状は集荷ドライバーが持参し貼付します。お荷物への取付けは不要です。×2 以上のゲストは複数個お預かりします。/ For hotel staff: please check the bag count with this list at drop-off and pick-up. The courier brings and attaches the shipping labels. Guests marked ×2 or more have multiple bags."
+            : "ホテルご担当者様へ: お預かり・お渡しの際に本リストでご確認ください。×2 以上のゲストは複数個お預かりします。/ For hotel staff: please use this list to check bags at drop-off and pick-up. Guests marked ×2 or more have multiple bags.",
         )}
       </Text>
 
@@ -1449,6 +1683,7 @@ function GroupManifestPage({ data }: { data: VoucherInput }) {
 
 export function VoucherDocument({ data }: { data: VoucherInput }) {
   const totalLegs = data.shipments.length
+  const manifestPages = Math.ceil((data.groupLuggage?.length ?? 0) / MANIFEST_ROWS_PER_PAGE)
   return (
     <Document
       // ロゴ/QR は透明PNG(SMask)。既定の PDF1.3 ヘッダだと SMask は仕様外扱いで一部の印刷経路が
@@ -1468,14 +1703,21 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
         <VoucherPage key={i} data={data} shipment={shipment} legIndex={i} totalLegs={totalLegs} />
       ))}
       {/* 団体: 誰の荷物か・各何個かの一覧 (ホテル担当者様のチェック用) を 1 枚追加 */}
-      {(data.groupLuggage?.length ?? 0) > 0 ? <GroupManifestPage data={data} /> : null}
+      {Array.from({ length: manifestPages }, (_, k) => (
+        <GroupManifestPage key={`manifest-${k}`} data={data} pageNo={k} pageCount={manifestPages} />
+      ))}
       {/* How to use ガイドを末尾に 1 枚だけ同梱 (複数区間でも 1 枚)。既定 ON。 */}
       {data.includeHowto !== false ? (
-        <HowToShipPage
-          language={normalizeGuestLanguage(data.guestLanguage)}
-          supportQrDataUri={data.supportQrDataUri}
-          supportQrKind={data.supportQrKind}
-        />
+        resolveWaybillMode(data) === "driver_brings" ? (
+          // v2: 原図 howto1 を再構築した静的ガイド (ベクター)。言語は英語のみ (原図に準拠)。
+          <HowToSendPage logoPath={LOGO_PATH} supportQrDataUri={data.supportQrDataUri} supportQrKind={data.supportQrKind} />
+        ) : (
+          <HowToShipPage
+            language={normalizeGuestLanguage(data.guestLanguage)}
+            supportQrDataUri={data.supportQrDataUri}
+            supportQrKind={data.supportQrKind}
+          />
+        )
       ) : null}
     </Document>
   )
@@ -2071,6 +2313,21 @@ export function HowToShipPage({
   )
 }
 
+
+/** v2 の HOW TO SEND (原図 howto1 再構築) を単体 PDF で出す。送り状をドライバーが持参する運用向け。 */
+export function HowToSendDocument({
+  supportQrDataUri,
+  supportQrKind,
+}: {
+  supportQrDataUri?: string
+  supportQrKind?: "whatsapp" | "email"
+}) {
+  return (
+    <Document pdfVersion="1.4" title="BondEx — How to send your luggage" author="BondEx" subject="Traveler guide">
+      <HowToSendPage logoPath={LOGO_PATH} supportQrDataUri={supportQrDataUri} supportQrKind={supportQrKind} />
+    </Document>
+  )
+}
 
 export function HowToShipDocument({
   language,

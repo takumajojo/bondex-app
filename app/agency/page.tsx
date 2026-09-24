@@ -106,7 +106,7 @@ const messages = {
     invoice: "Invoice / Receipt",
     driveFolder: "Folder",
     preparing: "Preparing",
-    waybillLater: "Shipping label: issued about a month before shipping",
+    waybillLater: "No shipping label needed — the courier brings it at pickup",
     newBooking: "New request",
     signContract: "Sign contract",
     signBannerTitle: "Please sign the service agreement to start",
@@ -114,7 +114,7 @@ const messages = {
     signBannerBtn: "Review & sign the agreement",
     howto: "How to use",
     farNote:
-      "Requests with a ship date more than a month away: shipping labels can't be created yet, so we'll prepare everything and contact you once it's within a month.",
+      "No shipping labels are needed. The courier brings and attaches them at pickup — your guests only hand over the luggage with the voucher.",
     downloading: "Preparing…",
     dlError: "Download failed. Please try again.",
     sessionExpired: "Your session has expired. Please sign in again.",
@@ -130,20 +130,20 @@ const messages = {
     lockCountLead:
       "Piece-count changes must be made at least 2 weeks before shipment. Please contact BondEx from “Contact” and we'll take care of it.",
     actCancel: "Cancel this leg",
-    lockedTitle: "This leg is already issued",
+    lockedTitle: "This leg is already arranged",
     lockedTitleGate: "This change isn't available",
     lockedBody:
-      "The shipping label has been issued, so it can't be changed here (the label and the actual shipment must match). Please contact BondEx via the Contact button — we'll handle it for you.",
+      "This leg has already been arranged with the courier, so it can't be changed here. Please contact BondEx via the Contact button — we'll handle it for you.",
     lockedClose: "Close",
     dcTitle: "Change dates",
     dcShip: "Ship date",
     dcArrive: "Arrival date",
     ccTitle: "Change pieces",
     ccPieces: "Pieces",
-    ccFeeNote: "The fee is fixed at issuance: pieces × ¥5,000 (excl. tax).",
+    ccFeeNote: "The fee is fixed at pickup: pieces × ¥5,000 (excl. tax).",
     ccGroupNote: "For group bookings, edit the luggage list on the group dashboard.",
     cxTitle: "Cancel this leg",
-    cxBody: "This leg will be cancelled. No label has been issued and nothing will be charged.",
+    cxBody: "This leg will be cancelled. Nothing is charged before pickup.",
     cxWarn: "This can't be undone from the portal.",
     confirmHeading: "Please confirm",
     confirmFrom: "Before",
@@ -164,7 +164,7 @@ const messages = {
     dupOriginalShip: "Original ship date",
     dupGo: "Open pre-filled form →",
     muTitle: "Monthly usage & invoices",
-    muHint: "Tap a month to filter the list below. Amounts are fixed at label issuance (pieces × ¥5,000 excl. tax).",
+    muHint: "Tap a month to filter the list below. Amounts are fixed at pickup (pieces × ¥5,000 excl. tax).",
     muMonth: "Month",
     muLegs: "Shipments",
     muPieces: "Pieces",
@@ -179,7 +179,7 @@ const messages = {
     status: {
       requested: "Requested",
       pending: "Pending",
-      issued: "Issued",
+      issued: "Arranged",
       picked_up: "Picked up",
       in_transit: "In transit",
       delivered: "Delivered",
@@ -231,7 +231,7 @@ const messages = {
     invoice: "請求書/領収書",
     driveFolder: "フォルダ",
     preparing: "準備中",
-    waybillLater: "送り状は発送の約1ヶ月前に発行します",
+    waybillLater: "送り状のご用意は不要です（集荷ドライバーが持参します）",
     newBooking: "新規発行",
     signContract: "契約書に署名",
     signBannerTitle: "運用開始には契約書への署名が必要です",
@@ -239,7 +239,7 @@ const messages = {
     signBannerBtn: "契約書を確認して署名する",
     howto: "ご利用ガイド",
     farNote:
-      "発送日が1ヶ月以上先の依頼は、送り状がまだ作成できません。1ヶ月前になりましたら書類一式をご用意し、まとめてご連絡します。",
+      "送り状のご用意は不要です。集荷ドライバーが送り状を持参して貼付しますので、お客様はバウチャーと一緒にお荷物をお預けいただくだけです。",
     downloading: "準備中…",
     dlError: "ダウンロードに失敗しました。もう一度お試しください。",
     sessionExpired: "セッションが切れました。再度サインインしてください。",
@@ -255,20 +255,20 @@ const messages = {
     lockCountLead:
       "個数の変更は発送の2週間前までにお願いしています。締切を過ぎた分は「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
     actCancel: "この区間を取り消し",
-    lockedTitle: "この区間は発行済みです",
+    lockedTitle: "この区間は手配済みです",
     lockedTitleGate: "この変更はできません",
     lockedBody:
-      "送り状が発行済みのため、こちらから変更できません（送り状と実際のお荷物を一致させる必要があるため）。お手数ですが「お問い合わせ」ボタンから BondEx にご連絡ください。こちらで対応いたします。",
+      "配送業者への手配が済んでいるため、こちらから変更できません。お手数ですが「お問い合わせ」ボタンから BondEx にご連絡ください。こちらで対応いたします。",
     lockedClose: "閉じる",
     dcTitle: "日程を変更",
     dcShip: "発送日",
     dcArrive: "到着日",
     ccTitle: "個数を変更",
     ccPieces: "個数",
-    ccFeeNote: "料金は発行時に「個数 × ¥5,000（税抜）」で確定します。",
+    ccFeeNote: "料金は集荷時に「個数 × ¥5,000（税抜）」で確定します。",
     ccGroupNote: "団体予約の個数は、団体ダッシュボードの荷物リストから変更してください。",
     cxTitle: "この区間を取り消し",
-    cxBody: "この区間を取り消します。送り状は未発行のため、課金は発生しません。",
+    cxBody: "この区間を取り消します。集荷前のため、課金は発生しません。",
     cxWarn: "ポータルからは元に戻せません。",
     confirmHeading: "内容のご確認",
     confirmFrom: "変更前",
@@ -289,7 +289,7 @@ const messages = {
     dupOriginalShip: "元の発送日",
     dupGo: "入力済みフォームを開く →",
     muTitle: "月別ご利用状況・請求書",
-    muHint: "月をタップすると下の一覧をその月に絞り込みます。金額は送り状発行時に確定（個数×¥5,000 税抜）。",
+    muHint: "月をタップすると下の一覧をその月に絞り込みます。金額は集荷時に確定（個数×¥5,000 税抜）。",
     muMonth: "月",
     muLegs: "件数",
     muPieces: "個数",
@@ -304,7 +304,7 @@ const messages = {
     status: {
       requested: "依頼中",
       pending: "保留",
-      issued: "発行済",
+      issued: "手配済",
       picked_up: "集荷済",
       in_transit: "配達中",
       delivered: "配達完了",
@@ -353,7 +353,6 @@ export default function AgencyDashboard() {
   const [cardDismissed, setCardDismissed] = useState<boolean>(false)
   const [voucherBusy, setVoucherBusy] = useState<string | null>(null) // booking_id being fetched
   const [rosterBusy, setRosterBusy] = useState<string | null>(null) // booking_id being fetched (名簿リスト)
-  const [labelBusy, setLabelBusy] = useState<string | null>(null) // shipment id being fetched (送り状DL)
   const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null) // shipment_id being fetched
   const [dlError, setDlError] = useState("")
 
@@ -662,39 +661,6 @@ export default function AgencyDashboard() {
     [locale],
   )
 
-  // 送り状(A5 PDF)を自社限定エンドポイントから DL。全ブラウザ/プリンターで確実な主導線。
-  // ファイル名は API 側で旅程番号込みに整形される。
-  const downloadLabel = useCallback(async (bookingId: string, legIndex: number) => {
-    setDlError("")
-    const key = `${bookingId}-${legIndex}`
-    setLabelBusy(key)
-    try {
-      const sb = getBrowserSupabase()
-      const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
-      if (!token) { setSessionExpired(true); setDlError(messages[locale].sessionExpired); return }
-      const res = await fetch(
-        `/api/agency/label?booking_id=${encodeURIComponent(bookingId)}&leg_index=${legIndex}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      if (!res.ok) { setDlError(messages[locale].dlError); return }
-      const blob = await res.blob()
-      const cd = res.headers.get("Content-Disposition") || ""
-      const m = cd.match(/filename="?([^"]+)"?/)
-      const fileName = m?.[1] || `BondEx_${bookingId}_L${legIndex + 1}_Label.pdf`
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = fileName
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch {
-      setDlError(messages[locale].dlError)
-    } finally {
-      setLabelBusy(null)
-    }
-  }, [locale])
 
   // カード決済済み区間の「請求書 兼 領収書」DL。voucher と同じ JWT→blob 方式。
   const downloadInvoice = useCallback(async (shipmentId: string) => {
@@ -769,16 +735,6 @@ export default function AgencyDashboard() {
     return c
   }, [shipments])
 
-  // 発送日が 1ヶ月以上先の「依頼中」がある = 送り状はまだ作れない → まとめ連絡の案内を出す
-  const hasFarRequested = useMemo(() => {
-    const cutoff = Date.now() + 30 * 86_400_000
-    return shipments.some(
-      (it) =>
-        it.status === "requested" &&
-        it.shipment_date &&
-        new Date(`${it.shipment_date}T00:00:00`).getTime() > cutoff,
-    )
-  }, [shipments])
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -933,8 +889,8 @@ export default function AgencyDashboard() {
           </div>
         )}
 
-        {/* 発送1ヶ月以上先の依頼がある: まとめ連絡の案内 */}
-        {!error && !noAgency && hasFarRequested && (
+        {/* 送り状は佐川が作成する運用 (2026-09-24〜): 代理店に「用意不要」を常に案内 */}
+        {!error && !noAgency && shipments.length > 0 && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" strokeWidth={1.6} />
             <p className="text-[12px] text-amber-900 leading-relaxed">{t.farNote}</p>
@@ -1311,36 +1267,7 @@ export default function AgencyDashboard() {
                               {rosterBusy === it.booking_id ? t.downloading : t.rosterList}
                             </button>
                           )}
-                          {it.yamato_label_url && (
-                            <div className="inline-flex items-center gap-3">
-                              {/* 主導線: 送り状PDF(A5)をDL。全ブラウザ/プリンターで確実。印刷は実寸(100%)推奨。 */}
-                              <button
-                                type="button"
-                                onClick={() => downloadLabel(it.booking_id, it.leg_index)}
-                                disabled={labelBusy === `${it.booking_id}-${it.leg_index}`}
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-[#C8102E] hover:text-[#a60d26] disabled:opacity-50"
-                                title={t.waybillDlTitle}
-                              >
-                                {labelBusy === `${it.booking_id}-${it.leg_index}` ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />
-                                ) : (
-                                  <Receipt className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                )}
-                                {t.waybill}
-                              </button>
-                              {/* 補助: Chrome/Edge向け A5自動印刷 */}
-                              <a
-                                href={`/agency/print-label?booking_id=${encodeURIComponent(it.booking_id)}&leg_index=${it.leg_index}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                                title={t.waybillPrintTitle}
-                              >
-                                <Printer className="w-3 h-3" strokeWidth={1.5} />
-                                {t.waybillPrint}
-                              </a>
-                            </div>
-                          )}
+                          {/* 送り状DL・A5印刷は廃止 (2026-09-24: 送り状は佐川が作成し集荷ドライバーが持参する運用へ) */}
                           {/* カード決済済みなら請求書 兼 領収書を DL 可能 */}
                           {it.charged_at && (
                             <button
@@ -1357,9 +1284,6 @@ export default function AgencyDashboard() {
                               )}
                               {invoiceBusy === it.id ? t.downloading : t.invoice}
                             </button>
-                          )}
-                          {it.status === "requested" && (
-                            <span className="text-[11px] text-muted-foreground">{t.waybillLater}</span>
                           )}
                         </div>
                       </td>

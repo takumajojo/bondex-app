@@ -18,7 +18,8 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   // js.stripe.com = Stripe.js (カード登録の Elements)。これが無いと card 入力欄が出ない。
   // challenges.cloudflare.com = Cloudflare Turnstile (お問い合わせフォームのスパム対策)。
-  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://va.vercel-scripts.com https://js.stripe.com https://challenges.cloudflare.com",
+  // 'unsafe-eval' は開発時のみ (next dev --webpack が eval ベースの source map を使うため)。本番 CSP には含めない。
+  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""} https://www.googletagmanager.com https://va.vercel-scripts.com https://js.stripe.com https://challenges.cloudflare.com`,
   // api.stripe.com = Elements → Stripe API / m.stripe.network = 不正検知(Radar)。
   "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.supabase.co https://va.vercel-scripts.com https://vitals.vercel-insights.com https://maps.googleapis.com https://api.stripe.com https://m.stripe.network",
   // blob: = 発行前バウチャープレビュー (代理店 確認画面) を iframe で表示するため。

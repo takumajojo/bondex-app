@@ -32,7 +32,7 @@ interface Summary {
 const STATUS_LABEL: Record<string, string> = {
   requested: "依頼中",
   pending: "保留",
-  issued: "発行済",
+  issued: "手配済",
   picked_up: "集荷済",
   in_transit: "配送中",
   delivered: "配達完了",

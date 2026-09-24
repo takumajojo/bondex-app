@@ -17,12 +17,14 @@ import {
 import {
   labelMailStatus,
   labelMailApplies,
+  LABEL_MAIL_ENABLED,
   todayJst,
   LABEL_TO_LABEL_JA,
   LABEL_SENDER_LABEL_JA,
   type LabelTo,
   type LabelSender,
 } from "@/lib/label-delivery"
+import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import type { ResidenceAddress } from "@/lib/residence"
 import HotelContactEditor from "@/components/operator/HotelContactEditor"
 import HotelChangeModal, { type HotelChangeTarget } from "@/components/operator/HotelChangeModal"
@@ -90,8 +92,8 @@ type Row = {
 
 const STATUS_LABELS: Record<string, { ja: string; cls: string }> = {
   requested: { ja: "依頼中", cls: "bg-sky-100 text-sky-800" },
-  pending: { ja: "発行待ち", cls: "bg-amber-100 text-amber-800" },
-  issued: { ja: "発行済", cls: "bg-blue-100 text-blue-800" },
+  pending: { ja: "保留", cls: "bg-amber-100 text-amber-800" },
+  issued: { ja: "手配済", cls: "bg-blue-100 text-blue-800" },
   picked_up: { ja: "集荷済", cls: "bg-violet-100 text-violet-800" },
   in_transit: { ja: "配達中", cls: "bg-indigo-100 text-indigo-800" },
   delivered: { ja: "配達完了", cls: "bg-emerald-100 text-emerald-800" },
@@ -436,7 +438,7 @@ export default function OperatorBookingDetailPage() {
                     </div>
                     {gated && (
                       <p className="mt-1 text-[10px] text-red-600">
-                        追跡番号発行済み/集荷済みのため変更不可。ラベル取消→再発行が必要です。
+                        集荷済み、または追跡番号が入っているため変更できません。
                       </p>
                     )}
                   </div>
@@ -446,7 +448,7 @@ export default function OperatorBookingDetailPage() {
               {/* 発行・課金のエラー全文 (一覧では出さない) */}
               {r.error_message && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-                  <p className="text-[11px] font-bold text-red-800 mb-1">発行エラー</p>
+                  <p className="text-[11px] font-bold text-red-800 mb-1">エラー</p>
                   <p className="text-[11px] text-red-800 break-all whitespace-pre-wrap">{r.error_message}</p>
                 </div>
               )}
@@ -534,7 +536,7 @@ export default function OperatorBookingDetailPage() {
                             <p key={t} className="text-xs font-mono text-foreground/90">{t}</p>
                           ))
                         ) : (
-                          <p className="text-xs text-muted-foreground">未発行</p>
+                          <p className="text-xs text-muted-foreground">未取得（集荷後に佐川から届き次第入力）</p>
                         )}
                       </div>
                       <button
@@ -545,7 +547,7 @@ export default function OperatorBookingDetailPage() {
                       </button>
                     </div>
                   )}
-                  {r.yamato_label_url && (
+                  {WAYBILL_UI_ENABLED && r.yamato_label_url && (
                     <a
                       href={`/api/voucher/label?${new URLSearchParams({
                         url: r.yamato_label_url,
@@ -565,6 +567,8 @@ export default function OperatorBookingDetailPage() {
                   )}
                 </Section>
 
+                {/* 送り状(紙)の郵送管理は 2026-09-24 に取り下げ (送り状は集荷員が持参)。LABEL_MAIL_ENABLED で復活可 */}
+                {LABEL_MAIL_ENABLED && (
                 <Section title="送り状（紙）の郵送">
                   <div className="space-y-1">
                     <KV k="送付先" v={LABEL_TO_LABEL_JA[(r.label_to as LabelTo) || "agency"]} />
@@ -628,6 +632,7 @@ export default function OperatorBookingDetailPage() {
                     )}
                   </div>
                 </Section>
+                )}
 
                 <div className="md:col-span-2">
                   <Section title="ホテル連絡">

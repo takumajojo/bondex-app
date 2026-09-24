@@ -23,6 +23,7 @@ import {
   RotateCcw,
 } from "lucide-react"
 import { TrackingStepper, carrierTrackUrl } from "@/components/tracking-stepper"
+import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 
 type Shipment = {
   id: string
@@ -58,8 +59,8 @@ type Shipment = {
 // 運営向け日本語ステータス（一覧・詳細と同じ語彙）。
 const STATUS_LABELS: Record<string, { ja: string; cls: string }> = {
   requested: { ja: "依頼中", cls: "bg-violet-100 text-violet-800" },
-  pending: { ja: "発行待ち", cls: "bg-amber-100 text-amber-800" },
-  issued: { ja: "発行済", cls: "bg-blue-100 text-blue-800" },
+  pending: { ja: "保留", cls: "bg-amber-100 text-amber-800" },
+  issued: { ja: "手配済", cls: "bg-blue-100 text-blue-800" },
   picked_up: { ja: "集荷済", cls: "bg-violet-100 text-violet-800" },
   in_transit: { ja: "配達中", cls: "bg-indigo-100 text-indigo-800" },
   delivered: { ja: "配達完了", cls: "bg-emerald-100 text-emerald-800" },
@@ -67,7 +68,7 @@ const STATUS_LABELS: Record<string, { ja: string; cls: string }> = {
   cancelled: { ja: "キャンセル", cls: "bg-gray-200 text-gray-600" },
 }
 
-const TRACK_STEPS_JA: [string, string, string, string] = ["発行済", "集荷済", "配送中", "配達完了"]
+const TRACK_STEPS_JA: [string, string, string, string] = ["手配済", "集荷済", "配送中", "配達完了"]
 
 type Booking = {
   bookingId: string
@@ -258,6 +259,7 @@ function ViewAsAgency() {
                           <FileText className="w-3 h-3" strokeWidth={1.6} />
                           バウチャー
                         </a>
+                        {WAYBILL_UI_ENABLED && (
                         <a
                           href={`/api/voucher/labels?booking_id=${encodeURIComponent(b.bookingId)}`}
                           target="_blank"
@@ -267,6 +269,7 @@ function ViewAsAgency() {
                           <Printer className="w-3 h-3" strokeWidth={1.6} />
                           送り状
                         </a>
+                        )}
                         {b.head.drive_url && (
                           <a
                             href={b.head.drive_url}
@@ -305,7 +308,7 @@ function ViewAsAgency() {
                               発送 {r.shipment_date} ・ 到着予定 {r.expected_arrival || "—"} ・ {r.suitcase_count}個
                             </p>
 
-                            {/* 追跡（発行済み以降のみステッパー＋番号） */}
+                            {/* 追跡（手配済み以降のみステッパー＋番号） */}
                             {r.status !== "requested" && r.status !== "pending" && r.status !== "cancelled" && (
                               <div className="mt-2 max-w-md">
                                 <TrackingStepper status={r.status} steps={TRACK_STEPS_JA} compact />

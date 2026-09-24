@@ -13,6 +13,7 @@ import { ALL_TIME_SLOTS } from "@/lib/carrier"
 import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
 import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
+import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -486,15 +487,21 @@ export async function POST(req: NextRequest) {
     process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
   const opPw = process.env.OPERATOR_PASSWORD
   // reason: "far" = 1ヶ月超で発行窓の外 (正常な待ち) / "failed" = 発行を試みたが失敗
+  //         "not_needed" = 送り状は佐川が作成する運用 (2026-09-24〜) で BondEx は発行しない
+  const issuance = waybillIssuanceEnabled()
   const legOut: Array<{
     legIndex: number
     issued: boolean
     labelUrl?: string
-    reason?: "far" | "failed"
+    reason?: "far" | "failed" | "not_needed"
     error?: string
   }> = []
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i]
+    if (!issuance) {
+      legOut.push({ legIndex: i, issued: false, reason: "not_needed" })
+      continue
+    }
     if (daysUntilShip(leg.shipmentDate) > 30 || !opPw) {
       legOut.push({ legIndex: i, issued: false, reason: "far" })
       continue
@@ -543,7 +550,8 @@ export async function POST(req: NextRequest) {
       legOut.push({ legIndex: i, issued: false, reason: "failed", error: "network error" })
     }
   }
-  const allIssued = legOut.length > 0 && legOut.every((r) => r.issued)
+  // 送り状不要の運用では「書類 (バウチャー + ガイド) は依頼時点で揃う」ため、画面には準備完了として返す。
+  const allIssued = !issuance || (legOut.length > 0 && legOut.every((r) => r.issued))
   const anyIssued = legOut.some((r) => r.issued)
   const issueFailures = legOut.filter((r) => r.reason === "failed")
   const farLegs = legOut.filter((r) => r.reason === "far") // 1ヶ月超先で発行窓の外(正常な待ち)
@@ -587,9 +595,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。全発行済みなら不要。
+  // 受付メール: 新運用 (送り状不要) では毎回送る (バウチャーをそのままお渡し + 区間ごとの予定表)。
+  // 従来運用では待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。
   let noticeEmailSent = false
-  if (needsLabelWait) {
+  if (!issuance) {
+    const locale: "ja" | "en" = auth.agency.locale === "en" ? "en" : "ja"
+    const mail = await sendBookingRequestEmail({
+      agencyEmail: auth.agency.contact_email,
+      agencyName,
+      bookingId,
+      tourNumber: tourNumber || null,
+      earliestShipDate: legs[0]?.shipmentDate ?? "",
+      needsLabelWait: false,
+      legCount: legs.length,
+      locale,
+      waybillNotNeeded: true,
+      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel })),
+    })
+    noticeEmailSent = mail.sent
+  } else if (needsLabelWait) {
     // 1ヶ月超先(far)の区間のうち最も早い発送日を「最短の出荷予定日」として案内する。
     const farShipDates = farLegs.map((r) => legs[r.legIndex].shipmentDate)
     const earliestShipDate = farShipDates.reduce((min, d) => (d < min ? d : min), farShipDates[0])
@@ -608,7 +632,9 @@ export async function POST(req: NextRequest) {
   }
 
   // 社内通知(Slack集約) — 新規予約が入ったことを1部屋にまとめて流す。best-effort。
-  const issueSummary = allIssued
+  const issueSummary = !issuance
+    ? "送り状不要（佐川が作成）・バウチャー発行済"
+    : allIssued
     ? "全区間 即発行済"
     : anyIssued
       ? "一部発行済"

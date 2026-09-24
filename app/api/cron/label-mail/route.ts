@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
+import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import {
   labelMailStatus,
   todayJst,
@@ -57,6 +58,11 @@ function authorized(req: NextRequest): boolean {
 export async function GET(req: NextRequest) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+  }
+
+  // 送り状を BondEx で発行しない運用 (2026-09-24) では郵送する紙が存在しない → 何もしない。
+  if (!waybillIssuanceEnabled()) {
+    return NextResponse.json({ ok: true, skipped: "waybill issuance disabled (no paper labels to mail)" })
   }
 
   // 二重起動ロック (GitHub Actions の誤判定リトライ対策・2026-08-31 監査対応)。

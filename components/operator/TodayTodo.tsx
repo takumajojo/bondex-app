@@ -51,7 +51,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   "delay-pickup": "集荷遅れ",
   "delay-delivery": "配送遅れ",
   "charge-failed": "課金失敗",
-  failed: "発行失敗",
+  failed: "手配失敗",
 }
 
 export default function TodayTodo({ onSelectView }: { onSelectView?: (view: string) => void }) {
