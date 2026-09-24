@@ -97,7 +97,22 @@ try {
   // contract-pdf.tsx も同じ実装を登録している — 変更時は両方を揃えること。
   Font.registerHyphenationCallback((word: string) => {
     if (word.includes(JP_BREAK)) return word.split(/( )/).filter(Boolean)
-    if (/^[\x20-\x7e]+$/.test(word)) return [word] // ASCII 語はハイフン分割しない
+    if (/^[\x20-\x7e]+$/.test(word)) {
+      // ASCII 語は原則そのまま。ただし極端に長い語 (人名・ホテル名の連結など) は
+      // 枠からはみ出すため、ハイフン位置 (ハイフンは前側に残す) → 12字ごとに分割可能にする。
+      // (textkit は分割点で改行するとハイフンを自動挿入するため、区切りは 12 字ごと。
+      //  区切りが "-" の直後になる場合は 1 字延ばして "--" を避ける)
+      if (word.length <= 16) return [word]
+      const out: string[] = []
+      let i = 0
+      while (i < word.length) {
+        let j = Math.min(i + 12, word.length)
+        if (j < word.length && word[j - 1] === "-") j++
+        out.push(word.slice(i, j))
+        i = j
+      }
+      return out
+    }
     return Array.from(word) // jb() を通っていない CJK (旧挙動 — contract 用)
   })
 } catch {

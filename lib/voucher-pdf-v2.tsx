@@ -116,8 +116,8 @@ const s = StyleSheet.create({
   bandDivider: { width: mm(0.4), backgroundColor: "#e9a2ad", marginHorizontal: mm(4), alignSelf: "stretch" },
   bandRouteEn: { fontSize: 14.5, fontWeight: 700, color: WHITE },
   bandRouteJa: { fontSize: 10.5, fontWeight: 500, color: WHITE, marginTop: mm(0.8) },
-  bandUseIn: { fontSize: 21, fontWeight: 700, color: WHITE, lineHeight: 1.05 },
-  bandDate: { fontSize: 10, fontWeight: 700, color: WHITE },
+  bandUseIn: { fontSize: 19, fontWeight: 700, color: WHITE, lineHeight: 1.05 },
+  bandDate: { fontSize: 10, fontWeight: 700, color: WHITE, marginTop: mm(1) },
   bandNote: { fontSize: 5.6, color: "#f9dde2", marginTop: mm(0.8) },
   // title + QR
   h1: { fontSize: 15, fontWeight: 700, lineHeight: 1.1 },
@@ -142,12 +142,12 @@ const s = StyleSheet.create({
   cardWhenJa: { fontSize: 7, marginTop: mm(0.8) },
   // info row
   infoRow: { flexDirection: "row", borderWidth: mm(0.3), borderColor: INK, marginTop: mm(3.5), height: mm(19), overflow: "hidden" },
-  infoCell: { flex: 1, paddingVertical: mm(1.8), paddingHorizontal: mm(2.5), borderLeftWidth: mm(0.3), borderLeftColor: INK },
+  infoCell: { flex: 1, paddingVertical: mm(1.8), paddingHorizontal: mm(2.5), borderLeftWidth: mm(0.3), borderLeftColor: INK, overflow: "hidden" },
   infoK: { fontSize: 6, letterSpacing: 0.8, color: INK_SOFT },
   infoV: { fontSize: 11, fontWeight: 700, marginTop: mm(0.3) },
   infoS: { fontSize: 6.8, color: INK_SOFT, marginTop: mm(0.3) },
   // route
-  routeBox: { borderWidth: mm(0.3), borderColor: GRAY_LINE, backgroundColor: GRAY_BG, marginTop: mm(3), padding: mm(3), height: mm(34), overflow: "hidden" },
+  routeBox: { borderWidth: mm(0.3), borderColor: GRAY_LINE, backgroundColor: GRAY_BG, marginTop: mm(3), padding: mm(3), height: mm(37), overflow: "hidden" },
   routeHead: { fontSize: 7.5, letterSpacing: 1.6, fontWeight: 500 },
   node: { flex: 1, alignItems: "center" },
   nodeCircle: { width: mm(9), height: mm(9), borderRadius: mm(4.5), alignItems: "center", justifyContent: "center" },
@@ -155,7 +155,8 @@ const s = StyleSheet.create({
   nodeDate: { fontSize: 7.5, fontWeight: 700, marginTop: mm(1.5) },
   nodeEn: { fontSize: 9, fontWeight: 700, marginTop: mm(0.4) },
   nodeJa: { fontSize: 7.5, marginTop: mm(0.4) },
-  nodeThis: { fontSize: 7.5, fontWeight: 700, color: RED, marginTop: mm(0.8) },
+  nodeThisBadge: { backgroundColor: RED, borderRadius: mm(1), paddingVertical: mm(0.7), paddingHorizontal: mm(2), marginTop: mm(1) },
+  nodeThisBadgeText: { fontSize: 6.8, fontWeight: 700, color: WHITE, letterSpacing: 0.3 },
   // hotel staff band
   staffBand: { backgroundColor: INK, marginTop: mm(3), paddingVertical: mm(3), paddingHorizontal: mm(4), flexDirection: "row", alignItems: "center" },
   staffTitle: { fontSize: 15, fontWeight: 700, color: WHITE },
@@ -348,7 +349,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
           <VIcon name="calendar-white" size={mm(9)} style={{ marginRight: mm(3) }} />
           <View style={{ flex: 1 }}>
             <Text style={s.bandKicker}>USE THIS VOUCHER IN</Text>
-            <Text style={[s.bandUseIn, ctx.fromArea.en.length > 14 ? { fontSize: 11 } : ctx.fromArea.en.length > 8 ? { fontSize: 15 } : {}, clamp(1)]}>{ctx.fromArea.en}</Text>
+            <Text style={[s.bandUseIn, ctx.fromArea.en.length > 14 ? { fontSize: 11 } : ctx.fromArea.en.length > 8 ? { fontSize: 14 } : {}, clamp(1)]}>{ctx.fromArea.en}</Text>
             <Text style={s.bandDate}>{`${h.formatEnDate(ctx.shipmentDate)}  ${h.dowLabel(ctx.shipmentDate)}`}</Text>
             <Text style={[s.bandNote, clamp(1)]}>{h.jb(`この用紙は${ctx.fromArea.ja}のホテルでご利用ください`)}</Text>
           </View>
@@ -453,7 +454,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
           <View style={[s.row, { alignItems: "center" }]}>
             <VIcon name={ctx.isGroup ? "group" : "person"} size={mm(6.5)} style={{ marginRight: mm(2) }} />
             <View style={{ flex: 1 }}>
-              <Text style={[s.infoV, ctx.guestName.length > 18 ? { fontSize: 8.5 } : {}, clamp(1)]}>{h.jb(ctx.guestName)}</Text>
+              <Text style={[s.infoV, ctx.guestName.length > 30 ? { fontSize: 7.8, lineHeight: 1.2 } : ctx.guestName.length > 18 ? { fontSize: 9.5, lineHeight: 1.2 } : {}, clamp(ctx.groupLine ? 1 : 2)]}>{h.jb(ctx.guestName)}</Text>
               {ctx.groupLine ? <Text style={[s.infoS, clamp(1)]}>{h.jb(ctx.groupLine)}</Text> : null}
             </View>
           </View>
@@ -463,7 +464,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
             <Text style={s.infoK}>TOUR LEADER  /  添乗員</Text>
             <View style={[s.row, { alignItems: "center" }]}>
               <VIcon name="person" size={mm(6.5)} style={{ marginRight: mm(2) }} />
-              <Text style={[s.infoV, ctx.tourLeader.length > 14 ? { fontSize: 8.5 } : {}, clamp(1)]}>{h.jb(ctx.tourLeader || "—")}</Text>
+              <Text style={[s.infoV, ctx.tourLeader.length > 24 ? { fontSize: 7.2, lineHeight: 1.2 } : ctx.tourLeader.length > 14 ? { fontSize: 8.5, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(ctx.tourLeader || "—")}</Text>
             </View>
           </View>
         ) : null}
@@ -511,12 +512,10 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                 <Text style={[s.nodeEn, n.en.length > 14 ? { fontSize: 7.2 } : {}, clamp(2)]}>{n.en}</Text>
                 <Text style={[s.nodeJa, clamp(1)]}>{h.jb(n.ja)}</Text>
                 {n.isCurrent ? (
-                  <View style={[s.row, { alignItems: "center", marginTop: mm(0.8) }]}>
-                    <VIcon name="arrow-left-red" size={mm(3.2)} style={{ marginRight: mm(1) }} />
-                    <Text style={[s.nodeThis, { marginTop: 0 }]}>THIS VOUCHER</Text>
+                  <View style={s.nodeThisBadge}>
+                    <Text style={s.nodeThisBadgeText}>{h.jb("THIS VOUCHER  ・  この用紙")}</Text>
                   </View>
                 ) : null}
-                {n.isCurrent ? <Text style={[s.nodeThis, { marginTop: mm(0.3), fontSize: 6.8 }]}>{h.jb("この用紙")}</Text> : null}
                 {n.end ? <Text style={[s.infoS, { marginTop: mm(0.8) }]}>ARRIVE</Text> : null}
               </View>
             ))}
@@ -608,8 +607,8 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
       <View style={s.band}>
         <View style={{ flex: 1, justifyContent: "center", paddingRight: mm(2) }}>
           <Text style={s.bandKicker}>{h.jb("FROM  /  発送元ホテル")}</Text>
-          <Text style={[s.bandUseIn, { fontSize: ctx.fromHotelJa.length > 18 ? 14 : ctx.fromHotelJa.length > 11 ? 17 : 21, marginTop: mm(1) }, clamp(2)]}>{h.jb(`${ctx.fromHotelJa} ご担当者様へ`)}</Text>
-          {fromEnUpper ? <Text style={[s.bandDate, { marginTop: mm(1) }, clamp(1)]}>{`FOR ${fromEnUpper} STAFF`}</Text> : null}
+          <Text style={[s.bandUseIn, { fontSize: ctx.fromHotelJa.length > 26 ? 12 : ctx.fromHotelJa.length > 18 ? 14 : 17, marginTop: mm(1), lineHeight: 1.15 }, clamp(2)]}>{h.jb(ctx.fromHotelJa)}</Text>
+          <Text style={[s.bandDate, { marginTop: mm(1) }, clamp(1)]}>{h.jb(fromEnUpper && fromEnUpper.length <= 28 ? `ご担当者様へ  /  FOR ${fromEnUpper} STAFF` : "ご担当者様へ  /  DEAR FRONT DESK STAFF")}</Text>
         </View>
         <View style={s.bandDivider} />
         <View style={{ justifyContent: "center", width: mm(58) }}>
@@ -637,7 +636,7 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.hsCell}>
           <VIcon name={ctx.isGroup ? "group" : "person"} size={mm(8)} />
           <Text style={s.hsK}>{h.jb("ご予約名 / GUEST")}</Text>
-          <Text style={[s.hsV, ctx.guestName.length > 16 ? { fontSize: 9 } : {}, clamp(2)]}>{h.jb(ctx.guestName)}</Text>
+          <Text style={[s.hsV, ctx.guestName.length > 28 ? { fontSize: 8.5, lineHeight: 1.2 } : ctx.guestName.length > 16 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(ctx.guestName)}</Text>
           {ctx.groupLine ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.groupLine)}</Text> : null}
         </View>
         <View style={s.hsCell}>
@@ -649,7 +648,7 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.hsCell}>
           <VIcon name="location-pin" size={mm(8)} />
           <Text style={s.hsK}>{h.jb("お届け先 / TO")}</Text>
-          <Text style={[s.hsV, ctx.toHotelJa.length > 14 ? { fontSize: 9 } : {}, clamp(2)]}>{h.jb(ctx.toHotelJa)}</Text>
+          <Text style={[s.hsV, ctx.toHotelJa.length > 24 ? { fontSize: 8.5, lineHeight: 1.2 } : ctx.toHotelJa.length > 14 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(ctx.toHotelJa)}</Text>
           {ctx.toHotelEn ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.toHotelEn)}</Text> : null}
           {ctx.toAddress ? <Text style={[s.hsS, { fontSize: 6.8 }, clamp(1)]}>{h.jb(ctx.toAddress)}</Text> : null}
         </View>
