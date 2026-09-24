@@ -133,13 +133,13 @@ const s = StyleSheet.create({
   cardHead: { flexDirection: "row", alignItems: "center", paddingVertical: mm(1.6), paddingHorizontal: mm(3) },
   cardNo: { fontSize: 15, fontWeight: 700, color: WHITE, marginRight: mm(3) },
   cardHeadText: { fontSize: 9.5, fontWeight: 700, color: WHITE, letterSpacing: 0.6 },
-  cardBody: { padding: mm(2.2), flexDirection: "row", flex: 1, overflow: "hidden" },
+  cardBody: { paddingVertical: mm(3), paddingHorizontal: mm(3.5), flexDirection: "row", flex: 1, overflow: "hidden" },
   cardDate: { fontSize: 15, fontWeight: 700 },
-  cardHotelEn: { fontSize: 13, fontWeight: 700 },
-  cardHotelJa: { fontSize: 8.5, marginTop: mm(0.5) },
-  cardAddr: { fontSize: 7, color: INK_SOFT, marginTop: mm(0.8) },
-  cardWhenEn: { fontSize: 8, fontWeight: 700 },
-  cardWhenJa: { fontSize: 7, marginTop: mm(0.5) },
+  cardHotelEn: { fontSize: 12.5, fontWeight: 700, lineHeight: 1.25 },
+  cardHotelJa: { fontSize: 8.5, marginTop: mm(1) },
+  cardAddr: { fontSize: 6.8, color: INK_SOFT, marginTop: mm(1) },
+  cardWhenEn: { fontSize: 8, fontWeight: 700, lineHeight: 1.3 },
+  cardWhenJa: { fontSize: 7, marginTop: mm(0.8) },
   // info row
   infoRow: { flexDirection: "row", borderWidth: mm(0.3), borderColor: INK, marginTop: mm(3.5), height: mm(19), overflow: "hidden" },
   infoCell: { flex: 1, paddingVertical: mm(1.8), paddingHorizontal: mm(2.5), borderLeftWidth: mm(0.3), borderLeftColor: INK },
@@ -147,7 +147,7 @@ const s = StyleSheet.create({
   infoV: { fontSize: 11, fontWeight: 700, marginTop: mm(0.3) },
   infoS: { fontSize: 6.8, color: INK_SOFT, marginTop: mm(0.3) },
   // route
-  routeBox: { borderWidth: mm(0.3), borderColor: GRAY_LINE, backgroundColor: GRAY_BG, marginTop: mm(3), padding: mm(3), height: mm(40), overflow: "hidden" },
+  routeBox: { borderWidth: mm(0.3), borderColor: GRAY_LINE, backgroundColor: GRAY_BG, marginTop: mm(3), padding: mm(3), height: mm(34), overflow: "hidden" },
   routeHead: { fontSize: 7.5, letterSpacing: 1.6, fontWeight: 500 },
   node: { flex: 1, alignItems: "center" },
   nodeCircle: { width: mm(9), height: mm(9), borderRadius: mm(4.5), alignItems: "center", justifyContent: "center" },
@@ -157,7 +157,7 @@ const s = StyleSheet.create({
   nodeJa: { fontSize: 7.5, marginTop: mm(0.4) },
   nodeThis: { fontSize: 7.5, fontWeight: 700, color: RED, marginTop: mm(0.8) },
   // hotel staff band
-  staffBand: { backgroundColor: INK, marginTop: mm(3), padding: mm(2.8), flexDirection: "row", alignItems: "center", height: mm(24), overflow: "hidden" },
+  staffBand: { backgroundColor: INK, marginTop: mm(3), paddingVertical: mm(3), paddingHorizontal: mm(4), flexDirection: "row", alignItems: "center" },
   staffTitle: { fontSize: 15, fontWeight: 700, color: WHITE },
   staffJa: { fontSize: 10, fontWeight: 700, color: WHITE, lineHeight: 1.4 },
   staffEn: { fontSize: 7.5, color: "#d9d9de", marginTop: mm(1) },
@@ -356,7 +356,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
       </View>
 
       {/* タイトル + QR */}
-      <View style={[s.row, { marginTop: mm(3.5), alignItems: "flex-start", height: mm(25), overflow: "hidden" }]}>
+      <View style={[s.row, { marginTop: mm(3.5), alignItems: "flex-start", height: mm(30), overflow: "hidden" }]}>
         <View style={{ flex: 1, paddingTop: mm(1) }}>
           <Text style={s.h1}>LUGGAGE FORWARDING VOUCHER</Text>
           <Text style={s.h1Ja}>{h.jb("荷物配送引換証")}</Text>
@@ -374,21 +374,22 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
       </View>
 
       {/* DROP OFF / COLLECT */}
-      <View style={[s.row, { marginTop: mm(3.5), alignItems: "stretch", height: mm(50) }]}>
+      <View style={[s.row, { marginTop: mm(3.5), alignItems: "stretch", height: mm(62) }]}>
         <View style={s.card}>
           <View style={[s.cardHead, { backgroundColor: RED }]}>
             <Text style={s.cardNo}>01</Text>
             <Text style={s.cardHeadText}>{h.jb("DROP OFF  /  お預け")}</Text>
           </View>
           <View style={[s.cardBody, { backgroundColor: RED_TINT }]}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: "space-between" }}>
+              <View>
               <View style={[s.row, { alignItems: "center" }]}>
                 <VIcon name="calendar" size={mm(6.5)} style={{ marginRight: mm(2.5) }} />
                 <Text style={s.cardDate}>
                   {h.formatEnDate(ctx.shipmentDate)} <Text style={{ fontSize: 9, color: RED }}>{h.dowLabel(ctx.shipmentDate)}</Text>
                 </Text>
               </View>
-              <View style={[s.row, { alignItems: "flex-start", marginTop: mm(2.5) }]}>
+              <View style={[s.row, { alignItems: "flex-start", marginTop: mm(3) }]}>
                 <VIcon name="hotel" size={mm(7)} style={{ marginRight: mm(2.5), marginTop: mm(0.5) }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s.cardHotelEn, (ctx.fromHotelEn || ctx.fromHotelJa).length > 26 ? { fontSize: 10.5 } : {}, clamp(2)]}>{h.jb(ctx.fromHotelEn || ctx.fromHotelJa)}</Text>
@@ -396,12 +397,15 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                   {ctx.fromAddress ? <Text style={[s.cardAddr, clamp(1)]}>{h.jb(ctx.fromAddress)}</Text> : null}
                 </View>
               </View>
+              </View>
               <View style={{ marginTop: mm(3) }}>
                 <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.dropWhenEn)}</Text>
                 <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb("チェックアウトまでにフロントへお預けください")}</Text>
               </View>
             </View>
-            <VIcon name="luggage" size={mm(13)} style={{ marginLeft: mm(2), marginTop: mm(3) }} />
+            <View style={{ justifyContent: "center", marginLeft: mm(3) }}>
+              <VIcon name="luggage" size={mm(15)} />
+            </View>
           </View>
         </View>
         <View style={{ width: mm(9), alignItems: "center", justifyContent: "center" }}>
@@ -413,14 +417,15 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
             <Text style={s.cardHeadText}>{h.jb("COLLECT  /  お受け取り")}</Text>
           </View>
           <View style={[s.cardBody, { backgroundColor: GRAY_BG }]}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: "space-between" }}>
+              <View>
               <View style={[s.row, { alignItems: "center" }]}>
                 <VIcon name="calendar" size={mm(6.5)} style={{ marginRight: mm(2.5) }} />
                 <Text style={s.cardDate}>
                   {h.formatEnDate(ctx.expectedArrival)} <Text style={{ fontSize: 9, color: RED }}>{h.dowLabel(ctx.expectedArrival)}</Text>
                 </Text>
               </View>
-              <View style={[s.row, { alignItems: "flex-start", marginTop: mm(2.5) }]}>
+              <View style={[s.row, { alignItems: "flex-start", marginTop: mm(3) }]}>
                 <VIcon name="hotel" size={mm(7)} style={{ marginRight: mm(2.5), marginTop: mm(0.5) }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s.cardHotelEn, (ctx.toHotelEn || ctx.toHotelJa).length > 26 ? { fontSize: 10.5 } : {}, clamp(2)]}>{h.jb(ctx.toHotelEn || ctx.toHotelJa)}</Text>
@@ -428,12 +433,15 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                   {ctx.toAddress ? <Text style={[s.cardAddr, clamp(1)]}>{h.jb(ctx.toAddress)}</Text> : null}
                 </View>
               </View>
+              </View>
               <View style={{ marginTop: mm(3) }}>
                 <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.pickWhenEn)}</Text>
                 <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb("チェックイン時にお受け取りいただけます")}</Text>
               </View>
             </View>
-            <VIcon name="luggage" size={mm(13)} style={{ marginLeft: mm(2), marginTop: mm(3) }} />
+            <View style={{ justifyContent: "center", marginLeft: mm(3) }}>
+              <VIcon name="luggage" size={mm(15)} />
+            </View>
           </View>
         </View>
       </View>
@@ -484,7 +492,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
       {/* YOUR LUGGAGE ROUTE */}
       <View style={s.routeBox}>
         <Text style={s.routeHead}>{h.jb(`YOUR LUGGAGE ROUTE  /  荷物の旅程（全 ${ctx.totalLegs} 区間）`)}</Text>
-        <View style={{ position: "relative", marginTop: mm(3) }}>
+        <View style={{ position: "relative", marginTop: mm(2.5) }}>
           {nodes.length > 1 ? (
             <View
               style={{
@@ -518,7 +526,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
 
       {/* 到着先ホテル向けの申し送り (あれば): ホテル用紙は発送元にしか渡さないため、ここに残す */}
       {ctx.noteForTo ? (
-        <View style={{ borderWidth: mm(0.3), borderColor: GRAY_LINE, padding: mm(2), marginTop: mm(2.5), height: mm(13), overflow: "hidden" }}>
+        <View style={{ borderWidth: mm(0.3), borderColor: GRAY_LINE, padding: mm(2), marginTop: mm(2.5), height: mm(12), overflow: "hidden" }}>
           <Text style={{ fontSize: 6.5, fontWeight: 700, color: INK_SOFT, letterSpacing: 0.6 }}>{h.jb("到着先ホテル様へ / TO THE DESTINATION HOTEL")}</Text>
           <Text style={[{ fontSize: 7.5, marginTop: mm(0.8), lineHeight: 1.5 }, clamp(2)]}>
             {h.jb(`BondExよりご連絡済みのお荷物です。ご予約名「${ctx.guestName}」でご照合のうえ${who}へお渡しください。　・${ctx.noteForTo}`)}
