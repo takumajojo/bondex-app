@@ -6,17 +6,21 @@ import { getShipment } from "@/lib/shipments-db"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { notifyBondEx } from "@/lib/notify"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
+import { legLockedForAgency, isSelfServiceCutoffPassed, normalizeRepresentative } from "@/lib/agency-self-service"
+import { resyncBookingToDrive } from "@/lib/drive-resync"
 
 export const runtime = "nodejs"
 
 /**
  * PATCH /api/agency/shipment/[id] — 代理店セルフサービスの区間変更。
- *   body: { shipmentDate?, expectedArrival?, suitcaseCount?, cancel?: true }
+ *   body: { shipmentDate?, expectedArrival?, suitcaseCount?, representative?, cancel?: true }
  *
  * 安全ゲート:
  *  - 自社の予約のみ (agency 名一致)
- *  - status が requested / pending (未発行) のときだけ変更可。
- *    発行済み以降は送り状との食い違い事故になるため直接変更させない (BondEx へ連絡)。
+ *  - ロック判定は lib/agency-self-service.ts (送り状が実在 / 追跡番号あり / 集荷済み以降 = 不可)。
+ *    2026-09-24 の運用変更で依頼直後から "issued" (手配済) になるため、status だけでは判定しない。
+ *  - 日程・個数・代表者名は「配送前日 17:00 (JST)」まで (完了画面・受付メールの案内どおり)。
+ *  - 代表者名は予約単位 → 全区間に反映。受取人名が旧代表者名と同じなら揃える。
  *  - 団体 (booking_type='group') の個数変更は不可 (荷物リストと不整合になるため。
  *    団体ダッシュボードでリストを編集する)。
  *  - 未発行は amount_yen=0 のため、個数変更しても請求は発行時に個数×¥5,000で確定=ズレない。
@@ -42,22 +46,25 @@ export async function PATCH(
   if (!shipment || shipment.agency !== auth.agency.name) {
     return NextResponse.json({ error: "not found" }, { status: 404 })
   }
-  if (shipment.status !== "requested" && shipment.status !== "pending") {
+  if (legLockedForAgency(shipment)) {
     return NextResponse.json(
       {
         error: en
-          ? "This leg has already been issued and can't be changed here. Please contact BondEx."
-          : "この区間は発行済みのため、こちらから変更できません。BondEx までご連絡ください。",
+          ? "This leg has already been handed to the courier and can't be changed here. Please contact BondEx."
+          : "この区間は配送業者への手配が済んでいるため、こちらから変更できません。BondEx までご連絡ください。",
         code: "LOCKED",
       },
       { status: 409 },
     )
   }
+  // 変更可能な状態 (未集荷・送り状なし) だけを条件付きで更新するためのフィルタ
+  const editableStatuses = ["requested", "pending", "issued"]
 
   let body: {
     shipmentDate?: unknown
     expectedArrival?: unknown
     suitcaseCount?: unknown
+    representative?: unknown
     cancel?: unknown
   }
   try {
@@ -87,12 +94,13 @@ export async function PATCH(
         cancel_source: "agency",
       })
       .eq("id", id)
-      .in("status", ["requested", "pending"])
+      .in("status", editableStatuses)
+      .is("yamato_label_url", null)
       .select("id")
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if ((upd ?? []).length === 0) {
       return NextResponse.json(
-        { error: "LOCKED", message: "送り状が発行済みのため、取り消しは BondEx へご連絡ください。" },
+        { error: "LOCKED", message: "配送業者への手配が済んでいるため、取り消しは BondEx へご連絡ください。" },
         { status: 409 },
       )
     }
@@ -101,7 +109,7 @@ export async function PATCH(
       title: `${legRef}（${shipment.agency}）区間を取り消し`,
       lines: [
         `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
-        `発送日: ${shipment.shipment_date}（未発行のため送り状なし・課金なし）`,
+        `発送日: ${shipment.shipment_date}（集荷前のため課金なし）`,
         `代理店の操作によるセルフ取り消し`,
       ],
       link: `/track/${shipment.booking_id}`,
@@ -110,9 +118,21 @@ export async function PATCH(
     return NextResponse.json({ ok: true, cancelled: true })
   }
 
-  // ── 日程 / 個数の変更
+  // ── 日程 / 個数 / 代表者名の変更 — 配送前日 17:00 (JST) まで
+  if (isSelfServiceCutoffPassed(shipment.shipment_date)) {
+    return NextResponse.json(
+      {
+        error: "CUTOFF_PASSED",
+        message: en
+          ? "Changes are accepted until 17:00 (JST) on the day before shipment. Please contact BondEx."
+          : "変更は配送前日の 17:00 までの受付です。お手数ですが BondEx までご連絡ください。",
+      },
+      { status: 409 },
+    )
+  }
   const patch: Record<string, unknown> = {}
   const changes: string[] = []
+  const bookingPatch: Record<string, unknown> = {}
 
   // リードタイムゲート (団体30個以上=発送7日以内は全変更不可 / 個数変更=14日前まで)
   const gateInput = {
@@ -198,23 +218,58 @@ export async function PATCH(
     changes.push(`個数: ${shipment.suitcase_count} → ${n}`)
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (body.representative !== undefined) {
+    const rep = normalizeRepresentative(body.representative)
+    if (!rep) {
+      return NextResponse.json(
+        { error: en ? "Please enter the guest name (up to 80 characters)." : "代表者名をご入力ください（80文字以内）。" },
+        { status: 400 },
+      )
+    }
+    if (rep !== shipment.representative) {
+      bookingPatch.representative = rep
+      const oldRecipient = shipment.recipient || ""
+      if (!oldRecipient || oldRecipient === shipment.representative) bookingPatch.recipient = rep
+      changes.push(`代表者: ${shipment.representative || "—"} → ${rep}（全区間）`)
+    }
+  }
+
+  if (Object.keys(patch).length === 0 && Object.keys(bookingPatch).length === 0) {
     return NextResponse.json({ error: "no fields" }, { status: 400 })
   }
 
-  // 同上: 発行と同時刻の変更が「送り状と DB の日付・個数の食い違い」を生まないよう条件付き
-  const { data: upd2, error } = await sb
-    .from("shipments")
-    .update(patch)
-    .eq("id", id)
-    .in("status", ["requested", "pending"])
-    .select("id")
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if ((upd2 ?? []).length === 0) {
-    return NextResponse.json(
-      { error: "LOCKED", message: "送り状が発行済みのため、変更は BondEx へご連絡ください。" },
-      { status: 409 },
-    )
+  // 同上: 集荷と同時刻の変更が「佐川へ渡した情報と DB の食い違い」を生まないよう条件付き
+  if (Object.keys(patch).length > 0) {
+    const { data: upd2, error } = await sb
+      .from("shipments")
+      .update(patch)
+      .eq("id", id)
+      .in("status", editableStatuses)
+      .is("yamato_label_url", null)
+      .select("id")
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if ((upd2 ?? []).length === 0) {
+      return NextResponse.json(
+        { error: "LOCKED", message: "配送業者への手配が済んでいるため、変更は BondEx へご連絡ください。" },
+        { status: 409 },
+      )
+    }
+  }
+  // 代表者名は予約単位 → 全区間 (変更可能な区間のみ)。
+  if (Object.keys(bookingPatch).length > 0) {
+    const { error } = await sb
+      .from("shipments")
+      .update(bookingPatch)
+      .eq("booking_id", shipment.booking_id)
+      .in("status", editableStatuses)
+      .is("yamato_label_url", null)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Drive のバウチャーも差し替え (best-effort)。ポータルの DL は都度生成なので常に最新。
+    try {
+      await resyncBookingToDrive(sb, shipment.booking_id)
+    } catch {
+      /* Drive 差し替え失敗は無視 */
+    }
   }
 
   await notifyBondEx({
@@ -223,7 +278,7 @@ export async function PATCH(
     lines: [
       `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
       ...changes,
-      `未発行区間の代理店セルフ変更（発行時の書類に自動反映）`,
+      `代理店セルフ変更（バウチャーは再生成で自動反映・佐川への集荷情報は最新値で送付）`,
     ],
     link: `/track/${shipment.booking_id}`,
     linkLabel: "追跡ページで確認",

@@ -142,6 +142,8 @@ export default function OperatorBookingDetailPage() {
   const [trackDraft, setTrackDraft] = useState("")
   const [saving, setSaving] = useState(false)
   const [editErr, setEditErr] = useState("")
+  const [editingRep, setEditingRep] = useState(false)
+  const [repDraft, setRepDraft] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -201,7 +203,7 @@ export default function OperatorBookingDetailPage() {
   }, [])
 
   // 予約情報の修正を保存。代理店は全区間・配送番号は該当区間に反映 (サーバー側で振り分け)。
-  const saveEdit = async (id: string, payload: { agency?: string; tracking?: string }) => {
+  const saveEdit = async (id: string, payload: { agency?: string; tracking?: string; representative?: string }) => {
     setSaving(true)
     setEditErr("")
     try {
@@ -213,6 +215,7 @@ export default function OperatorBookingDetailPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "更新に失敗しました")
       setEditingAgency(false)
+      setEditingRep(false)
       setEditTrackId("")
       await load()
     } catch (e) {
@@ -339,7 +342,46 @@ export default function OperatorBookingDetailPage() {
                   </span>
                 )}
               </div>
-              <KV k="代表者" v={`${head.representative}（${head.traveler_count}名）`} />
+              <div className="flex items-baseline gap-2 text-xs">
+                <span className="w-24 shrink-0 text-muted-foreground">代表者</span>
+                {editingRep ? (
+                  <span className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      value={repDraft}
+                      onChange={(e) => setRepDraft(e.target.value)}
+                      maxLength={80}
+                      placeholder="例) Mrs. Indira Basappa"
+                      className="rounded border border-border bg-white px-2 py-1 text-xs w-[15rem] max-w-full"
+                    />
+                    <button
+                      onClick={() => repDraft.trim() && void saveEdit(head.id, { representative: repDraft })}
+                      disabled={saving || !repDraft.trim() || repDraft.trim() === head.representative}
+                      className="rounded bg-[#C8102E] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                    >
+                      保存
+                    </button>
+                    <button
+                      onClick={() => { setEditingRep(false); setEditErr("") }}
+                      className="text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      取消
+                    </button>
+                    <span className="basis-full text-[10px] text-muted-foreground">
+                      全区間・受取人名・バウチャーに反映されます（人数はそのまま）
+                    </span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <span className="text-foreground">{head.representative}（{head.traveler_count}名）</span>
+                    <button
+                      onClick={() => { setEditingRep(true); setRepDraft(head.representative || ""); setEditErr("") }}
+                      className="text-[11px] text-[#C8102E] hover:underline"
+                    >
+                      変更
+                    </button>
+                  </span>
+                )}
+              </div>
               <KV k="受取人" v={head.recipient || "—"} />
               <KV k="依頼日" v={new Date(head.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} />
               {head.tour_number && <KV k="ツアー番号" v={<span className="font-mono">{head.tour_number}</span>} />}
@@ -347,7 +389,7 @@ export default function OperatorBookingDetailPage() {
               {head.group_name && <KV k="団体名" v={head.group_name} />}
               <KV k="バウチャー言語" v={(head.guest_language || "en").toUpperCase()} />
             </div>
-            {editingAgency && editErr && (
+            {(editingAgency || editingRep) && editErr && (
               <p className="mt-2 text-[11px] text-red-700">{editErr}</p>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2">

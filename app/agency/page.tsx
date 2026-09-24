@@ -31,6 +31,7 @@ import { AgencyContactFab } from "@/components/agency-contact-fab"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { openRosterPrintWindow } from "@/lib/roster-print"
 import type { GroupViewPayload } from "@/lib/group-view"
+import { legLockedForAgency, isSelfServiceCutoffPassed } from "@/lib/agency-self-service"
 
 interface Shipment {
   id: string
@@ -124,6 +125,12 @@ const messages = {
     actCount: "Change pieces",
     actHotelGuest: "Change delivery hotel",
     actHotelPickup: "Change pickup hotel",
+    actName: "Change guest name",
+    ncTitle: "Change guest name",
+    ncName: "Guest (representative) name",
+    ncNote: "Applies to every leg of this booking and to the voucher. The number of travelers stays the same.",
+    lockCutoff:
+      "Changes are accepted until 17:00 (JST) on the day before shipment. Please contact BondEx from “Contact” and we'll take care of it.",
     hotelChangeDone: "Hotel changed. BondEx has been notified.",
     lockGroupLarge:
       "Large group bookings (30+ pieces) can't be changed here within a week of shipment. Please contact BondEx from “Contact” and we'll take care of it.",
@@ -249,6 +256,12 @@ const messages = {
     actCount: "個数を変更",
     actHotelGuest: "お届け先を変更",
     actHotelPickup: "発送元を変更",
+    actName: "代表者名を変更",
+    ncTitle: "代表者名を変更",
+    ncName: "代表者（お客様）のお名前",
+    ncNote: "この予約の全区間とバウチャーに反映されます。人数は変わりません。",
+    lockCutoff:
+      "変更は配送前日の 17:00 までの受付です。締切を過ぎた分は「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
     hotelChangeDone: "ホテルを変更しました。BondEx にも通知済みです。",
     lockGroupLarge:
       "団体（30個以上）のご予約は、発送1週間以内の変更ができません。お手数ですが「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
@@ -360,7 +373,7 @@ export default function AgencyDashboard() {
   // 未発行(requested/pending)のみ直接変更可。発行済みは locked モーダルで案内。
   const [actionTarget, setActionTarget] = useState<{
     shipment: Shipment
-    action: "dates" | "count" | "cancel" | "locked"
+    action: "dates" | "count" | "name" | "cancel" | "locked"
     lockedMessage?: string
   } | null>(null)
   const [actNote, setActNote] = useState("")
@@ -1153,6 +1166,7 @@ export default function AgencyDashboard() {
                             const v = e.target.value as
                               | "dates"
                               | "count"
+                              | "name"
                               | "hotel-guest"
                               | "hotel-pickup"
                               | "cancel"
@@ -1165,9 +1179,15 @@ export default function AgencyDashboard() {
                               setDupTarget(it)
                               return
                             }
-                            const editable = it.status === "requested" || it.status === "pending"
+                            // ロック: 送り状が実在 / 追跡番号あり / 集荷済み以降 (lib/agency-self-service.ts)
+                            const editable = !legLockedForAgency(it)
                             if (!editable) {
                               setActionTarget({ shipment: it, action: "locked" })
+                              return
+                            }
+                            // 日程・個数・代表者名は配送前日 17:00 まで (完了画面・受付メールの案内どおり)
+                            if ((v === "dates" || v === "count" || v === "name") && isSelfServiceCutoffPassed(it.shipment_date)) {
+                              setActionTarget({ shipment: it, action: "locked", lockedMessage: t.lockCutoff })
                               return
                             }
                             // リードタイムゲート (団体30個以上=発送7日以内は全変更不可 / 個数=14日前まで)。
@@ -1213,6 +1233,7 @@ export default function AgencyDashboard() {
                             <>
                               <option value="dates">{t.actDates}</option>
                               {it.booking_type !== "group" && <option value="count">{t.actCount}</option>}
+                              <option value="name">{t.actName}</option>
                               <option value="hotel-guest">{t.actHotelGuest}</option>
                               <option value="hotel-pickup">{t.actHotelPickup}</option>
                               <option value="cancel">{t.actCancel}</option>
@@ -1436,7 +1457,7 @@ function AgencyActionModal({
   onDone,
 }: {
   t: (typeof messages)[keyof typeof messages]
-  target: { shipment: Shipment; action: "dates" | "count" | "cancel" | "locked"; lockedMessage?: string }
+  target: { shipment: Shipment; action: "dates" | "count" | "name" | "cancel" | "locked"; lockedMessage?: string }
   onClose: () => void
   onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
   onDone: (msg: string) => void
@@ -1448,6 +1469,7 @@ function AgencyActionModal({
   const [ship, setShip] = useState(s.shipment_date)
   const [arr, setArr] = useState(s.expected_arrival || s.shipment_date)
   const [count, setCount] = useState(s.suitcase_count)
+  const [rep, setRep] = useState(s.representative || "")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
 
@@ -1471,12 +1493,16 @@ function AgencyActionModal({
 
   const datesChanged = ship !== s.shipment_date || arr !== (s.expected_arrival || s.shipment_date)
   const countChanged = count !== s.suitcase_count
+  const repClean = rep.replace(/\s+/g, " ").trim()
+  const repChanged = repClean !== (s.representative || "")
   const invalid =
     action === "dates"
       ? !DATE_OK(ship) || !DATE_OK(arr) || arr < ship || !datesChanged
       : action === "count"
         ? count < 1 || count > 50 || !countChanged
-        : false
+        : action === "name"
+          ? !repClean || repClean.length > 80 || !repChanged
+          : false
 
   const apply = async () => {
     setBusy(true)
@@ -1486,7 +1512,9 @@ function AgencyActionModal({
         ? { cancel: true }
         : action === "dates"
           ? { shipmentDate: ship, expectedArrival: arr }
-          : { suitcaseCount: count }
+          : action === "name"
+            ? { representative: repClean }
+            : { suitcaseCount: count }
     const r = await onApply(body)
     if (r.ok) {
       onDone(action === "cancel" ? t.actCancelDone : t.actDone)
@@ -1501,7 +1529,9 @@ function AgencyActionModal({
       ? t.dcTitle
       : action === "count"
         ? t.ccTitle
-        : action === "cancel"
+        : action === "name"
+          ? t.ncTitle
+          : action === "cancel"
           ? t.cxTitle
           : target.lockedMessage
             ? t.lockedTitleGate
@@ -1588,6 +1618,20 @@ function AgencyActionModal({
                   />
                 </div>
               </div>
+            ) : action === "name" ? (
+              <div className="space-y-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">{t.ncName}</label>
+                  <input
+                    type="text"
+                    value={rep}
+                    maxLength={80}
+                    onChange={(e) => setRep(e.target.value)}
+                    className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">{t.ncNote}</p>
+              </div>
             ) : (
               <div className="space-y-2">
                 <div className="space-y-1">
@@ -1630,6 +1674,8 @@ function AgencyActionModal({
                       <p className="text-foreground">{s.shipment_date}</p>
                       <p className="text-xs text-muted-foreground">→ {s.expected_arrival || s.shipment_date}</p>
                     </>
+                  ) : action === "name" ? (
+                    <p className="text-foreground break-words">{s.representative || "—"}</p>
                   ) : (
                     <p className="text-foreground tabular-nums">{s.suitcase_count}</p>
                   )}
@@ -1641,6 +1687,8 @@ function AgencyActionModal({
                       <p className="font-medium text-foreground">{ship}</p>
                       <p className="text-xs text-muted-foreground">→ {arr}</p>
                     </>
+                  ) : action === "name" ? (
+                    <p className="font-medium text-foreground break-words">{repClean}</p>
                   ) : (
                     <p className="font-medium text-foreground tabular-nums">{count}</p>
                   )}
@@ -1648,6 +1696,7 @@ function AgencyActionModal({
               </div>
             </div>
             {action === "count" && <p className="text-[11px] text-muted-foreground">{t.ccFeeNote}</p>}
+            {action === "name" && <p className="text-[11px] text-muted-foreground">{t.ncNote}</p>}
             {err && <p className="text-xs text-red-700">{err}</p>}
             <div className="flex items-center justify-end gap-2">
               <button

@@ -3,6 +3,8 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { notifyBondEx } from "@/lib/notify"
+import { normalizeRepresentative } from "@/lib/agency-self-service"
+import { resyncBookingToDrive } from "@/lib/drive-resync"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -18,8 +20,12 @@ export const maxDuration = 20
  *                                    // 存在する名前のみ許可 (誤入力で請求が飛ばない事故を防ぐ)。
  *     tracking?: string | string[], // 佐川/ヤマトの送り状No。この区間 (id) のみ更新。
  *                                    // 仮番号 → 正式番号の差し替え用。空配列/空文字で消去。
+ *     representative?: string,      // 代表者名 (2026-09-24 追加)。予約(booking_id)の全区間に反映。
+ *                                    // 受取人名が旧代表者名と同じ (または空) なら受取人名も揃える。
+ *                                    // バウチャーは DB から都度生成されるので自動で新しい名前になる。
+ *                                    // Drive フォルダのバウチャーも best-effort で差し替える。
  *   }
- *   agency / tracking の少なくとも一方が必要。
+ *   agency / tracking / representative の少なくとも一方が必要。
  *
  *   配送番号を差し替えたら yamato_tracking_detail を null に戻し、次回 sync-tracking で
  *   新しい番号の配送状況を取り直させる (古い番号の詳細が残らないように)。
@@ -32,7 +38,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const shipmentId = (id || "").trim()
   if (!shipmentId) return NextResponse.json({ error: "shipment id required" }, { status: 400 })
 
-  let body: { agency?: unknown; tracking?: unknown }
+  let body: { agency?: unknown; tracking?: unknown; representative?: unknown }
   try {
     body = (await req.json()) as typeof body
   } catch {
@@ -41,8 +47,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const hasAgency = typeof body.agency === "string"
   const hasTracking = body.tracking !== undefined
-  if (!hasAgency && !hasTracking) {
-    return NextResponse.json({ error: "agency か tracking のいずれかを指定してください" }, { status: 400 })
+  const hasRepresentative = body.representative !== undefined
+  if (!hasAgency && !hasTracking && !hasRepresentative) {
+    return NextResponse.json({ error: "agency / tracking / representative のいずれかを指定してください" }, { status: 400 })
+  }
+  const representative = hasRepresentative ? normalizeRepresentative(body.representative) : null
+  if (hasRepresentative && !representative) {
+    return NextResponse.json({ error: "代表者名を入力してください (80文字以内)" }, { status: 400 })
   }
 
   // tracking の正規化: 文字列は改行/カンマ/空白区切り、配列はそのまま。数字のみ 10〜14 桁を許可。
@@ -93,6 +104,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const oldAgency = shipment.agency
   const oldTracking = (shipment.yamato_tracking as string[] | null) ?? []
+  const oldRepresentative = shipment.representative || ""
+  const oldRecipient = shipment.recipient || ""
 
   // 代理店は予約単位 → 全区間に反映。配送番号はこの区間 (id) のみ。
   const results: string[] = []
@@ -112,6 +125,26 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`配送番号: [${oldTracking.join(", ") || "—"}] → [${(tracking ?? []).join(", ") || "—"}]`)
   }
+  let driveResynced = false
+  if (representative && representative !== oldRepresentative) {
+    // 代表者名は予約単位 → 全区間。受取人名が代表者名と同じ運用 (依頼フォームは同一値) なら揃える。
+    const syncRecipient = !oldRecipient || oldRecipient === oldRepresentative
+    const patch: Record<string, string> = { representative }
+    if (syncRecipient) patch.recipient = representative
+    const { error: upErr } = await sb
+      .from("shipments")
+      .update(patch)
+      .eq("booking_id", shipment.booking_id)
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    results.push(`代表者: ${oldRepresentative || "—"} → ${representative}（全区間${syncRecipient ? "・受取人名も同じに" : ""}）`)
+    // Drive のバウチャーも差し替える (失敗しても画面からの再発行で最新が出るので握り潰す)。
+    try {
+      const r = await resyncBookingToDrive(sb, shipment.booking_id)
+      driveResynced = r.ok
+    } catch {
+      driveResynced = false
+    }
+  }
 
   // 社内 Slack へ監査ログ (best-effort)。代理店変更は請求に効くので記録を残す。
   if (results.length > 0) {
@@ -130,5 +163,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     changed: results,
     agency: hasAgency ? agency : oldAgency,
     tracking: hasTracking ? tracking : oldTracking,
+    representative: representative ?? oldRepresentative,
+    driveResynced,
   })
 }
