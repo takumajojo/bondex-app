@@ -4,6 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { listIssueDue, promoteDeferredInWindow, setShipmentError, type ShipmentRecord } from "@/lib/shipments-db"
 import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
 import { sendMail } from "@/lib/mailer"
+import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 
 export const runtime = "nodejs"
 export const maxDuration = 300 // 複数区間の Ship&co 発行 + Drive 格納で時間がかかる
@@ -127,8 +128,12 @@ export async function GET(req: NextRequest) {
       byBooking.set(s.booking_id, arr)
     }
 
-    // 自動発行が既定 (2026-09-15 谷口さん決定)。AUTO_ISSUE_ENABLED="false" のときだけ止める。
-    const autoIssue = process.env.AUTO_ISSUE_ENABLED !== "false"
+    // 2026-09-24 谷口さん決定: 送り状は佐川が作成するため BondEx 側では発行しない (lib/waybill-issuance.ts)。
+    // AUTO_ISSUE_ENABLED="true" のときだけ従来の自動発行 (2026-09-15 仕様) が動く。
+    if (!waybillIssuanceEnabled()) {
+      return NextResponse.json({ ok: true, skipped: "waybill issuance disabled (Sagawa creates the slips)", due: due.length })
+    }
+    const autoIssue = true
     const opPw = process.env.OPERATOR_PASSWORD
 
     // ── モード1: ダイジェスト通知のみ (自動発行 OFF、または鍵なし) ──

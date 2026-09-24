@@ -332,7 +332,7 @@ const messages = {
       "Your shipment is within a month, so we'll prepare the documents (voucher and shipping labels) right away and share a Google Drive folder with your registered email.",
     doneReadyHeading: "Your documents are ready",
     doneReadyBody:
-      "The voucher and shipping label have been issued — download them right below. A copy is also kept in the shared Google Drive.",
+      "Your voucher and the How to Ship guide are ready — download them right below. No shipping labels are needed: the courier brings and attaches them at pickup. A copy is also kept in the shared Google Drive.",
     dlVoucher: "Download voucher",
     howtoToggle: "Include the \"How to use this service\" guide",
     howtoToggleSub:
@@ -587,7 +587,7 @@ const messages = {
       "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・配送伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
     doneReadyHeading: "書類の準備ができました",
     doneReadyBody:
-      "バウチャーと配送伝票（送り状）を発行しました。下のボタンからすぐにダウンロードできます。共有ドライブにも保管しています。",
+      "バウチャーとご利用ガイド（How to Ship）をご用意しました。下のボタンからすぐにダウンロードできます。送り状のご用意は不要です（集荷ドライバーが持参・貼付します）。共有ドライブにも保管しています。",
     dlVoucher: "バウチャーをダウンロード",
     howtoToggle: "「How to use this service」ガイドを同梱する",
     howtoToggleSub:
@@ -1605,23 +1605,7 @@ export default function AgencyNewBookingPage() {
             <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
 
-            {/* 送り状(紙)の郵送recap (2026-08-31 監査対応): 直前に選んだ「どこへ・いつまでに」が
-                完了画面で消えると「紙は来るのか? 自分で印刷か?」が曖昧になるため再掲する。 */}
-            <div className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4 mt-4 text-left">
-              <p className="text-[12px] font-bold text-[#334155] mb-2">{t.ldReview}</p>
-              <div className="space-y-1">
-                {labelParcels.map((pc, i) => (
-                  <div key={i} className="flex items-start justify-between gap-3 text-[12px]">
-                    <span className="text-[#0F172A]">{pc.addressee}</span>
-                    <span className="text-[#64748B] shrink-0">{pc.detail}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-[#64748B] mt-2">
-                {t.ldSenderLabel}: {labelSenderLabel}
-                {labelMailDue ? ` ／ ${t.ldDueLabel}: ${labelMailDue}` : ""}
-              </p>
-            </div>
+            {/* 送り状の郵送は廃止 (2026-09-24: 送り状は佐川が作成) */}
             {bookingType === "group" && (
               <a
                 href={`/agency/groups/${encodeURIComponent(result.bookingId)}`}
@@ -1791,23 +1775,7 @@ export default function AgencyNewBookingPage() {
               <ReviewRow label={t.rvLang} value={(GUEST_LANGS.find(([c]) => c === guestLanguage)?.[1]) || guestLanguage} />
             </div>
 
-            {/* 送り状(紙)が何通どこへ届くかを確定前に見せる。
-                「1通と思っていたら区間ごとに届いた」といった行き違いを防ぐ。 */}
-            <div className="rounded-xl border border-[#E5E7EB] bg-slate-50/60 p-4 mt-3">
-              <p className="text-[12px] font-bold text-[#334155] mb-2">{t.ldReview}</p>
-              <div className="space-y-1">
-                {labelParcels.map((p, i) => (
-                  <div key={i} className="flex items-start justify-between gap-3 text-[12px]">
-                    <span className="text-[#0F172A]">{p.addressee}</span>
-                    <span className="text-[#64748B] shrink-0">{p.detail}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-[#64748B] mt-2">
-                {t.ldSenderLabel}: {labelSenderLabel}
-                {labelMailDue ? ` ／ ${t.ldDueLabel}: ${labelMailDue}` : ""}
-              </p>
-            </div>
+            {/* 送り状の郵送は廃止 (2026-09-24) */}
 
             {/* 合計金額 (2026-08-31 監査対応: 依頼フローに金額が一度も出ていなかった)。
                 発行 = 金額確定なので、確定前に必ず見せる。
@@ -2063,159 +2031,7 @@ export default function AgencyNewBookingPage() {
             </div>
           </div>
 
-          {/* ── 送り状(紙)のお届け先 ──
-              BondEx が印刷した佐川の送り状を、旅行者がお預けになる前に手元へ届ける必要がある。
-              どこへ送るか / 封筒の差出人を誰にするかを依頼時に選ぶ (谷口さん 2026-08-28)。 */}
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5">
-            <p className="text-[13px] font-bold text-[#0F172A]">{t.ldHeading}</p>
-            <p className="text-[12px] text-[#64748B] mt-1 leading-relaxed">{t.ldBody}</p>
-
-            {/* 送付先 */}
-            <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldToLabel}</p>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                ["agency", t.ldToAgency, t.ldToAgencyDesc],
-                ["hotel", t.ldToHotel, t.ldToHotelDesc],
-              ] as const).map(([val, title, desc]) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setLabelTo(val)}
-                  className={`rounded-xl border p-3 text-left transition-colors ${
-                    labelTo === val
-                      ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
-                      : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
-                  }`}
-                >
-                  <p className="text-[14px] font-bold text-[#0F172A]">{title}</p>
-                  <p className="text-[11px] text-[#64748B] mt-0.5">{desc}</p>
-                </button>
-              ))}
-            </div>
-
-            {/* ホテル宛かつ複数区間のときだけ「まとめて/区間ごと」を聞く */}
-            {labelTo === "hotel" && legs.length > 1 && (
-              <>
-                <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">
-                  {t.ldSplitLabel}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    [false, t.ldSplitOnce, t.ldSplitOnceDesc],
-                    [true, t.ldSplitEach, t.ldSplitEachDesc],
-                  ] as const).map(([val, title, desc]) => (
-                    <button
-                      key={String(val)}
-                      type="button"
-                      onClick={() => setLabelSplit(val)}
-                      className={`rounded-xl border p-3 text-left transition-colors ${
-                        labelSplit === val
-                          ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
-                          : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
-                      }`}
-                    >
-                      <p className="text-[13px] font-bold text-[#0F172A]">{title}</p>
-                      <p className="text-[11px] text-[#64748B] mt-0.5">{desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* いつまでに送るか。伝票は発送30日前からしか発行できないため範囲を制約 */}
-            <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldDueLabel}</p>
-            <input
-              type="date"
-              className={`${inputCls} max-w-[220px]`}
-              value={labelMailDue}
-              min={labelDueRange?.min}
-              max={labelDueRange?.max}
-              onChange={(e) => {
-                labelDueTouched.current = true
-                setLabelMailDue(e.target.value)
-              }}
-            />
-            <p className="text-[11px] text-[#64748B] mt-1.5">{t.ldDueHint}</p>
-            {labelDueRange && labelDueRange.min > labelDueRange.max && (
-              <p className="text-[11px] text-[#C8102E] mt-1.5" role="alert">
-                {t.dueImpossible}
-              </p>
-            )}
-
-            {/* 差出人 */}
-            <p className="text-[12px] font-semibold text-[#334155] mt-4 mb-2">{t.ldSenderLabel}</p>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                ["bondex", t.ldSenderBondex, ""],
-                ["agency", t.ldSenderLand, t.ldSenderLandDesc],
-                ["other", t.ldSenderAgent, t.ldSenderAgentDesc],
-              ] as const).map(([val, title, desc]) => {
-                // 発送先住所が未登録・確認中は「御社名義」を選べない (宛名不備で郵送が止まるため)。
-                // null = 確認中も不可にする: 確認前に選んで送信されるとサーバー検証まで素通りしていた
-                // (2026-08-31 監査対応)。
-                const disabled = val === "agency" && hasShipAddress !== true
-                return (
-                  <button
-                    key={val}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setLabelSender(val)}
-                    className={`rounded-xl border p-3 text-left transition-colors ${
-                      disabled
-                        ? "border-[#E5E7EB] bg-[#F8FAFC] cursor-not-allowed opacity-60"
-                        : labelSender === val
-                          ? "border-[#C8102E] ring-1 ring-[#C8102E] bg-[#FFF7F7]"
-                          : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
-                    }`}
-                  >
-                    <p className="text-[13px] font-bold text-[#0F172A]">{title}</p>
-                    {desc && <p className="text-[11px] text-[#64748B] mt-0.5">{desc}</p>}
-                  </button>
-                )
-              })}
-            </div>
-            {labelSender === "agency" && hasShipAddress === false && (
-              <p className="text-[11px] text-[#C8102E] mt-2">{t.ldSenderMissing}</p>
-            )}
-
-            {/* 旅行代理店名義のときだけ住所を聞く */}
-            {labelSender === "other" && (
-              <div className="mt-3 grid gap-3 rounded-xl bg-[#F8FAFC] p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t.ldAgentName} htmlFor="agName" required>
-                    <input id="agName" className={inputCls} value={agentInfo.name}
-                      onChange={(e) => setAgentInfo({ ...agentInfo, name: e.target.value })} />
-                  </Field>
-                  <Field label={t.ldAgentPhone} htmlFor="agPhone" required>
-                    <input id="agPhone" className={inputCls} value={agentInfo.phone}
-                      onChange={(e) => setAgentInfo({ ...agentInfo, phone: e.target.value })} />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t.ldAgentZip} htmlFor="agZip" required>
-                    <input id="agZip" className={inputCls} value={agentInfo.zip}
-                      onChange={(e) => setAgentInfo({ ...agentInfo, zip: e.target.value })} />
-                  </Field>
-                  <Field label={t.ldAgentPref} htmlFor="agPref" required>
-                    <input id="agPref" className={inputCls} value={agentInfo.prefecture}
-                      onChange={(e) => setAgentInfo({ ...agentInfo, prefecture: e.target.value })} />
-                  </Field>
-                </div>
-                <Field label={t.ldAgentCity} htmlFor="agCity" required>
-                  <input id="agCity" className={inputCls} value={agentInfo.city}
-                    onChange={(e) => setAgentInfo({ ...agentInfo, city: e.target.value })} />
-                </Field>
-                <Field label={t.ldAgentStreet} htmlFor="agStreet" required>
-                  <input id="agStreet" className={inputCls} value={agentInfo.street}
-                    onChange={(e) => setAgentInfo({ ...agentInfo, street: e.target.value })} />
-                </Field>
-                <Field label={t.ldAgentBuilding} htmlFor="agBld">
-                  <input id="agBld" className={inputCls} value={agentInfo.building}
-                    onChange={(e) => setAgentInfo({ ...agentInfo, building: e.target.value })} />
-                </Field>
-              </div>
-            )}
-          </div>
+          {/* 送り状(紙)のお届け先の設定は廃止 (2026-09-24: 送り状は佐川が作成し集荷ドライバーが持参) */}
 
           {/* 旅程表・名簿の AI 自動読み込み (任意) */}
           <div className="rounded-2xl border border-dashed border-[#C8102E]/40 bg-[#FFF5F6] p-5">
