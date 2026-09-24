@@ -13,3 +13,11 @@
 export function waybillIssuanceEnabled(): boolean {
   return process.env.AUTO_ISSUE_ENABLED === "true"
 }
+
+/**
+ * 運用画面に送り状 (A5伝票) の発行・印刷・一括DL・発行モードなどを表示するか。
+ * 2026-09-24 谷口さん決定: 「A5の伝票を発行するようなステータスもなしでok」。
+ * クライアント側でも参照できるよう定数にしている (環境変数はサーバ専用)。
+ * 従来運用 (Ship&co で BondEx が発行) へ戻すときだけ true にする。
+ */
+export const WAYBILL_UI_ENABLED = false

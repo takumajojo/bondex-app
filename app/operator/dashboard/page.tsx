@@ -36,6 +36,8 @@ import {
 } from "@/lib/hotel-notification"
 import { labelMailStatus, labelMailApplies, todayJst, type LabelMailUrgency } from "@/lib/label-delivery"
 import TodayTodo from "@/components/operator/TodayTodo"
+import { LABEL_MAIL_ENABLED } from "@/lib/label-delivery"
+import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
 
 type ShipmentStatus =
@@ -266,8 +268,8 @@ function cancelTooltip(s: {
 
 const STATUS_LABELS: Record<ShipmentStatus, { ja: string; cls: string }> = {
   requested: { ja: "依頼中 (代理店)", cls: "bg-violet-100 text-violet-800" },
-  pending: { ja: "保留 (発行待ち)", cls: "bg-slate-100 text-slate-700" },
-  issued: { ja: "発行済", cls: "bg-blue-100 text-blue-800" },
+  pending: { ja: "保留", cls: "bg-slate-100 text-slate-700" },
+  issued: { ja: "手配済", cls: "bg-blue-100 text-blue-800" },
   picked_up: { ja: "集荷済", cls: "bg-amber-100 text-amber-800" },
   in_transit: { ja: "配達中", cls: "bg-indigo-100 text-indigo-800" },
   delivered: { ja: "配達完了", cls: "bg-emerald-100 text-emerald-800" },
@@ -1094,7 +1096,7 @@ export default function DashboardPage() {
                   </p>
                   <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-900">
                     <AlertTriangle className="w-3 h-3" strokeWidth={2} />
-                    送り状 発行失敗
+                    手配失敗
                   </p>
                 </button>
               )}
@@ -1129,15 +1131,15 @@ export default function DashboardPage() {
             <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" strokeWidth={1.6} />
             運用ツール・接続状況
             <span className="text-[11px] font-normal text-muted-foreground">
-              代理店一覧 ・ Ship&amp;co ・ Stripe ・ 契約書/請求書 発行
+              代理店一覧{WAYBILL_UI_ENABLED ? " ・ Ship&co" : ""} ・ Stripe ・ 契約書/請求書 発行
             </span>
           </summary>
           <div className="space-y-6 border-t border-border p-4">
         {/* 代理店ステータス（承認待ち＝あなたの判断待ちを最上部に） */}
         <AgencyStatusCard />
 
-        {/* Ship&co 接続状況 (本番化=SHIPANDCO_LIVE の前チェック) */}
-        <ShipandcoStatusCard />
+        {/* Ship&co 接続状況 (本番化=SHIPANDCO_LIVE の前チェック) — 送り状を BondEx が発行する従来運用のときだけ */}
+        {WAYBILL_UI_ENABLED && <ShipandcoStatusCard />}
 
         {/* Stripe カード登録モード (テスト=実カード拒否 / 本番=実カード可) */}
         <StripeStatusCard />
@@ -1362,7 +1364,9 @@ export default function DashboardPage() {
                     <th className="text-left p-3 font-medium">代表者</th>
                     <th className="text-left p-3 font-medium">区間</th>
                     <th className="text-right p-3 font-medium">点数</th>
-                    <th className="text-left p-3 font-medium">送り状</th>
+                    {(LABEL_MAIL_ENABLED || WAYBILL_UI_ENABLED) && (
+                      <th className="text-left p-3 font-medium">送り状</th>
+                    )}
                     <th className="text-left p-3 font-medium">ホテル連絡</th>
                     <th className="text-left p-3 font-medium">決済</th>
                     <th className="text-left p-3 font-medium">ステータス</th>
@@ -1447,6 +1451,7 @@ export default function DashboardPage() {
                           </p>
                         )}
                       </td>
+                      {(LABEL_MAIL_ENABLED || WAYBILL_UI_ENABLED) && (
                       <td className="p-3 align-top max-w-[190px]">
                         {/* 1行目 = どこへ送るか / 2行目 = いつまでに送るか。封筒の準備がここで完結する */}
                         <p className="text-xs font-bold text-foreground">
@@ -1460,7 +1465,7 @@ export default function DashboardPage() {
                           </span>
                         </p>
                         <LabelMailBadge shipment={it} onSent={() => void markLabelSent(it)} busy={labelBusyId === it.id} />
-                        {it.yamato_label_url && (
+                        {WAYBILL_UI_ENABLED && it.yamato_label_url && (
                           <a
                             href={`/api/voucher/label?${new URLSearchParams({
                               url: it.yamato_label_url,
@@ -1488,6 +1493,7 @@ export default function DashboardPage() {
                               : "BondEx"}
                         </p>
                       </td>
+                      )}
                       <td className="p-3 align-top">
                         <HotelNotifyBadges shipment={it} />
                       </td>
@@ -1604,7 +1610,7 @@ export default function DashboardPage() {
                                   >
                                     Voucher 再発行
                                   </a>
-                                  {it.yamato_label_url && (
+                                  {WAYBILL_UI_ENABLED && it.yamato_label_url && (
                                     <a
                                       href={`/api/voucher/labels?booking_id=${encodeURIComponent(it.booking_id)}`}
                                       className="block px-3 py-2 text-xs text-foreground hover:bg-muted/40"
@@ -1846,9 +1852,9 @@ function EditShipmentModal({
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1">
           <p className="text-[11px] font-medium text-amber-900">保存しても自動では変わらないもの</p>
           <p className="text-[11px] text-amber-800 leading-relaxed">
-            発行済みのバウチャー PDF と配送伝票（送り状）は自動更新されません。
-            {dateChanged ? "日付を変更した場合は、Voucher を再発行して差し替え、送り状は Ship&co で作り直してください。" : ""}
-            ホテル・氏名を変更したい場合は、この予約を削除して新規発行してください (送り状との食い違い防止)。
+            発行済みのバウチャー PDF は自動更新されません。
+            {dateChanged ? "日付を変更した場合は、Voucher を再発行して差し替えてください。" : ""}
+            ホテル・氏名を変更したい場合は、この予約を削除して新規登録してください (佐川へ渡す情報との食い違い防止)。
           </p>
           <p className="text-[11px] text-amber-800 leading-relaxed">
             個数の修正は一覧の「個数を修正」から行ってください（理由の記録と依頼元ランオペへの通知が必要なため、ここでは変更できません）。
@@ -1903,7 +1909,7 @@ function StatusChangeModal({
   if (next === "delivered") {
     effects.push("代理店へ配達完了メールが自動送信されます")
   }
-  if (next === "cancelled") {
+  if (next === "cancelled" && WAYBILL_UI_ENABLED) {
     effects.push("発行済みの送り状は自動では無効になりません（集荷事故防止に破棄が必要）")
   }
 
@@ -2179,7 +2185,7 @@ function DeleteBookingModal({
   const [ack, setAck] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
-  const hasLabel = Boolean(shipment.yamato_label_url || (shipment.yamato_tracking?.length ?? 0) > 0)
+  const hasLabel = WAYBILL_UI_ENABLED && Boolean(shipment.yamato_label_url || (shipment.yamato_tracking?.length ?? 0) > 0)
 
   const onDelete = async () => {
     setBusy(true)
