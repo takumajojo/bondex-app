@@ -3,7 +3,7 @@ import { WHATSAPP_URL } from "@/lib/contact-links"
 import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
 import { rateLimit } from "@/lib/rate-limit"
-import { HowToShipDocument, SUPPORT_DEFAULTS, normalizeGuestLanguage } from "@/lib/voucher-pdf"
+import { HowToSendDocument, SUPPORT_DEFAULTS, normalizeGuestLanguage } from "@/lib/voucher-pdf"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -38,12 +38,9 @@ export async function GET(req: NextRequest) {
       console.error("[howto] QR generation failed:", err)
     }
 
+    // 2026-09-24〜: 送り状はドライバーが持参する運用のガイド (v2, 英語)。lang はファイル名にのみ使う。
     const buf = await renderToBuffer(
-      <HowToShipDocument
-        language={lang}
-        supportQrDataUri={supportQrDataUri}
-        supportQrKind={wa ? "whatsapp" : "email"}
-      />,
+      <HowToSendDocument supportQrDataUri={supportQrDataUri} supportQrKind={wa ? "whatsapp" : "email"} />,
     )
 
     return new NextResponse(new Uint8Array(buf), {

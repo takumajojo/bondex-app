@@ -330,6 +330,19 @@ const messages = {
       "The voucher is ready — download it right now from the button below (for your final documents and internal records). The shipping label can only be created from about a month before shipping, so we'll prepare it once the ship date is within a month and place it in your booking folder on the shared drive.",
     doneSoon:
       "Your shipment is within a month, so we'll prepare the documents (voucher and shipping labels) right away and share a Google Drive folder with your registered email.",
+    doneHeroTitle: "Download the voucher and hand it to your guest",
+    doneHeroBody: "That's all you need to do. No shipping labels — the courier brings and attaches them at pickup. A copy is also kept in the shared Google Drive.",
+    doneHeroBadge: "No shipping labels needed",
+    doneNextHeading: "What happens next",
+    doneStep1Title: "Changes: by 17:00 the day before shipping",
+    doneStep1Body: "Dates, piece counts and hotels can be changed from the portal or via Contact until 17:00 on the day before each shipment.",
+    doneStep2Title: "Pickup: from 11:00 on the shipping day",
+    doneStep2Body: "The courier comes to the hotel with the shipping labels and collects the luggage.",
+    doneStep3Title: "One line to tell your guest",
+    doneStep3Quote: "On the day, the courier will come to the hotel with the shipping labels. Just leave your luggage at the reception by check-out.",
+    doneLeg: (n: number) => `Leg ${n}`,
+    doneDeadlineBy: "by 17:00",
+    donePickupFrom: "from 11:00",
     doneReadyHeading: "Your documents are ready",
     doneReadyBody:
       "Your voucher and the How to Ship guide are ready — download them right below. No shipping labels are needed: the courier brings and attaches them at pickup. A copy is also kept in the shared Google Drive.",
@@ -585,6 +598,19 @@ const messages = {
       "バウチャーは今すぐ下のボタンからダウンロードいただけます（ファイナルドキュメントへの同封・社内のツアーファイル保管にご利用ください）。配送伝票（送り状）は出荷の約1ヶ月前からしか発行できないため、出荷日の1ヶ月前になりましたら弊社で発行し、共有ドライブの予約番号フォルダに格納してご連絡します。",
     doneSoon:
       "出荷まで1ヶ月以内のため、すぐに書類一式（バウチャー・配送伝票）をご用意し、ご登録のメールアドレス宛に Google Drive フォルダを共有します。",
+    doneHeroTitle: "バウチャーをダウンロードして、そのままお客様へ",
+    doneHeroBody: "お客様（添乗員様）にはこのバウチャーをお渡しいただくだけで結構です。送り状のご用意は不要です（集荷員が持参・貼付します）。共有ドライブにも保管しています。",
+    doneHeroBadge: "送り状のご用意は不要",
+    doneNextHeading: "この後の流れ",
+    doneStep1Title: "修正は配送前日の17時まで",
+    doneStep1Body: "日程・個数・ホテルの変更は、各区間の配送前日17:00までポータルまたはお問い合わせから承ります。",
+    doneStep2Title: "集荷は当日の11時以降",
+    doneStep2Body: "集荷員が送り状を持ってホテルへ伺い、お荷物を集荷します。",
+    doneStep3Title: "お客様へのひと言",
+    doneStep3Quote: "当日になりましたら、集荷員が伝票を持って集荷に伺います。チェックアウトまでにフロントへお荷物をお預けください。",
+    doneLeg: (n: number) => `区間${n}`,
+    doneDeadlineBy: "17:00まで",
+    donePickupFrom: "11:00以降",
     doneReadyHeading: "書類の準備ができました",
     doneReadyBody:
       "バウチャーとご利用ガイド（How to Ship）をご用意しました。下のボタンからすぐにダウンロードできます。送り状のご用意は不要です（集荷ドライバーが持参・貼付します）。共有ドライブにも保管しています。",
@@ -863,6 +889,23 @@ function validateLegs(
   return errs
 }
 
+/** "YYYY-MM-DD" → 前日の "YYYY-MM-DD" */
+function ymdMinus1(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ymd
+  d.setDate(d.getDate() - 1)
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+/** 完了画面用の短い日付 (ja: 12月15日(火) / en: Dec 15 (Tue)) */
+function fmtShortDate(ymd: string, locale: "ja" | "en"): string {
+  const d = new Date(`${ymd}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ymd
+  return locale === "ja"
+    ? `${d.getMonth() + 1}月${d.getDate()}日(${["日", "月", "火", "水", "木", "金", "土"][d.getDay()]})`
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" })
+}
+
 export default function AgencyNewBookingPage() {
   const router = useRouter()
   const { locale, setLocale } = useAgencyLocale()
@@ -993,6 +1036,20 @@ export default function AgencyNewBookingPage() {
     Array<{ booking_id: string; representative: string; shipment_date: string }>
   >([])
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle")
+  // 開発時のみ: ?preview=done で完了画面をダミーデータで表示する (本番では無効)。レイアウト確認用。
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return
+    const q = new URLSearchParams(window.location.search)
+    if (q.get("preview") !== "done") return
+    setBookingType(q.get("type") === "group" ? "group" : "fit")
+    setLegs([
+      { ...emptyLeg(), fromHotel: "ヒルトン東京", toHotel: "ひだホテルプラザ", shipmentDate: "2026-12-16", expectedArrival: "2026-12-18" },
+      { ...emptyLeg(), fromHotel: "ひだホテルプラザ", toHotel: "ザ・リッツ・カールトン京都", shipmentDate: "2026-12-20", expectedArrival: "2026-12-22" },
+    ])
+    setResult({ bookingId: "BDX-PREVIEW", needsLabelWait: false, allIssued: true, labels: [], issueFailures: [] })
+    setStatus("done")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [error, setError] = useState("")
   const [result, setResult] = useState<{
     bookingId: string
@@ -1015,6 +1072,11 @@ export default function AgencyNewBookingPage() {
   const [parseError, setParseError] = useState("")
 
   useEffect(() => {
+    // 開発時の完了画面プレビュー (?preview=done) はサインイン不要で表示する。本番では常に通常のセッション確認。
+    if (process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).get("preview") === "done") {
+      setAuthChecked(true)
+      return
+    }
     const sb = getBrowserSupabase()
     if (!sb) {
       setAuthChecked(true)
@@ -1594,9 +1656,11 @@ export default function AgencyNewBookingPage() {
   }
 
   if (status === "done" && result) {
+    const legDates = legs.map((l, i) => ({ n: i + 1, ship: l.shipmentDate })).filter((l) => l.ship)
     return (
       <main className="min-h-screen bg-slate-50 px-4 sm:px-6 py-10">
-        <div className="w-full max-w-2xl mx-auto space-y-5">
+        <div className="w-full max-w-3xl mx-auto space-y-5">
+          {/* 受付完了 + 予約番号 */}
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
               <Check className="w-6 h-6 text-emerald-700" strokeWidth={2.5} />
@@ -1604,8 +1668,6 @@ export default function AgencyNewBookingPage() {
             <h1 className="text-[18px] font-bold text-[#0F172A]">{t.doneTitle}</h1>
             <p className="text-[12px] text-muted-foreground mt-3">{t.doneBooking}</p>
             <p className="font-mono text-[15px] text-[#0F172A]">{result.bookingId}</p>
-
-            {/* 送り状の郵送は廃止 (2026-09-24: 送り状は佐川が作成) */}
             {bookingType === "group" && (
               <a
                 href={`/agency/groups/${encodeURIComponent(result.bookingId)}`}
@@ -1616,7 +1678,7 @@ export default function AgencyNewBookingPage() {
             )}
           </div>
 
-          {/* 1ヶ月以内なのに送り状を発行できなかった区間があるときの明示 (無言で「待ち」にしない) */}
+          {/* 発行失敗の明示 (発行運用を残している場合のみ出る) */}
           {result.issueFailures.length > 0 && (
             <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-5">
               <p className="text-[14px] font-bold text-red-800 flex items-center gap-1.5">
@@ -1634,72 +1696,93 @@ export default function AgencyNewBookingPage() {
             </div>
           )}
 
-          {/* バウチャー出力時に「ご利用ガイド」を最終ページに同梱するか選べる (既定 ON・複数区間でも1枚) */}
-          <label className="flex items-start gap-2.5 rounded-xl border border-[#E5E7EB] bg-white p-3.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={includeHowto}
-              onChange={(e) => setIncludeHowto(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border shrink-0"
-            />
-            <span>
-              <span className="block text-[13px] font-bold text-[#0F172A]">{t.howtoToggle}</span>
-              <span className="block text-[12px] text-muted-foreground leading-[1.7] mt-0.5">{t.howtoToggleSub}</span>
-            </span>
-          </label>
-
-          {result.allIssued ? (
-            /* 1ヶ月以内 → 即発行済み。その場でDL */
-            <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-6">
-              <div className="flex items-center gap-2 mb-3">
-                <Check className="w-5 h-5 text-emerald-700" strokeWidth={2.5} />
-                <p className="text-[15px] font-bold text-emerald-900">{t.doneReadyHeading}</p>
-              </div>
-              <p className="text-[14px] text-emerald-800 leading-[2] mb-4">{t.doneReadyBody}</p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={() => downloadVoucher(result.bookingId)}
-                  disabled={dlBusy}
-                  className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-[#C8102E] text-white text-[13px] font-bold hover:bg-[#a00d25] disabled:opacity-50"
-                >
-                  {dlBusy ? "…" : t.dlVoucher}
-                </button>
-                {result.labels.map((l) => (
-                  <a
-                    key={l.legIndex}
-                    href={l.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl border border-[#C8102E] text-[#C8102E] text-[13px] font-bold hover:bg-[#FFF1F2]"
+          {/* 主役: バウチャーをDLしてそのままお渡し (2026-09-24 谷口さん指示) */}
+          <div className="rounded-2xl border-2 border-[#C8102E]/30 bg-white p-6 sm:p-7">
+            <div className="flex flex-col sm:flex-row gap-5 sm:gap-7 items-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/assets/icons/voucher.svg" alt="" className="w-24 h-24 sm:w-28 sm:h-28 shrink-0" />
+              <div className="flex-1 text-center sm:text-left">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF1F2] text-[#C8102E] text-[11px] font-bold px-3 py-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/assets/icons/no-label.svg" alt="" className="w-4 h-4" />
+                  {t.doneHeroBadge}
+                </span>
+                <h2 className="text-[17px] sm:text-[19px] font-bold text-[#0F172A] leading-[1.5] mt-2">{t.doneHeroTitle}</h2>
+                <p className="text-[13px] text-[#334155] leading-[1.9] mt-2">{t.doneHeroBody}</p>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => downloadVoucher(result.bookingId)}
+                    disabled={dlBusy}
+                    className="inline-flex items-center justify-center gap-1.5 h-12 px-6 rounded-xl bg-[#C8102E] text-white text-[14px] font-bold hover:bg-[#a00d25] disabled:opacity-60 whitespace-nowrap shrink-0"
                   >
-                    {result.labels.length > 1 ? t.dlLeg(l.legIndex + 1) : t.dlLabel}
-                  </a>
-                ))}
+                    <Download className="w-4 h-4" strokeWidth={2} />
+                    {dlBusy ? "…" : t.dlVoucher}
+                  </button>
+                  <label className="inline-flex items-start gap-2 text-[12px] text-[#334155] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeHowto}
+                      onChange={(e) => setIncludeHowto(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-border shrink-0"
+                    />
+                    <span>{t.howtoToggle}</span>
+                  </label>
+                </div>
               </div>
             </div>
-          ) : (
-            /* 1ヶ月超 → 発行窓の外。窓が開いたら発行してご連絡 */
-            <>
-              <div className="rounded-2xl border-2 border-[#FED7AA] bg-[#FFF7ED] p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <FolderOpen className="w-5 h-5 text-[#C8102E]" strokeWidth={2} />
-                  <p className="text-[15px] font-bold text-[#9A3412]">{t.doneShareHeading}</p>
-                </div>
-                <p className="text-[14px] text-[#7C2D12] leading-[2] mb-4">{t.doneWait}</p>
-                {/* バウチャーは Ship&co 不要 = 1ヶ月超の依頼でも今すぐDLできる */}
-                <button
-                  type="button"
-                  onClick={() => downloadVoucher(result.bookingId)}
-                  disabled={dlBusy}
-                  className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-xl bg-[#C8102E] text-white text-[13px] font-bold hover:bg-[#a00d25] disabled:opacity-50"
-                >
-                  {dlBusy ? "…" : t.dlVoucher}
-                </button>
+          </div>
+
+          {/* この後の流れ: 前日17時まで修正 / 当日11時以降に集荷 / お客様へのひと言 */}
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6">
+            <p className="text-[13px] font-bold tracking-wide text-[#0F172A] mb-4">{t.doneNextHeading}</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="rounded-xl bg-slate-50 border border-[#E5E7EB] p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/assets/icons/calendar.svg" alt="" className="w-12 h-12" />
+                <p className="text-[13.5px] font-bold text-[#0F172A] leading-[1.5] mt-3">{t.doneStep1Title}</p>
+                <p className="text-[12px] text-[#475569] leading-[1.8] mt-1.5">{t.doneStep1Body}</p>
+                {legDates.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {legDates.map((l) => (
+                      <li key={l.n} className="flex items-baseline justify-between gap-2 text-[12px] rounded-lg bg-white border border-[#E5E7EB] px-2.5 py-1.5">
+                        <span className="text-[#64748B] whitespace-nowrap">{t.doneLeg(l.n)}</span>
+                        <span className="font-bold text-[#0F172A] whitespace-nowrap">
+                          {fmtShortDate(ymdMinus1(l.ship), locale)} {t.doneDeadlineBy}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              <FlowDiagram heading={t.flowHeading} steps={t.flow} icons={FLOW_ICONS} />
-            </>
-          )}
+              <div className="rounded-xl bg-slate-50 border border-[#E5E7EB] p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/assets/icons/delivery-truck.svg" alt="" className="w-12 h-12" />
+                <p className="text-[13.5px] font-bold text-[#0F172A] leading-[1.5] mt-3">{t.doneStep2Title}</p>
+                <p className="text-[12px] text-[#475569] leading-[1.8] mt-1.5">{t.doneStep2Body}</p>
+                {legDates.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {legDates.map((l) => (
+                      <li key={l.n} className="flex items-baseline justify-between gap-2 text-[12px] rounded-lg bg-white border border-[#E5E7EB] px-2.5 py-1.5">
+                        <span className="text-[#64748B] whitespace-nowrap">{t.doneLeg(l.n)}</span>
+                        <span className="font-bold text-[#0F172A] whitespace-nowrap">
+                          {fmtShortDate(l.ship, locale)} {t.donePickupFrom}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-xl bg-[#FFF7F7] border border-[#F5C4C9] p-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/assets/icons/reception.svg" alt="" className="w-12 h-12" />
+                <p className="text-[13.5px] font-bold text-[#0F172A] leading-[1.5] mt-3">{t.doneStep3Title}</p>
+                <p className="text-[12.5px] text-[#7F1D1D] leading-[1.9] mt-2 rounded-lg bg-white border border-[#F5C4C9] px-3 py-2.5">
+                  「{t.doneStep3Quote}」
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* ご利用ガイド単体が欲しいとき用の控えめなリンク (バウチャーには既定で同梱済み) */}
           <p className="text-center text-[12px] text-muted-foreground">

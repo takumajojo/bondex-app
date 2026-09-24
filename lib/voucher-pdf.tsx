@@ -2314,6 +2314,21 @@ export function HowToShipPage({
 }
 
 
+/** v2 の HOW TO SEND (原図 howto1 再構築) を単体 PDF で出す。送り状をドライバーが持参する運用向け。 */
+export function HowToSendDocument({
+  supportQrDataUri,
+  supportQrKind,
+}: {
+  supportQrDataUri?: string
+  supportQrKind?: "whatsapp" | "email"
+}) {
+  return (
+    <Document pdfVersion="1.4" title="BondEx — How to send your luggage" author="BondEx" subject="Traveler guide">
+      <HowToSendPage logoPath={LOGO_PATH} supportQrDataUri={supportQrDataUri} supportQrKind={supportQrKind} />
+    </Document>
+  )
+}
+
 export function HowToShipDocument({
   language,
   supportQrDataUri,
