@@ -110,6 +110,29 @@ const EN_AREAS: Array<[keyword: string, area: VoucherArea]> = [
   ["fuji", { ja: "富士", en: "MT. FUJI" }],
 ]
 
+// 保険: 都道府県名・区名で当たらない時に、ホテル名や住所に埋め込まれた「有名エリア/都市の
+// 短縮名」を部分一致で拾う (例:「ACホテル…東京銀座」→ 東京 /「…京都四条」→ 京都)。
+// 住所や city が欠けていてホテル名しか手がかりが無いケースを救済する。
+const LOOSE_JA_AREAS: Array<[match: string, area: VoucherArea]> = [
+  // 東京の有名エリア・区の通称 (ホテル名に入りやすい)
+  ["銀座", { ja: "東京", en: "TOKYO" }], ["新宿", { ja: "東京", en: "TOKYO" }],
+  ["渋谷", { ja: "東京", en: "TOKYO" }], ["浅草", { ja: "東京", en: "TOKYO" }],
+  ["六本木", { ja: "東京", en: "TOKYO" }], ["品川", { ja: "東京", en: "TOKYO" }],
+  ["池袋", { ja: "東京", en: "TOKYO" }], ["丸の内", { ja: "東京", en: "TOKYO" }],
+  ["日本橋", { ja: "東京", en: "TOKYO" }], ["赤坂", { ja: "東京", en: "TOKYO" }],
+  ["秋葉原", { ja: "東京", en: "TOKYO" }], ["お台場", { ja: "東京", en: "TOKYO" }],
+  ["台場", { ja: "東京", en: "TOKYO" }], ["有明", { ja: "東京", en: "TOKYO" }],
+  ["豊洲", { ja: "東京", en: "TOKYO" }], ["汐留", { ja: "東京", en: "TOKYO" }],
+  ["八重洲", { ja: "東京", en: "TOKYO" }], ["羽田", { ja: "羽田", en: "HANEDA" }],
+  // 主要都市の短縮名 (ホテル名に地名が入る定番)。先に具体的な区名等を見た後の最終手段。
+  ["京都", { ja: "京都", en: "KYOTO" }], ["大阪", { ja: "大阪", en: "OSAKA" }],
+  ["東京", { ja: "東京", en: "TOKYO" }], ["横浜", { ja: "横浜", en: "YOKOHAMA" }],
+  ["名古屋", { ja: "名古屋", en: "NAGOYA" }], ["神戸", { ja: "神戸", en: "KOBE" }],
+  ["奈良", { ja: "奈良", en: "NARA" }], ["金沢", { ja: "金沢", en: "KANAZAWA" }],
+  ["札幌", { ja: "札幌", en: "SAPPORO" }], ["福岡", { ja: "福岡", en: "FUKUOKA" }],
+  ["広島", { ja: "広島", en: "HIROSHIMA" }], ["仙台", { ja: "仙台", en: "SENDAI" }],
+]
+
 /**
  * 住所・市区町村・ホテル名 (日英) から地名を解決する。日本語の手がかりを先に、次に英語の手がかりを見る。
  * どれにも当たらなければ null (呼び出し側が短い代替表記を決める)。
@@ -120,6 +143,7 @@ export function voucherAreaOf(address?: string | null, city?: string | null, ...
     for (const [m, a] of CITY_AREAS) if (ja.includes(m)) return a
     for (const [m, a] of WARD_AREAS) if (ja.includes(m)) return a
     for (const [m, a] of PREFECTURES) if (ja.includes(m)) return a
+    for (const [m, a] of LOOSE_JA_AREAS) if (ja.includes(m)) return a
   }
   const en = ` ${[city, ...names].filter(Boolean).join(" ").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `
   if (en.trim()) {
