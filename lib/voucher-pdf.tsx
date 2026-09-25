@@ -18,7 +18,6 @@ import {
 } from "@react-pdf/renderer"
 import type { GuestLanguage } from "./guest-language"
 import { normalizeGuestLanguage } from "./guest-language"
-import { carrierConfig } from "./carrier"
 import { voucherAreaOf, voucherAreaFallback, type VoucherArea } from "./voucher-area"
 import { TourLeaderPage, HotelStaffPage, HowToSendPage, type V2Ctx } from "./voucher-pdf-v2"
 
@@ -1186,33 +1185,27 @@ function VoucherPage({
         {/* detail grid */}
         <View style={vs.detailGrid}>
           <View style={vs.detailRow}>
-            <View style={[vs.detailCell, { width: "26%" }]}>
+            <View style={[vs.detailCell, { width: "42%" }]}>
               <Text style={vs.dk}>GUEST / ご予約者</Text>
               <Text style={vs.dv}>{guestName}</Text>
               {data.groupName ? (
                 <Text style={vs.dvSmall}>{jb(safeText(data.groupName))}</Text>
               ) : null}
             </View>
-            <View style={[vs.detailCell, { width: "18%" }]}>
+            <View style={[vs.detailCell, { width: "23%" }]}>
               <Text style={vs.dk}>LUGGAGE / お荷物</Text>
               <Text style={vs.dv}>
                 {shipment.suitcaseCount} item{shipment.suitcaseCount === 1 ? "" : "s"}
               </Text>
               <Text style={vs.dvSmall}>Total {totalLuggage} item{totalLuggage === 1 ? "" : "s"}</Text>
             </View>
-            <View style={[vs.detailCell, { width: "22%" }]}>
+            <View style={[vs.detailCell, { width: "35%" }]}>
               <Text style={vs.dk}>SERVICE TYPE / 種別</Text>
               <Text style={vs.dv}>Hotel → Hotel</Text>
               {/* 「Leg N of M」は上部の赤バナーと重複するため省略 (2026-08-27 文字量圧縮) */}
               {totalLegs > 1 ? null : <Text style={vs.dvSmall}>{jb("ホテル間配送")}</Text>}
             </View>
-            {/* 旧「FORWARDED BY / BondEx」はロゴ・フッターと重複のため削除し、配送業者を昇格。
-                問い合わせセルは上部の QR モジュールへ移動 → 2行目のグリッドごと削減。 */}
-            <View style={[vs.detailCell, { width: "34%" }]}>
-              <Text style={vs.dk}>SUPPLIER / 配送業者</Text>
-              <Text style={vs.dv}>{jb(carrierConfig(data.carrier).voucherLabel)}</Text>
-              {/* Tel 行は実番号確定まで非表示 (仮番号 +81-XX-XXXX-XXXX を顧客/ホテルに出さない・谷口さん判断 2026-07-27) */}
-            </View>
+            {/* SUPPLIER / 配送業者 欄はお客様に不要のため削除 (谷口さん 2026-09-25)。 */}
           </View>
         </View>
 
