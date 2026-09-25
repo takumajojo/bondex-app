@@ -512,7 +512,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                 <Text style={[s.nodeDate, { color: n.isCurrent ? RED : INK }]}>{n.date}</Text>
                 <Text style={[s.nodeEn, n.en.length > 14 ? { fontSize: 7.2 } : {}, clamp(2)]}>{n.en}</Text>
                 <Text style={[s.nodeJa, clamp(1)]}>{h.jb(n.ja)}</Text>
-                {n.isCurrent ? (
+                {n.isCurrent && ctx.totalLegs > 1 ? (
                   <View style={s.nodeThisBadge}>
                     <Text style={s.nodeThisBadgeText}>{h.jb("THIS VOUCHER  ・  この用紙")}</Text>
                   </View>
