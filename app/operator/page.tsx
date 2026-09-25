@@ -661,15 +661,38 @@ function addressKey(hotel: string, _address?: string): string {
   return hotel.trim().toLowerCase()
 }
 
+// AI抽出住所が途中で切れている (末尾 "…"/"..." や連結ダッシュで終わる) 場合、その住所を
+// 検証に渡すと canonical が取れず切れたまま残る。ホテル名のみで再解決させるため空扱いにする。
+function looksTruncatedAddress(a: string | null | undefined): boolean {
+  const t = (a ?? "").trim()
+  if (!t) return false
+  return t.includes("…") || t.includes("...") || /[-‐-―ー－]\s*$/.test(t)
+}
+
 // 代表者名の決定: AI パースの travelers → 受取人名 (送り状) → ファミリー名 の順。
 // バウチャーの GUEST 欄・予約検索はこの名前が基準になるため、
 // 確認画面の表示と発行ペイロードは必ずこの同一ロジックを使うこと
 // (過去に確認画面だけ familyName に落ちて「団体名が代表者に見える」事故があった)。
+// 名前として無効な値 (AIが名前を拾えなかった時の "unknown" 等)。これらは代表者名として
+// 採用せず、受取人名 → ファミリー名 の順にフォールバックする (運営が受取人名を直せば直る)。
+function isJunkName(s: string | null | undefined): boolean {
+  const t = (s ?? "").trim().toLowerCase()
+  if (!t) return true
+  return ["unknown", "unkown", "n/a", "na", "-", "--", "tbd", "不明", "未定", "名称不明"].includes(t)
+}
+
 function computeRepresentativeLabel(itinerary: EditableItinerary): string {
   const rep =
     itinerary.guest.travelers.find((tr) => tr.type === "adult") || itinerary.guest.travelers[0]
-  if (rep) return `${rep.title ? rep.title + " " : ""}${rep.name}`
-  return itinerary.shipments[0]?.recipient?.trim() || itinerary.guest.familyName || ""
+  // AI が名前を拾えず "unknown" 等が入っていた場合は採用しない (受取人名を優先させる)。
+  if (rep && !isJunkName(rep.name)) {
+    return `${rep.title ? rep.title + " " : ""}${rep.name}`.trim()
+  }
+  const recipient = itinerary.shipments[0]?.recipient?.trim()
+  if (recipient && !isJunkName(recipient)) return recipient
+  const family = itinerary.guest.familyName?.trim()
+  if (family && !isJunkName(family)) return family
+  return ""
 }
 
 function emptyVerifications(legCount: number): Verifications {
@@ -919,7 +942,9 @@ export default function OperatorPage() {
         const key = addressKey(loc.hotel, loc.address)
         if (seen.has(key)) return
         seen.add(key)
-        void verifyAddress(loc.hotel, loc.address, { legIndex, which })
+        // 切れている住所はホテル名だけで再解決させ、完全な住所に差し替える。
+        const addrForVerify = looksTruncatedAddress(loc.address) ? "" : loc.address
+        void verifyAddress(loc.hotel, addrForVerify, { legIndex, which })
       })
     })
   }, [itinerary, verifyAddress])
