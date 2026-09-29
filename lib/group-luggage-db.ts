@@ -2,7 +2,7 @@
 // 1行 = 1スーツケース。誰の荷物か (guest_name) と追跡番号の対応を持つ。
 //
 // 設計原則: 個々の荷物ステータスは保存せず導出する。
-//   - 既定の対応: yamato_tracking[luggage_no - 1] (発行時のラベル連番と一致)
+//   - 既定の対応: tracking_numbers[luggage_no - 1] (発行時のラベル連番と一致)
 //   - tracking_number が保存されていればそれを優先 (物理的に貼り替えた場合の確定値)
 //   - 状態: manual_status(手動上書き) > 追跡明細の exception(=issue) > 追跡明細の status > 区間 status
 // これにより毎時の追跡同期 (sync-tracking) を一切変更せず、団体ダッシュボードは
@@ -43,7 +43,7 @@ export type GroupStatus =
   | "issue"
   | "cancelled"
 
-/** yamato_tracking_detail の1要素 (sync-tracking が書く形)。 */
+/** tracking_detail の1要素 (sync-tracking が書く形)。 */
 export interface TrackingDetailEntry {
   number: string
   status?: ShipmentStatus | null
@@ -75,11 +75,11 @@ function legFallback(leg: Pick<ShipmentRecord, "status">): LuggageStatus {
 /** 荷物1個のステータスを導出。resolvedNumber も返す (UI 表示用)。 */
 export function deriveLuggageStatus(
   lug: Pick<GroupLuggageRecord, "luggage_no" | "tracking_number" | "manual_status">,
-  leg: Pick<ShipmentRecord, "status" | "yamato_tracking" | "yamato_tracking_detail">,
+  leg: Pick<ShipmentRecord, "status" | "tracking_numbers" | "tracking_detail">,
   detailByNumber: Map<string, TrackingDetailEntry>,
 ): { status: LuggageStatus; trackingNumber: string | null; exception: string | null; lastUpdate: string | null } {
   const trackingNumber =
-    lug.tracking_number || (leg.yamato_tracking ? leg.yamato_tracking[lug.luggage_no - 1] ?? null : null)
+    lug.tracking_number || (leg.tracking_numbers ? leg.tracking_numbers[lug.luggage_no - 1] ?? null : null)
 
   if (leg.status === "cancelled") {
     return { status: "cancelled", trackingNumber, exception: null, lastUpdate: null }

@@ -758,7 +758,7 @@ export async function POST(req: NextRequest) {
       item_type: (typeof body.productName === "string" && body.productName.trim()) || null,
       amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
       ship_ref_number: refNumber,
-      yamato_issuable_from: issuableFrom,
+      issuable_from: issuableFrom,
       carrier: carrier.id,
       status: "pending",
       notes: specialNote || null,
@@ -821,7 +821,7 @@ export async function POST(req: NextRequest) {
     if (sbIdem) {
       const { data: existing } = await sbIdem
         .from("shipments")
-        .select("status, yamato_tracking, yamato_label_url, agency")
+        .select("status, tracking_numbers, label_url, agency")
         .eq("booking_id", bookingId || refNumber)
         .eq("leg_index", legIndex)
         .maybeSingle()
@@ -838,12 +838,12 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      if (existing?.status === "issued" && existing.yamato_label_url) {
+      if (existing?.status === "issued" && existing.label_url) {
         return NextResponse.json({
           status: "issued",
           alreadyIssued: true,
-          label: existing.yamato_label_url,
-          trackingNumbers: existing.yamato_tracking ?? [],
+          label: existing.label_url,
+          trackingNumbers: existing.tracking_numbers ?? [],
           savedToDb: true,
         })
       }
@@ -1104,8 +1104,8 @@ export async function POST(req: NextRequest) {
     const saved = await saveShipment({
       ...baseRecord,
       status: "issued",
-      yamato_tracking: d.delivery?.tracking_numbers ?? null,
-      yamato_label_url: d.delivery?.label ?? null,
+      tracking_numbers: d.delivery?.tracking_numbers ?? null,
+      label_url: d.delivery?.label ?? null,
     })
     if (!saved.ok) {
       console.error(

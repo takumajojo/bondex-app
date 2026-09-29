@@ -79,8 +79,8 @@ interface Shipment {
   recipient: string
   suitcase_count: number
   amount_yen: number
-  yamato_tracking: string[] | null
-  yamato_label_url: string | null
+  tracking_numbers: string[] | null
+  label_url: string | null
   status: ShipmentStatus
   error_message: string | null
   tour_number: string | null
@@ -1424,6 +1424,16 @@ export default function DashboardPage() {
                             団体 →
                           </a>
                         )}
+                        {/* 問合番号 (佐川お問い合わせ送り状No / ヤマト伝票No)。佐川は世田谷から後日共有される。
+                            入力は予約詳細の「問合番号」から (ここは表示のみ)。 */}
+                        {it.tracking_numbers && it.tracking_numbers.length > 0 && (
+                          <p
+                            className="mt-1 font-mono text-[10px] text-muted-foreground"
+                            title="問合番号（佐川お問い合わせ番号 / ヤマト伝票番号）"
+                          >
+                            問合 {it.tracking_numbers.join(" / ")}
+                          </p>
+                        )}
                         {/* 発行・再試行などの操作は全て行右端の「⋯」メニューに集約 (行内アクション廃止)。 */}
                       </td>
                       {/* 代理店 */}
@@ -1465,10 +1475,10 @@ export default function DashboardPage() {
                           </span>
                         </p>
                         <LabelMailBadge shipment={it} onSent={() => void markLabelSent(it)} busy={labelBusyId === it.id} />
-                        {WAYBILL_UI_ENABLED && it.yamato_label_url && (
+                        {WAYBILL_UI_ENABLED && it.label_url && (
                           <a
                             href={`/api/voucher/label?${new URLSearchParams({
-                              url: it.yamato_label_url,
+                              url: it.label_url,
                               bookingId: it.booking_id,
                               ...(it.tour_number ? { tourNumber: it.tour_number } : {}),
                               representative: it.representative,
@@ -1610,7 +1620,7 @@ export default function DashboardPage() {
                                   >
                                     Voucher 再発行
                                   </a>
-                                  {WAYBILL_UI_ENABLED && it.yamato_label_url && (
+                                  {WAYBILL_UI_ENABLED && it.label_url && (
                                     <a
                                       href={`/api/voucher/labels?booking_id=${encodeURIComponent(it.booking_id)}`}
                                       className="block px-3 py-2 text-xs text-foreground hover:bg-muted/40"
@@ -2185,7 +2195,7 @@ function DeleteBookingModal({
   const [ack, setAck] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
-  const hasLabel = WAYBILL_UI_ENABLED && Boolean(shipment.yamato_label_url || (shipment.yamato_tracking?.length ?? 0) > 0)
+  const hasLabel = WAYBILL_UI_ENABLED && Boolean(shipment.label_url || (shipment.tracking_numbers?.length ?? 0) > 0)
 
   const onDelete = async () => {
     setBusy(true)

@@ -44,7 +44,7 @@ export async function buildGroupView(bookingId: string) {
   // 追跡番号 → 明細 の索引 (全区間分)
   const detailByNumber = new Map<string, TrackingDetailEntry>()
   for (const leg of legRows) {
-    for (const d of (leg.yamato_tracking_detail as TrackingDetailEntry[] | null) ?? []) {
+    for (const d of (leg.tracking_detail as TrackingDetailEntry[] | null) ?? []) {
       if (d?.number) detailByNumber.set(d.number, d)
     }
   }
@@ -91,7 +91,7 @@ export async function buildGroupView(bookingId: string) {
         status: l.status,
         suitcaseCount: l.suitcase_count,
         carrier: l.carrier,
-        trackingCount: (l.yamato_tracking ?? []).length,
+        trackingCount: (l.tracking_numbers ?? []).length,
       })),
       luggage: luggageViews,
       summary: summarize(statuses),

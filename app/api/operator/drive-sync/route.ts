@@ -60,13 +60,13 @@ export async function POST(req: NextRequest) {
   // 2) 発行済みの送り状 (Ship&co ラベル) を各区間ぶん取得して同梱
   const { data: legs } = await sb
     .from("shipments")
-    .select("leg_index, yamato_label_url")
+    .select("leg_index, label_url")
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
-  for (const leg of (legs ?? []) as Array<{ leg_index: number; yamato_label_url: string | null }>) {
-    if (!leg.yamato_label_url) continue
+  for (const leg of (legs ?? []) as Array<{ leg_index: number; label_url: string | null }>) {
+    if (!leg.label_url) continue
     try {
-      const r = await fetch(leg.yamato_label_url)
+      const r = await fetch(leg.label_url)
       if (r.ok) {
         const buf = Buffer.from(await r.arrayBuffer())
         files.push({ name: `${bookingId}_label_L${leg.leg_index + 1}.pdf`, buffer: buf })

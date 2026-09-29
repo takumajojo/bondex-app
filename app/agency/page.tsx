@@ -54,8 +54,8 @@ interface Shipment {
   recipient: string
   suitcase_count: number
   amount_yen: number
-  yamato_tracking: string[] | null
-  yamato_label_url: string | null
+  tracking_numbers: string[] | null
+  label_url: string | null
   status: string
   carrier: string | null
   charged_at: string | null
@@ -1132,14 +1132,14 @@ export default function AgencyDashboard() {
                       </td>
                       <td className="p-3 text-right tabular-nums">{it.suitcase_count}</td>
                       <td className="p-3">
-                        {it.yamato_tracking && it.yamato_tracking.length > 0 ? (
+                        {it.tracking_numbers && it.tracking_numbers.length > 0 ? (
                           <a
-                            href={carrierTrackUrl(it.carrier ?? "sagawa", it.yamato_tracking[0])}
+                            href={carrierTrackUrl(it.carrier ?? "sagawa", it.tracking_numbers[0])}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-mono text-[#C8102E] hover:underline"
                           >
-                            {it.yamato_tracking[0]}
+                            {it.tracking_numbers[0]}
                             <ExternalLink className="w-3 h-3" strokeWidth={1.5} />
                           </a>
                         ) : (

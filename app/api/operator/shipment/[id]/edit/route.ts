@@ -5,6 +5,7 @@ import { getShipment } from "@/lib/shipments-db"
 import { notifyBondEx } from "@/lib/notify"
 import { normalizeRepresentative } from "@/lib/agency-self-service"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
+import { normalizeTrackingNo } from "@/lib/tracking-format"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -27,7 +28,7 @@ export const maxDuration = 20
  *   }
  *   agency / tracking / representative の少なくとも一方が必要。
  *
- *   配送番号を差し替えたら yamato_tracking_detail を null に戻し、次回 sync-tracking で
+ *   配送番号を差し替えたら tracking_detail を null に戻し、次回 sync-tracking で
  *   新しい番号の配送状況を取り直させる (古い番号の詳細が残らないように)。
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -56,20 +57,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "代表者名を入力してください (80文字以内)" }, { status: 400 })
   }
 
-  // tracking の正規化: 文字列は改行/カンマ/空白区切り、配列はそのまま。数字のみ 10〜14 桁を許可。
+  // tracking の正規化: 文字列は改行/カンマ/空白区切り、配列はそのまま。
+  // 佐川の問合番号はハイフン付き (例: 5000-4465-2693) で共有されるため、区切り・全角を
+  // 除いて数字のみに正規化してから 10〜14 桁を検証する (保存は数字のみ・表示時に整形)。
   let tracking: string[] | null = null
   if (hasTracking) {
     const raw = Array.isArray(body.tracking)
       ? (body.tracking as unknown[]).map((t) => String(t))
-      : String(body.tracking).split(/[\s,]+/)
-    const cleaned = raw.map((t) => t.trim()).filter(Boolean)
-    for (const t of cleaned) {
-      if (!/^\d{10,14}$/.test(t)) {
+      : String(body.tracking).split(/[\s,、]+/)
+    const cleaned: string[] = []
+    for (const token of raw) {
+      const orig = token.trim()
+      if (!orig) continue
+      const digits = normalizeTrackingNo(orig)
+      if (!/^\d{10,14}$/.test(digits)) {
         return NextResponse.json(
-          { error: `配送番号「${t}」が不正です（送り状Noは10〜14桁の数字で入力してください）` },
+          {
+            error: `配送番号「${orig}」が不正です（送り状No／問合番号は10〜14桁の数字。ハイフンは自由・例 5000-4465-2693）`,
+          },
           { status: 400 },
         )
       }
+      cleaned.push(digits)
     }
     // 重複除去。空配列は「消去」として許可。
     tracking = Array.from(new Set(cleaned))
@@ -103,7 +112,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   const oldAgency = shipment.agency
-  const oldTracking = (shipment.yamato_tracking as string[] | null) ?? []
+  const oldTracking = (shipment.tracking_numbers as string[] | null) ?? []
   const oldRepresentative = shipment.representative || ""
   const oldRecipient = shipment.recipient || ""
 
@@ -120,7 +129,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (hasTracking) {
     const { error: upErr } = await sb
       .from("shipments")
-      .update({ yamato_tracking: tracking, yamato_tracking_detail: null })
+      .update({ tracking_numbers: tracking, tracking_detail: null })
       .eq("id", shipmentId)
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`配送番号: [${oldTracking.join(", ") || "—"}] → [${(tracking ?? []).join(", ") || "—"}]`)

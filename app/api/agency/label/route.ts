@@ -17,7 +17,7 @@ export const maxDuration = 30
  * Ship&co ラベルは GCS 配信でCORS不可のため、同一オリジンでプロキシして返す。
  * 認証した代理店の**自社の予約に紐づく送り状のみ**返す (他社ラベルの漏洩防止)。
  * 任意URLのプロキシ悪用(SSRF)防止のため、URLはクライアントから受け取らず、DBに保存された
- * yamato_label_url を使い、ホストを storage.googleapis.com に限定する。
+ * label_url を使い、ホストを storage.googleapis.com に限定する。
  */
 const ALLOWED_LABEL_HOST = "storage.googleapis.com"
 
@@ -40,14 +40,14 @@ export async function GET(req: NextRequest) {
   // 自社の予約に限定して送り状URL＋ファイル名用メタを引く
   const { data, error } = await sb
     .from("shipments")
-    .select("yamato_label_url, agency, tour_number, representative, carrier")
+    .select("label_url, agency, tour_number, representative, carrier")
     .eq("booking_id", bookingId)
     .eq("leg_index", legIndex)
     .eq("agency", auth.agency.name)
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const url = data?.yamato_label_url
+  const url = data?.label_url
   if (!url) return NextResponse.json({ error: "送り状がまだありません。" }, { status: 404 })
 
   // ファイル名: 既存ルール(buildVoucherFileName) + 区間 + キャリア。旅程番号を必ず含める。

@@ -34,14 +34,14 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await sb
     .from("shipments")
-    .select("leg_index, yamato_label_url, status, carrier")
+    .select("leg_index, label_url, status, carrier")
     .eq("booking_id", bookingId)
     .neq("status", "cancelled")
     .order("leg_index", { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const urls = (data ?? [])
-    .map((r) => r.yamato_label_url as string | null)
+    .map((r) => r.label_url as string | null)
     .filter((u): u is string => !!u)
     .filter((u) => {
       try {

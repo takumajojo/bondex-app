@@ -49,8 +49,8 @@ type Shipment = {
   amount_yen: number
   status: string
   carrier: string | null
-  yamato_tracking: string[] | null
-  yamato_label_url: string | null
+  tracking_numbers: string[] | null
+  label_url: string | null
   drive_url: string | null
   charged_at: string | null
   created_at: string
@@ -312,9 +312,9 @@ function ViewAsAgency() {
                             {r.status !== "requested" && r.status !== "pending" && r.status !== "cancelled" && (
                               <div className="mt-2 max-w-md">
                                 <TrackingStepper status={r.status} steps={TRACK_STEPS_JA} compact />
-                                {r.yamato_tracking && r.yamato_tracking.length > 0 && (
+                                {r.tracking_numbers && r.tracking_numbers.length > 0 && (
                                   <div className="mt-1 space-y-0.5">
-                                    {r.yamato_tracking.map((num) => (
+                                    {r.tracking_numbers.map((num) => (
                                       <a
                                         key={num}
                                         href={carrierTrackUrl(carrier, num)}

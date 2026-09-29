@@ -19,7 +19,9 @@ export const runtime = "nodejs"
  *  - 自社の予約のみ (agency 名一致)
  *  - ロック判定は lib/agency-self-service.ts (送り状が実在 / 追跡番号あり / 集荷済み以降 = 不可)。
  *    2026-09-24 の運用変更で依頼直後から "issued" (手配済) になるため、status だけでは判定しない。
- *  - 日程・個数・代表者名は「配送前日 17:00 (JST)」まで (完了画面・受付メールの案内どおり)。
+ *  - 日程・個数・代表者名は「配送前日 17:00 (JST)」まで即時反映 (完了画面・受付メールの案内どおり)。
+ *  - 締切 (配送前日17:00) を過ぎた変更は即時反映せず「承認制」で受理する (谷口さん決定 2026-09-29):
+ *    shipment_change_requests に pending で積み、BondEx が承認するまで反映しない。
  *  - 代表者名は予約単位 → 全区間に反映。受取人名が旧代表者名と同じなら揃える。
  *  - 団体 (booking_type='group') の個数変更は不可 (荷物リストと不整合になるため。
  *    団体ダッシュボードでリストを編集する)。
@@ -95,7 +97,7 @@ export async function PATCH(
       })
       .eq("id", id)
       .in("status", editableStatuses)
-      .is("yamato_label_url", null)
+      .is("label_url", null)
       .select("id")
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if ((upd ?? []).length === 0) {
@@ -118,18 +120,9 @@ export async function PATCH(
     return NextResponse.json({ ok: true, cancelled: true })
   }
 
-  // ── 日程 / 個数 / 代表者名の変更 — 配送前日 17:00 (JST) まで
-  if (isSelfServiceCutoffPassed(shipment.shipment_date)) {
-    return NextResponse.json(
-      {
-        error: "CUTOFF_PASSED",
-        message: en
-          ? "Changes are accepted until 17:00 (JST) on the day before shipment. Please contact BondEx."
-          : "変更は配送前日の 17:00 までの受付です。お手数ですが BondEx までご連絡ください。",
-      },
-      { status: 409 },
-    )
-  }
+  // ── 日程 / 個数 / 代表者名の変更。
+  //    締切 (配送前日 17:00 JST) を過ぎたら即時反映せず承認制へ回す (下で判定)。
+  const overCutoff = isSelfServiceCutoffPassed(shipment.shipment_date)
   const patch: Record<string, unknown> = {}
   const changes: string[] = []
   const bookingPatch: Record<string, unknown> = {}
@@ -238,14 +231,57 @@ export async function PATCH(
     return NextResponse.json({ error: "no fields" }, { status: 400 })
   }
 
-  // 同上: 集荷と同時刻の変更が「佐川へ渡した情報と DB の食い違い」を生まないよう条件付き
+  // ── 締切超過は承認制 (谷口さん決定 2026-09-29)。配送前日17:00 の締切を過ぎた変更は
+  //    即時反映せず shipment_change_requests に pending で積む。BondEx が承認するまで受理しない。
+  if (overCutoff) {
+    const fields: Record<string, unknown> = { ...patch, ...bookingPatch }
+    const before: Record<string, unknown> = {}
+    const shipAny = shipment as unknown as Record<string, unknown>
+    for (const k of Object.keys(fields)) before[k] = shipAny[k]
+    const { error: crErr } = await sb.from("shipment_change_requests").insert({
+      shipment_id: id,
+      booking_id: shipment.booking_id,
+      leg_index: shipment.leg_index,
+      requested_by: "agency",
+      requester: auth.agency.name,
+      agency: auth.agency.name,
+      fields,
+      before,
+      over_deadline: true,
+      status: "pending",
+    })
+    if (crErr) return NextResponse.json({ error: crErr.message }, { status: 500 })
+    await notifyBondEx({
+      kind: "change",
+      title: `${legRef}（${shipment.agency}）締切後の変更申請（承認待ち）`,
+      lines: [
+        `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
+        ...changes,
+        `⚠️ 配送前日17:00の締切を過ぎているため、BondEx の承認が必要です`,
+      ],
+      link: `/operator/bookings/${shipment.booking_id}`,
+      linkLabel: "承認する",
+    })
+    return NextResponse.json(
+      {
+        ok: true,
+        pending: true,
+        message: en
+          ? "Your change is past the cutoff, so it needs BondEx approval. We'll confirm and apply it shortly."
+          : "配送前日17:00の締切を過ぎているため、BondEx の承認後に反映されます。追ってご連絡します。",
+      },
+      { status: 202 },
+    )
+  }
+
+  // ── 締切内: 即時反映。集荷と同時刻の変更が「佐川へ渡した情報と DB の食い違い」を生まないよう条件付き。
   if (Object.keys(patch).length > 0) {
     const { data: upd2, error } = await sb
       .from("shipments")
       .update(patch)
       .eq("id", id)
       .in("status", editableStatuses)
-      .is("yamato_label_url", null)
+      .is("label_url", null)
       .select("id")
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if ((upd2 ?? []).length === 0) {
@@ -262,7 +298,7 @@ export async function PATCH(
       .update(bookingPatch)
       .eq("booking_id", shipment.booking_id)
       .in("status", editableStatuses)
-      .is("yamato_label_url", null)
+      .is("label_url", null)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     // Drive のバウチャーも差し替え (best-effort)。ポータルの DL は都度生成なので常に最新。
     try {

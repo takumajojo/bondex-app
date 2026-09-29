@@ -321,8 +321,8 @@ export async function PATCH(req: NextRequest) {
               lines: [
                 `お届け先: ${ship.to_hotel}`,
                 `代表者: ${ship.representative}`,
-                (ship.yamato_tracking ?? []).filter(Boolean).length
-                  ? `追跡番号: ${(ship.yamato_tracking ?? []).filter(Boolean).join(", ")}`
+                (ship.tracking_numbers ?? []).filter(Boolean).length
+                  ? `追跡番号: ${(ship.tracking_numbers ?? []).filter(Boolean).join(", ")}`
                   : "",
               ],
               link: `/track/${ship.booking_id}`,

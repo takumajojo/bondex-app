@@ -16,15 +16,15 @@ const EDITABLE_STATUSES = new Set(["requested", "pending", "issued"])
 
 export interface LockInput {
   status: string | null | undefined
-  yamato_label_url?: string | null
-  yamato_tracking?: string[] | null
+  label_url?: string | null
+  tracking_numbers?: string[] | null
 }
 
 /** 代理店がこの区間を自分で変更できないなら true。 */
 export function legLockedForAgency(s: LockInput): boolean {
   if (!EDITABLE_STATUSES.has(s.status || "")) return true
-  if (s.yamato_label_url) return true
-  if ((s.yamato_tracking?.length ?? 0) > 0) return true
+  if (s.label_url) return true
+  if ((s.tracking_numbers?.length ?? 0) > 0) return true
   return false
 }
 

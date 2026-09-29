@@ -23,7 +23,7 @@ export interface StatusRow {
   from_hotel?: string | null
   to_hotel?: string | null
   shipment_date?: string | null
-  yamato_tracking?: string[] | null
+  tracking_numbers?: string[] | null
 }
 
 /** shipment 行 + 代理店担当者名 → ステータス通知メールの入力。 */
@@ -38,7 +38,7 @@ export function statusDataFromRow(row: StatusRow, contactPerson: string | null):
     fromHotel: row.from_hotel ?? "",
     toHotel: row.to_hotel ?? "",
     shipmentDate: row.shipment_date ?? "",
-    trackingNumbers: row.yamato_tracking ?? [],
+    trackingNumbers: row.tracking_numbers ?? [],
     trackUrl: `https://bondex.express/track/${row.booking_id}`,
   }
 }

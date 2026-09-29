@@ -77,13 +77,13 @@ export async function resyncBookingToDrive(
   // 発行済み送り状(Ship&co ラベル・外部PDF)は再取得のみで同梱(内容は不変)。
   const { data: legs } = await sb
     .from("shipments")
-    .select("leg_index, yamato_label_url")
+    .select("leg_index, label_url")
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
-  for (const leg of (legs ?? []) as Array<{ leg_index: number; yamato_label_url: string | null }>) {
-    if (!leg.yamato_label_url) continue
+  for (const leg of (legs ?? []) as Array<{ leg_index: number; label_url: string | null }>) {
+    if (!leg.label_url) continue
     try {
-      const r = await fetch(leg.yamato_label_url)
+      const r = await fetch(leg.label_url)
       if (r.ok) {
         files.push({
           name: `${bookingId}_label_L${leg.leg_index + 1}.pdf`,

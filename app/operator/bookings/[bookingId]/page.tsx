@@ -28,6 +28,7 @@ import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import type { ResidenceAddress } from "@/lib/residence"
 import HotelContactEditor from "@/components/operator/HotelContactEditor"
 import HotelChangeModal, { type HotelChangeTarget } from "@/components/operator/HotelChangeModal"
+import CorrectionModal, { type CorrectionTarget } from "@/components/operator/CorrectionModal"
 import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
 
 type CountChange = {
@@ -69,13 +70,14 @@ type Row = {
   change_deadline_at: string | null
   suitcase_count: number
   amount_yen: number
+  carrier: string | null
   count_change_log: CountChange[] | null
   status: string
   error_message: string | null
   notes: string | null
   note_target: string | null
-  yamato_tracking: string[] | null
-  yamato_label_url: string | null
+  tracking_numbers: string[] | null
+  label_url: string | null
   drive_url: string | null
   charged_at: string | null
   charge_amount_yen: number | null
@@ -106,6 +108,30 @@ const REASON_LABEL: Record<string, string> = {
   not_collected: "集荷不可",
   customer_change: "お客様都合",
   other: "その他",
+}
+
+// 承認待ちの変更申請 (shipment_change_requests / status='pending')。
+type ChangeReq = {
+  id: string
+  booking_id: string
+  leg_index: number
+  requested_by: string
+  requester: string | null
+  agency: string | null
+  fields: Record<string, unknown> | null
+  before: Record<string, unknown> | null
+  over_deadline: boolean
+  reason: string | null
+  created_at: string
+}
+
+const FIELD_JA: Record<string, string> = {
+  shipment_date: "発送(集荷)日",
+  expected_arrival: "到着予定",
+  suitcase_count: "個数",
+  representative: "代表者",
+  recipient: "受取人",
+  agency: "代理店",
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -144,6 +170,12 @@ export default function OperatorBookingDetailPage() {
   const [editErr, setEditErr] = useState("")
   const [editingRep, setEditingRep] = useState(false)
   const [repDraft, setRepDraft] = useState("")
+  // 訂正モーダル / 承認待ちの変更申請
+  const [correctTarget, setCorrectTarget] = useState<CorrectionTarget | null>(null)
+  const [pending, setPending] = useState<ChangeReq[]>([])
+  const [decideBusy, setDecideBusy] = useState("")
+  const [decideErr, setDecideErr] = useState("")
+  const [rejectNote, setRejectNote] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -166,9 +198,43 @@ export default function OperatorBookingDetailPage() {
     setLoading(false)
   }, [bookingId])
 
+  const loadPending = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/operator/change-requests?booking_id=${encodeURIComponent(bookingId)}&status=pending`,
+        { cache: "no-store" },
+      )
+      const data = await res.json()
+      setPending((data.requests || []) as ChangeReq[])
+    } catch {
+      /* 取得失敗時は承認待ちパネルを出さない */
+    }
+  }, [bookingId])
+
   useEffect(() => {
     void load()
-  }, [load])
+    void loadPending()
+  }, [load, loadPending])
+
+  // 承認待ちの変更申請を承認/却下する。
+  const decide = async (id: string, action: "approve" | "reject") => {
+    setDecideBusy(id)
+    setDecideErr("")
+    try {
+      const res = await fetch(`/api/operator/change-requests/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, note: rejectNote[id]?.trim() || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "処理に失敗しました")
+      await load()
+      await loadPending()
+    } catch (e) {
+      setDecideErr(e instanceof Error ? e.message : "処理に失敗しました")
+    }
+    setDecideBusy("")
+  }
 
   const markLabelSent = async (row: Row, sent: boolean) => {
     setBusyId(row.id)
@@ -245,6 +311,23 @@ export default function OperatorBookingDetailPage() {
     })
   }
 
+  const openCorrect = (r: Row) => {
+    setCorrectTarget({
+      shipmentId: r.id,
+      legLabel: `${r.booking_id}-L${r.leg_index + 1}`,
+      bookingId: r.booking_id,
+      shipmentDate: r.shipment_date,
+      expectedArrival: r.expected_arrival,
+      suitcaseCount: r.suitcase_count,
+      representative: r.representative,
+      recipient: r.recipient,
+      agency: r.agency,
+      status: r.status,
+      carrier: r.carrier || "sagawa",
+      changeDeadlineAt: r.change_deadline_at,
+    })
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
       {changeTarget && (
@@ -254,6 +337,18 @@ export default function OperatorBookingDetailPage() {
           onDone={() => {
             setChangeTarget(null)
             void load()
+          }}
+        />
+      )}
+      {correctTarget && (
+        <CorrectionModal
+          target={correctTarget}
+          agencies={agencies}
+          onClose={() => setCorrectTarget(null)}
+          onDone={() => {
+            setCorrectTarget(null)
+            void load()
+            void loadPending()
           }}
         />
       )}
@@ -414,8 +509,81 @@ export default function OperatorBookingDetailPage() {
                 </a>
               )}
               <span className="text-[11px] text-muted-foreground">
-                操作（ステータス変更・日付編集・個数修正）は一覧の「⋯」メニューから
+                日程・個数・代表者・受取人の訂正は各区間の「予約を訂正」から
               </span>
+            </div>
+          </section>
+        )}
+
+        {pending.length > 0 && (
+          <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5">
+            <h2 className="mb-3 text-sm font-semibold text-amber-900">
+              承認待ちの変更申請（{pending.length}件）
+            </h2>
+            {decideErr && <p className="mb-2 text-xs text-red-700">{decideErr}</p>}
+            <div className="space-y-3">
+              {pending.map((p) => {
+                const fields = p.fields || {}
+                const before = p.before || {}
+                const keys = Object.keys(fields)
+                return (
+                  <div key={p.id} className="rounded-xl border border-amber-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-foreground">
+                        <span className="font-mono">{p.booking_id}-L{p.leg_index + 1}</span>
+                        <span className="ml-2 font-normal text-muted-foreground">
+                          申請元:{" "}
+                          {p.requested_by === "agency"
+                            ? `代理店（${p.requester || p.agency || "—"}）`
+                            : "運営"}
+                        </span>
+                      </span>
+                      {p.over_deadline && (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                          締切超過
+                        </span>
+                      )}
+                    </div>
+                    <ul className="mt-2 space-y-0.5 text-xs text-foreground">
+                      {keys.map((k) => (
+                        <li key={k}>
+                          {FIELD_JA[k] || k}:{" "}
+                          <span className="text-muted-foreground">{String(before[k] ?? "—")}</span> →{" "}
+                          <span className="font-semibold">{String(fields[k])}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {p.reason && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">理由: {p.reason}</p>
+                    )}
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      申請: {new Date(p.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <input
+                        value={rejectNote[p.id] || ""}
+                        onChange={(e) => setRejectNote((s) => ({ ...s, [p.id]: e.target.value }))}
+                        placeholder="却下理由（却下時のみ）"
+                        className="min-w-[10rem] flex-1 rounded border border-border bg-white px-2 py-1 text-[11px]"
+                      />
+                      <button
+                        onClick={() => void decide(p.id, "approve")}
+                        disabled={decideBusy === p.id}
+                        className="rounded bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                      >
+                        承認して反映
+                      </button>
+                      <button
+                        onClick={() => void decide(p.id, "reject")}
+                        disabled={decideBusy === p.id}
+                        className="rounded border border-red-300 px-2.5 py-1 text-[11px] font-semibold text-red-700 disabled:opacity-50"
+                      >
+                        却下
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}
@@ -447,7 +615,7 @@ export default function OperatorBookingDetailPage() {
               {/* 変更受付: 締切表示 + ホテル変更ボタン (物理ゲートで無効化) */}
               {(() => {
                 const gated =
-                  ((r.yamato_tracking?.length ?? 0) > 0) ||
+                  ((r.tracking_numbers?.length ?? 0) > 0) ||
                   ["picked_up", "in_transit", "delivered"].includes(r.status)
                 const over = isChangeDeadlinePassed(r.change_deadline_at)
                 const near = isChangeDeadlineNear(r.change_deadline_at)
@@ -462,6 +630,12 @@ export default function OperatorBookingDetailPage() {
                         {!over && near && <span className="ml-1">（残り48時間以内）</span>}
                       </span>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openCorrect(r)}
+                          className="rounded-lg bg-[#C8102E] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[#a60d26]"
+                        >
+                          予約を訂正
+                        </button>
                         <button
                           onClick={() => !gated && openChange(r, "guest")}
                           disabled={gated}
@@ -542,13 +716,13 @@ export default function OperatorBookingDetailPage() {
                   )}
                 </Section>
 
-                <Section title="追跡番号">
+                <Section title="問合番号（追跡）">
                   {editTrackId === r.id ? (
                     <div className="space-y-1.5">
                       <input
                         value={trackDraft}
                         onChange={(e) => setTrackDraft(e.target.value)}
-                        placeholder="例) 564833729073（複数はカンマ/空白区切り・空で消去）"
+                        placeholder="例) 5000-4465-2693（佐川の問合番号・ハイフン可／複数はカンマ区切り・空で消去）"
                         className="w-full rounded border border-border bg-white px-2 py-1 text-xs font-mono"
                       />
                       <div className="flex items-center gap-2">
@@ -573,8 +747,8 @@ export default function OperatorBookingDetailPage() {
                   ) : (
                     <div className="flex items-start gap-2">
                       <div className="space-y-0.5">
-                        {r.yamato_tracking && r.yamato_tracking.length > 0 ? (
-                          r.yamato_tracking.map((t) => (
+                        {r.tracking_numbers && r.tracking_numbers.length > 0 ? (
+                          r.tracking_numbers.map((t) => (
                             <p key={t} className="text-xs font-mono text-foreground/90">{t}</p>
                           ))
                         ) : (
@@ -582,17 +756,17 @@ export default function OperatorBookingDetailPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => { setEditTrackId(r.id); setTrackDraft((r.yamato_tracking || []).join(", ")); setEditErr("") }}
+                        onClick={() => { setEditTrackId(r.id); setTrackDraft((r.tracking_numbers || []).join(", ")); setEditErr("") }}
                         className="text-[11px] text-[#C8102E] hover:underline"
                       >
                         編集
                       </button>
                     </div>
                   )}
-                  {WAYBILL_UI_ENABLED && r.yamato_label_url && (
+                  {WAYBILL_UI_ENABLED && r.label_url && (
                     <a
                       href={`/api/voucher/label?${new URLSearchParams({
-                        url: r.yamato_label_url,
+                        url: r.label_url,
                         bookingId: r.booking_id,
                         ...(r.tour_number ? { tourNumber: r.tour_number } : {}),
                         representative: r.representative,

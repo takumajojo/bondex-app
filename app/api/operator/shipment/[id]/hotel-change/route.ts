@@ -18,7 +18,7 @@ export const maxDuration = 20
  *     reason?,                        // 締切超過override時は必須
  *   }
  *   ゲート:
- *     物理  = yamato_tracking 有り / status∈{picked_up,in_transit,delivered} → ハードブロック
+ *     物理  = tracking_numbers 有り / status∈{picked_up,in_transit,delivered} → ハードブロック
  *     準物理 = label_sent_at 有り → 変更可・旧伝票破棄タスク生成 (old_slip_task=true)
  *     ポリシー= now>change_deadline_at → 理由必須で override 可 (over_deadline=true)
  *   更新と履歴INSERTは RPC apply_hotel_change で単一トランザクション実行。
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: ship, error: fetchErr } = await sb
     .from("shipments")
     .select(
-      "id, booking_id, leg_index, agency, status, shipment_date, change_deadline_at, label_sent_at, yamato_tracking, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
+      "id, booking_id, leg_index, agency, status, shipment_date, change_deadline_at, label_sent_at, tracking_numbers, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
     )
     .eq("id", shipmentId)
     .maybeSingle()
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!ship) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
 
   // 物理ゲート (override 不可)
-  const tracking = (ship.yamato_tracking as string[] | null) ?? []
+  const tracking = (ship.tracking_numbers as string[] | null) ?? []
   const issued = Array.isArray(tracking) && tracking.length > 0
   const pickedUp = ["picked_up", "in_transit", "delivered"].includes(ship.status as string)
   if (issued || pickedUp) {

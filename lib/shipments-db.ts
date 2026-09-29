@@ -33,6 +33,8 @@ export interface ShipmentRecord {
   group_name: string | null
   shipment_date: string  // YYYY-MM-DD
   expected_arrival: string | null
+  /** 変更受付締切 = 発送日の2営業日前 18:00 JST (lib/change-deadline.ts が発送日から算出・保存)。 */
+  change_deadline_at: string | null
   from_hotel: string
   from_city: string | null
   /** 発送元の都道府県 (日本語・発行時に Google Places から解決)。例: 東京都。null=未解決。 */
@@ -60,11 +62,11 @@ export interface ShipmentRecord {
   /** 送り状の品名 (解決済み日本語。null/空=スーツケース扱い)。 */
   item_type: string | null
   amount_yen: number
-  yamato_tracking: string[] | null
+  tracking_numbers: string[] | null
   /** 追跡番号ごとの明細 (sync-tracking cron が更新)。shape は lib/group-luggage-db.ts の TrackingDetailEntry。 */
-  yamato_tracking_detail: unknown[] | null
-  yamato_label_url: string | null
-  yamato_issuable_from: string | null
+  tracking_detail: unknown[] | null
+  label_url: string | null
+  issuable_from: string | null
   ship_ref_number: string | null
   status: ShipmentStatus
   error_message: string | null
@@ -202,9 +204,9 @@ export async function saveShipment(
     suitcase_count: input.suitcase_count ?? 1,
     item_type: input.item_type ?? null,
     amount_yen: input.amount_yen ?? 0,
-    yamato_tracking: input.yamato_tracking ?? null,
-    yamato_label_url: input.yamato_label_url ?? null,
-    yamato_issuable_from: input.yamato_issuable_from ?? null,
+    tracking_numbers: input.tracking_numbers ?? null,
+    label_url: input.label_url ?? null,
+    issuable_from: input.issuable_from ?? null,
     ship_ref_number: input.ship_ref_number ?? null,
     status: input.status ?? "issued",
     error_message: input.error_message ?? null,
@@ -766,7 +768,7 @@ export async function promoteDeferredInWindow(
     .from("shipments")
     .update({ status: "requested", error_message: null })
     .eq("status", "pending")
-    .is("yamato_label_url", null)
+    .is("label_url", null)
     .gte("shipment_date", todayJstYmd)
     .lte("shipment_date", horizonJstYmd)
     .select("id")
@@ -779,7 +781,7 @@ export async function promoteDeferredInWindow(
     .from("shipments")
     .update({ status: "requested", error_message: null })
     .eq("status", "failed")
-    .is("yamato_label_url", null)
+    .is("label_url", null)
     .gte("shipment_date", todayJstYmd)
     .lte("shipment_date", horizonJstYmd)
     .or(

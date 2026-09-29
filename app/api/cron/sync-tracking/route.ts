@@ -30,7 +30,7 @@ export const maxDuration = 300
  * (https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs).
  *
  * 対象: status が終端状態 (delivered/cancelled/failed) ではなく、
- *       yamato_tracking に追跡番号が入っている shipment のみ。
+ *       tracking_numbers に追跡番号が入っている shipment のみ。
  *
  * ステータスマッピングについて:
  *   Ship&co の current_status.status に入る正確な文字列の一覧は
@@ -121,8 +121,8 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await sb
       .from("shipments")
-      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, tour_number, shipment_date, yamato_tracking, yamato_tracking_detail")
-      .not("yamato_tracking", "is", null)
+      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, tour_number, shipment_date, tracking_numbers, tracking_detail")
+      .not("tracking_numbers", "is", null)
       .not("status", "in", '("delivered","cancelled","failed")')
       // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
       // 超過分の追跡・集荷時課金・配達完了通知が止まる。発送日が近い順に明示して
@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = (data ?? []).filter(
-      (row) => ((row.yamato_tracking as string[] | null) ?? []).length > 0,
+      (row) => ((row.tracking_numbers as string[] | null) ?? []).length > 0,
     )
     const skippedNoTracking = (data?.length ?? 0) - rows.length
 
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest) {
     type Task = { rowIndex: number; trackingNumber: string; carrier: string | null }
     const tasks: Task[] = []
     rows.forEach((row, rowIndex) => {
-      const trackingNumbers = (row.yamato_tracking as string[] | null) ?? []
+      const trackingNumbers = (row.tracking_numbers as string[] | null) ?? []
       const carrier = (row.carrier as string | null) ?? null
       trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num, carrier }))
     })
@@ -202,7 +202,7 @@ export async function GET(req: NextRequest) {
       // 前回 cron が保存した「通知済み異常」を番号単位で引き継ぐ —
       // 同じ遅延に対して毎時アラートを打ち続けないための重複防止。
       const prevAlerted = new Map<string, string>()
-      for (const d of (row.yamato_tracking_detail as PrevDetail[] | null) ?? []) {
+      for (const d of (row.tracking_detail as PrevDetail[] | null) ?? []) {
         if (d.alertedException) prevAlerted.set(d.number, d.alertedException)
       }
 
@@ -306,11 +306,11 @@ export async function GET(req: NextRequest) {
       }
 
       // Ship&co 側が今回まるごと応答しなかった場合 (全滅) は、既存の
-      // yamato_tracking_detail を空で上書きしない — 一時的な障害で
+      // tracking_detail を空で上書きしない — 一時的な障害で
       // 「今どこにあるか」の情報を消してしまわないため。
       const updatePayload: Record<string, unknown> = {}
       if (anySuccess) {
-        updatePayload.yamato_tracking_detail = detail
+        updatePayload.tracking_detail = detail
       }
 
       const currentRank = progressionRank(row.status as ShipmentStatus)
@@ -481,7 +481,7 @@ export async function GET(req: NextRequest) {
             `代表者: ${s.representative} / 受取人: ${s.recipient}`,
             `発送日: ${s.shipment_date} を過ぎても集荷が確認できていません (現在: ${s.status})`,
             `発送元: ${s.from_hotel} → ${s.to_hotel}`,
-            `追跡番号: ${(s.yamato_tracking ?? []).join(", ") || "未発行"}`,
+            `追跡番号: ${(s.tracking_numbers ?? []).join(", ") || "未発行"}`,
             `対応: 発送元ホテルへ荷物の有無を確認し、必要なら集荷を再手配してください。`,
           ],
           agencyEmail,
@@ -523,7 +523,7 @@ export async function GET(req: NextRequest) {
             `代表者: ${s.representative}`,
             `予定到着日 ${s.expected_arrival} を過ぎても配達完了が確認できていません (現在: ${s.status})`,
             `区間: ${s.from_hotel} → ${s.to_hotel}`,
-            `追跡番号: ${(s.yamato_tracking ?? []).join(", ") || "未発行"}`,
+            `追跡番号: ${(s.tracking_numbers ?? []).join(", ") || "未発行"}`,
             `対応: 追跡状況を確認し、遅延・不着なら配送業者へ照会してください。`,
             `追跡: https://bondex.express/track/${s.booking_id}`,
           ],
