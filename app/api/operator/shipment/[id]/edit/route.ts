@@ -6,6 +6,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { normalizeRepresentative } from "@/lib/agency-self-service"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
 import { normalizeTrackingNo } from "@/lib/tracking-format"
+import { reconcileTrackingNow } from "@/lib/tracking/reconcile"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -126,6 +127,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`代理店: ${oldAgency || "—"} → ${agency}（全区間）`)
   }
+  let trackingSyncNote: string | null = null
   if (hasTracking) {
     const { error: upErr } = await sb
       .from("shipments")
@@ -133,6 +135,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .eq("id", shipmentId)
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`配送番号: [${oldTracking.join(", ") || "—"}] → [${(tracking ?? []).join(", ") || "—"}]`)
+
+    // 番号を入れ替えたら「時間毎の cron を待たず」に即照会し、集荷済み/配達完了なら
+    // その場で反映＋代理店メール発火 (best-effort・失敗しても番号更新は成功のまま返す)。
+    // 空配列(=番号消去)のときは照会しない。
+    if (tracking && tracking.length > 0) {
+      const sync = await reconcileTrackingNow(sb, shipmentId)
+      trackingSyncNote = sync.note
+      results.push(`即時追跡照会: ${sync.note}`)
+    }
   }
   let driveResynced = false
   if (representative && representative !== oldRepresentative) {
@@ -174,5 +185,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     tracking: hasTracking ? tracking : oldTracking,
     representative: representative ?? oldRepresentative,
     driveResynced,
+    trackingSync: trackingSyncNote,
   })
 }

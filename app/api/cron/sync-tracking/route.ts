@@ -313,6 +313,11 @@ export async function GET(req: NextRequest) {
         updatePayload.tracking_detail = detail
       }
 
+      // history 由来の実イベント時刻 (集荷/配達)。複数番号なら最も早いものを採る。
+      // 無ければ従来どおり「検知した時刻(now)」で代替する。
+      const collectedAt = resultsForRow.map((r) => r.collectedAt).filter(Boolean).sort()[0] as string | undefined
+      const deliveredAt = resultsForRow.map((r) => r.deliveredAt).filter(Boolean).sort()[0] as string | undefined
+
       const currentRank = progressionRank(row.status as ShipmentStatus)
       // 後退は絶対にしない。現在より前進している場合のみ status を更新。
       const statusAdvances = bestStatus !== null && bestRank > currentRank
@@ -320,12 +325,13 @@ export async function GET(req: NextRequest) {
         updatePayload.status = bestStatus
         // 集荷ライン(picked_up)を初めて越えたら picked_up_at を記録
         // (ダッシュボードの「本日集荷されました」通知用・未読/既読は pickup_ack_at)。
+        // 実際に佐川がスキャンした集荷時刻 (collected の date) を優先し、無ければ検知時刻。
         if (currentRank < progressionRank("picked_up") && bestRank >= progressionRank("picked_up")) {
-          updatePayload.picked_up_at = new Date().toISOString()
+          updatePayload.picked_up_at = collectedAt ?? new Date().toISOString()
         }
         // 配達完了に到達 → delivered_at を記録 (2営業日経過で過去履歴へ移すための基準)。
         if (bestStatus === "delivered") {
-          updatePayload.delivered_at = new Date().toISOString()
+          updatePayload.delivered_at = deliveredAt ?? new Date().toISOString()
         }
       }
 
