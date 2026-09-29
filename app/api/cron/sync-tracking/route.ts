@@ -100,6 +100,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  // ?shipmentId=<id> 指定時はその区間だけを即時チェックする (2026-09-29 谷口さん)。
+  // 運用画面で佐川の送り状Noを入れた直後に呼ばれ、定時実行を待たずに配達完了メールまで進める。
+  // 集荷漏れ/配達遅延の全体チェックは定時実行に任せる。
+  const onlyShipmentId = req.nextUrl.searchParams.get("shipmentId")?.trim() || null
+
   // 二重起動ロック (GitHub Actions の誤判定リトライ対策・2026-08-31 監査対応)。
   const lock = await acquireCronLock("sync-tracking")
   if (!lock.ok) {
@@ -119,17 +124,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Supabase client unavailable" }, { status: 500 })
     }
 
-    const { data, error } = await sb
+    let query = sb
       .from("shipments")
       .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, tour_number, shipment_date, yamato_tracking, yamato_tracking_detail")
       .not("yamato_tracking", "is", null)
       .not("status", "in", '("delivered","cancelled","failed")')
-      // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
-      // 超過分の追跡・集荷時課金・配達完了通知が止まる。発送日が近い順に明示して
-      // 「今動いている荷物」から確実に処理する (繁忙期に1000区間を超えても、
-      // 期限が近い側は必ず対象に入る)。
-      .order("shipment_date", { ascending: true })
-      .limit(1000)
+    if (onlyShipmentId) query = query.eq("id", onlyShipmentId)
+    // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
+    // 超過分の追跡・集荷時課金・配達完了通知が止まる。発送日が近い順に明示して
+    // 「今動いている荷物」から確実に処理する (繁忙期に1000区間を超えても、
+    // 期限が近い側は必ず対象に入る)。
+    const { data, error } = await query.order("shipment_date", { ascending: true }).limit(1000)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -217,6 +222,14 @@ export async function GET(req: NextRequest) {
           return { number: tr.number, checkedAt, alertedException: prevAlerted.get(tr.number) }
         }
         anySuccess = true
+
+        // 集荷前 (issued) の番号は佐川側にまだ荷物データが無く、Ship&co は "exception" を返す
+        // (2026-09-29 実測: 集荷前の送り状Noは佐川の追跡で「お荷物データが登録されておりません」)。
+        // 新運用では集荷前に送り状Noを入れるので、これを異常として通知しない。
+        // 集荷されないまま発送日を過ぎた場合は、下の「集荷漏れアラート」が拾う。
+        if (tr.exception && progressionRank(row.status as ShipmentStatus) < progressionRank("picked_up")) {
+          return { number: tr.number, status: null, rawStatus: tr.rawStatus, checkedAt }
+        }
 
         // 異常系を最優先 — provider が正規化済み (異常時は status=null)。前進判定には使わない。
         if (tr.exception) {
@@ -462,7 +475,7 @@ export async function GET(req: NextRequest) {
     //   - pickup_alert_sent_at で二重通知を防止
     // ------------------------------------------------------------------
     let pickupAlertsSent = 0
-    try {
+    if (!onlyShipmentId) try {
       const nowJst = new Date(Date.now() + 9 * 3600 * 1000)
       const todayJst = nowJst.toISOString().slice(0, 10)
       const hourJst = nowJst.getUTCHours()
@@ -511,7 +524,7 @@ export async function GET(req: NextRequest) {
     //   - delivery_overdue_alerted_at で二重通知を防止 (一度きり)。
     // ------------------------------------------------------------------
     let overdueAlertsSent = 0
-    try {
+    if (!onlyShipmentId) try {
       const todayJst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
       const overdue = await listDeliveryOverdue(todayJst)
       const overdueIds: string[] = []

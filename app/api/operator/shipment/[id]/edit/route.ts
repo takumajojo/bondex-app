@@ -158,8 +158,27 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }).catch(() => {})
   }
 
+  // 送り状Noを入れたら、定時実行を待たずにこの区間だけ即時に配送状況を取り直す (2026-09-29 谷口さん)。
+  // 既に配達済みの荷物ならこの場で配達完了メールまで進む。失敗しても次の定時実行が拾うので握り潰す。
+  let trackingSynced = false
+  if (hasTracking && (tracking ?? []).length > 0 && process.env.CRON_SECRET) {
+    try {
+      const res = await fetch(
+        `${req.nextUrl.origin}/api/cron/sync-tracking?shipmentId=${encodeURIComponent(shipmentId)}`,
+        {
+          headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      )
+      trackingSynced = res.ok
+    } catch {
+      trackingSynced = false
+    }
+  }
+
   return NextResponse.json({
     ok: true,
+    trackingSynced,
     changed: results,
     agency: hasAgency ? agency : oldAgency,
     tracking: hasTracking ? tracking : oldTracking,
