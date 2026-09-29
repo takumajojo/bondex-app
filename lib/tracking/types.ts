@@ -12,6 +12,14 @@ import type { ShipmentStatus } from "@/lib/shipments-db"
  * cron 側の前進判定・詳細書込・異常アラートは、この形だけを見て動く
  * (キャリア固有の語彙は各プロバイダ内で吸収する)。
  */
+/** キャリアの時系列追跡イベント1件 (Ship&co history[] の1要素)。 */
+export interface TrackingEvent {
+  date?: string | null
+  status?: string
+  details?: string[]
+  location?: string
+}
+
 export interface TrackingResult {
   number: string
   /** キャリアから有効な現況が得られなかった (無応答/ステータス無し)。 */
@@ -24,6 +32,16 @@ export interface TrackingResult {
   exception: string | null
   location?: string
   date?: string
+  // ── history[] から導出したイベント発生時刻 (ISO)。該当イベントが無い/日時nullなら undefined。
+  //    集荷/配達の「実際にキャリアがスキャンした時刻」を picked_up_at / delivered_at に使うため。
+  /** 集荷 (collected/集荷/picked_up) イベントの発生時刻。 */
+  collectedAt?: string
+  /** 輸送中 (transit 等) の最初のイベント時刻。 */
+  inTransitAt?: string
+  /** 配達完了 (delivered) イベントの発生時刻。 */
+  deliveredAt?: string
+  /** キャリアの時系列イベント履歴 (診断/タイムライン表示用・加工せず保持)。 */
+  history?: TrackingEvent[]
 }
 
 export interface TrackingProvider {

@@ -101,6 +101,10 @@ export async function reconcileTrackingNow(
       return { changed: false, note: "追跡データなし(キャリア未反映の可能性)" }
     }
 
+    // history 由来の実イベント時刻 (集荷/配達)。複数番号なら最も早いものを採る。無ければ照会時刻で代替。
+    const collectedAt = results.map((r) => r.collectedAt).filter(Boolean).sort()[0] as string | undefined
+    const deliveredAt = results.map((r) => r.deliveredAt).filter(Boolean).sort()[0] as string | undefined
+
     const currentRank = progressionRank(row.status as ShipmentStatus)
     const statusAdvances = bestStatus !== null && bestRank > currentRank
 
@@ -108,9 +112,10 @@ export async function reconcileTrackingNow(
     if (statusAdvances) {
       updatePayload.status = bestStatus
       if (currentRank < progressionRank("picked_up") && bestRank >= progressionRank("picked_up")) {
-        updatePayload.picked_up_at = checkedAt
+        // 実際に佐川がスキャンした集荷時刻 (collected の date) を優先。
+        updatePayload.picked_up_at = collectedAt ?? checkedAt
       }
-      if (bestStatus === "delivered") updatePayload.delivered_at = checkedAt
+      if (bestStatus === "delivered") updatePayload.delivered_at = deliveredAt ?? checkedAt
     }
 
     const { error: upErr } = await sb.from("shipments").update(updatePayload).eq("id", shipmentId)

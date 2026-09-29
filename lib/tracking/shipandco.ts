@@ -99,8 +99,44 @@ interface TrackingCurrentStatus {
   location?: string
 }
 
+interface TrackingHistoryEvent {
+  date?: string | null
+  status?: string
+  details?: string[]
+  location?: string
+}
+
 interface TrackingResponse {
   current_status?: TrackingCurrentStatus
+  // Ship&co は時系列順(古い→新しい)の全追跡イベントを history で返す。
+  // 各要素の status を正規化して、集荷/輸送中/配達完了の「実発生時刻」を取り出す。
+  history?: TrackingHistoryEvent[]
+}
+
+/**
+ * history[] から集荷/輸送中/配達完了の発生時刻を取り出す。
+ * history は時系列順(古い→新しい)なので、集荷・輸送中は最初の該当、配達完了も最初の該当を採る。
+ * 各イベントの status は current_status と同じ語彙なので mapTrackingStatus で正規化する
+ * (異常系は detectException でスキップ = 前進イベントに数えない)。date が無い(null)要素は無視。
+ */
+function deriveEventTimes(
+  history: TrackingHistoryEvent[] | undefined,
+): { collectedAt?: string; inTransitAt?: string; deliveredAt?: string } {
+  if (!Array.isArray(history)) return {}
+  let collectedAt: string | undefined
+  let inTransitAt: string | undefined
+  let deliveredAt: string | undefined
+  for (const ev of history) {
+    const raw = ev?.status
+    const date = ev?.date
+    if (!raw || !date) continue
+    if (detectException(raw)) continue
+    const st = mapTrackingStatus(raw)
+    if (st === "picked_up" && !collectedAt) collectedAt = date
+    else if (st === "in_transit" && !inTransitAt) inTransitAt = date
+    else if (st === "delivered" && !deliveredAt) deliveredAt = date
+  }
+  return { collectedAt, inTransitAt, deliveredAt }
 }
 
 // Ship&co 追跡 API は GET /v1/tracking/:carrier/:trackingNumber。
@@ -154,11 +190,14 @@ export const shipandcoTrackingProvider: TrackingProvider = {
     }
     const path = trackingCarrierPath(carrier)
     const tracking = await fetchTracking(token, path, trackingNumber)
+    const history = Array.isArray(tracking?.history) ? tracking!.history : undefined
+    const derived = deriveEventTimes(history)
     const current = tracking?.current_status
     const rawStatus = current?.status
     // 現況が取れない = 従来 cron の「!rawStatus」分岐と同じ扱い (location/date は使わない)。
+    // ※ history は current_status が無くても診断用に返す (集荷時刻の確認に使えるように)。
     if (!rawStatus) {
-      return { number: trackingNumber, noData: true, status: null, exception: null }
+      return { number: trackingNumber, noData: true, status: null, exception: null, ...derived, history }
     }
     // 従来 cron と同順序: まず異常系、異常でなければステータス正規化。
     const exception = detectException(rawStatus)
@@ -171,6 +210,8 @@ export const shipandcoTrackingProvider: TrackingProvider = {
       exception,
       location: current?.location,
       date: current?.date,
+      ...derived,
+      history,
     }
   },
 }
