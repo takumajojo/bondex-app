@@ -170,7 +170,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           signal: AbortSignal.timeout(15_000),
         },
       )
-      trackingSynced = res.ok
+      // 同じ区間の即時チェックが走行中なら skipped: "already running" が返る (次の定時実行が拾う)。
+      // 通常時の skipped は「更新不要だった件数」(数値) なので、文字列のときだけ未実行とみなす。
+      const body = (await res.json().catch(() => ({}))) as { skipped?: unknown }
+      trackingSynced = res.ok && typeof body.skipped !== "string"
     } catch {
       trackingSynced = false
     }

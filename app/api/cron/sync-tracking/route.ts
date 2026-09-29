@@ -106,7 +106,11 @@ export async function GET(req: NextRequest) {
   const onlyShipmentId = req.nextUrl.searchParams.get("shipmentId")?.trim() || null
 
   // 二重起動ロック (GitHub Actions の誤判定リトライ対策・2026-08-31 監査対応)。
-  const lock = await acquireCronLock("sync-tracking")
+  // 区間指定の即時チェックは別名のロックにする — 同じ名前だと、番号入力と定時実行が重なった
+  // ときに定時実行が丸ごと「already running」で飛ぶため。両者が同じ区間を同時に処理しても、
+  // 下の status 条件付き update で副作用 (課金・完了メール) は片方だけが実行する。
+  const lockName = onlyShipmentId ? `sync-tracking:${onlyShipmentId}` : "sync-tracking"
+  const lock = await acquireCronLock(lockName)
   if (!lock.ok) {
     return NextResponse.json({ ok: true, skipped: "already running" })
   }
@@ -347,13 +351,21 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      const { error: updateError } = await sb
+      // status を読んだ時点の値で条件付き更新する。並走した別の実行 (定時実行と即時チェック等) が
+      // 先に進めていたら 0 行になり、ここでは課金・完了メール等の副作用を起こさない (二重送信防止)。
+      const { data: updatedRows, error: updateError } = await sb
         .from("shipments")
         .update(updatePayload)
         .eq("id", row.id)
+        .eq("status", row.status)
+        .select("id")
 
       if (updateError) {
         failures.push({ bookingId: row.booking_id, leg: row.leg_index, reason: updateError.message })
+        continue
+      }
+      if ((updatedRows ?? []).length === 0) {
+        skipped++
         continue
       }
       if (statusAdvances) updated++
@@ -571,6 +583,6 @@ export async function GET(req: NextRequest) {
     })
 
   } finally {
-    await releaseCronLock("sync-tracking")
+    await releaseCronLock(lockName)
   }
 }
