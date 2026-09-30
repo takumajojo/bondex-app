@@ -807,6 +807,15 @@ export default function AgencyDashboard() {
               <Info className="w-4 h-4" strokeWidth={1.6} />
               <span className="hidden md:inline">{t.rules}</span>
             </Link>
+            {/* 連絡先メール・ログインユーザーの管理 */}
+            <Link
+              href="/agency/settings"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm text-foreground hover:bg-slate-50"
+              title={locale === "ja" ? "連絡先・ユーザー設定" : "Contacts & users"}
+            >
+              <span className="hidden sm:inline">{locale === "ja" ? "設定" : "Settings"}</span>
+              <span className="sm:hidden">⚙</span>
+            </Link>
             <a
               href="/api/howto?lang=en"
               target="_blank"

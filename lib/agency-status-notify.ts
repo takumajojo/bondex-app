@@ -45,22 +45,35 @@ export function statusDataFromRow(row: StatusRow, contactPerson: string | null):
 
 /**
  * 代理店へ「集荷完了 / 配達完了」の設計版ステータス通知メールを送る (best-effort)。
- * agencyEmail が無ければ送らず false。
+ * agencyEmail は単一 or 複数(主メール+追加メール)。1件でも送れれば true。無ければ false。
+ * 複数宛先は個別に送る (Resend/SMTP の to はアドレス単位で扱うため)。
  */
 export async function sendAgencyStatusEmail(
   kind: "picked_up" | "delivered",
   data: StatusEmailData,
-  agencyEmail: string | null,
+  agencyEmail: string | string[] | null,
   en: boolean,
 ): Promise<boolean> {
-  if (!agencyEmail) return false
+  const list = Array.from(
+    new Set(
+      (Array.isArray(agencyEmail) ? agencyEmail : [agencyEmail])
+        .map((e) => (e ?? "").trim())
+        .filter(Boolean)
+        .map((e) => e),
+    ),
+  )
+  if (list.length === 0) return false
   const mail = buildAgencyStatusEmail(kind, data, en ? "en" : "ja")
-  const r = await sendMail({
-    to: agencyEmail,
-    subject: mail.subject,
-    text: mail.text,
-    html: mail.html,
-    replyTo: "support@bondex.express",
-  })
-  return r.sent
+  let anySent = false
+  for (const to of list) {
+    const r = await sendMail({
+      to,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+      replyTo: "support@bondex.express",
+    })
+    if (r.sent) anySent = true
+  }
+  return anySent
 }

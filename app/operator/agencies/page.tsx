@@ -182,6 +182,9 @@ export default function OperatorAgenciesPage() {
             <Link href="/operator/dashboard" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
               <ArrowLeft className="w-4 h-4" strokeWidth={1.5} /> ダッシュボード
             </Link>
+            <Link href="/operator/agencies/contacts" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+              連絡先・ユーザー
+            </Link>
             <button onClick={() => void load()} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
               <RotateCcw className="w-4 h-4" strokeWidth={1.5} /> 更新
             </button>

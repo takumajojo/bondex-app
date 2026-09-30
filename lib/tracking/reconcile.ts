@@ -14,6 +14,7 @@ import { getTrackingProvider } from "@/lib/tracking"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
+import { agencyRecipientEmails } from "@/lib/agency-contacts"
 
 // 前進方向のみを許可する順序 (sync-tracking と同一)。この配列に無い状態(pending/failed/cancelled)は触らない。
 const PROGRESSION: ShipmentStatus[] = ["issued", "picked_up", "in_transit", "delivered"]
@@ -132,7 +133,8 @@ export async function reconcileTrackingNow(
       .select("contact_email, contact_person, locale")
       .eq("name", (row.agency as string) ?? "")
       .maybeSingle()
-    const agencyEmail = (ag?.contact_email as string | null) ?? null
+    // 通知は主メール+追加メールの全宛先へ。
+    const agencyEmail = await agencyRecipientEmails(sb, (row.agency as string) ?? "")
     const agencyEn = ag?.locale === "en"
     const agencyContact = (ag?.contact_person as string | null) ?? null
     const legRef = `${row.booking_id}-L${(row.leg_index as number) + 1}`
