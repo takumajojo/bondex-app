@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const { subject, text } = renderBookingRequestEmail({
+  const { subject, text, html } = renderBookingRequestEmail({
     agencyName: "Japan Links Travel",
     bookingId: "BDX-7Q2KPG",
     tourNumber: "T4421",
@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
     to,
     subject: `[見本] ${subject}`,
     text,
+    html,
     replyTo: "support@bondex.express",
   })
   return NextResponse.json({ to, lang, result })
