@@ -10,6 +10,24 @@
  */
 
 import { sendMail, mailerConfigured, type MailAttachment } from "./mailer"
+import { CONTRACT_PRICE_YEN } from "./contract-content"
+import { taxOf } from "./tax"
+
+/**
+ * 受付メールに載せる「概算金額」。実課金と同じ基準(税抜単価=CONTRACT_PRICE_YEN・国内=+10%/海外=不課税)で
+ * 全区間のお預かり個数合計から算出する。確定は集荷完了時(個数変更可)。個数不明(0)なら null。
+ */
+function feeEstimate(input: BookingRequestEmailInput): { pieces: number; unit: number; net: number; tax: number; gross: number; taxed: boolean } | null {
+  const pieces = (input.legs ?? []).reduce((s, l) => s + (l.suitcaseCount ?? 0), 0)
+  if (pieces <= 0) return null
+  const unit = CONTRACT_PRICE_YEN
+  const net = pieces * unit
+  const taxed = input.isDomestic !== false // is_domestic===false(海外)のみ不課税。既定=国内=課税
+  const tax = taxed ? taxOf(net) : 0
+  return { pieces, unit, net, tax, gross: net + tax, taxed }
+}
+
+const yen = (n: number) => "¥" + n.toLocaleString("ja-JP")
 
 const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
 
@@ -37,6 +55,8 @@ export interface BookingRequestEmailInput {
   locale: "ja" | "en"
   /** お客様（代表者）名。受付メールに「お客様名」を明記するため。 */
   representative?: string | null
+  /** 代理店が国内(課税)か。false=海外(消費税不課税)。概算金額の税計算に使う。既定=国内扱い。 */
+  isDomestic?: boolean | null
   /** 2026-09-24〜 の運用 (送り状は集荷員が持参)。true なら「バウチャーをそのままお渡し」+ 区間ごとの予定表を本文にする。 */
   waybillNotNeeded?: boolean
   /** 区間ごとの予定表 (waybillNotNeeded のとき使う)。suitcaseCount=個数。 */
@@ -69,6 +89,7 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
   const ja = input.locale === "ja"
   const ref = input.tourNumber ? `${input.bookingId} / ${ja ? "貴社番号" : "Your ref"}: ${input.tourNumber}` : input.bookingId
   const legs = input.legs ?? []
+  const fee = feeEstimate(input)
   const schedule = legs.map((l) =>
     ja
       ? `区間${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  ・個数: ${l.suitcaseCount != null ? `${l.suitcaseCount}個` : "—"}\n  ・修正の締切: ${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 17:00 まで\n  ・集荷: ${fmtDate(l.shipmentDate, "ja")} 11:00 以降（集荷員が送り状を持参）\n  ・お届け予定: ${fmtDate(l.expectedArrival, "ja")}`
@@ -89,8 +110,16 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
         `■ この後の流れ（区間ごと）`,
         ...schedule,
         ``,
-        `■ 料金について`,
-        `ご請求金額は集荷完了時に確定します（お預かり個数 × 単価）。集荷までは個数の変更が可能ですので、変更がある場合は各区間の配送前日 17:00 までにお知らせください。`,
+        `■ 料金（概算）`,
+        ...(fee
+          ? fee.taxed
+            ? [
+                `お預かり個数 合計 ${fee.pieces}個 × ${yen(fee.unit)}（税抜）＝ ${yen(fee.net)}（税抜）`,
+                `消費税(10%)：${yen(fee.tax)}　合計（税込）：${yen(fee.gross)}`,
+              ]
+            : [`お預かり個数 合計 ${fee.pieces}個 × ${yen(fee.unit)}＝ ${yen(fee.net)}（海外のお客様は消費税不課税）`]
+          : []),
+        `※上記は概算です。ご請求金額は集荷完了時に確定します（集荷までは個数の変更が可能ですので、変更がある場合は各区間の配送前日 17:00 までにお知らせください）。`,
         ``,
         `■ お客様へのひと言`,
         `「当日になりましたら、集荷員が伝票を持って集荷に伺います。チェックアウトまでにフロントへお荷物をお預けください。」とお伝えください。`,
@@ -113,8 +142,16 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
       `■ What happens next (per leg)`,
       ...schedule,
       ``,
-      `■ About the charge`,
-      `The amount is confirmed at pickup (pieces × unit price). You can still change the piece count until 17:00 on the day before each shipment — please let us know if anything changes.`,
+      `■ Charge (estimate)`,
+      ...(fee
+        ? fee.taxed
+          ? [
+              `Total ${fee.pieces} piece(s) × ${yen(fee.unit)} (excl. tax) = ${yen(fee.net)} (excl. tax)`,
+              `Consumption tax (10%): ${yen(fee.tax)}　Total (incl. tax): ${yen(fee.gross)}`,
+            ]
+          : [`Total ${fee.pieces} piece(s) × ${yen(fee.unit)} = ${yen(fee.net)} (tax-exempt for overseas)`]
+        : []),
+      `This is an estimate; the final amount is confirmed at pickup (you can still change the piece count until 17:00 the day before each shipment).`,
       ``,
       `■ One line to tell your guest`,
       `"On the day, the courier will come to the hotel with the shipping labels. Please leave your luggage at the reception by check-out."`,
@@ -246,6 +283,7 @@ function buildBookingHtml(input: BookingRequestEmailInput, subject: string): str
       ? "配送のご依頼を受け付けました。バウチャーはそのままお客様（添乗員様）へお渡しください。"
       : "We have received your luggage forwarding request. Please hand the voucher to your guest as-is."
     const legs = input.legs ?? []
+    const fee = feeEstimate(input)
     const infoTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${H_HAIR};border-bottom:1px solid ${H_HAIR};margin-top:4px;">
       ${infoRowHtml(ja ? "予約番号" : "Booking no.", `${ref}${ja ? `（${input.legCount}区間）` : ` (${input.legCount} leg${input.legCount > 1 ? "s" : ""})`}`)}
       ${input.representative ? infoRowHtml(ja ? "お客様（代表者）" : "Guest (lead)", ja ? `${input.representative} 様` : input.representative) : ""}
@@ -255,9 +293,21 @@ function buildBookingHtml(input: BookingRequestEmailInput, subject: string): str
     const voucherNote = noteBoxHtml(H_BRAND, ja ? "バウチャーはそのままお客様へ" : "Hand the voucher to your guest", ja
       ? "バウチャーは代理店ポータル（共有 Google Drive にも保管）からダウンロードいただけます。送り状のご用意は不要です（集荷員が持参・貼付します）。"
       : "Download the voucher from the agency portal (also in the shared Google Drive). No shipping labels are needed — the courier brings and attaches them at pickup.")
-    const feeNote = noteBoxHtml(H_BRAND, ja ? "料金について" : "About the charge", ja
-      ? "ご請求金額は集荷完了時に確定します（お預かり個数 × 単価）。集荷までは個数の変更が可能ですので、変更がある場合は各区間の配送前日 17:00 までにお知らせください。"
-      : "The amount is confirmed at pickup (pieces × unit price). You can still change the piece count until 17:00 on the day before each shipment — please let us know if anything changes.")
+    const feeCaveat = ja
+      ? `<span style="color:${H_MUTED};">※上記は概算です。ご請求金額は集荷完了時に確定します（集荷までは個数の変更が可能）。</span>`
+      : `<span style="color:${H_MUTED};">This is an estimate; the final amount is confirmed at pickup (piece count can still change).</span>`
+    const feeInner = fee
+      ? fee.taxed
+        ? (ja
+            ? `お預かり個数 合計 <strong>${fee.pieces}個</strong> × ${yen(fee.unit)}（税抜）＝ ${yen(fee.net)}（税抜）<br>消費税(10%)：${yen(fee.tax)}<br><strong style="font-size:14px;">合計（税込）：${yen(fee.gross)}</strong><br>${feeCaveat}`
+            : `Total <strong>${fee.pieces} pcs</strong> × ${yen(fee.unit)} (excl. tax) = ${yen(fee.net)}<br>Consumption tax (10%): ${yen(fee.tax)}<br><strong style="font-size:14px;">Total (incl. tax): ${yen(fee.gross)}</strong><br>${feeCaveat}`)
+        : (ja
+            ? `お預かり個数 合計 <strong>${fee.pieces}個</strong> × ${yen(fee.unit)}＝ <strong style="font-size:14px;">${yen(fee.net)}</strong>（海外のお客様は消費税不課税）<br>${feeCaveat}`
+            : `Total <strong>${fee.pieces} pcs</strong> × ${yen(fee.unit)} = <strong style="font-size:14px;">${yen(fee.net)}</strong> (tax-exempt for overseas)<br>${feeCaveat}`)
+      : (ja
+          ? `ご請求金額は集荷完了時に確定します（お預かり個数 × 単価）。集荷までは個数の変更が可能です。`
+          : `The amount is confirmed at pickup (pieces × unit price). You can still change the piece count until then.`)
+    const feeNote = `<div style="background:#F8FAFC;border-left:3px solid ${H_BRAND};border-radius:4px;padding:12px 14px;color:${H_INK};font-size:12.5px;line-height:1.85;margin-top:14px;"><div style="font-weight:700;margin-bottom:4px;">${ja ? "料金（概算）" : "Charge (estimate)"}</div>${feeInner}</div>`
     const guestNote = noteBoxHtml(H_GREEN, ja ? "お客様へのひと言" : "One line to tell your guest", ja
       ? "「当日は集荷員が伝票を持って伺います。チェックアウトまでにフロントへお荷物をお預けください。」とお伝えください。"
       : "\"On the day, the courier comes with the labels. Please leave your luggage at reception by check-out.\"")

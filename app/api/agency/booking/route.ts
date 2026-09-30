@@ -611,6 +611,7 @@ export async function POST(req: NextRequest) {
       bookingId,
       tourNumber: tourNumber || null,
       representative,
+      isDomestic: auth.agency.is_domestic,
       earliestShipDate: legs[0]?.shipmentDate ?? "",
       needsLabelWait: false,
       legCount: legs.length,

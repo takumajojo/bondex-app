@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     bookingId: "BDX-7Q2KPG",
     tourNumber: "T4421",
     representative: "Paul Woolterton",
+    isDomestic: true,
     earliestShipDate: "2026-10-15",
     needsLabelWait: false,
     legCount: 2,
