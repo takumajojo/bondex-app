@@ -10,8 +10,13 @@ name: Sync Yamato tracking
 
 on:
   schedule:
-    # 毎時 5 分 (00分ちょうどは GitHub Actions が混雑しやすいので少しずらす)
-    - cron: "5 * * * *"
+    # 15分間隔。※GitHub Actions のスケジュールは高負荷時に遅延・間引かれる (実測で数時間空くことがある)
+    #   ため、これは「バックストップ」。集荷/配達の反映を確実にリアルタイム化するには、外部の
+    #   信頼できるスケジューラ (例: cron-job.org) から下記を15分毎に叩く運用を主にする:
+    #     GET https://bondex.express/api/cron/sync-tracking
+    #     Header: Authorization: Bearer <CRON_SECRET>   (Vercel/GitHub と同じ値)
+    #   二重起動は acquireCronLock('sync-tracking') で無害化済み (同時実行は skip される)。
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}  # 手動実行 (Actions タブから "Run workflow" で即実行できる)
 
 jobs:
