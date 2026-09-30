@@ -7,6 +7,7 @@ import { cleanLabelDelivery, labelDeliveryError, senderFieldLabel } from "@/lib/
 import { generateBookingId } from "@/lib/voucher-pdf"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { sendBookingRequestEmail } from "@/lib/agency-notify"
+import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
@@ -597,6 +598,10 @@ export async function POST(req: NextRequest) {
 
   // 受付メール: 新運用 (送り状不要) では毎回送る (バウチャーをそのままお渡し + 区間ごとの予定表)。
   // 従来運用では待ち(未発行)がある場合のみ「1ヶ月前になったら連絡」の案内メール。
+  // 2026-09-30〜: 佐川伝票が不要になったため、受付メールにバウチャーPDF(How to ship同梱)を添付する
+  //   (従来の Google Drive 共有に代えて即お渡しできる)。生成失敗でも予約は成立・メールは添付なしで送る。
+  const voucherAtt = await voucherAttachment(bookingId, { expectedAgency: agencyName })
+  const attachments = voucherAtt ? [voucherAtt] : undefined
   let noticeEmailSent = false
   if (!issuance) {
     const locale: "ja" | "en" = auth.agency.locale === "en" ? "en" : "ja"
@@ -612,7 +617,7 @@ export async function POST(req: NextRequest) {
       locale,
       waybillNotNeeded: true,
       legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel, suitcaseCount: l.suitcaseCount })),
-    })
+    }, attachments)
     noticeEmailSent = mail.sent
   } else if (needsLabelWait) {
     // 1ヶ月超先(far)の区間のうち最も早い発送日を「最短の出荷予定日」として案内する。
@@ -629,7 +634,7 @@ export async function POST(req: NextRequest) {
       needsLabelWait: true,
       legCount: legs.length,
       locale,
-    })
+    }, attachments)
     noticeEmailSent = mail.sent
   }
 

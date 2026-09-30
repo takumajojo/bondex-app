@@ -9,7 +9,7 @@
  * 宛先は代理店の contact_email + BondEx 運用アドレス(控え)。
  */
 
-import { sendMail, mailerConfigured } from "./mailer"
+import { sendMail, mailerConfigured, type MailAttachment } from "./mailer"
 
 const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
 
@@ -281,6 +281,7 @@ export function renderBookingRequestEmail(input: BookingRequestEmailInput): { su
 
 export async function sendBookingRequestEmail(
   input: BookingRequestEmailInput,
+  attachments?: MailAttachment[],
 ): Promise<{ sent: boolean; error?: string }> {
   const { subject, text, html } = renderBookingRequestEmail(input)
   // 取りこぼし防止でログには必ず残す
@@ -295,7 +296,7 @@ export async function sendBookingRequestEmail(
   let anySent = false
   const errs: string[] = []
   for (const to of recipients) {
-    const r = await sendMail({ to, subject, text, html, replyTo: "support@bondex.express" })
+    const r = await sendMail({ to, subject, text, html, attachments, replyTo: "support@bondex.express" })
     if (r.sent) anySent = true
     else errs.push(`${to}: ${r.error}`)
   }

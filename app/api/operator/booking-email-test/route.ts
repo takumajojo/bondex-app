@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { sendMail } from "@/lib/mailer"
 import { operatorEmailAllowed } from "@/lib/operator-webauthn"
 import { renderBookingRequestEmail } from "@/lib/agency-notify"
+import { voucherAttachment } from "@/lib/voucher-attachment"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -44,12 +45,20 @@ export async function GET(req: NextRequest) {
     ],
   })
 
+  // 任意: ?voucher=<実在の予約ID> を渡すと、その予約のバウチャーPDF(howto同梱)を添付して
+  // 添付経路を検証できる。許可運営メール宛のみ送るため漏洩なし。
+  const voucherBooking = (req.nextUrl.searchParams.get("voucher") || "").trim()
+  const att = voucherBooking && /^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(voucherBooking)
+    ? await voucherAttachment(voucherBooking)
+    : null
+
   const result = await sendMail({
     to,
     subject: `[見本] ${subject}`,
     text,
     html,
+    attachments: att ? [att] : undefined,
     replyTo: "support@bondex.express",
   })
-  return NextResponse.json({ to, lang, result })
+  return NextResponse.json({ to, lang, attached: att ? att.filename : null, result })
 }
