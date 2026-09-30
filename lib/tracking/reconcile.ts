@@ -14,6 +14,8 @@ import { getTrackingProvider } from "@/lib/tracking"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
+import { agencyRecipientEmails } from "@/lib/agency-contacts"
+import { sendOpsAlert } from "@/lib/ops-alert"
 
 // 前進方向のみを許可する順序 (sync-tracking と同一)。この配列に無い状態(pending/failed/cancelled)は触らない。
 const PROGRESSION: ShipmentStatus[] = ["issued", "picked_up", "in_transit", "delivered"]
@@ -132,7 +134,8 @@ export async function reconcileTrackingNow(
       .select("contact_email, contact_person, locale")
       .eq("name", (row.agency as string) ?? "")
       .maybeSingle()
-    const agencyEmail = (ag?.contact_email as string | null) ?? null
+    // 通知は主メール+追加メールの全宛先へ。
+    const agencyEmail = await agencyRecipientEmails(sb, (row.agency as string) ?? "")
     const agencyEn = ag?.locale === "en"
     const agencyContact = (ag?.contact_person as string | null) ?? null
     const legRef = `${row.booking_id}-L${(row.leg_index as number) + 1}`
@@ -159,6 +162,19 @@ export async function reconcileTrackingNow(
       } catch {
         /* 送信失敗は無視 */
       }
+      // 宛先があるのに送れなかった＝サイレント失敗にせず運用へアラート(cron と対称)。
+      if (agencyEmail.length > 0 && !agencyEmailSent) {
+        await sendOpsAlert({
+          subject: `【配達通知メール未達】${legRef}`,
+          lines: [
+            `配達完了を反映しましたが、代理店(${row.agency})への配達完了メールを送信できませんでした。`,
+            `宛先: ${agencyEmail.join(", ")}`,
+            `→ メール設定を確認し、必要なら手動で連絡してください。`,
+            `追跡: https://bondex.express/track/${row.booking_id}`,
+          ],
+          agencyEmail: null,
+        }).catch(() => {})
+      }
       await notifyBondEx({
         kind: "delivery",
         title: `${legRef}（${row.agency}）`,
@@ -166,7 +182,13 @@ export async function reconcileTrackingNow(
         link: `/track/${row.booking_id}`,
         linkLabel: "追跡ページで確認",
       }).catch(() => {})
-      return { changed: true, status: bestStatus, delivered: true, agencyEmailSent, note: "配達完了を反映し代理店へ配達完了メールを送信" }
+      return {
+        changed: true,
+        status: bestStatus,
+        delivered: true,
+        agencyEmailSent,
+        note: agencyEmailSent ? "配達完了を反映し代理店へ配達完了メールを送信" : "配達完了を反映(代理店メール未送信・要確認)",
+      }
     }
 
     // 初めて集荷ライン(picked_up)を越えた → 代理店へ集荷完了メール + 社内通知。
@@ -181,6 +203,18 @@ export async function reconcileTrackingNow(
       } catch {
         /* 送信失敗は無視 */
       }
+      if (agencyEmail.length > 0 && !agencyEmailSent) {
+        await sendOpsAlert({
+          subject: `【集荷通知メール未達】${legRef}`,
+          lines: [
+            `集荷済みを反映しましたが、代理店(${row.agency})への集荷完了メールを送信できませんでした。`,
+            `宛先: ${agencyEmail.join(", ")}`,
+            `→ メール設定を確認し、必要なら手動で連絡してください。`,
+            `追跡: https://bondex.express/track/${row.booking_id}`,
+          ],
+          agencyEmail: null,
+        }).catch(() => {})
+      }
       await notifyBondEx({
         kind: "pickup",
         title: `${legRef}（${row.agency}）`,
@@ -188,7 +222,13 @@ export async function reconcileTrackingNow(
         link: `/track/${row.booking_id}`,
         linkLabel: "追跡ページで確認",
       }).catch(() => {})
-      return { changed: true, status: bestStatus, pickedUp: true, agencyEmailSent, note: "集荷済みを反映し代理店へ集荷完了メールを送信" }
+      return {
+        changed: true,
+        status: bestStatus,
+        pickedUp: true,
+        agencyEmailSent,
+        note: agencyEmailSent ? "集荷済みを反映し代理店へ集荷完了メールを送信" : "集荷済みを反映(代理店メール未送信・要確認)",
+      }
     }
 
     return { changed: true, status: bestStatus, note: `ステータスを ${bestStatus} に前進` }
