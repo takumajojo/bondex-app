@@ -20,6 +20,7 @@ export default function OperatorAgencyContactsPage() {
         const res = await fetch("/api/agencies")
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+        if (json.configured === false) { setError("Supabase が未設定のため代理店一覧を取得できません。"); return }
         const list: AgencyLite[] = (json.agencies || []).map((a: AgencyLite) => ({ id: a.id, name: a.name, status: a.status }))
         list.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja"))
         setAgencies(list)

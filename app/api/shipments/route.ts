@@ -13,6 +13,7 @@ import {
 import { isSupabaseConfigured, getSupabase } from "@/lib/supabase"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
+import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 
@@ -269,19 +270,20 @@ export async function PATCH(req: NextRequest) {
       try {
         const ship = await getShipment(id)
         if (ship) {
-          let agencyEmail: string | null = null
+          let agencyEmail: string[] = []
           let english = false
           let contactPerson: string | null = null
           const sb = getSupabase()
           if (sb) {
             const { data: ag } = await sb
               .from("agencies")
-              .select("contact_email, contact_person, locale")
+              .select("contact_person, locale")
               .eq("name", ship.agency)
               .maybeSingle()
-            agencyEmail = ag?.contact_email ?? null
             english = ag?.locale === "en"
             contactPerson = ag?.contact_person ?? null
+            // 主メール + 追加メールの全宛先へ(cron/reconcile と同じ挙動に揃える)。
+            agencyEmail = await agencyRecipientEmails(sb, ship.agency)
           }
           await sendAgencyStatusEmail(
             patch.status as "picked_up" | "delivered",

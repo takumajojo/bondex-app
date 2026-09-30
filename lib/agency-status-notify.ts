@@ -54,14 +54,17 @@ export async function sendAgencyStatusEmail(
   agencyEmail: string | string[] | null,
   en: boolean,
 ): Promise<boolean> {
-  const list = Array.from(
-    new Set(
-      (Array.isArray(agencyEmail) ? agencyEmail : [agencyEmail])
-        .map((e) => (e ?? "").trim())
-        .filter(Boolean)
-        .map((e) => e),
-    ),
-  )
+  // 宛先を大文字小文字を無視して重複排除(先勝ち)。
+  const seen = new Set<string>()
+  const list: string[] = []
+  for (const raw of Array.isArray(agencyEmail) ? agencyEmail : [agencyEmail]) {
+    const v = (raw ?? "").trim()
+    if (!v) continue
+    const key = v.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    list.push(v)
+  }
   if (list.length === 0) return false
   const mail = buildAgencyStatusEmail(kind, data, en ? "en" : "ja")
   let anySent = false

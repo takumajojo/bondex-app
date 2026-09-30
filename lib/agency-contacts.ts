@@ -53,9 +53,15 @@ export async function addAgencyEmail(
   const email = normalizeEmail(emailRaw)
   if (!isValidEmail(email)) return { ok: false, error: "メールアドレスの形式が正しくありません" }
 
-  const { primary, additional } = await listAgencyEmails(sb, agencyId)
+  // 主メール(contact_email)との重複はDB索引でカバーされないためアプリ層で判定。
+  // SELECT 失敗を握り潰すと重複チェックが素通りするので、エラーは明示的に返す。
+  const { data: ag, error: agErr } = await sb.from("agencies").select("contact_email").eq("id", agencyId).maybeSingle()
+  if (agErr) return { ok: false, error: agErr.message }
+  const primary = (ag?.contact_email as string | null) ?? null
   if (primary && normalizeEmail(primary) === email) return { ok: false, duplicate: true, error: "主メールと同じです" }
-  if (additional.some((a) => normalizeEmail(a.email) === email)) return { ok: false, duplicate: true, error: "既に登録済みです" }
+  const { data: existing, error: exErr } = await sb.from("agency_emails").select("email").eq("agency_id", agencyId)
+  if (exErr) return { ok: false, error: exErr.message }
+  if ((existing ?? []).some((a) => normalizeEmail(a.email as string) === email)) return { ok: false, duplicate: true, error: "既に登録済みです" }
 
   const { error } = await sb
     .from("agency_emails")
@@ -230,8 +236,10 @@ export async function inviteAgencyUser(
     replyTo: SUPPORT,
   })
   if (!sent.sent) {
-    // メールが送れない場合でもユーザー/紐付けは作成済み。運営がリンクを別途共有できるよう action_link を返す。
-    return { ok: true, invited: true, error: `招待メール送信に失敗しました(${sent.error})。招待リンク: ${actionLink}` }
+    // 招待リンク(action_link)はパスワード設定可能な強力なマジックリンク。APIレスポンスには返さず、
+    // サーバログにのみ残す(招待者による乗っ取り余地の排除)。運営はメール設定を直して再送する。
+    console.error(`[agency-contacts] 招待メール送信失敗 ${email}: ${sent.error} / action_link(未送信)=${actionLink}`)
+    return { ok: true, invited: true, error: "招待ユーザーは作成しましたが、招待メールの送信に失敗しました。メール設定を確認して再度お試しください。" }
   }
   return { ok: true, invited: true }
 }
@@ -242,11 +250,22 @@ export async function removeAgencyUser(
   agencyId: string,
   userId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await sb.from("user_agencies").delete().eq("user_id", userId).eq("agency_id", agencyId)
+  // 重要: 実際に「この代理店の紐付け」を削除できたかを select で確認する。
+  //   削除0行(=この代理店の所属ではない userId)のときに Auth 削除へ進むと、無所属の任意
+  //   Auth アカウントをグローバル削除できてしまう(破壊的IDOR)。削除された行があるときのみ孤児判定する。
+  const { data: removed, error } = await sb
+    .from("user_agencies")
+    .delete()
+    .eq("user_id", userId)
+    .eq("agency_id", agencyId)
+    .select("user_id")
   if (error) return { ok: false, error: error.message }
-  // どの代理店にも紐づかなくなったら Auth ユーザーも削除(孤児防止・best-effort)
-  const { data: still } = await sb.from("user_agencies").select("user_id").eq("user_id", userId).maybeSingle()
-  if (!still) {
+  if (!removed || removed.length === 0) {
+    return { ok: false, error: "このユーザーはこの代理店に紐づいていません" }
+  }
+  // どの代理店にも紐づかなくなった場合のみ Auth ユーザーを削除(孤児防止・best-effort)
+  const { data: still } = await sb.from("user_agencies").select("user_id").eq("user_id", userId).limit(1)
+  if (!still || still.length === 0) {
     try { await sb.auth.admin.deleteUser(userId) } catch { /* best-effort */ }
   }
   return { ok: true }

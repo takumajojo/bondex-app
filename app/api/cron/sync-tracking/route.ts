@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
     const agencyForeignByName = new Map<string, boolean>()
     const agencyContactByName = new Map<string, string>()
     {
-      const { data: agencies } = await sb.from("agencies").select("id, name, contact_email, contact_person, locale")
+      const { data: agencies } = await sb.from("agencies").select("id, name, contact_email, contact_person, locale").limit(10000)
       const idToName = new Map<string, string>()
       const emailSetByName = new Map<string, Map<string, string>>() // name -> (lower->orig)
       for (const a of agencies ?? []) {
@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
         emailSetByName.set(a.name, set)
       }
       // 追加メール(agency_emails)を合流
-      const { data: extraEmails } = await sb.from("agency_emails").select("agency_id, email")
+      const { data: extraEmails } = await sb.from("agency_emails").select("agency_id, email").limit(10000)
       for (const e of extraEmails ?? []) {
         const name = idToName.get(e.agency_id as string)
         if (!name || !e.email) continue
@@ -422,6 +422,9 @@ export async function GET(req: NextRequest) {
         // 配達完了 → 代理店へ通知 (delivered は次回以降 cron 対象外なので一度きり)
         if (bestStatus === "delivered") {
           const agencyEmail = agencyEmailByName.get(row.agency as string) ?? null
+          // 未達判定は「主メールの有無」ではなく「全宛先(主+追加)の集合」で行う。
+          // 主メールがnullで追加メールのみの代理店でも、全宛先失敗をサイレントにしない。
+          const recipients = agencyEmailsByName.get(row.agency as string) ?? (agencyEmail ? [agencyEmail] : [])
           const legRef = `${row.booking_id}-L${(row.leg_index as number) + 1}`
           let emailSent = false
           try {
@@ -429,7 +432,7 @@ export async function GET(req: NextRequest) {
             emailSent = await sendAgencyStatusEmail(
               "delivered",
               statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null),
-              agencyEmailsByName.get(row.agency as string) ?? agencyEmail,
+              recipients,
               agencyForeignByName.get(row.agency as string) ?? false,
             )
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
@@ -460,12 +463,12 @@ export async function GET(req: NextRequest) {
           }
           // 送達確認: 宛先があるのに配達通知メールが送れなかった = お客様への「届いた報告」が飛んでいない。
           // サイレント失敗を撲滅するため運用へ即アラート (手動フォローの起点)。
-          if (agencyEmail && !emailSent) {
+          if (recipients.length > 0 && !emailSent) {
             await sendOpsAlert({
               subject: `【配達通知メール未達】${legRef}`,
               lines: [
                 `配達は完了しましたが、代理店(${row.agency})への配達通知メールを送信できませんでした。`,
-                `宛先: ${agencyEmail}`,
+                `宛先: ${recipients.join(", ")}`,
                 `→ メーラ設定(SMTP / Resend の bondex.express ドメイン認証)を確認し、必要なら手動で連絡してください。`,
                 `追跡: https://bondex.express/track/${row.booking_id}`,
               ],

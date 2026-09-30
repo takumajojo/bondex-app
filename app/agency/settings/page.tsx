@@ -17,7 +17,7 @@ export default function AgencySettingsPage() {
     void (async () => {
       const sb = getBrowserSupabase()
       const session = sb ? (await sb.auth.getSession()).data.session : null
-      if (!session) { router.replace("/agency/login"); return }
+      if (!session) { router.replace("/agency/login?next=/agency/settings"); return }
       setSelfUserId(session.user.id)
       setReady(true)
     })()

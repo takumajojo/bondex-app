@@ -1,6 +1,10 @@
 -- 代理店の「追加」通知メール宛先。agencies.contact_email が主、これらは追加。
 -- 集荷/配達完了などの通知は contact_email + agency_emails の重複排除セットへ送る。
--- ログインユーザーの複数化は既存 user_agencies (agency_id は複数可) で表現する。
+-- ログインユーザーの複数化は既存 user_agencies で表現する。
+--   user_agencies.user_id は PRIMARY KEY = 1ユーザーは1代理店のみ所属。
+--   agency_id は非ユニークなので「1代理店に複数ユーザー」は表現できる(その逆=1ユーザー複数代理店は不可)。
+--   ※ この 1:1 前提のため下の RLS のスカラサブクエリ(=単一値比較)は安全。将来 user↔agency を
+--     多対多へ緩める場合は、このRLSと sql/002 のポリシー・agency-auth の maybeSingle を要見直し。
 create table if not exists agency_emails (
   id uuid primary key default gen_random_uuid(),
   agency_id uuid not null references agencies(id) on delete cascade,
