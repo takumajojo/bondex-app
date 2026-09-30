@@ -22,7 +22,7 @@ const H_HAIR = "#E5E7EB"
 const H_LOGO = "https://bondex.express/bondex-logo.png"
 const H_SUPPORT = "support@bondex.express"
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string))
 }
 
@@ -170,7 +170,7 @@ function buildEmail(
 }
 
 // ── リッチ HTML 本文の部品 ─────────────────────────────────────────────
-function htmlShell(subject: string, accent: string, title: string, greeting: string, lead: string, bodyHtml: string, locale: "ja" | "en"): string {
+export function htmlShell(subject: string, accent: string, title: string, greeting: string, lead: string, bodyHtml: string, locale: "ja" | "en"): string {
   const operatedBy = locale === "en" ? "Operated by JOJO Inc." : "運営：株式会社JOJO"
   const greetingSafe = esc(greeting)
   const leadSafe = esc(lead).replace(/\n/g, "<br>")
@@ -230,7 +230,7 @@ function legCardHtml(l: { legIndex: number; shipmentDate: string; expectedArriva
   </div>`
 }
 
-function noteBoxHtml(accent: string, heading: string, body: string): string {
+export function noteBoxHtml(accent: string, heading: string, body: string): string {
   const safe = esc(body).replace(/\n/g, "<br>")
   return `<div style="background:#F8FAFC;border-left:3px solid ${accent};border-radius:4px;padding:12px 14px;color:${H_INK};font-size:12.5px;line-height:1.75;margin-top:14px;">${heading ? `<div style="font-weight:700;margin-bottom:4px;">${esc(heading)}</div>` : ""}${safe}</div>`
 }

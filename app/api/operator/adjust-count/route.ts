@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { sendMail } from "@/lib/mailer"
+import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { grossOf } from "@/lib/tax"
 import { PRICING } from "@/lib/pricing"
@@ -197,7 +198,9 @@ export async function POST(req: NextRequest) {
     enLines.push("", `Booking: ${legRef}`, `Route: ${route}`, `Shipment date: ${shipment.shipment_date}`, "", "— BondEx / JOJO Inc.")
 
     const text = english ? enLines.join("\n") : jaLines.join("\n")
-    const r = await sendMail({ to: agencyEmail, subject, text, replyTo: "support@bondex.express" })
+    // 個数修正(キャンセル以外)は個数が変わる=最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
+    const att = cancel ? null : await voucherAttachment(shipment.booking_id)
+    const r = await sendMail({ to: agencyEmail, subject, text, attachments: att ? [att] : undefined, replyTo: "support@bondex.express" })
     mailSent = r.sent
   }
 

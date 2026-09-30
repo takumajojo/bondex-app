@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase"
 import { isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { legLockedForAgency } from "@/lib/agency-self-service"
+import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
 
 export const runtime = "nodejs"
@@ -181,6 +182,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     link: `/operator/bookings/${ship.booking_id}`,
     linkLabel: "予約詳細で確認",
   })
+
+  // 変更を代理店へメール通知し、最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
+  await sendBookingUpdateEmail(ship.booking_id as string, [`${sideLabel}ホテル: ${oldHotelJa || oldHotel} → ${newHotelJa}`])
 
   return NextResponse.json({ ok: true, changeId })
 }

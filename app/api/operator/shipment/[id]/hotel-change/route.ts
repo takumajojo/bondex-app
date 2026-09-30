@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { isChangeDeadlinePassed } from "@/lib/change-deadline"
 
 export const runtime = "nodejs"
@@ -159,6 +160,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       ],
       agencyEmail: null,
     })
+  }
+
+  // 変更を代理店へメール通知し、最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
+  {
+    const sideJa = side === "guest" ? "お届け先" : "発送元"
+    const oldHotelName =
+      side === "guest"
+        ? (ship.to_hotel_ja as string) || (ship.to_hotel as string)
+        : (ship.from_hotel_ja as string) || (ship.from_hotel as string)
+    await sendBookingUpdateEmail(ship.booking_id as string, [`${sideJa}ホテル: ${oldHotelName} → ${newHotelJa}`])
   }
 
   return NextResponse.json({

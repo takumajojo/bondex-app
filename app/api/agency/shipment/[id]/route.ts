@@ -4,6 +4,7 @@ import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
+import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { legLockedForAgency, isSelfServiceCutoffPassed, normalizeRepresentative } from "@/lib/agency-self-service"
@@ -319,6 +320,9 @@ export async function PATCH(
     link: `/track/${shipment.booking_id}`,
     linkLabel: "追跡ページで確認",
   })
+
+  // 変更を代理店へメール通知し、最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
+  await sendBookingUpdateEmail(shipment.booking_id, changes)
 
   return NextResponse.json({ ok: true })
 }
