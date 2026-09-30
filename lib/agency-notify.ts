@@ -22,10 +22,12 @@ export interface BookingRequestEmailInput {
   needsLabelWait: boolean // 出荷が 1ヶ月超先 → 1ヶ月案内を含める (従来運用のみ)
   legCount: number
   locale: "ja" | "en"
+  /** お客様（代表者）名。受付メールに「お客様名」を明記するため。 */
+  representative?: string | null
   /** 2026-09-24〜 の運用 (送り状は集荷員が持参)。true なら「バウチャーをそのままお渡し」+ 区間ごとの予定表を本文にする。 */
   waybillNotNeeded?: boolean
-  /** 区間ごとの予定表 (waybillNotNeeded のとき使う) */
-  legs?: Array<{ legIndex: number; shipmentDate: string; expectedArrival: string; fromHotel: string; toHotel: string }>
+  /** 区間ごとの予定表 (waybillNotNeeded のとき使う)。suitcaseCount=個数。 */
+  legs?: Array<{ legIndex: number; shipmentDate: string; expectedArrival: string; fromHotel: string; toHotel: string; suitcaseCount?: number }>
 }
 
 /** "YYYY-MM-DD" を暦日として UTC の Date にする (タイムゾーンで日付がずれないよう UTC 固定で扱う) */
@@ -56,19 +58,26 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
   const legs = input.legs ?? []
   const schedule = legs.map((l) =>
     ja
-      ? `区間${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  ・修正の締切: ${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 17:00 まで\n  ・集荷: ${fmtDate(l.shipmentDate, "ja")} 11:00 以降（集荷員が送り状を持参）\n  ・お届け予定: ${fmtDate(l.expectedArrival, "ja")}`
-      : `Leg ${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  - Changes accepted until: ${fmtDate(ymdMinus1(l.shipmentDate), "en")}, 17:00\n  - Pickup: ${fmtDate(l.shipmentDate, "en")}, from 11:00 (the courier brings the shipping labels)\n  - Expected delivery: ${fmtDate(l.expectedArrival, "en")}`,
+      ? `区間${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  ・個数: ${l.suitcaseCount != null ? `${l.suitcaseCount}個` : "—"}\n  ・修正の締切: ${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 17:00 まで\n  ・集荷: ${fmtDate(l.shipmentDate, "ja")} 11:00 以降（集荷員が送り状を持参）\n  ・お届け予定: ${fmtDate(l.expectedArrival, "ja")}`
+      : `Leg ${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  - Pieces: ${l.suitcaseCount != null ? l.suitcaseCount : "—"}\n  - Changes accepted until: ${fmtDate(ymdMinus1(l.shipmentDate), "en")}, 17:00\n  - Pickup: ${fmtDate(l.shipmentDate, "en")}, from 11:00 (the courier brings the shipping labels)\n  - Expected delivery: ${fmtDate(l.expectedArrival, "en")}`,
   )
   if (ja) {
     return {
       subject: `【BondEx】ご依頼を受け付けました（${input.bookingId}）｜バウチャーはそのままお客様へお渡しください`,
-      lines: [`${input.agencyName} 御中`, `配送のご依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`],
+      lines: [
+        `${input.agencyName} 御中`,
+        `配送のご依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`,
+        ...(input.representative ? [`お客様（代表者）: ${input.representative} 様`] : []),
+      ],
       callout: [
         `■ バウチャーはそのままお客様へ`,
         `バウチャーは代理店ポータルからダウンロードいただけます（共有 Google Drive にも保管しています）。お客様（添乗員様）にはバウチャーをお渡しいただくだけで結構です。送り状のご用意は不要です（集荷員が持参・貼付します）。`,
         ``,
         `■ この後の流れ（区間ごと）`,
         ...schedule,
+        ``,
+        `■ 料金について`,
+        `ご請求金額は集荷完了時に確定します（お預かり個数 × 単価）。集荷までは個数の変更が可能ですので、変更がある場合は各区間の配送前日 17:00 までにお知らせください。`,
         ``,
         `■ お客様へのひと言`,
         `「当日になりましたら、集荷員が伝票を持って集荷に伺います。チェックアウトまでにフロントへお荷物をお預けください。」とお伝えください。`,
@@ -79,13 +88,20 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
   }
   return {
     subject: `[BondEx] Request received (${input.bookingId}) — hand the voucher to your guest`,
-    lines: [`Dear ${input.agencyName},`, `We have received your luggage forwarding request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`],
+    lines: [
+      `Dear ${input.agencyName},`,
+      `We have received your luggage forwarding request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
+      ...(input.representative ? [`Guest (lead): ${input.representative}`] : []),
+    ],
     callout: [
       `■ Hand the voucher to your guest`,
       `Download the voucher from the agency portal (a copy is also kept in the shared Google Drive). Your guest (tour leader) only needs the voucher. No shipping labels are needed — the courier brings and attaches them at pickup.`,
       ``,
       `■ What happens next (per leg)`,
       ...schedule,
+      ``,
+      `■ About the charge`,
+      `The amount is confirmed at pickup (pieces × unit price). You can still change the piece count until 17:00 on the day before each shipment — please let us know if anything changes.`,
       ``,
       `■ One line to tell your guest`,
       `"On the day, the courier will come to the hotel with the shipping labels. Please leave your luggage at the reception by check-out."`,
@@ -140,12 +156,19 @@ function buildEmail(
   }
 }
 
+/** 受付メールの件名・本文をレンダリングする (送信はしない)。安全なテスト送信口からも再利用する。 */
+export function renderBookingRequestEmail(input: BookingRequestEmailInput): { subject: string; text: string } {
+  const { subject, lines, callout } = buildEmail(input)
+  const text = [...lines, "", ...callout, "", "— BondEx ／ bondex.express ｜ support@bondex.express"].join("\n")
+  return { subject, text }
+}
+
 export async function sendBookingRequestEmail(
   input: BookingRequestEmailInput,
 ): Promise<{ sent: boolean; error?: string }> {
-  const { subject, lines, callout } = buildEmail(input)
+  const { subject, text } = renderBookingRequestEmail(input)
   // 取りこぼし防止でログには必ず残す
-  console.error(`[agency-notify] ${subject} :: ${[...lines, ...callout].join(" | ")}`)
+  console.error(`[agency-notify] ${subject} :: ${text.replace(/\n/g, " | ")}`)
   if (!mailerConfigured()) return { sent: false, error: "mailer unset" }
 
   const recipients: string[] = []
@@ -153,7 +176,6 @@ export async function sendBookingRequestEmail(
   recipients.push(BONDEX_OPS_EMAIL)
 
   // SMTP優先→Resendフォールバック。宛先ごとに送る(片方失敗でも他方に届く)。
-  const text = [...lines, "", ...callout, "", "— BondEx ／ bondex.express ｜ support@bondex.express"].join("\n")
   let anySent = false
   const errs: string[] = []
   for (const to of recipients) {

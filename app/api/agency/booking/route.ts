@@ -605,12 +605,13 @@ export async function POST(req: NextRequest) {
       agencyName,
       bookingId,
       tourNumber: tourNumber || null,
+      representative,
       earliestShipDate: legs[0]?.shipmentDate ?? "",
       needsLabelWait: false,
       legCount: legs.length,
       locale,
       waybillNotNeeded: true,
-      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel })),
+      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel, suitcaseCount: l.suitcaseCount })),
     })
     noticeEmailSent = mail.sent
   } else if (needsLabelWait) {
@@ -623,6 +624,7 @@ export async function POST(req: NextRequest) {
       agencyName,
       bookingId,
       tourNumber: tourNumber || null,
+      representative,
       earliestShipDate,
       needsLabelWait: true,
       legCount: legs.length,

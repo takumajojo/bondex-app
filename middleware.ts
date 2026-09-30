@@ -44,6 +44,7 @@ const PUBLIC_EXACT = new Set<string>([
   "/api/operator/passkey/email-code",
   // ステータス通知メールの見本テスト送信 (operatorEmailAllowed 宛のみ = 許可運営メール以外へは送れない)
   "/api/operator/status-email-test",
+  "/api/operator/booking-email-test",
   "/api/operator/passkey/register-options",
   "/api/operator/passkey/register-verify",
   "/api/operator/passkey/login-options",
