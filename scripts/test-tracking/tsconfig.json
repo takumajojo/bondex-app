@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/lib/supabase": ["scripts/test-tracking/fakes/supabase.ts"],
+      "@/lib/cron-lock": ["scripts/test-tracking/fakes/cron-lock.ts"],
+      "@/lib/tracking": ["scripts/test-tracking/fakes/tracking.ts"],
+      "@/lib/ops-alert": ["scripts/test-tracking/fakes/ops-alert.ts"],
+      "@/lib/mailer": ["scripts/test-tracking/fakes/mailer.ts"],
+      "@/lib/shipments-db": ["scripts/test-tracking/fakes/shipments-db.ts"],
+      "@/lib/charge": ["scripts/test-tracking/fakes/charge.ts"],
+      "@/lib/agency-status-notify": ["scripts/test-tracking/fakes/agency-status-notify.ts"],
+      "@/lib/notify": ["scripts/test-tracking/fakes/notify.ts"],
+      "@/lib/agency-push": ["scripts/test-tracking/fakes/agency-push.ts"],
+      "@/lib/rate-limit": ["scripts/test-tracking/fakes/rate-limit.ts"],
+      "@/lib/drive-resync": ["scripts/test-tracking/fakes/drive-resync.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}
