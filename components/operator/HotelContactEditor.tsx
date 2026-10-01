@@ -58,8 +58,9 @@ export default function HotelContactEditor({ shipmentId }: { shipmentId: string 
       const res = await fetch(`/api/operator/hotel-contact?shipmentId=${encodeURIComponent(shipmentId)}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "読み込みに失敗しました")
-      // 申し送り対象(applies)を先に、対象外は後ろに。両方編集はできる。
-      setRoutes((data.routes as RouteCtx[]).slice().sort((a, b) => Number(b.applies) - Number(a.applies)))
+      // 表示順は物流の流れに合わせて固定: 発送元(pickup) → お届け先(guest)。
+      const ORDER: Record<string, number> = { pickup: 0, guest: 1 }
+      setRoutes((data.routes as RouteCtx[]).slice().sort((a, b) => (ORDER[a.route] ?? 9) - (ORDER[b.route] ?? 9)))
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました")
     }
@@ -116,6 +117,14 @@ function RouteEditor({
   const [lookupNote, setLookupNote] = useState("")
   const [msg, setMsg] = useState("")
 
+  // 記入済み (保存値あり or 連絡済み) の区間は、既定で読み取り表示にして入力欄を畳む。
+  // 未記入の区間はこれまでどおり入力フォームを開いた状態で出す。
+  const hasContent = Boolean(
+    init.method || init.value || init.memo || init.futureEmail ||
+    init.futureEmailOk !== "unknown" || init.introEmailSentAt || ctx.notifiedAt,
+  )
+  const [editing, setEditing] = useState(!hasContent)
+
   const hotelName = ctx.hotelJa || ctx.hotel
   const urg = URGENCY_LABEL[ctx.urgency] ?? URGENCY_LABEL.ok
 
@@ -135,6 +144,7 @@ function RouteEditor({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "保存に失敗しました")
       setMsg("保存しました")
+      setEditing(false)
       onSaved()
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "保存に失敗しました")
@@ -205,6 +215,61 @@ function RouteEditor({
           {urg.text && <span className={`ml-1 font-semibold ${urg.cls}`}>{urg.text}</span>}
         </span>
       </div>
+
+      {!editing ? (
+        /* 記入済み: 読み取り表示 + 編集ボタン (入力欄は畳む) */
+        <div className="mt-2">
+          <div className="space-y-1 text-xs">
+            {officialPhone && (
+              <p className="text-muted-foreground">
+                公式: <span className="font-medium text-foreground">{officialPhone}</span>
+                <span className="ml-1 text-[10px]">公式サイトより</span>
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              今回の連絡:{" "}
+              <span className="font-medium text-foreground">
+                {method === "phone" ? "電話" : method === "email" ? "メール" : "—"}
+                {value ? ` ${value}` : ""}
+              </span>
+            </p>
+            {memo && (
+              <p className="text-muted-foreground">
+                メモ: <span className="text-foreground">{memo}</span>
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              今後メール:{" "}
+              <span className="text-foreground">
+                {futureEmailOk === "yes" ? "OK" : futureEmailOk === "no" ? "不可" : "未確認"}
+                {futureEmail ? ` / ${futureEmail}` : ""}
+              </span>
+            </p>
+            {introSentAt && (
+              <p className="text-[10px] text-emerald-700">
+                紹介メール送信済み（{new Date(introSentAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}）
+              </p>
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            {notifiedAt ? (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
+                <Check className="h-3.5 w-3.5" strokeWidth={2} />
+                連絡済み（{new Date(notifiedAt).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })}）
+              </span>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">未連絡</span>
+            )}
+            <button
+              onClick={() => setEditing(true)}
+              className="ml-auto text-[11px] font-semibold text-[#C8102E] hover:underline"
+            >
+              編集
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
 
       {/* 公式情報 (公式サイトから電話取得) */}
       <div className="mt-2 flex items-center flex-wrap gap-2 rounded-lg bg-slate-50 border border-border px-2.5 py-2">
@@ -321,6 +386,8 @@ function RouteEditor({
         </button>
         {msg && <span className="text-[11px] text-muted-foreground">{msg}</span>}
       </div>
+        </>
+      )}
     </div>
   )
 }
