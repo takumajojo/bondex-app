@@ -139,13 +139,18 @@ export function buildAgencyStatusEmail(
     ? `Dear ${esc(data.contactPerson || data.agencyName)},`
     : `${esc(data.contactPerson ? `${data.contactPerson} 様` : `${data.agencyName} ご担当者様`)}`
 
-  const legLabel = data.legCount && data.legCount > 1 ? `${data.bookingId}（区間 ${data.legIndex + 1}/${data.legCount}）` : data.bookingId
+  const legLabel = data.legCount && data.legCount > 1
+    ? (en ? `${data.bookingId} (leg ${data.legIndex + 1}/${data.legCount})` : `${data.bookingId}（区間 ${data.legIndex + 1}/${data.legCount}）`)
+    : data.bookingId
+  // 宛名: 日本語は性別非依存の「様」を付ける。英語は Mr/Mrs を推測せず敬称なしの氏名のみ
+  //       (性別・敬称が不明な場合の国際的に安全な既定。誤った敬称=ミスジェンダリングを避ける)。
+  const guestDisplay = en ? data.representative : `${data.representative} 様`
   const tracking = (data.trackingNumbers || []).filter(Boolean).join(" / ")
 
   const rows =
     row(L.booking, legLabel) +
     row(L.tour, data.tourNumber || "") +
-    row(L.guest, `${data.representative} 様`) +
+    row(L.guest, guestDisplay) +
     // 区間は横並びだと折り返して読みづらいので、発送元→お届け先を縦に積む
     `<tr><td style="padding:7px 0;color:${MUTED};font-size:12px;white-space:nowrap;vertical-align:top;width:120px;">${esc(L.route)}</td>` +
     `<td style="padding:7px 0;color:${INK};font-size:13px;font-weight:600;vertical-align:top;line-height:1.8;">${esc(data.fromHotel)}<br><span style="color:${MUTED};font-weight:400;">↓</span><br>${esc(data.toHotel)}</td></tr>` +
@@ -210,7 +215,7 @@ export function buildAgencyStatusEmail(
     "",
     `${L.booking}: ${legLabel}`,
     data.tourNumber ? `${L.tour}: ${data.tourNumber}` : "",
-    `${L.guest}: ${data.representative} 様`,
+    `${L.guest}: ${guestDisplay}`,
     `${L.route}:`,
     `  ${data.fromHotel}`,
     `   ↓`,
