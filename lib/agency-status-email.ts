@@ -5,6 +5,8 @@
 // メールクライアント互換のため table + インラインスタイルで組む (flex/外部CSS不可)。
 // ロゴは本番配信の実URL (200 確認済み) を参照する。text 版も併せて返す。
 
+import { bondexTrackUrl } from "./track-url"
+
 export type StatusEmailKind = "issued" | "picked_up" | "delivered" | "delay"
 
 export interface StatusEmailData {
@@ -59,7 +61,7 @@ function copyFor(kind: StatusEmailKind, d: StatusEmailData, en: boolean): Copy {
           accent: BRAND,
           subject: `[BondEx] Luggage picked up (${d.bookingId})`,
           title: "The luggage has been picked up",
-          lead: "The courier has collected the luggage and delivery is now under way. You can follow the status with the tracking number below.",
+          lead: "The courier has collected the luggage and delivery is now under way. You can check the latest delivery status any time from the button below.",
           note: "The charge for this leg is confirmed upon pickup. Card-paying agencies are billed now; monthly-invoice agencies are billed on the monthly statement.",
         }
       case "delivered":
@@ -92,7 +94,7 @@ function copyFor(kind: StatusEmailKind, d: StatusEmailData, en: boolean): Copy {
         accent: BRAND,
         subject: `【BondEx】お荷物を集荷しました（${d.bookingId}）`,
         title: "お荷物を集荷しました",
-        lead: "配送業者がお荷物を集荷し、配送を開始しました。下記の追跡番号から状況をご確認いただけます。",
+        lead: "配送業者がお荷物を集荷し、配送を開始しました。最新の配送状況は、下記のボタンからいつでもご確認いただけます。",
         note: "本区間のご利用料金は、集荷完了をもって確定します。カード決済の代理店様はこの時点でご請求（決済）、月次請求の代理店様は当月分にまとめてご請求します。",
       }
     case "delivered":
@@ -134,8 +136,8 @@ export function buildAgencyStatusEmail(
   const en = locale === "en"
   const c = copyFor(kind, data, en)
   const L = en
-    ? { booking: "Booking no.", tour: "Tour no.", guest: "Guest", route: "Route", ship: "Ship date", eta: "Est. arrival", tracking: "Tracking no.", track: "View delivery status", operatedBy: "Operated by JOJO Inc." }
-    : { booking: "予約番号", tour: "ツアー番号", guest: "お客様", route: "区間", ship: "発送日", eta: "到着予定", tracking: "追跡番号", track: "配送状況を確認", operatedBy: "運営：株式会社JOJO" }
+    ? { booking: "Booking no.", tour: "Tour no.", guest: "Guest", route: "Route", ship: "Ship date", eta: "Est. arrival", track: "View delivery status", operatedBy: "Operated by JOJO Inc." }
+    : { booking: "予約番号", tour: "ツアー番号", guest: "お客様", route: "区間", ship: "発送日", eta: "到着予定", track: "配送状況を確認", operatedBy: "運営：株式会社JOJO" }
 
   const greeting = en
     ? `Dear ${esc(data.contactPerson || data.agencyName)},`
@@ -147,7 +149,10 @@ export function buildAgencyStatusEmail(
   // 宛名: 日本語は性別非依存の「様」を付ける。英語は Mr/Mrs を推測せず敬称なしの氏名のみ
   //       (性別・敬称が不明な場合の国際的に安全な既定。誤った敬称=ミスジェンダリングを避ける)。
   const guestDisplay = en ? data.representative : `${data.representative} 様`
-  const tracking = (data.trackingNumbers || []).filter(Boolean).join(" / ")
+  // 追跡はキャリア(佐川等)の生番号を本文に出さず、BondEx のトラッキング画面へ集約する。
+  // trackUrl が無ければ bookingId から組み立てて、常にリンクを出せるようにする。
+  // バウチャーの追跡QRと必ず同一URL（lib/track-url.ts の単一ソース）。
+  const trackUrl = data.trackUrl || bondexTrackUrl(data.bookingId)
 
   const rows =
     row(L.booking, legLabel) +
@@ -157,13 +162,12 @@ export function buildAgencyStatusEmail(
     `<tr><td style="padding:7px 0;color:${MUTED};font-size:12px;white-space:nowrap;vertical-align:top;width:120px;">${esc(L.route)}</td>` +
     `<td style="padding:7px 0;color:${INK};font-size:13px;font-weight:600;vertical-align:top;line-height:1.8;">${esc(data.fromHotel)}<br><span style="color:${MUTED};font-weight:400;">↓</span><br>${esc(data.toHotel)}</td></tr>` +
     row(L.ship, data.shipmentDate) +
-    (kind === "issued" || kind === "delay" ? row(L.eta, data.expectedArrival || "") : "") +
-    (tracking ? row(L.tracking, tracking) : "")
+    (kind === "issued" || kind === "delay" ? row(L.eta, data.expectedArrival || "") : "")
 
   const trackBtn =
-    (kind === "picked_up" || kind === "delivered") && data.trackUrl
+    (kind === "picked_up" || kind === "delivered") && trackUrl
       ? `<tr><td style="padding-top:18px;">
-           <a href="${esc(data.trackUrl)}" style="display:inline-block;background:${c.accent};color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:11px 20px;border-radius:6px;">${L.track} →</a>
+           <a href="${esc(trackUrl)}" style="display:inline-block;background:${c.accent};color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:11px 20px;border-radius:6px;">${L.track} →</a>
          </td></tr>`
       : ""
 
@@ -223,8 +227,7 @@ export function buildAgencyStatusEmail(
     `   ↓`,
     `  ${data.toHotel}`,
     `${L.ship}: ${data.shipmentDate}`,
-    tracking ? `${L.tracking}: ${tracking}` : "",
-    data.trackUrl && (kind === "picked_up" || kind === "delivered") ? `${L.track}: ${data.trackUrl}` : "",
+    (kind === "picked_up" || kind === "delivered") ? `${L.track}: ${trackUrl}` : "",
     c.note ? `\n${c.note}` : "",
     "",
     `— BondEx（${L.operatedBy}） ${SUPPORT}`,

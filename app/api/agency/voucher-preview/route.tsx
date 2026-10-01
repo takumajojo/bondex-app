@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
+import { bondexTrackUrl } from "@/lib/track-url"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
       width: 200,
       color: { dark: "#16161a", light: "#FFFFFF" },
     })
-    trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${previewId}`, {
+    trackingQrDataUri = await QRCode.toDataURL(bondexTrackUrl(previewId), {
       margin: 0,
       width: 200,
       color: { dark: "#1A1A1A", light: "#FFFFFF" },

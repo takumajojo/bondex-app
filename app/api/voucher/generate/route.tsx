@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { renderToBuffer } from "@react-pdf/renderer"
 import QRCode from "qrcode"
+import { bondexTrackUrl } from "@/lib/track-url"
 import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName } from "@/lib/utils"
 import { contentDisposition } from "@/lib/content-disposition"
@@ -288,7 +289,7 @@ export async function POST(req: NextRequest) {
   if (type === "voucher") {
     supportQr = await buildSupportQr()
     try {
-      trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
+      trackingQrDataUri = await QRCode.toDataURL(bondexTrackUrl(bookingId), {
         margin: 0,
         width: 200,
         color: { dark: "#1A1A1A", light: "#FFFFFF" },
