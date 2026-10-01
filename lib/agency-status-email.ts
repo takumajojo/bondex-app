@@ -30,7 +30,9 @@ const AMBER = "#B45309"
 const INK = "#0F172A"
 const MUTED = "#64748B"
 const HAIR = "#E5E7EB"
-const LOGO_URL = "https://bondex.express/bondex-logo.png"
+// CID インライン添付で確実表示 (リモート画像はメールクライアントでブロックされるため)。
+// mailer が cid:bondex-logo を検出して自動でロゴを添付する。
+const LOGO_URL = "cid:bondex-logo"
 const SUPPORT = "support@bondex.express"
 
 type Copy = {

@@ -37,7 +37,9 @@ const H_GREEN = "#2E7D32"
 const H_INK = "#0F172A"
 const H_MUTED = "#64748B"
 const H_HAIR = "#E5E7EB"
-const H_LOGO = "https://bondex.express/bondex-logo.png"
+// CID インライン添付で確実表示 (リモート画像はメールクライアントでブロックされるため)。
+// mailer が cid:bondex-logo を検出して自動でロゴを添付する。
+const H_LOGO = "cid:bondex-logo"
 const H_SUPPORT = "support@bondex.express"
 
 export function esc(s: string): string {
@@ -100,7 +102,7 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
       subject: `【BondEx】ご依頼を受け付けました（${input.bookingId}）｜バウチャーはそのままお客様へお渡しください`,
       lines: [
         `${input.agencyName} 御中`,
-        `配送のご依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`,
+        `この度はご依頼いただきありがとうございます。配送のご依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`,
         ...(input.representative ? [`お客様（代表者）: ${input.representative} 様`] : []),
       ],
       callout: [
@@ -132,7 +134,7 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
     subject: `[BondEx] Request received (${input.bookingId}) — hand the voucher to your guest`,
     lines: [
       `Dear ${input.agencyName},`,
-      `We have received your luggage forwarding request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
+      `Thank you for your request! We have received your luggage forwarding request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
       ...(input.representative ? [`Guest (lead): ${input.representative}`] : []),
     ],
     callout: [
@@ -172,7 +174,7 @@ function buildEmail(
   if (input.locale === "ja") {
     const lines = [
       `${input.agencyName} 御中`,
-      `発行依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`,
+      `この度はご依頼いただきありがとうございます。発行依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`,
     ]
     // 大きく強調するポイント (メールの色付きボックスに表示)
     const callout = [
@@ -190,7 +192,7 @@ function buildEmail(
   }
   const lines = [
     `Dear ${input.agencyName},`,
-    `We have received your issuance request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
+    `Thank you for your request! We have received your issuance request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
   ]
   const callout = [
     `IMPORTANT: shipping labels can only be created from one month before the shipment date.`,
@@ -280,8 +282,8 @@ function buildBookingHtml(input: BookingRequestEmailInput, subject: string): str
 
   if (input.waybillNotNeeded) {
     const lead = ja
-      ? "配送のご依頼を受け付けました。バウチャーはそのままお客様（添乗員様）へお渡しください。"
-      : "We have received your luggage forwarding request. Please hand the voucher to your guest as-is."
+      ? "この度はご依頼いただきありがとうございます。配送のご依頼を受け付けました。バウチャーはそのままお客様（添乗員様）へお渡しください。"
+      : "Thank you for your request! We have received your luggage forwarding request. Please hand the voucher to your guest as-is."
     const legs = input.legs ?? []
     const fee = feeEstimate(input)
     const infoTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${H_HAIR};border-bottom:1px solid ${H_HAIR};margin-top:4px;">

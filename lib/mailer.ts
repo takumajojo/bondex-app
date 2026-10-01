@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer"
+import { BONDEX_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "./email-logo"
 
 // 送信手段の共通ヘルパー。優先順位:
 //  1) SMTP (SMTP_HOST/USER/PASS 設定時)。既存の jojo-tokyo.com(Google) 等から送れる。
@@ -9,6 +10,10 @@ import nodemailer from "nodemailer"
 export interface MailAttachment {
   filename: string
   contentBase64: string
+  /** インライン画像にする場合の Content-ID (HTML から cid:<cid> で参照)。 */
+  cid?: string
+  /** インライン表示(本文埋め込み)にするか。既定は通常の添付。 */
+  inline?: boolean
 }
 
 export interface SendResult {
@@ -55,6 +60,8 @@ async function sendViaSmtp(opts: {
       attachments: opts.attachments?.map((a) => ({
         filename: a.filename,
         content: Buffer.from(a.contentBase64, "base64"),
+        ...(a.cid ? { cid: a.cid } : {}),
+        ...(a.inline || a.cid ? { contentDisposition: "inline" as const } : {}),
       })),
     })
     return { sent: true, via: "smtp" }
@@ -87,7 +94,11 @@ async function sendViaResend(opts: {
         subject: opts.subject,
         text: opts.text,
         html: opts.html,
-        attachments: opts.attachments?.map((a) => ({ filename: a.filename, content: a.contentBase64 })),
+        attachments: opts.attachments?.map((a) => ({
+          filename: a.filename,
+          content: a.contentBase64,
+          ...(a.cid ? { content_id: a.cid } : {}),
+        })),
       }),
     })
     if (!res.ok) {
@@ -113,6 +124,23 @@ export async function sendMail(opts: {
   replyTo?: string
 }): Promise<SendResult> {
   if (!opts.to?.trim()) return { sent: false, error: "no recipient" }
+
+  // HTML が cid:bondex-logo を参照していれば、ロゴをインライン添付として自動付与する。
+  // (リモート画像 <img src=https://…> はメールクライアントでブロックされ表示されないため、
+  //  CID 添付にして確実に表示する。既に同じ cid の添付があれば二重付与しない。)
+  if (opts.html && opts.html.includes(`cid:${EMAIL_LOGO_CID}`)) {
+    const already = (opts.attachments ?? []).some((a) => a.cid === EMAIL_LOGO_CID)
+    if (!already) {
+      opts = {
+        ...opts,
+        attachments: [
+          ...(opts.attachments ?? []),
+          { filename: EMAIL_LOGO_FILENAME, contentBase64: BONDEX_LOGO_BASE64, cid: EMAIL_LOGO_CID, inline: true },
+        ],
+      }
+    }
+  }
+
   // 差出人を support@bondex.express に統一するため Resend を優先する。
   // (Gmail SMTP は認証アカウント=taniguchi@ に差出人を書き換えるため、顧客向けには不適。)
   // Resend 未設定なら従来どおり SMTP。Resend 失敗時は取りこぼし防止に SMTP へフォールバック。
