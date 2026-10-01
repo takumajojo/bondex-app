@@ -5,6 +5,8 @@
 // メールクライアント互換のため table + インラインスタイルで組む (flex/外部CSS不可)。
 // ロゴは本番配信の実URL (200 確認済み) を参照する。text 版も併せて返す。
 
+import { bondexTrackUrl } from "./track-url"
+
 export type StatusEmailKind = "issued" | "picked_up" | "delivered" | "delay"
 
 export interface StatusEmailData {
@@ -149,7 +151,8 @@ export function buildAgencyStatusEmail(
   const guestDisplay = en ? data.representative : `${data.representative} 様`
   // 追跡はキャリア(佐川等)の生番号を本文に出さず、BondEx のトラッキング画面へ集約する。
   // trackUrl が無ければ bookingId から組み立てて、常にリンクを出せるようにする。
-  const trackUrl = data.trackUrl || `https://bondex.express/track/${data.bookingId}`
+  // バウチャーの追跡QRと必ず同一URL（lib/track-url.ts の単一ソース）。
+  const trackUrl = data.trackUrl || bondexTrackUrl(data.bookingId)
 
   const rows =
     row(L.booking, legLabel) +

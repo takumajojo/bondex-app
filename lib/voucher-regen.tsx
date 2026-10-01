@@ -1,6 +1,7 @@
 import { renderToBuffer } from "@react-pdf/renderer"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import QRCode from "qrcode"
+import { bondexTrackUrl } from "@/lib/track-url"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { buildVoucherFileName } from "@/lib/utils"
 import { getPlaceNameByLang, hasJapanese } from "@/lib/places-search"
@@ -78,7 +79,7 @@ export async function regenerateVoucherPdf(
       width: 200,
       color: { dark: "#16161a", light: "#FFFFFF" },
     })
-    trackingQrDataUri = await QRCode.toDataURL(`https://bondex.express/track/${bookingId}`, {
+    trackingQrDataUri = await QRCode.toDataURL(bondexTrackUrl(bookingId), {
       margin: 0,
       width: 200,
       color: { dark: "#1A1A1A", light: "#FFFFFF" },

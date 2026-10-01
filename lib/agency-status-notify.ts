@@ -12,6 +12,7 @@
 
 import { sendMail } from "./mailer"
 import { buildAgencyStatusEmail, type StatusEmailData } from "./agency-status-email"
+import { bondexTrackUrl } from "./track-url"
 
 /** shipments 行 (Supabase snake_case) と ShipmentRecord のどちらも満たす最小形。 */
 export interface StatusRow {
@@ -39,7 +40,8 @@ export function statusDataFromRow(row: StatusRow, contactPerson: string | null):
     toHotel: row.to_hotel ?? "",
     shipmentDate: row.shipment_date ?? "",
     trackingNumbers: row.tracking_numbers ?? [],
-    trackUrl: `https://bondex.express/track/${row.booking_id}`,
+    // バウチャーの追跡QRと必ず同一URL（lib/track-url.ts の単一ソース）。
+    trackUrl: bondexTrackUrl(row.booking_id),
   }
 }
 
