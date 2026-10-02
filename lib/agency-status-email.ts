@@ -25,6 +25,10 @@ export interface StatusEmailData {
   trackingNumbers?: string[]
   /** 追跡ページ (BondEx 公開) の URL。 */
   trackUrl?: string
+  /** 集荷時刻の表示文字列 (例 "2026-10-02 12:24")。渡した時のみメールに「集荷時刻」行を出す。 */
+  pickedUpAt?: string | null
+  /** 荷物の個数。渡した時のみメールに「個数」行を出す。 */
+  suitcaseCount?: number | null
 }
 
 const BRAND = "#C8102E"
@@ -136,8 +140,8 @@ export function buildAgencyStatusEmail(
   const en = locale === "en"
   const c = copyFor(kind, data, en)
   const L = en
-    ? { booking: "Booking no.", tour: "Tour no.", guest: "Guest", route: "Route", ship: "Ship date", eta: "Est. arrival", track: "View delivery status", operatedBy: "Operated by JOJO Inc." }
-    : { booking: "予約番号", tour: "ツアー番号", guest: "お客様", route: "区間", ship: "発送日", eta: "到着予定", track: "配送状況を確認", operatedBy: "運営：株式会社JOJO" }
+    ? { booking: "Booking no.", tour: "Tour no.", guest: "Guest", pieces: "Pieces", route: "Route", ship: "Ship date", pickedUp: "Picked up", eta: "Est. arrival", track: "View delivery status", operatedBy: "Operated by JOJO Inc." }
+    : { booking: "予約番号", tour: "ツアー番号", guest: "お客様", pieces: "個数", route: "区間", ship: "発送日", pickedUp: "集荷時刻", eta: "到着予定", track: "配送状況を確認", operatedBy: "運営：株式会社JOJO" }
 
   const greeting = en
     ? `Dear ${esc(data.contactPerson || data.agencyName)},`
@@ -154,14 +158,24 @@ export function buildAgencyStatusEmail(
   // バウチャーの追跡QRと必ず同一URL（lib/track-url.ts の単一ソース）。
   const trackUrl = data.trackUrl || bondexTrackUrl(data.bookingId)
 
+  // 任意表示: 個数 / 集荷時刻 (渡された時のみ行を出す。通常の自動通知では未指定=非表示)。
+  const piecesDisplay =
+    data.suitcaseCount != null && data.suitcaseCount > 0
+      ? (en ? `${data.suitcaseCount} pcs` : `${data.suitcaseCount}個`)
+      : ""
+  const pickedUpDisplay =
+    (kind === "picked_up" || kind === "delivered") && data.pickedUpAt ? data.pickedUpAt : ""
+
   const rows =
     row(L.booking, legLabel) +
     row(L.tour, data.tourNumber || "") +
     row(L.guest, guestDisplay) +
+    row(L.pieces, piecesDisplay) +
     // 区間は横並びだと折り返して読みづらいので、発送元→お届け先を縦に積む
     `<tr><td style="padding:7px 0;color:${MUTED};font-size:12px;white-space:nowrap;vertical-align:top;width:120px;">${esc(L.route)}</td>` +
     `<td style="padding:7px 0;color:${INK};font-size:13px;font-weight:600;vertical-align:top;line-height:1.8;">${esc(data.fromHotel)}<br><span style="color:${MUTED};font-weight:400;">↓</span><br>${esc(data.toHotel)}</td></tr>` +
     row(L.ship, data.shipmentDate) +
+    row(L.pickedUp, pickedUpDisplay) +
     (kind === "issued" || kind === "delay" ? row(L.eta, data.expectedArrival || "") : "")
 
   const trackBtn =
@@ -222,11 +236,13 @@ export function buildAgencyStatusEmail(
     `${L.booking}: ${legLabel}`,
     data.tourNumber ? `${L.tour}: ${data.tourNumber}` : "",
     `${L.guest}: ${guestDisplay}`,
+    piecesDisplay ? `${L.pieces}: ${piecesDisplay}` : "",
     `${L.route}:`,
     `  ${data.fromHotel}`,
     `   ↓`,
     `  ${data.toHotel}`,
     `${L.ship}: ${data.shipmentDate}`,
+    pickedUpDisplay ? `${L.pickedUp}: ${pickedUpDisplay}` : "",
     (kind === "picked_up" || kind === "delivered") ? `${L.track}: ${trackUrl}` : "",
     c.note ? `\n${c.note}` : "",
     "",
