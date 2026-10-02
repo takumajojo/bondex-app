@@ -295,15 +295,15 @@ const ja: LandingMessages = {
     ],
   },
   hero: {
-    badgeMobile: "訪日旅行代理店・ランドオペレーター向け",
-    badgeDesktop: "訪日旅行代理店様向け ・ 荷物配送手配代行",
-    titleMobile: ["旅程と配送日を", "送るだけで、", "荷物配送手配が完了。"],
-    titleDesktop: { first: "旅程と配送日を送るだけで、", second: "荷物配送手配が完了。" },
+    badgeMobile: "旅行会社・DMC・ランドオペレーター向け",
+    badgeDesktop: "旅行会社・DMC・ランドオペレーター向け ・ ホテル間荷物配送の手配代行",
+    titleMobile: ["旅程を送るだけで、", "ホテル間の荷物配送まで", "手配完了。"],
+    titleDesktop: { first: "旅程を送るだけで、", second: "ホテル間の荷物配送まで手配完了。" },
     subtitleMobile:
-      "「いつ・どのホテルから送るか」をご指定いただければ、あとの面倒ごとは BondEx がまとめて代行します。",
+      "旅程を送るだけで、ホテル間の荷物配送を BondEx が手配・管理します。ホテルへの伝票依頼も、添乗員の荷物番も不要。ゲストは移動のたびに身軽です。",
     subtitleDesktop: {
-      first: "「いつ・どのホテルから送るか」の指定だけで、バウチャー発行・送り状手配・",
-      second: "月次請求・変更対応まで。BondEx が配送会社と直接やり取りします。",
+      first: "旅程を送るだけで、ホテル間の荷物配送を BondEx が手配・管理します。",
+      second: "ホテルへの伝票依頼も、添乗員の荷物番も不要。ゲストは移動のたびに身軽です。",
     },
     bullets: [
       "バウチャー・送り状の作成はすべて BondEx",
@@ -418,7 +418,7 @@ const ja: LandingMessages = {
   },
   carriers: {
     eyebrow: "配送ネットワーク",
-    heading: { first: "最適な配送業者を、", second: "BondExが選んでお届け。" },
+    heading: { first: "最適な配送業者を、", second: "BondExが選んで手配。" },
     body: "BondEx は自社便を持ちません。区間・お荷物・お届け条件に応じて、佐川急便・ヤマト運輸など最適な配送業者を選定し、集荷手配・送り状作成を代行します。",
     stats: [],
     footnote: "",
@@ -474,7 +474,7 @@ const ja: LandingMessages = {
   },
   concept: {
     heading: ["旅行者と荷物を、", "いったん別々にする。"],
-    body: ["旅行者は、手ぶらで日本を楽しむ。", "荷物は BondEx が次のホテルまで届ける。"],
+    body: ["旅行者は、手ぶらで日本を楽しむ。", "荷物は BondEx が次のホテルまでの配送を手配する。"],
     alt: "手ぶらで京都の街を歩く家族",
     travelerLabel: "旅行者",
     luggageLabel: "荷物",
@@ -679,6 +679,10 @@ const ja: LandingMessages = {
         q: "急な依頼や変更は、いつまで対応できますか?",
         a: "個人旅行は集荷前日の 16:00（日本時間）まで受け付けます。団体は原則 5 日前までにご予約ください。それ以降の急な変更（個数の増減・ホテル変更・日程変更）も実際によくあることですので、可能な限り調整します。まずはご連絡ください。",
       },
+      {
+        q: "荷物はいつ届きますか?",
+        a: "午前中の集荷を前提に、通常は集荷の翌日に到着します（例: 東京→京都・大阪・名古屋・金沢）。東京→福岡・北海道は翌々日、本州→沖縄は翌々日以降が目安です。集荷当日の到着ではないため、当日移動の旅程では到着日にご注意ください。",
+      },
     ],
   },
   contact: {
@@ -746,18 +750,15 @@ const en: LandingMessages = {
     ],
   },
   hero: {
-    badgeMobile: "For inbound travel agencies and land operators",
-    badgeDesktop: "For inbound travel agencies · Luggage forwarding, fully managed",
-    titleMobile: ["Send the itinerary", "and delivery dates —", "forwarding is handled."],
-    titleDesktop: {
-      first: "Send the itinerary and delivery dates —",
-      second: "luggage forwarding is handled.",
-    },
+    badgeMobile: "For travel agencies, DMCs & land operators",
+    badgeDesktop: "For travel agencies, DMCs & land operators · Luggage forwarding between hotels in Japan",
+    titleMobile: ["Send the itinerary.", "Hotel-to-hotel luggage", "forwarding is arranged."],
+    titleDesktop: { first: "Send the itinerary.", second: "Hotel-to-hotel luggage forwarding is arranged." },
     subtitleMobile:
-      "Just tell us when and from which hotel to ship, and BondEx takes care of everything else.",
+      "Send the itinerary and BondEx arranges and manages luggage forwarding between hotels in Japan. No shipping paperwork for the hotel, no tour leader minding bags. Your guests travel light at every move.",
     subtitleDesktop: {
-      first: "Just specify when and from which hotel to ship — voucher issuance, shipping labels,",
-      second: "monthly billing, and change requests included. BondEx coordinates directly with the carriers.",
+      first: "Send the itinerary and BondEx arranges and manages luggage forwarding between hotels in Japan. ",
+      second: "No shipping paperwork for the hotel, no tour leader minding bags. Your guests travel light at every move.",
     },
     bullets: [
       "BondEx creates every voucher and shipping label",
@@ -872,7 +873,7 @@ const en: LandingMessages = {
   },
   concept: {
     heading: ["Separate the traveler", "from the luggage, for a while."],
-    body: ["Guests enjoy Japan hands-free.", "BondEx delivers the luggage to the next hotel."],
+    body: ["Guests enjoy Japan hands-free.", "BondEx arranges its delivery to the next hotel."],
     alt: "A family walking through Kyoto hands-free",
     travelerLabel: "Traveler",
     luggageLabel: "Luggage",
@@ -1038,6 +1039,10 @@ const en: LandingMessages = {
         q: "How late can we book or change a shipment?",
         a: "For individual travelers we accept requests until 16:00 JST on the day before pickup. For groups, please book at least 5 days ahead as a rule. Sudden changes after that — extra bags, a different hotel, a new date — do happen, and we will do our best to accommodate them. Contact us first.",
       },
+      {
+        q: "When does the luggage arrive?",
+        a: "With a morning pickup, luggage normally arrives the day after pickup (for example Tokyo to Kyoto, Osaka, Nagoya or Kanazawa). Tokyo to Fukuoka or Hokkaido takes two days, and Honshu to Okinawa two days or more. It is not a same-day service, so please check the arrival date when guests travel on the pickup day.",
+      },
     ],
   },
   contact: {
@@ -1105,18 +1110,15 @@ const es: LandingMessages = {
     ],
   },
   hero: {
-    badgeMobile: "Para agencias de viajes receptivas y operadores terrestres",
-    badgeDesktop: "Para agencias de viajes receptivas · Reenvío de equipaje, totalmente gestionado",
-    titleMobile: ["Envíe el itinerario", "y las fechas de entrega,", "y el reenvío queda hecho."],
-    titleDesktop: {
-      first: "Envíe el itinerario y las fechas de entrega,",
-      second: "y el reenvío de equipaje queda resuelto.",
-    },
+    badgeMobile: "Para agencias de viajes, receptivos (DMC) y operadores",
+    badgeDesktop: "Para agencias de viajes, receptivos (DMC) y operadores · Envío de equipaje entre hoteles en Japón",
+    titleMobile: ["Envíe el itinerario.", "El envío de equipaje", "entre hoteles queda organizado."],
+    titleDesktop: { first: "Envíe el itinerario.", second: "El envío de equipaje entre hoteles queda organizado." },
     subtitleMobile:
-      "Solo díganos cuándo y desde qué hotel enviar, y BondEx se encarga de todo lo demás.",
+      "Envíe el itinerario y BondEx organiza y gestiona el envío de equipaje entre hoteles en Japón. Sin papeleo de envío para el hotel y sin que el guía tenga que vigilar maletas. Sus clientes viajan ligeros en cada traslado.",
     subtitleDesktop: {
-      first: "Solo indique cuándo y desde qué hotel enviar: emisión de vouchers, etiquetas de envío,",
-      second: "facturación mensual y cambios incluidos. BondEx coordina directamente con los transportistas.",
+      first: "Envíe el itinerario y BondEx organiza y gestiona el envío de equipaje entre hoteles en Japón. ",
+      second: "Sin papeleo de envío para el hotel y sin que el guía tenga que vigilar maletas. Sus clientes viajan ligeros en cada traslado.",
     },
     bullets: [
       "BondEx crea todos los vouchers y etiquetas de envío",
@@ -1225,7 +1227,7 @@ const es: LandingMessages = {
   },
   concept: {
     heading: ["Separar al viajero", "de su equipaje, por un tiempo."],
-    body: ["El viajero disfruta de Japón sin cargas.", "BondEx entrega el equipaje en el siguiente hotel."],
+    body: ["El viajero disfruta de Japón sin cargas.", "BondEx organiza su entrega en el siguiente hotel."],
     alt: "Una familia paseando por Kioto sin equipaje",
     travelerLabel: "Viajero",
     luggageLabel: "Equipaje",
@@ -1391,6 +1393,10 @@ const es: LandingMessages = {
         q: "¿Hasta cuándo se puede reservar o modificar un envío?",
         a: "Para viajeros individuales aceptamos solicitudes hasta las 16:00 (hora de Japón) del día anterior a la recogida. Para grupos, reserve al menos con 5 días de antelación como norma. Los cambios repentinos posteriores (más bultos, otro hotel, otra fecha) ocurren, y haremos todo lo posible por atenderlos. Contáctenos primero.",
       },
+      {
+        q: "¿Cuándo llega el equipaje?",
+        a: "Con recogida por la mañana, el equipaje llega normalmente al día siguiente (por ejemplo, de Tokio a Kioto, Osaka, Nagoya o Kanazawa). De Tokio a Fukuoka o Hokkaido tarda dos días, y de Honshu a Okinawa dos días o más. No es un servicio en el mismo día, así que revise la fecha de llegada si los viajeros se desplazan el día de la recogida.",
+      },
     ],
   },
   contact: {
@@ -1458,18 +1464,15 @@ const fr: LandingMessages = {
     ],
   },
   hero: {
-    badgeMobile: "Pour les agences de voyage réceptives et les tour-opérateurs terrestres",
-    badgeDesktop: "Pour les agences de voyage réceptives · Réexpédition de bagages, entièrement gérée",
-    titleMobile: ["Envoyez l'itinéraire", "et les dates de livraison :", "tout le reste est géré."],
-    titleDesktop: {
-      first: "Envoyez l'itinéraire et les dates de livraison,",
-      second: "la réexpédition des bagages est prise en charge.",
-    },
+    badgeMobile: "Pour agences de voyages, réceptifs (DMC) et tour-opérateurs",
+    badgeDesktop: "Pour agences de voyages, réceptifs (DMC) et tour-opérateurs · Transfert de bagages entre hôtels au Japon",
+    titleMobile: ["Envoyez l'itinéraire.", "Le transfert de bagages", "entre hôtels est organisé."],
+    titleDesktop: { first: "Envoyez l'itinéraire.", second: "Le transfert de bagages entre hôtels est organisé." },
     subtitleMobile:
-      "Dites-nous simplement quand et depuis quel hôtel expédier, et BondEx s'occupe de tout le reste.",
+      "Envoyez l'itinéraire : BondEx organise et suit le transfert de bagages entre hôtels au Japon. Aucun bordereau à remplir pour l'hôtel, aucun accompagnateur à surveiller les valises. Vos clients voyagent léger à chaque étape.",
     subtitleDesktop: {
-      first: "Précisez simplement quand et depuis quel hôtel expédier : émission des bons, étiquettes d'expédition,",
-      second: "facturation mensuelle et demandes de modification incluses. BondEx coordonne directement avec les transporteurs.",
+      first: "Envoyez l'itinéraire : BondEx organise et suit le transfert de bagages entre hôtels au Japon. ",
+      second: "Aucun bordereau à remplir pour l'hôtel, aucun accompagnateur à surveiller les valises. Vos clients voyagent léger à chaque étape.",
     },
     bullets: [
       "BondEx crée chaque bon et chaque étiquette d'expédition",
@@ -1578,7 +1581,7 @@ const fr: LandingMessages = {
   },
   concept: {
     heading: ["Séparer le voyageur", "de ses bagages, le temps du trajet."],
-    body: ["Le voyageur profite du Japon les mains libres.", "BondEx livre les bagages à l'hôtel suivant."],
+    body: ["Le voyageur profite du Japon les mains libres.", "BondEx organise leur livraison à l'hôtel suivant."],
     alt: "Une famille se promenant à Kyoto les mains libres",
     travelerLabel: "Voyageur",
     luggageLabel: "Bagages",
@@ -1744,6 +1747,10 @@ const fr: LandingMessages = {
         q: "Jusqu'à quand peut-on réserver ou modifier une expédition ?",
         a: "Pour les voyageurs individuels, nous acceptons les demandes jusqu'à 16 h (heure du Japon) la veille de l'enlèvement. Pour les groupes, réservez au moins 5 jours à l'avance en principe. Les changements soudains après ce délai (bagages supplémentaires, autre hôtel, autre date) arrivent, et nous ferons notre possible pour les prendre en charge. Contactez-nous d'abord.",
       },
+      {
+        q: "Quand les bagages arrivent-ils ?",
+        a: "Avec un enlèvement le matin, les bagages arrivent normalement le lendemain (par exemple de Tokyo à Kyoto, Osaka, Nagoya ou Kanazawa). De Tokyo à Fukuoka ou Hokkaido, comptez deux jours, et de Honshu à Okinawa deux jours ou plus. Ce n'est pas un service le jour même : vérifiez la date d'arrivée si les voyageurs se déplacent le jour de l'enlèvement.",
+      },
     ],
   },
   contact: {
@@ -1811,18 +1818,15 @@ const zh: LandingMessages = {
     ],
   },
   hero: {
-    badgeMobile: "面向入境旅行社与地接社",
-    badgeDesktop: "面向入境旅行社 · 行李转运，全程托管",
-    titleMobile: ["只需发送行程", "与配送日期，", "行李转运即告完成。"],
-    titleDesktop: {
-      first: "只需发送行程与配送日期，",
-      second: "行李转运即告完成。",
-    },
+    badgeMobile: "面向旅行社与地接社",
+    badgeDesktop: "面向旅行社与地接社 · 日本酒店间行李转运代办",
+    titleMobile: ["只需发送行程，", "酒店间行李转运", "即安排妥当。"],
+    titleDesktop: { first: "只需发送行程，", second: "酒店间行李转运即安排妥当。" },
     subtitleMobile:
-      "只需告诉我们何时、从哪家酒店发货，其余的一切都交给 BondEx。",
+      "只需发送行程，BondEx 即可安排并管理日本酒店间的行李转运。无需酒店代填运单，也无需领队看管行李。客人每次移动都轻装上路。",
     subtitleDesktop: {
-      first: "只需指定何时、从哪家酒店发货——兑换券开具、运单、",
-      second: "每月结算与变更处理全部包含。BondEx 直接与承运商协调对接。",
+      first: "只需发送行程，BondEx 即可安排并管理日本酒店间的行李转运。",
+      second: "无需酒店代填运单，也无需领队看管行李。客人每次移动都轻装上路。",
     },
     bullets: [
       "每一张兑换券和运单都由 BondEx 制作",
@@ -1931,7 +1935,7 @@ const zh: LandingMessages = {
   },
   concept: {
     heading: ["让旅客与行李，", "暂时分开。"],
-    body: ["旅客轻装畅游日本。", "行李由 BondEx 送到下一家酒店。"],
+    body: ["旅客轻装畅游日本。", "行李由 BondEx 安排送往下一家酒店。"],
     alt: "轻装漫步京都街头的一家人",
     travelerLabel: "旅客",
     luggageLabel: "行李",
@@ -2097,6 +2101,10 @@ const zh: LandingMessages = {
         q: "临时预订或变更最晚可以到什么时候？",
         a: "个人旅行的申请受理至取件前一天 16:00（日本时间）。团体请原则上提前 5 天预订。此后的临时变更（增减件数、更换酒店、更改日期）在实际中很常见，我们会尽力协调，请先与我们联系。",
       },
+      {
+        q: "行李什么时候送达？",
+        a: "以上午取件为前提，行李通常在取件次日送达（例如东京至京都、大阪、名古屋、金泽）。东京至福冈、北海道约需两天，本州至冲绳为两天以上。本服务并非当日送达，若旅客在取件当天移动，请留意到达日期。",
+      },
     ],
   },
   contact: {
@@ -2164,18 +2172,15 @@ const it: LandingMessages = {
     ],
   },
   hero: {
-    badgeMobile: "Per agenzie di viaggio incoming e tour operator locali",
-    badgeDesktop: "Per agenzie di viaggio incoming · Inoltro bagagli, completamente gestito",
-    titleMobile: ["Invia l'itinerario", "e le date di consegna:", "all'inoltro pensiamo noi."],
-    titleDesktop: {
-      first: "Invia l'itinerario e le date di consegna,",
-      second: "all'inoltro dei bagagli pensiamo noi.",
-    },
+    badgeMobile: "Per agenzie di viaggio, DMC e operatori incoming",
+    badgeDesktop: "Per agenzie di viaggio, DMC e operatori incoming · Trasferimento bagagli tra hotel in Giappone",
+    titleMobile: ["Invia l'itinerario.", "Il trasferimento dei bagagli", "tra hotel è organizzato."],
+    titleDesktop: { first: "Invia l'itinerario.", second: "Il trasferimento dei bagagli tra hotel è organizzato." },
     subtitleMobile:
-      "Basta dirci quando e da quale hotel spedire, e BondEx si occupa di tutto il resto.",
+      "Invia l'itinerario e BondEx organizza e gestisce il trasferimento dei bagagli tra hotel in Giappone. Nessun modulo di spedizione per l'hotel, nessun accompagnatore a sorvegliare le valigie. I tuoi clienti viaggiano leggeri a ogni spostamento.",
     subtitleDesktop: {
-      first: "Basta indicare quando e da quale hotel spedire: emissione dei voucher, etichette di spedizione,",
-      second: "fatturazione mensile e richieste di modifica incluse. BondEx si coordina direttamente con i corrieri.",
+      first: "Invia l'itinerario e BondEx organizza e gestisce il trasferimento dei bagagli tra hotel in Giappone. ",
+      second: "Nessun modulo di spedizione per l'hotel, nessun accompagnatore a sorvegliare le valigie. I tuoi clienti viaggiano leggeri a ogni spostamento.",
     },
     bullets: [
       "BondEx crea ogni voucher e ogni etichetta di spedizione",
@@ -2284,7 +2289,7 @@ const it: LandingMessages = {
   },
   concept: {
     heading: ["Separare il viaggiatore", "dai bagagli, per un tratto."],
-    body: ["Il viaggiatore si gode il Giappone a mani libere.", "BondEx consegna i bagagli all'hotel successivo."],
+    body: ["Il viaggiatore si gode il Giappone a mani libere.", "BondEx ne organizza la consegna all'hotel successivo."],
     alt: "Una famiglia a passeggio per Kyoto a mani libere",
     travelerLabel: "Viaggiatore",
     luggageLabel: "Bagagli",
@@ -2449,6 +2454,10 @@ const it: LandingMessages = {
       {
         q: "Fino a quando è possibile prenotare o modificare una spedizione?",
         a: "Per i viaggiatori individuali accettiamo richieste fino alle 16:00 (ora del Giappone) del giorno prima del ritiro. Per i gruppi, prenotate almeno 5 giorni prima di norma. Le modifiche improvvise successive (colli in più, un altro hotel, un'altra data) capitano, e faremo il possibile per gestirle. Contattateci prima.",
+      },
+      {
+        q: "Quando arrivano i bagagli?",
+        a: "Con ritiro al mattino, i bagagli arrivano normalmente il giorno successivo (ad esempio da Tokyo a Kyoto, Osaka, Nagoya o Kanazawa). Da Tokyo a Fukuoka o Hokkaido servono due giorni, da Honshu a Okinawa due giorni o più. Non è un servizio in giornata: controllate la data di arrivo se i viaggiatori si spostano il giorno del ritiro.",
       },
     ],
   },

@@ -325,7 +325,7 @@ export function Landing({ lang }: { lang: Locale }) {
             <p className="text-[11px] md:text-[12px] font-bold tracking-[0.18em] text-[#C8102E] mb-5">
               {t.hero.badgeDesktop}
             </p>
-            <h1 className="text-[30px] sm:text-[36px] md:text-[42px] lg:text-[50px] font-bold leading-[1.28] tracking-normal text-[#0F172A] mb-6">
+            <h1 className="text-[30px] sm:text-[36px] md:text-[38px] lg:text-[40px] xl:text-[46px] xl:w-[780px] xl:max-w-none font-bold leading-[1.28] tracking-normal text-[#0F172A] mb-6">
               <span className="md:hidden">
                 {t.hero.titleMobile.map((line, i) => (
                   <span key={i}>

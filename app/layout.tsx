@@ -14,9 +14,9 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 const GA_MEASUREMENT_ID = 'G-M2LR1SYV92'
 
 const SITE_URL = 'https://bondex.express'
-const SITE_TITLE = 'BondEx | 荷物配送を、旅行商品の一部に。'
+const SITE_TITLE = 'BondEx｜旅行会社・DMC向け 訪日旅行のホテル間荷物配送手配'
 const SITE_DESC =
-  'BondEx（ボンデックス）は、訪日旅行代理店・ランドオペレーター向けの荷物配送手配代行サービスです。旅程データからバウチャー・送り状・追跡情報・月次請求までまとめて対応します。'
+  '旅行会社・DMC・ランドオペレーター向けの荷物配送手配代行。旅程を送るだけで、ホテル間配送の集荷・送り状・追跡・月次請求まで BondEx が対応。ホテルへの伝票依頼は不要で、手ぶら観光を旅行商品に組み込めます。'
 
 // 構造化データ (JSON-LD) — 同名多数 (塗料 Bondex 等) の中で「訪日旅行者向け
 // 手荷物ホテル間配送の取次サービス (株式会社JOJO)」という固有エンティティを
@@ -34,10 +34,14 @@ const STRUCTURED_DATA = {
       url: SITE_URL,
       logo: `${SITE_URL}/bondex-logo.png`,
       description:
-        '訪日旅行代理店・ランドオペレーター向けに、日本全国のホテル間で手荷物配送を手配する取次サービス。',
-      slogan: '荷物配送を、旅行商品の一部に。',
+        '旅行会社・DMC・ランドオペレーター向けに、訪日旅行の荷物を日本全国のホテル間で配送手配する取次サービス。',
+      slogan: '旅程を送るだけで、ホテル間の荷物配送まで手配完了。',
       // 「BondEx＝配送」のエンティティを補強 (同名の塗料 Bondex 等と区別)。
       knowsAbout: [
+        '旅行会社向け 荷物配送手配',
+        'DMC',
+        'ランドオペレーター',
+        'luggage forwarding Japan',
         '荷物配送',
         'ホテル間配送',
         '手荷物配送',
@@ -71,18 +75,18 @@ const STRUCTURED_DATA = {
     {
       '@type': 'Service',
       '@id': `${SITE_URL}/#service`,
-      name: 'BondEx — Luggage Forwarding for Inbound Travel Agencies in Japan',
+      name: 'BondEx — Luggage Forwarding in Japan for Travel Agencies and DMCs',
       serviceType: 'Hotel-to-hotel luggage forwarding and delivery coordination',
-      keywords: 'BondEx, ボンデックス, 荷物配送, ホテル間配送, 手荷物配送, 手ぶら観光, 訪日旅行 配送, 送り状発行, 配送追跡',
+      keywords: 'BondEx, ボンデックス, 旅行会社 荷物配送, DMC, ランドオペレーター, ホテル間配送, 手荷物配送, 手ぶら観光, 訪日旅行 荷物配送, luggage forwarding Japan, hotel to hotel luggage forwarding, travel agency luggage forwarding Japan, 送り状発行, 配送追跡',
       provider: { '@id': `${SITE_URL}/#organization` },
       areaServed: { '@type': 'Country', name: 'Japan' },
       audience: {
         '@type': 'Audience',
-        audienceType: 'Inbound travel agencies and land operators',
+        audienceType: 'Travel agencies, DMCs and land operators handling inbound travel to Japan (FIT and groups)',
       },
       availableLanguage: ['Japanese', 'English', 'Spanish', 'French', 'Chinese', 'Italian'],
       description:
-        'BondEx coordinates hotel-to-hotel luggage forwarding across Japan for inbound travel agencies. It issues traveler vouchers and shipping labels, provides tracking, and offers consolidated monthly invoicing or card payment, using major Japanese carriers (Sagawa / Yamato). Operated by JOJO Inc.',
+        'BondEx arranges luggage forwarding between hotels across Japan for travel agencies, DMCs and land operators, for both individual (FIT) and group itineraries, so hotels are never asked to handle shipping paperwork. It issues traveler vouchers and shipping labels, provides tracking, and offers consolidated monthly invoicing or card payment, using major Japanese carriers (Sagawa / Yamato). Operated by JOJO Inc.',
     },
   ],
 }

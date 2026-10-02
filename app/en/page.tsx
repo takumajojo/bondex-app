@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import { Landing } from "@/components/landing/landing"
 
 // 英語ランディング。/en で配信。同一のランディングページを英語で表示する。
-const SITE_TITLE_EN = "BondEx | Luggage forwarding between hotels across Japan"
+const SITE_TITLE_EN = "Luggage Forwarding in Japan for Travel Agencies & DMCs | BondEx"
 const SITE_DESC_EN =
-  "BondEx is a luggage forwarding coordination service for inbound travel agencies and land operators, moving luggage between hotels across Japan. From your itinerary data we issue traveler vouchers and shipping labels, provide tracking, and handle consolidated monthly billing or card payment."
+  "BondEx arranges luggage forwarding between hotels across Japan for travel agencies, DMCs and land operators. Send the itinerary and we handle pickup, shipping labels, tracking and monthly billing. No paperwork for hotels, and hands-free travel becomes part of your product."
 
 // hreflang 相互リンク。Phase 2 で ES/FR/ZH/IT を足すときは languages に追記する。
 const LANGUAGE_ALTERNATES = {
