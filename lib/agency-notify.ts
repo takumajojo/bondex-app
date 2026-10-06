@@ -99,7 +99,7 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
   )
   if (ja) {
     return {
-      subject: `【BondEx】ご依頼を受け付けました（${input.bookingId}）｜バウチャーはそのままお客様へお渡しください`,
+      subject: `【BondEx】ご依頼を受け付けました（${input.bookingId}）`,
       lines: [
         `${input.agencyName} 御中`,
         `この度はご依頼いただきありがとうございます。配送のご依頼を受け付けました。予約番号: ${ref}（${input.legCount}区間）。`,
@@ -131,7 +131,7 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
     }
   }
   return {
-    subject: `[BondEx] Request received (${input.bookingId}) — hand the voucher to your guest`,
+    subject: `[BondEx] Request received (${input.bookingId})`,
     lines: [
       `Dear ${input.agencyName},`,
       `Thank you for your request! We have received your luggage forwarding request. Booking: ${ref} (${input.legCount} leg${input.legCount > 1 ? "s" : ""}).`,
