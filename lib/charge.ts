@@ -85,9 +85,9 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
 
     if (!agency) return { charged: false, skipped: true, reason: "agency_not_found" }
 
-    // 実際に課金する額。国内代理店は消費税を上乗せ (税込)、海外法人は非課税 (税抜のまま)。
-    // ※ 海外事業者向け国内配送の消費税不課税の適否は税務判断。運用前に税理士確認のこと (谷口さん)。
-    const amountYen = agency.is_domestic === false ? netYen : grossOf(netYen)
+    // 実際に課金する額。国内・海外を問わず消費税を上乗せ (税込)。
+    // 海外の旅行会社向けでも国内配送の手配は輸出免税にならず 10% 課税 (2026-10-05 税理士確認)。
+    const amountYen = grossOf(netYen)
 
     // テスト代理店 (billing_exempt) は、どんなに配送手配しても一切課金しない (谷口さん指示)。
     // カード登録は可能だが、集荷完了しても課金処理をスキップする。

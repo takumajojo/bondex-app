@@ -78,7 +78,6 @@
 | `CRON_SECRET` | cron 認証（3本共通: sync-tracking / issue-due / monthly-invoices）。**GitHub Actions の Repository Secret にも同じ値** | ○ |
 | `STRIPE_SECRET_KEY`/`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | カード保存 | 任意（未設定なら「準備中」） |
 | `STRIPE_CHARGE_LIVE` | **"true"で集荷完了時に保存カードへ実課金**。未設定/その他は課金しない（コードは通るが無害） | 本番課金時（谷口さん承認） |
-| `INVOICE_AUTOSEND` | **"true"で月次請求書を代理店へ直接自動送信**。未設定は運用(ALERT_EMAIL)控えのみ→手動転送 | 慣れてから |
 | `SLACK_WEBHOOK_URL` | アラート通知（設定すれば） | 推奨 |
 | `BONDEX_WHATSAPP_URL` | WhatsApp導線 | 任意 |
 
@@ -94,7 +93,7 @@
 
 - **`SHIPANDCO_LIVE=true`**: これを入れて再デプロイすると、以降の発行は**実ラベル=課金+実集荷+取消不可**。まずは1件テスト発行で確認してから。**谷口さんの明示承認が必要な操作**。
 - **`STRIPE_CHARGE_LIVE=true`**: 集荷完了（picked_up）時に、カード払い代理店の保存カードへ **¥5,000×個数を実課金**（off_session）。本番Stripeキーが前提。未設定なら課金コードは通るが1円も動かない。**谷口さんの明示承認が必要な操作**。二重課金は `shipments.charged_at` と Stripe idempotencyKey で二重防止。
-- **`INVOICE_AUTOSEND=true`**: 月次請求書を代理店へ直接自動送信。未設定は運用控えのみ（谷口さんが中身を確認して手動転送）。初月は未設定で回すのが安全。
+- **月次請求書は代理店へ自動送信しない**（2026-10-05 谷口さん指示で `INVOICE_AUTOSEND` を廃止）。毎月1日に「【要確認・代理店へは未送付】」の件名で運用(ALERT_EMAIL)へPDFが届く → 谷口さんが1通ずつ確認して手動で送付。
 - 送り状の集荷連絡先 `BONDEX_SENDER_PHONE` を実番号にしてからLIVE化する（現状は仮 `000...`）。
 - お客様向けCONTACT電話は未確定（バウチャーは電話非表示で運用可）。
 

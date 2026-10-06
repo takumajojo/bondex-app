@@ -88,7 +88,8 @@ export interface InvoiceInput {
    */
   taxInclusive?: boolean
   /**
-   * 海外事業者など消費税の対象外のとき true。合計＝小計 (税を上乗せせず、税欄は「対象外」)。
+   * 消費税の対象外のとき true。合計＝小計 (税を上乗せせず、税欄は「対象外」)。
+   * 現在は使っていない: 海外の代理店向けも 10% 課税 (2026-10-05 税理士確認)。
    */
   taxExempt?: boolean
   /**
@@ -120,13 +121,20 @@ function formatJpDate(ymd: string): string {
 }
 
 /**
- * 区間 (発→着) を明細1行に収める。長い施設名は「…」で省略し、行折り返しによる
- * 行高の増大を防ぐ (代理店はツアー番号で照合するため詳細名は省略可)。
+ * 区間は「発」「→ 着」の2行で出す。1行に詰めると長い施設名で着地が丸ごと省略されたり、
+ * 日本語名が列幅を超えて不揃いに折り返したりするため。1行ぶんを超える名前だけ「…」で省略する
+ * (全角は半角の約2倍幅として数える)。
  */
-function routeLabel(from?: string | null, to?: string | null): string {
-  const MAX = 34
-  const s = `${safeText(from)} → ${safeText(to)}`
-  return s.length > MAX ? `${s.slice(0, MAX - 1)}…` : s
+function hotelLabel(name?: string | null): string {
+  const MAX = 38 // 半角換算 (区間の列幅 ≒ 半角40字ぶん)
+  let w = 0
+  let out = ""
+  for (const ch of safeText(name)) {
+    w += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 2 : 1
+    if (w > MAX) return `${out}…`
+    out += ch
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +149,7 @@ const C_BG_SOFT = "#F8F8F8"
 const styles = StyleSheet.create({
   page: {
     paddingTop: 36,
-    paddingBottom: 50,
+    paddingBottom: 72, // フッター (発行者欄 4行) と本文が重ならない余白
     paddingHorizontal: 44,
     fontFamily: "NotoSansJP",
     fontSize: 10,
@@ -186,7 +194,7 @@ const styles = StyleSheet.create({
   },
   // Agency / billing block
   toBlock: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   toLabel: {
     fontSize: 9,
@@ -198,12 +206,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 500,
     color: C_FG,
+    lineHeight: 1.3,
+    marginBottom: 5,
   },
   toMeta: {
     fontSize: 9,
     color: C_MUTED,
-    marginTop: 4,
-    lineHeight: 1.5,
+    marginTop: 3,
+    lineHeight: 1.6,
   },
   // Summary box
   summaryBox: {
@@ -258,7 +268,8 @@ const styles = StyleSheet.create({
   },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 3.5,
+    alignItems: "center",
+    paddingVertical: 5.5,
     borderBottomWidth: 0.5,
     borderBottomColor: C_HAIRLINE,
   },
@@ -274,11 +285,11 @@ const styles = StyleSheet.create({
   },
   // column widths
   col_date: { width: 60 },
-  col_ref: { width: 90 },
-  col_route: { flex: 1 },
-  col_rep: { width: 90 },
+  col_ref: { width: 82 },
+  col_route: { flex: 1, paddingRight: 6 },
+  col_rep: { width: 80 },
   col_qty: { width: 32, textAlign: "right" as const },
-  col_amt: { width: 70, textAlign: "right" as const },
+  col_amt: { width: 96, textAlign: "right" as const },
   // Total block
   totalsBlock: {
     marginTop: 14,
@@ -393,12 +404,12 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     color: C_FG,
     lineHeight: 1.5,
-    marginBottom: 10,
+    marginBottom: 14,
   },
   // Footer
   footer: {
     position: "absolute",
-    bottom: 22,
+    bottom: 20,
     left: 44,
     right: 44,
     borderTopWidth: 0.5,
@@ -412,13 +423,17 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 500,
     color: C_FG,
+    marginBottom: 3,
   },
   footerLine: {
     fontSize: 7.5,
     color: C_MUTED,
-    lineHeight: 1.4,
+    lineHeight: 1.7,
   },
   footerPage: {
+    position: "absolute",
+    bottom: 22,
+    right: 44,
     fontSize: 7.5,
     color: C_MUTED,
   },
@@ -460,19 +475,22 @@ function invoiceLabels(en: boolean) {
       en ? (inclusive ? "Amount (incl. tax)" : "Amount (excl. tax)") : inclusive ? "金額 (税込)" : "金額 (税抜)",
     // Totals
     netExcl: en ? "Amount (excl. tax)" : "税抜金額",
-    inclTax: (rate: number) => (en ? `incl. Consumption tax (${rate}%)` : `内 消費税 (${rate}%)`),
+    inclTax: (rate: number) => (en ? `incl. JCT - Japan (${rate}%)` : `内 消費税 (${rate}%)`),
     totalIncl: en ? "Total (incl. tax)" : "合計 (税込)",
-    subtotal: en ? "Subtotal" : "小計",
+    // 適格請求書の要件「税率ごとに区分した対価の額と適用税率」を小計行で示す。
+    subtotal: (rate: number, exempt: boolean) =>
+      exempt ? (en ? "Subtotal" : "小計") : en ? `Subtotal (${rate}% taxable)` : `小計 (${rate}%対象)`,
+    // 英語は「JCT - Japan (10%)」表記 (海外の相手方に日本の消費税だと分かるように)。
     consumptionTax: (rate: number, exempt: boolean) =>
       en
         ? exempt
-          ? "Consumption tax"
-          : `Consumption tax (${rate}%)`
+          ? "JCT - Japan"
+          : `JCT - Japan (${rate}%)`
         : exempt
           ? "消費税"
           : `消費税 (${rate}%)`,
     notApplicable: en ? "Not applicable" : "対象外",
-    total: en ? "Total" : "合計",
+    total: en ? "Total (incl. JCT)" : "合計 (税込)",
     // Bank
     bankLabel: en ? "BANK DETAILS" : "お振込先 / BANK INFO",
     bankDueLabel: en ? "Payment due" : "お支払期限",
@@ -494,6 +512,7 @@ function invoiceLabels(en: boolean) {
       : "上記の金額を、クレジットカードにて領収いたしました。\n本書は適格請求書 兼 領収書としてご利用いただけます。",
     // Footer
     regNo: en ? "Qualified Invoice Issuer Reg. No." : "適格請求書発行事業者登録番号",
+    regNoShort: en ? "Japan JCT Reg. No." : "登録番号",
   }
 }
 
@@ -576,6 +595,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
               {paid
                 ? `\n${L.paymentDate}: ${paid.date}`
                 : `${data.closingDate ? `\n${L.closingDate}: ${data.closingDate}` : ""}\n${L.paymentDue}: ${data.dueDate}`}
+              {data.bondex.registrationNumber ? `\n${L.regNoShort}: ${data.bondex.registrationNumber}` : ""}
             </Text>
           </View>
         </View>
@@ -616,14 +636,15 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           <Text style={[styles.th, styles.col_amt]}>{L.thAmt(taxInclusive)}</Text>
         </View>
         {data.items.map((it, i) => (
-          <View key={i} style={styles.tableRow}>
+          <View key={i} style={styles.tableRow} wrap={false}>
             <Text style={[styles.td, styles.col_date]}>{formatJpDate(it.shipmentDate)}</Text>
             <Text style={[styles.td, styles.col_ref, { fontSize: 8 }]}>
               {it.tourNumber || it.bookingRef}
             </Text>
-            <Text style={[styles.td, styles.col_route, { fontSize: 8 }]} wrap={false}>
-              {routeLabel(it.fromHotel, it.toHotel)}
-            </Text>
+            <View style={styles.col_route}>
+              <Text style={[styles.td, { fontSize: 8 }]}>{hotelLabel(it.fromHotel)}</Text>
+              <Text style={[styles.td, { fontSize: 8 }]}>→ {hotelLabel(it.toHotel)}</Text>
+            </View>
             <Text style={[styles.td, styles.col_rep, { fontSize: 8.5 }]}>{safeText(it.representative)}</Text>
             <Text style={[styles.td, styles.col_qty]}>{it.suitcaseCount}</Text>
             <Text style={[styles.td, styles.col_amt]}>
@@ -655,7 +676,7 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
           ) : (
             <>
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{L.subtotal}</Text>
+                <Text style={styles.totalLabel}>{L.subtotal(ratePct, taxExempt)}</Text>
                 <Text style={styles.totalValue}>¥{net.toLocaleString()}</Text>
               </View>
               <View style={styles.totalRow}>
@@ -731,11 +752,14 @@ export function InvoiceDocument({ data }: { data: InvoiceInput }) {
               </Text>
             )}
           </View>
-          <Text
-            style={styles.footerPage}
-            render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
-          />
         </View>
+        {/* ページ番号は footer とは別の fixed 要素にする。footer の中に render prop の Text を
+            入れると footer 全体 (発行者名・住所・登録番号) が描画されなくなる。 */}
+        <Text
+          style={styles.footerPage}
+          fixed
+          render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+        />
       </Page>
     </Document>
   )

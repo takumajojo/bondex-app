@@ -8,8 +8,9 @@ import { TAX_RATE, grossOf } from "@/lib/tax"
  * 月次請求書の組み立て — 手動DL (api/invoices/generate) と自動送付
  * (cron/monthly-invoices) の両方が使う単一ソース。
  *
- * 料金は契約上 ¥5,000「税抜」なので taxInclusive:false で外税表示する
- * (税抜小計に消費税を上乗せする)。対象は当月に発送された
+ * 料金は契約上「税抜」なので taxInclusive:false で外税表示する
+ * (税抜小計に消費税を上乗せする)。国内・海外の代理店とも 10% 課税
+ * (海外の旅行会社向けでも国内配送の手配は輸出免税にならない。2026-10-05 税理士確認)。対象は当月に発送された
  * issued/picked_up/in_transit/delivered の区間 (失敗・キャンセルは除外)。
  */
 
@@ -18,7 +19,28 @@ const BONDEX_BILLING = {
   address: "〒158-0092 東京都世田谷区野毛1-9-12",
   email: "support@bondex.express",
   bankInfo: "三菱UFJ銀行 田園調布駅前支店 普通 0145653 株式会社JOJO",
-  // 適格請求書登録番号は取得後にここへ
+  // 適格請求書発行事業者登録番号 (国税庁公表サイトで確認済み・登録日 2024-12-25)
+  registrationNumber: "T7010801026137",
+}
+
+/**
+ * 請求先の所在地。海外の代理店は国名を末尾に添える (相手方の名称・所在地を記載するため)。
+ * country は ISO 3166-1 alpha-2 (例: "US")。国内は住所だけで足りるので添えない。
+ */
+function billToAddress(
+  row: { billing_address?: string | null; country?: string | null; is_domestic?: boolean | null } | null | undefined,
+  locale: "ja" | "en",
+): string | undefined {
+  const address = row?.billing_address?.trim() || ""
+  let country = ""
+  if (row?.is_domestic === false && row.country) {
+    try {
+      country = new Intl.DisplayNames([locale], { type: "region" }).of(row.country.toUpperCase()) ?? row.country
+    } catch {
+      country = row.country
+    }
+  }
+  return [address, country].filter(Boolean).join("\n") || undefined
 }
 
 const MONTHS_EN = [
@@ -82,7 +104,7 @@ export async function buildMonthlyInvoice(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, representative, tour_number, suitcase_count, amount_yen, status",
+      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, from_hotel_en, to_hotel_en, representative, tour_number, suitcase_count, amount_yen, status",
     )
     .eq("agency", agencyName)
     .gte("shipment_date", fromDate)
@@ -95,7 +117,7 @@ export async function buildMonthlyInvoice(
 
   const { data: agencyRow } = await sb
     .from("agencies")
-    .select("name, contact_person, contact_email, billing_address, is_domestic, locale")
+    .select("name, contact_person, contact_email, billing_address, country, is_domestic, locale")
     .eq("name", agencyName)
     .maybeSingle()
 
@@ -114,20 +136,21 @@ export async function buildMonthlyInvoice(
     shipmentDate: s.shipment_date,
     bookingRef: `${s.booking_id}-L${(s.leg_index ?? 0) + 1}`,
     tourNumber: s.tour_number || undefined,
-    fromHotel: s.from_hotel ?? "",
-    toHotel: s.to_hotel ?? "",
+    // 英語の請求書は英語の施設名があればそちらを使う (無ければ登録時の表記のまま)
+    fromHotel: (locale === "en" && s.from_hotel_en) || s.from_hotel || "",
+    toHotel: (locale === "en" && s.to_hotel_en) || s.to_hotel || "",
     representative: s.representative ?? "",
     suitcaseCount: s.suitcase_count ?? 0,
     amountYen: s.amount_yen ?? 0,
   }))
 
   const netYen = items.reduce((sum, it) => sum + it.amountYen, 0) // 税抜小計
-  // 海外事業者は消費税対象外 (税を上乗せしない)。国内は外税。
-  const taxExempt = agencyRow?.is_domestic === false
-  const totalYen = taxExempt ? netYen : grossOf(netYen) // 請求総額
+  const totalYen = grossOf(netYen) // 請求総額 (国内・海外とも外税)
 
   // 発行日は JST。サーバUTCのまま new Date() だと 0:00-8:59 JST に前日表記になる (適格請求書の日付ずれ)。
-  const issuedDate = formatJpDate(new Date(Date.now() + 9 * 3600 * 1000), locale)
+  // getUTC* で読む (ローカル時刻で読むと、JST のマシンでは +9h が二重にかかり翌日表記になる)。
+  const nowJst = new Date(Date.now() + 9 * 3600 * 1000)
+  const issuedDate = fmtDate(nowJst.getUTCFullYear(), nowJst.getUTCMonth() + 1, nowJst.getUTCDate(), locale)
   const closingDate = formatJpDate(new Date(year, mon, 0), locale) // 当月末
   const dueDate = formatJpDate(new Date(year, mon + 1, 0), locale) // 翌月末払い
   const period = fmtPeriod(year, mon, locale, true)
@@ -142,14 +165,13 @@ export async function buildMonthlyInvoice(
         agency: {
           name: agencyName,
           contactPerson: agencyRow?.contact_person ?? undefined,
-          billingAddress: agencyRow?.billing_address ?? undefined,
+          billingAddress: billToAddress(agencyRow, locale),
         },
         bondex: BONDEX_BILLING,
         closingDate,
         items,
         taxRate: TAX_RATE,
-        taxInclusive: false, // 単価は税抜 — 外税表示 (国内は消費税を上乗せ)
-        taxExempt, // 海外事業者は消費税対象外
+        taxInclusive: false, // 単価は税抜 — 外税表示 (消費税を上乗せ)
         locale,
       }}
     />
@@ -186,16 +208,15 @@ export async function buildChargeInvoice(
 
   const { data: agencyRow } = await sb
     .from("agencies")
-    .select("name, contact_person, contact_email, billing_address, is_domestic, locale")
+    .select("name, contact_person, contact_email, billing_address, country, is_domestic, locale")
     .eq("name", shipment.agency)
     .maybeSingle()
 
   // 代理店の登録言語で出し分け (英語圏はカード領収書も英語)。
   const locale: "ja" | "en" = agencyRow?.locale === "en" ? "en" : "ja"
 
-  // 海外事業者は消費税対象外。実課金額(charge_amount_yen)があれば総額に使う。
-  const taxExempt = agencyRow?.is_domestic === false
-  const grossYen = shipment.charge_amount_yen ?? (taxExempt ? netYen : grossOf(netYen))
+  // 実課金額(charge_amount_yen)があれば総額に使う。
+  const grossYen = shipment.charge_amount_yen ?? grossOf(netYen)
 
   // 決済日 (JST)。charged_at が無ければ発行日を使う。
   const chargedAt = shipment.charged_at ? new Date(shipment.charged_at) : new Date()
@@ -216,8 +237,8 @@ export async function buildChargeInvoice(
       shipmentDate: shipment.shipment_date,
       bookingRef: `${shipment.booking_id}-L${shipment.leg_index + 1}`,
       tourNumber: shipment.tour_number || undefined,
-      fromHotel: shipment.from_hotel ?? "",
-      toHotel: shipment.to_hotel ?? "",
+      fromHotel: (locale === "en" && shipment.from_hotel_en) || shipment.from_hotel || "",
+      toHotel: (locale === "en" && shipment.to_hotel_en) || shipment.to_hotel || "",
       representative: shipment.representative ?? "",
       suitcaseCount: shipment.suitcase_count ?? 0,
       amountYen: netYen,
@@ -225,7 +246,7 @@ export async function buildChargeInvoice(
   ]
 
   // 発行日は決済日(JST)に統一。chargedAt(UTC)のままだと paidDate とズレ、深夜帯に前日表記になる。
-  const issuedDate = formatJpDate(chargedJst, locale)
+  const issuedDate = paidDate
   // 対象期間は発送月
   const sm = /^(\d{4})-(\d{2})/.exec(shipment.shipment_date || "")
   const period = sm ? fmtPeriod(Number(sm[1]), Number(sm[2]), locale, false) : issuedDate
@@ -240,13 +261,12 @@ export async function buildChargeInvoice(
         agency: {
           name: shipment.agency,
           contactPerson: agencyRow?.contact_person ?? undefined,
-          billingAddress: agencyRow?.billing_address ?? undefined,
+          billingAddress: billToAddress(agencyRow, locale),
         },
         bondex: BONDEX_BILLING,
         items,
         taxRate: TAX_RATE,
         taxInclusive: false,
-        taxExempt, // 海外事業者は消費税対象外
         locale,
         paid: {
           method: locale === "en" ? "Credit card" : "クレジットカード",
