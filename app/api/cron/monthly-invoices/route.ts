@@ -9,16 +9,16 @@ export const runtime = "nodejs"
 export const maxDuration = 300
 
 /**
- * 月次請求書の自動生成＋送付 (前月分)。毎月1日に GitHub Actions から叩く。
+ * 月次請求書の自動生成＋確認依頼 (前月分)。毎月1日に GitHub Actions から叩く。
  *
  * 対象: payment_method='invoice' かつ status='active' の代理店で、前月に
  *       発送実績がある先。カード払い (payment_method='card') は集荷完了ごとに
  *       Stripe で個別課金するため対象外。
  *
- * ── 送付先の安全ゲート ──────────────────────────────────────
- *   既定: BondEx 運用 (ALERT_EMAIL) にのみ PDF を送る = 中身を確認して手動転送。
- *   INVOICE_AUTOSEND=true: 代理店の contact_email へも直接自動送信する。
- * 運用初期は既定 (運用が確認) で回し、慣れたらフラグを立てて完全自動化する。
+ * ── 代理店へは自動送信しない ─────────────────────────────────
+ *   PDF は BondEx 運用 (ALERT_EMAIL) にだけ「要確認」として送る。
+ *   谷口さんが1通ずつ中身を確認し、代理店へは手動で送る (2026-10-05 谷口さん指示)。
+ *   以前あった INVOICE_AUTOSEND (代理店へ直接自動送信) は廃止した。
  *
  * 認証は他 cron と同じ CRON_SECRET。
  */
@@ -59,8 +59,6 @@ export async function GET(req: NextRequest) {
       const prev = new Date(Date.UTC(nowJst.getUTCFullYear(), nowJst.getUTCMonth() - 1, 1))
       targetMonth = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`
     }
-
-    const autosend = process.env.INVOICE_AUTOSEND === "true"
 
     // 対象代理店: 請求書払い & 稼働中。テスト代理店 (billing_exempt) は請求しない。
     const { data: agencies, error } = await sb
@@ -109,7 +107,6 @@ export async function GET(req: NextRequest) {
         { filename: built.fileName!, contentBase64: built.buffer.toString("base64") },
       ]
       // 代理店の言語設定で出し分け (英語登録の会社には英語で・谷口さん指示)。
-      // 添付の適格請求書PDFは日本の税書類のため日本語のまま。
       const en = (ag as { locale?: string | null }).locale === "en"
       const bodyLines = en
         ? [
@@ -119,7 +116,7 @@ export async function GET(req: NextRequest) {
             `Items: ${built.itemCount} / Amount due (tax incl.): ¥${(built.totalYen ?? 0).toLocaleString()}`,
             `Payment due: ${built.dueDate}`,
             "",
-            "See the attached PDF for details (a Japanese qualified invoice).",
+            "See the attached PDF for details (a qualified invoice under Japanese consumption tax law).",
             "Questions? Contact support@bondex.express.",
             "",
             "— BondEx / JOJO Inc. | support@bondex.express",
@@ -143,12 +140,20 @@ export async function GET(req: NextRequest) {
       const sentTo: string[] = []
       const errs: string[] = []
 
-      // 運用控えは常に送る (既定はこれのみ)
+      // 運用へ「要確認」として送る。代理店へはここからは送らない (確認後に手動で送付)。
       {
         const r = await sendMail({
           to: BONDEX_OPS_EMAIL,
-          subject: `[控え] ${subject} — ${ag.name}`,
-          text: bodyLines.join("\n"),
+          subject: `【要確認・代理店へは未送付】${subject} — ${ag.name}`,
+          text: [
+            "※ この請求書はまだ代理店へ送っていません。",
+            "添付の PDF を確認のうえ、問題なければ下記の文面で代理店へお送りください。",
+            `送付先: ${built.agencyEmail ?? "(代理店のメールアドレス未登録)"}`,
+            `件名: ${subject}`,
+            "──────── 以下、代理店あての文面 ────────",
+            "",
+            ...bodyLines,
+          ].join("\n"),
           attachments,
           replyTo: "support@bondex.express",
         })
@@ -156,20 +161,7 @@ export async function GET(req: NextRequest) {
         else errs.push(`ops: ${r.error}`)
       }
 
-      // AUTOSEND 時のみ代理店へ直接送付
-      if (autosend && built.agencyEmail) {
-        const r = await sendMail({
-          to: built.agencyEmail,
-          subject,
-          text: bodyLines.join("\n"),
-          attachments,
-          replyTo: "support@bondex.express",
-        })
-        if (r.sent) sentTo.push(built.agencyEmail)
-        else errs.push(`agency: ${r.error}`)
-      }
-
-      // 少なくとも1通送れたら送付済みとして記録する (0通 = 全滅なら記録せず次回再試行)
+      // 確認依頼を送れたら記録する (二重送付防止。送れなければ記録せず次回再試行)
       if (sentTo.length > 0) {
         const mark = await sb.from("invoice_sends").insert({
           agency: ag.name,
@@ -193,7 +185,6 @@ export async function GET(req: NextRequest) {
     const invoiced = results.filter((r) => r.invoiceNumber).length
     return NextResponse.json({
       month: targetMonth,
-      autosend,
       agenciesChecked: agencies?.length ?? 0,
       invoiced,
       results,

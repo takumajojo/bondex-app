@@ -41,6 +41,9 @@ export interface ShipmentRecord {
   from_prefecture: string | null
   /** 発送元ホテルの日本語表記 (発行時に Google Places の name から解決)。null=英語名にフォールバック。 */
   from_hotel_ja: string | null
+  /** 英語の施設名 (バウチャー再生成時に補完される。未補完は null/未定義)。英語の請求書で使う。 */
+  from_hotel_en?: string | null
+  to_hotel_en?: string | null
   from_place_id: string | null
   from_check_in: string | null
   /** 集荷元(発送元)ホテルのチェックイン日 (代理店入力・任意)。お届け先の from_check_in とは別。 */
