@@ -39,6 +39,7 @@ import TodayTodo from "@/components/operator/TodayTodo"
 import { LABEL_MAIL_ENABLED } from "@/lib/label-delivery"
 import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
+import { hotelDisplay } from "@/lib/hotel-name"
 
 type ShipmentStatus =
   | "requested"
@@ -302,20 +303,22 @@ function LegEndpoint({
   prefecture,
   nameJa,
   nameEn,
+  overseas = false,
 }: {
   prefecture: string | null
   nameJa: string | null
   nameEn: string
+  /** 海外代理店の予約か。true=英語名を主に日本語を併記 / false(既定)=日本語を主に英語を併記。 */
+  overseas?: boolean
 }) {
-  const name = nameJa?.trim() || nameEn
-  const showEnSub = !!nameJa?.trim() && nameJa.trim() !== nameEn
+  const { primary, secondary } = hotelDisplay(nameJa, nameEn, overseas)
   return (
     <div>
       <p className="text-foreground text-xs">
         {prefecture ? <span className="text-muted-foreground">{prefecture} </span> : null}
-        {name}
+        {primary}
       </p>
-      {showEnSub ? <p className="text-[10px] text-muted-foreground">{nameEn}</p> : null}
+      {secondary ? <p className="text-[10px] text-muted-foreground">{secondary}</p> : null}
     </div>
   )
 }
@@ -680,14 +683,19 @@ export default function DashboardPage() {
 
   // 代理店一覧は agencies マスタから直接取得 (shipments の有無に依らない)
   const [agencies, setAgencies] = useState<string[]>([])
+  // 代理店名 → 海外か (is_domestic===false)。施設名の言語だし分け (海外=英語主+日本語併記) に使う。
+  const [agencyOverseas, setAgencyOverseas] = useState<Record<string, boolean>>({})
   useEffect(() => {
     let alive = true
     fetch("/api/agencies")
       .then((r) => r.json())
       .then((d) => {
         if (!alive || !Array.isArray(d.agencies)) return
-        const list = d.agencies as { name: string; status?: string }[]
+        const list = d.agencies as { name: string; status?: string; is_domestic?: boolean | null }[]
         setAgencies(list.map((a) => a.name).filter(Boolean))
+        const ov: Record<string, boolean> = {}
+        for (const a of list) if (a.name) ov[a.name] = a.is_domestic === false
+        setAgencyOverseas(ov)
         setPendingAgencies(list.filter((a) => a.status === "pending").length)
       })
       .catch(() => {})
@@ -1444,9 +1452,9 @@ export default function DashboardPage() {
                         <p className="text-xs text-foreground">{it.representative}</p>
                       </td>
                       <td className="p-3 align-top max-w-[280px]">
-                        <LegEndpoint prefecture={it.from_prefecture} nameJa={it.from_hotel_ja} nameEn={it.from_hotel} />
+                        <LegEndpoint prefecture={it.from_prefecture} nameJa={it.from_hotel_ja} nameEn={it.from_hotel} overseas={!!agencyOverseas[it.agency]} />
                         <p className="text-[10px] text-muted-foreground">↓</p>
-                        <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} />
+                        <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} overseas={!!agencyOverseas[it.agency]} />
                       </td>
                       <td className="p-3 align-top text-right">
                         <p className="font-medium text-foreground tabular-nums">
