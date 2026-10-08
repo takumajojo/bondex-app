@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { PRICING } from "@/lib/pricing"
 import {
-  ArrowLeft,
   Loader2,
   Package,
   Filter,
@@ -15,6 +14,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Building2,
+  Plus,
   BarChart3,
   Mail,
   Search,
@@ -808,10 +808,10 @@ export default function DashboardPage() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Link
               href="/operator"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center gap-1.5 rounded-lg bg-[#C8102E] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#a60d26] transition-colors"
             >
-              <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
-              発行に戻る
+              <Plus className="w-4 h-4" strokeWidth={2.2} />
+              依頼を発行
             </Link>
             <Link
               href="/operator/agencies"
