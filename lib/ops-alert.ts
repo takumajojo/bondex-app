@@ -14,8 +14,7 @@
  */
 
 import { sendMail, mailerConfigured } from "./mailer"
-
-const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
+import { opsRecipients } from "./ops-recipients"
 
 export interface OpsAlertInput {
   subject: string
@@ -61,7 +60,8 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
       : opsText
     const agencySubject = input.agencySubject ?? input.subject
     const targets: Array<{ to: string; subject: string; text: string }> = [
-      { to: BONDEX_OPS_EMAIL, subject: input.subject, text: opsText },
+      // BondEx 運用: ALERT_EMAIL(谷口個人) と support@ の両方へ届ける。
+      ...opsRecipients().map((to) => ({ to, subject: input.subject, text: opsText })),
       ...(input.agencyEmail ? [{ to: input.agencyEmail, subject: agencySubject, text: agencyText }] : []),
     ]
     let anySent = false
