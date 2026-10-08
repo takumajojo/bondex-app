@@ -1,0 +1,38 @@
+name: Invoice deadline alert
+
+# 契約上「請求書の発行期限」が前倒しの代理店 (例: TRAPOL=翌月第2営業日) について、
+# 前月分の請求書を期限までに発行・送付するよう毎朝 ops へアラートする (/api/cron/invoice-deadline)。
+# 実際に鳴るのは各月の月初〜期限+2日のみ (cron 側でウィンドウ判定)。
+#
+# 事前設定 (他の cron と共通):
+#   Repository → Settings → Secrets and variables → Actions
+#   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
+
+on:
+  schedule:
+    # 毎日 23:30 UTC = 08:30 JST (月次請求の生成後・朝イチで確認できる時間帯)
+    - cron: "30 23 * * *"
+  workflow_dispatch: {}  # 手動実行 (Actions タブから即実行)
+
+jobs:
+  invoice-deadline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx invoice-deadline endpoint
+        run: |
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2"
+            response=$(curl -s -w "\n%{http_code}" --max-time 110 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              https://bondex.express/api/cron/invoice-deadline)
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::invoice-deadline alert failed after 2 attempts"
+          exit 1

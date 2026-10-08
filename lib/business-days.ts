@@ -83,3 +83,27 @@ export function businessDaysBetween(fromYmd: string, toYmd_: string): number | n
   }
   return count * sign
 }
+
+/**
+ * 指定した年月の n 番目の営業日 (土日祝を除く) の日付を YYYY-MM-DD で返す。
+ * monthYmd は対象月内の任意の YYYY-MM-DD (日付部は無視し、その月を対象とする)。
+ * 例: 「2026-10-xx」の第2営業日。n が月の営業日数を超える場合は月末最後の営業日を返す。
+ */
+export function nthBusinessDayOfMonth(monthYmd: string, n: number): string | null {
+  const base = parseYmd(monthYmd)
+  if (!base) return null
+  const year = base.getUTCFullYear()
+  const month = base.getUTCMonth()
+  const d = new Date(Date.UTC(year, month, 1, 12))
+  let count = 0
+  let last: string | null = null
+  while (d.getUTCMonth() === month) {
+    if (isBusinessDay(d)) {
+      count++
+      last = toYmd(d)
+      if (count >= Math.max(1, n)) return last
+    }
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+  return last // n が月の営業日数を超えた場合は最後の営業日 (null = 営業日ゼロは起こらない)
+}
