@@ -77,10 +77,14 @@ export interface BuildInvoiceResult {
   fileName?: string
   buffer?: Buffer
   itemCount?: number
+  /** 個数 (スーツケース合計)。件数(itemCount)とは別。 */
+  pieceCount?: number
   /** 請求総額 (税込・円)。税抜小計 + 消費税。 */
   totalYen?: number
   agencyEmail?: string | null
   agencyContactPerson?: string | null
+  /** 代理店の登録言語 ("ja" | "en")。メール文面の既定言語に使う。 */
+  locale?: "ja" | "en"
   period?: string
   dueDate?: string
 }
@@ -146,6 +150,7 @@ export async function buildMonthlyInvoice(
 
   const netYen = items.reduce((sum, it) => sum + it.amountYen, 0) // 税抜小計
   const totalYen = grossOf(netYen) // 請求総額 (国内・海外とも外税)
+  const pieceCount = items.reduce((sum, it) => sum + (it.suitcaseCount ?? 0), 0) // 個数 (スーツケース合計)
 
   // 発行日は JST。サーバUTCのまま new Date() だと 0:00-8:59 JST に前日表記になる (適格請求書の日付ずれ)。
   // getUTC* で読む (ローカル時刻で読むと、JST のマシンでは +9h が二重にかかり翌日表記になる)。
@@ -184,9 +189,11 @@ export async function buildMonthlyInvoice(
     fileName: `bondex-invoice-${invoiceNumber}.pdf`,
     buffer,
     itemCount: items.length,
+    pieceCount,
     totalYen,
     agencyEmail: agencyRow?.contact_email ?? null,
     agencyContactPerson: agencyRow?.contact_person ?? null,
+    locale,
     period,
     dueDate,
   }
