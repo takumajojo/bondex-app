@@ -69,6 +69,11 @@ const messages = {
     uploadHint: "Drop the traveler's PDF or photo. We'll read it and prepare the shipment plan.",
     dropzone: "Drop a file here or click to choose",
     formats: "PDF, JPG, PNG · up to 10MB",
+    pasteHeading: "Or paste a request email",
+    pasteHint: "Paste the DMC's request email (free text is fine). We'll read it and prepare the shipment draft.",
+    pastePlaceholder: "Paste the request email here… (pickup / drop-off place, date, time, number of bags, lead passenger, etc.)",
+    pasteButton: "Read email & draft",
+    pasteParsing: "Reading…",
     reading: "Reading itinerary",
     errorTitle: "We couldn't read this itinerary",
     tryAnother: "Try another file",
@@ -236,6 +241,11 @@ const messages = {
     uploadHint: "旅行者のPDFまたは写真をドロップしてください。読み取って配送プランを準備します。",
     dropzone: "ファイルをここにドロップ、またはクリックして選択",
     formats: "PDF, JPG, PNG · 最大10MB",
+    pasteHeading: "依頼メールを貼り付け",
+    pasteHint: "DMCからの依頼メール（自由文でOK）を貼り付けてください。読み取って配送の下書きを作成します。",
+    pastePlaceholder: "依頼メールをここに貼り付け…（集荷／お届け先・日付・時間・個数・代表者 など）",
+    pasteButton: "メールを読み取って下書き",
+    pasteParsing: "読み取り中…",
     reading: "旅程表を読み取り中",
     errorTitle: "旅程表を読み取れませんでした",
     tryAnother: "別のファイルを試す",
@@ -731,6 +741,7 @@ export default function OperatorPage() {
     status: string
   }> | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [pasteText, setPasteText] = useState("")
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 代理店の発行依頼から読み込んだ場合の出所表示 (レビュー画面のバナー用)
@@ -1274,6 +1285,56 @@ export default function OperatorPage() {
     // localStorage から読み込まれた後も反映されない (stale closure bug).
   }, [settings])
 
+  // 依頼メール本文を貼り付け → AI解析 → 同じ下書き(editable)へ流し込む（ファイル版と共通の後処理）。
+  const handlePastedText = useCallback(async (raw: string) => {
+    const body = raw.trim()
+    if (!body) return
+    setFileName("email-paste")
+    setError("")
+    setItinerary(null)
+    setPhase("parsing")
+    try {
+      const res = await fetch("/api/itinerary/parse-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: body, agency: settings?.tourCompany || "" }),
+      })
+      const text = await res.text()
+      let json: ParsedItinerary | { error?: string } | null = null
+      try {
+        json = text ? JSON.parse(text) : null
+      } catch {
+        // non-JSON
+      }
+      if (!res.ok) {
+        const msg = (json && "error" in json && json.error) || text || res.statusText
+        setError(msg)
+        setPhase("error")
+        return
+      }
+      const parsed = json as ParsedItinerary
+      if (!parsed?.guest || !Array.isArray(parsed.shipments)) {
+        setError("Unexpected response shape from parser")
+        setPhase("error")
+        return
+      }
+      const editable: EditableItinerary = {
+        guest: parsed.guest,
+        shipments: parsed.shipments.map((s) => ({
+          ...s,
+          suitcaseCount: parsed.guest.travelerCount || 1,
+          specialNote: "",
+        })),
+      }
+      setItinerary(editable)
+      setVerifications(emptyVerifications(editable.shipments.length))
+      setPhase("review")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Parse failed")
+      setPhase("error")
+    }
+  }, [settings])
+
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLLabelElement>) => {
       e.preventDefault()
@@ -1481,6 +1542,31 @@ export default function OperatorPage() {
                 </div>
               </div>
             </label>
+
+            {/* 依頼メール本文から下書き（AI解析・ファイル取込と同じ下書きに流し込む＝確認/手配は既存導線） */}
+            <div className="rounded-2xl border border-border bg-white p-5 space-y-3">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">{t.pasteHeading}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{t.pasteHint}</p>
+              </div>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={t.pastePlaceholder}
+                rows={6}
+                className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-foreground/10"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={!pasteText.trim()}
+                  onClick={() => void handlePastedText(pasteText)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#C8102E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#a60d26] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <FileText className="w-4 h-4" strokeWidth={1.8} /> {t.pasteButton}
+                </button>
+              </div>
+            </div>
 
             {/* Manual entry alternative — for tours with irregular info not on the sheet */}
             <div className="flex items-center gap-3">

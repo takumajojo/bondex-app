@@ -353,6 +353,26 @@ export async function parseItineraryFile(
         }
   }
 
+  return runExtraction(client, documentBlock, {
+    agency: opts?.agency ?? "",
+    file_name: opts?.fileName ?? "",
+    file_hash: sha256Hex(buf),
+    file_size: buf.length,
+    file_type: mediaType,
+  })
+}
+
+// 解析のモデル実行＋学習ログ保存の共通処理（ファイル／テキスト両対応）。
+type ExtractionBlock =
+  | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } }
+  | { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } }
+  | { type: "text"; text: string }
+
+async function runExtraction(
+  client: Anthropic,
+  documentBlock: ExtractionBlock,
+  log: { agency: string; file_name: string; file_hash: string; file_size: number; file_type: string },
+): Promise<ParseItineraryResult> {
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
@@ -377,18 +397,36 @@ export async function parseItineraryFile(
     }
 
     const cleaned = scrubOtaPrefixes(toolUse.input)
-
-    await saveParseLog({
-      agency: opts?.agency ?? "",
-      file_name: opts?.fileName ?? "",
-      file_hash: sha256Hex(buf),
-      file_size: buf.length,
-      file_type: mediaType,
-      ai_raw_output: cleaned,
-    })
-
+    await saveParseLog({ ...log, ai_raw_output: cleaned })
     return { ok: true, data: cleaned }
   } catch (err) {
     return { ok: false, status: 502, error: err instanceof Error ? err.message : "Anthropic error" }
   }
+}
+
+/**
+ * 依頼メール等の「テキスト」を解析する（ファイルではなく本文の貼り付け／転送用）。
+ * 抽出スキーマ・モデルは parseItineraryFile と共通。認証は呼び出し側で済ませておくこと。
+ */
+export async function parseItineraryText(
+  text: string,
+  opts?: { agency?: string },
+): Promise<ParseItineraryResult> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, status: 500, error: "ANTHROPIC_API_KEY not configured" }
+  }
+  const trimmed = (text || "").trim()
+  if (!trimmed) return { ok: false, status: 400, error: "Empty text" }
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const documentBlock: ExtractionBlock = {
+    type: "text",
+    text: `Luggage forwarding request — email / message content (free text):\n\n${trimmed.slice(0, MAX_SPREADSHEET_TEXT)}`,
+  }
+  return runExtraction(client, documentBlock, {
+    agency: opts?.agency ?? "",
+    file_name: "email-paste.txt",
+    file_hash: sha256Hex(Buffer.from(trimmed, "utf8")),
+    file_size: Buffer.byteLength(trimmed, "utf8"),
+    file_type: "text/plain",
+  })
 }
