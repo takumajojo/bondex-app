@@ -685,17 +685,30 @@ export default function DashboardPage() {
   const [agencies, setAgencies] = useState<string[]>([])
   // 代理店名 → 海外か (is_domestic===false)。施設名の言語だし分け (海外=英語主+日本語併記) に使う。
   const [agencyOverseas, setAgencyOverseas] = useState<Record<string, boolean>>({})
+  // 代理店名 → 支払方法 ('invoice'=請求書払い)。月次請求書の承認・送付 UI を請求書払いのみに絞るのに使う。
+  const [agencyPayMethod, setAgencyPayMethod] = useState<Record<string, string>>({})
   useEffect(() => {
     let alive = true
     fetch("/api/agencies")
       .then((r) => r.json())
       .then((d) => {
         if (!alive || !Array.isArray(d.agencies)) return
-        const list = d.agencies as { name: string; status?: string; is_domestic?: boolean | null }[]
+        const list = d.agencies as {
+          name: string
+          status?: string
+          is_domestic?: boolean | null
+          payment_method?: string | null
+        }[]
         setAgencies(list.map((a) => a.name).filter(Boolean))
         const ov: Record<string, boolean> = {}
-        for (const a of list) if (a.name) ov[a.name] = a.is_domestic === false
+        const pm: Record<string, string> = {}
+        for (const a of list) {
+          if (!a.name) continue
+          ov[a.name] = a.is_domestic === false
+          if (a.payment_method) pm[a.name] = a.payment_method
+        }
         setAgencyOverseas(ov)
+        setAgencyPayMethod(pm)
         setPendingAgencies(list.filter((a) => a.status === "pending").length)
       })
       .catch(() => {})
@@ -740,6 +753,90 @@ export default function DashboardPage() {
       setInvoiceBusy(false)
     }
   }
+
+  // ── 請求書の承認 → 代理店送付 ──────────────────────────────
+  // 月初1営業日: 内容を確認して「承認」→ 翌営業日(第2営業日)に自動送付。「今すぐ送付」も可。
+  type InvoiceReview = {
+    ok: boolean
+    reason?: string
+    invoiceNumber?: string
+    period?: string
+    dueDate?: string
+    itemCount?: number
+    pieceCount?: number
+    totalYen?: number
+    agencyEmail?: string | null
+    locale?: string
+    subject?: string
+    body?: string
+    state?: {
+      confirmationSentAt?: string | null
+      approvedAt?: string | null
+      approvedBy?: string | null
+      sentToAgencyAt?: string | null
+      sentTo?: string[]
+    }
+  }
+  const [invoiceReview, setInvoiceReview] = useState<InvoiceReview | null>(null)
+  const [invoiceReviewBusy, setInvoiceReviewBusy] = useState(false)
+  const [invoiceActionBusy, setInvoiceActionBusy] = useState(false)
+  const [invoiceReviewError, setInvoiceReviewError] = useState("")
+
+  const loadInvoiceReview = useCallback(async () => {
+    if (!invoiceAgency || !invoiceMonth) return
+    setInvoiceReviewBusy(true)
+    setInvoiceReviewError("")
+    setInvoiceReview(null)
+    try {
+      const res = await fetch(
+        `/api/operator/invoice-send?agency=${encodeURIComponent(invoiceAgency)}&month=${invoiceMonth}`,
+      )
+      const data = (await res.json().catch(() => null)) as InvoiceReview | { error?: string } | null
+      if (!res.ok) throw new Error((data as { error?: string })?.error || `Failed (${res.status})`)
+      setInvoiceReview(data as InvoiceReview)
+    } catch (e) {
+      setInvoiceReviewError(e instanceof Error ? e.message : "読み込み失敗")
+    } finally {
+      setInvoiceReviewBusy(false)
+    }
+  }, [invoiceAgency, invoiceMonth])
+
+  // 代理店・対象月を変えたら、読み込み済みの内容は破棄する (古い内容への誤操作防止)。
+  useEffect(() => {
+    setInvoiceReview(null)
+    setInvoiceReviewError("")
+  }, [invoiceAgency, invoiceMonth])
+
+  const runInvoiceAction = useCallback(
+    async (action: "approve" | "send") => {
+      if (!invoiceAgency || !invoiceMonth) return
+      const yen = (invoiceReview?.totalYen ?? 0).toLocaleString("en-US")
+      const confirmMsg =
+        action === "approve"
+          ? `この内容で承認します。\n\n${invoiceAgency}／${invoiceMonth}\n請求金額(税込): ${yen}円\n\n承認すると翌営業日(第2営業日)に代理店へ自動送付されます。よろしいですか？`
+          : `今すぐ代理店へ請求書を送付します。\n\n送付先: ${invoiceReview?.agencyEmail ?? "(未登録)"}\n${invoiceAgency}／${invoiceMonth}\n請求金額(税込): ${yen}円\n\nよろしいですか？`
+      if (!window.confirm(confirmMsg)) return
+      setInvoiceActionBusy(true)
+      setInvoiceReviewError("")
+      try {
+        const res = await fetch(`/api/operator/invoice-send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agency: invoiceAgency, month: invoiceMonth, action }),
+        })
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; reason?: string; error?: string } | null
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.reason || data?.error || `Failed (${res.status})`)
+        }
+        await loadInvoiceReview()
+      } catch (e) {
+        setInvoiceReviewError(e instanceof Error ? e.message : "処理に失敗しました")
+      } finally {
+        setInvoiceActionBusy(false)
+      }
+    },
+    [invoiceAgency, invoiceMonth, invoiceReview, loadInvoiceReview],
+  )
 
   const counts = useMemo(() => {
     const c: Record<ShipmentStatus, number> = {
@@ -1233,6 +1330,120 @@ export default function DashboardPage() {
           <p className="text-[10px] text-muted-foreground mt-2">
             該当月の成功した発行 (issued / 集荷済 / 配達中 / 完了) を集計します
           </p>
+
+          {/* 承認 → 代理店送付 (請求書払いのみ) */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h4 className="text-sm font-medium text-foreground">請求書の承認・送付（代理店へ）</h4>
+              <button
+                onClick={loadInvoiceReview}
+                disabled={!invoiceAgency || !invoiceMonth || invoiceReviewBusy}
+                className="h-8 px-3 rounded-lg border border-border bg-white text-xs font-medium hover:bg-muted disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {invoiceReviewBusy && <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.5} />}
+                内容を読み込む
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mb-2">
+              月初1営業日に金額を確認して「承認」→ 翌営業日(第2営業日)に代理店へ自動送付されます。承認するまで送られません。
+            </p>
+
+            {invoiceAgency && agencyPayMethod[invoiceAgency] && agencyPayMethod[invoiceAgency] !== "invoice" && (
+              <p className="text-xs text-amber-700">
+                この代理店はカード払いのため、月次請求書の送付対象外です。
+              </p>
+            )}
+            {invoiceReviewError && <p className="text-xs text-red-700">{invoiceReviewError}</p>}
+
+            {invoiceReview && !invoiceReview.ok && (
+              <p className="text-xs text-muted-foreground">
+                {invoiceReview.reason === "no_shipments"
+                  ? "対象月に請求対象の発送がありません。"
+                  : `読み込めませんでした (${invoiceReview.reason ?? "不明"})`}
+              </p>
+            )}
+
+            {invoiceReview?.ok &&
+              (() => {
+                const st = invoiceReview.state ?? {}
+                const sent = !!st.sentToAgencyAt
+                const approved = !!st.approvedAt
+                const fmt = (s?: string | null) => (s ? new Date(s).toLocaleString("ja-JP") : "")
+                return (
+                  <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground">
+                      <span>請求書番号: <b>{invoiceReview.invoiceNumber}</b></span>
+                      <span>対象: {invoiceReview.period}</span>
+                      <span>件数: {invoiceReview.itemCount}件（{invoiceReview.pieceCount}個）</span>
+                      <span>金額(税込): <b>{(invoiceReview.totalYen ?? 0).toLocaleString("en-US")}円</b></span>
+                      <span>支払期限: {invoiceReview.dueDate}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      送付先: {invoiceReview.agencyEmail || "（メール未登録 — 送付できません）"}
+                      {" ／ 言語: "}
+                      {invoiceReview.locale === "en" ? "English" : "日本語"}
+                    </div>
+
+                    {/* 状態 */}
+                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                      {st.confirmationSentAt && (
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          確認依頼 {fmt(st.confirmationSentAt)}
+                        </span>
+                      )}
+                      {sent ? (
+                        <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+                          代理店へ送付済み {fmt(st.sentToAgencyAt)}
+                        </span>
+                      ) : approved ? (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                          承認済み（第2営業日に自動送付）{fmt(st.approvedAt)}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">未承認</span>
+                      )}
+                    </div>
+
+                    {/* 代理店あて文面プレビュー */}
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-muted-foreground">代理店あて文面プレビュー</summary>
+                      <div className="mt-1 text-[11px]">
+                        <div className="text-muted-foreground">件名: {invoiceReview.subject}</div>
+                        <pre className="mt-1 whitespace-pre-wrap font-sans bg-white border border-border rounded-lg p-2 text-foreground">
+{invoiceReview.body}
+                        </pre>
+                      </div>
+                    </details>
+
+                    {/* 操作 */}
+                    {!sent && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {!approved && (
+                          <button
+                            onClick={() => runInvoiceAction("approve")}
+                            disabled={invoiceActionBusy}
+                            className="h-9 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            {invoiceActionBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+                            承認する
+                          </button>
+                        )}
+                        {approved && (
+                          <button
+                            onClick={() => runInvoiceAction("send")}
+                            disabled={invoiceActionBusy || !invoiceReview.agencyEmail}
+                            className="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            {invoiceActionBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} />}
+                            今すぐ代理店へ送付
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+          </div>
         </section>
           </div>
         </details>
