@@ -1,0 +1,38 @@
+name: Daily TODO digest
+
+# 「本日のTODO」ダイジェストを毎朝 support@(運用受信箱) へメールする (/api/cron/daily-todo)。
+# 中身はダッシュボードの「今日のTODO」と同じ: 佐川への集荷依頼 / ホテル連絡 / その他の要対応件数。
+# 運用担当が朝ダッシュボードを開かなくても、今日やることが一目で分かるようにする。
+#
+# 事前設定 (他の cron と共通):
+#   Repository → Settings → Secrets and variables → Actions
+#   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
+
+on:
+  schedule:
+    # 毎日 22:00 UTC = 07:00 JST (発行ダイジェスト/郵送アラートより前 = 朝イチで一日の段取り)
+    - cron: "0 22 * * *"
+  workflow_dispatch: {}  # 手動実行 (Actions タブから即実行)
+
+jobs:
+  daily-todo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx daily-todo endpoint
+        run: |
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2"
+            response=$(curl -s -w "\n%{http_code}" --max-time 90 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              https://bondex.express/api/cron/daily-todo)
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::daily-todo digest failed after 2 attempts"
+          exit 1

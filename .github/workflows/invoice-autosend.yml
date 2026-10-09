@@ -1,0 +1,48 @@
+name: Invoice autosend
+
+# 谷口さんが承認した月次請求書を、翌営業日(第2営業日)に代理店へ自動送付する
+# (/api/cron/invoice-autosend)。承認した当日には送らず、必ず翌営業日以降に送る。
+# 土日祝はエンドポイント側で即 return するため送付は営業日のみ。
+#
+# 事前設定 (他の cron と共通):
+#   Repository → Settings → Secrets and variables → Actions
+#   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
+
+on:
+  schedule:
+    # 平日 00:40 UTC = 09:40 JST。月初の確認依頼(09:20 JST)より後に回す。
+    # 祝日は cron/invoice-autosend 側の営業日判定でスキップされる。
+    - cron: "40 0 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "営業日チェックを飛ばして即送付 (検証用・空で通常)"
+        required: false
+        default: ""
+
+jobs:
+  invoice-autosend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx invoice-autosend endpoint
+        run: |
+          URL="https://bondex.express/api/cron/invoice-autosend"
+          if [ -n "${{ github.event.inputs.force }}" ]; then
+            URL="$URL?force=1"
+          fi
+          for attempt in 1 2; do
+            echo "Attempt $attempt of 2 — $URL"
+            response=$(curl -s -w "\n%{http_code}" --max-time 330 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              "$URL")
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP status: $http_code"
+            echo "$body"
+            if [ "$http_code" -lt 400 ]; then
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && sleep 15
+          done
+          echo "::error::invoice-autosend failed after 2 attempts"
+          exit 1

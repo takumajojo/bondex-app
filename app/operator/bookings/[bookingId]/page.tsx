@@ -30,6 +30,7 @@ import HotelContactEditor from "@/components/operator/HotelContactEditor"
 import HotelChangeModal, { type HotelChangeTarget } from "@/components/operator/HotelChangeModal"
 import CorrectionModal, { type CorrectionTarget } from "@/components/operator/CorrectionModal"
 import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
+import { hotelDisplay } from "@/lib/hotel-name"
 
 type CountChange = {
   at: string
@@ -162,6 +163,8 @@ export default function OperatorBookingDetailPage() {
   const [busyId, setBusyId] = useState("")
   // 予約情報の修正 (代理店 / 配送番号)。代理店は agencies マスタから選ぶ。
   const [agencies, setAgencies] = useState<string[]>([])
+  // 代理店名 → 海外か (is_domestic===false)。施設名の言語だし分け用。
+  const [agencyOverseas, setAgencyOverseas] = useState<Record<string, boolean>>({})
   const [editingAgency, setEditingAgency] = useState(false)
   const [agencyDraft, setAgencyDraft] = useState("")
   const [editTrackId, setEditTrackId] = useState("")
@@ -258,10 +261,11 @@ export default function OperatorBookingDetailPage() {
       try {
         const res = await fetch("/api/agencies", { cache: "no-store" })
         const data = await res.json()
-        const names = ((data.agencies || []) as { name?: string }[])
-          .map((a) => a.name || "")
-          .filter(Boolean)
-        setAgencies(names)
+        const list = (data.agencies || []) as { name?: string; is_domestic?: boolean | null }[]
+        setAgencies(list.map((a) => a.name || "").filter(Boolean))
+        const ov: Record<string, boolean> = {}
+        for (const a of list) if (a.name) ov[a.name] = a.is_domestic === false
+        setAgencyOverseas(ov)
       } catch {
         /* 一覧取得失敗時は代理店変更UIを出さない */
       }
@@ -603,8 +607,8 @@ export default function OperatorBookingDetailPage() {
                 <h2 className="text-sm font-semibold text-foreground">
                   LEG {r.leg_index + 1} / {rows.length}
                   <span className="ml-3 font-normal text-muted-foreground">
-                    {r.from_prefecture || ""} {r.from_hotel_ja || r.from_hotel} →{" "}
-                    {r.to_prefecture || ""} {r.to_hotel_ja || r.to_hotel}
+                    {r.from_prefecture || ""} {hotelDisplay(r.from_hotel_ja, r.from_hotel, !!agencyOverseas[r.agency]).primary} →{" "}
+                    {r.to_prefecture || ""} {hotelDisplay(r.to_hotel_ja, r.to_hotel, !!agencyOverseas[r.agency]).primary}
                   </span>
                 </h2>
                 <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${st.cls}`}>

@@ -746,6 +746,9 @@ export default function OperatorPage() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 代理店の発行依頼から読み込んだ場合の出所表示 (レビュー画面のバナー用)
   const [fromRequest, setFromRequest] = useState<{ bookingId: string; agency: string } | null>(null)
+  // 依頼元の代理店 (BondExが代理店の代わりに入力するとき・登録済みの代理店マスタから選択)。
+  const [selectedAgency, setSelectedAgency] = useState<string>("")
+  const [agencyOptions, setAgencyOptions] = useState<string[]>([])
 
   // 画面遷移のたびに先頭にスクロール。前の画面のスクロール位置を引き継ぐと、
   // 次の画面が「途中から始まっている」ように見えてしまうため。
@@ -759,6 +762,22 @@ export default function OperatorPage() {
     const loaded = loadSettings()
     setSettings(loaded)
     if (!loaded) setSettingsOpen(true)
+  }, [])
+
+  // 代理店マスタ (依頼元の選択用)。取得失敗は握り潰す (セレクタを出さないだけ)。
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/agencies", { cache: "no-store" })
+        const data = await res.json()
+        const names = ((data.agencies || []) as { name?: string }[])
+          .map((a) => a.name || "")
+          .filter(Boolean)
+        setAgencyOptions(names)
+      } catch {
+        /* 一覧取得失敗時はセレクタを出さない */
+      }
+    })()
   }, [])
 
   // 代理店の発行依頼 (?requestId=BDX-...) から発行画面を復元する。
@@ -973,6 +992,15 @@ export default function OperatorPage() {
     if (!itinerary) return
     setGenerationError("")
 
+    // 案A: 依頼元の代理店は登録済みから必須選択 (請求の突合先が必ず正しい代理店になるように)。
+    // 代理店の発行依頼を読み込んだ場合 (fromRequest) は、その代理店で確定済みのためスキップ。
+    if (!fromRequest?.agency && !selectedAgency) {
+      setGenerationError(
+        "依頼元の代理店を選択してください（登録済みの代理店から選びます）。未登録の場合は先に「代理店管理」で登録してください。",
+      )
+      return
+    }
+
     // 二重発行の事前チェック (ベストエフォート — 失敗しても発行は止めない)。
     // 同じ氏名 + 同じ発送日の既存予約があれば確認モーダルを出し、
     // operator が「それでも発行する」を選んだときのみ force で再入する。
@@ -1106,9 +1134,9 @@ export default function OperatorPage() {
               residence: s.to.residence ?? undefined,
             },
             // 管理ダッシュボード用メタ情報
-            // 代理店名は予約(発行依頼)の代理店を最優先。発行操作で運営設定の
-            // ツアー会社名 (tourCompany) に上書きしない (BDX-GP3KPG で誤上書き発生)。
-            agency: fromRequest?.agency || tourCompanyFromSettings,
+            // 代理店名は予約(発行依頼)の代理店を最優先 → 選択した依頼元の代理店 → 運営設定の
+            // ツアー会社名 (後方互換)。既存依頼の代理店を発行操作で上書きしない (BDX-GP3KPG 対策)。
+            agency: fromRequest?.agency || selectedAgency || tourCompanyFromSettings,
             representative: representativeLabel,
             travelerCount: itinerary!.guest.travelerCount,
             bookingName: s.bookingName || "",
@@ -1209,7 +1237,7 @@ export default function OperatorPage() {
       setGenerationError(err instanceof Error ? err.message : "Generation failed")
       setPhase("confirm")
     }
-  }, [itinerary, settings, fromRequest, t])
+  }, [itinerary, settings, fromRequest, selectedAgency, t])
 
   const setRepresentativeChecked = useCallback((checked: boolean) => {
     setVerifications((prev) => ({ ...prev, representative: checked }))
@@ -1672,6 +1700,39 @@ export default function OperatorPage() {
             {fromRequest.agency ? `${fromRequest.agency}／` : ""}予約番号{" "}
             <span className="font-mono">{fromRequest.bookingId}</span>
             。内容を確認し、そのまま発行してください（予約番号は維持されます）。
+          </div>
+        )}
+        {phase === "review" && itinerary && !fromRequest && (
+          <div className="mb-4 rounded-xl border border-border bg-white px-4 py-3">
+            <label className="mb-1.5 block text-xs font-semibold text-foreground">
+              依頼元の代理店 <span className="text-[#C8102E]">*</span>
+              <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                （BondExが代わりに発行する代理店。請求はこの代理店に紐づきます）
+              </span>
+            </label>
+            {agencyOptions.length > 0 ? (
+              <select
+                value={selectedAgency}
+                onChange={(e) => setSelectedAgency(e.target.value)}
+                className={`w-full max-w-md rounded-lg border px-3 py-2 text-sm ${
+                  selectedAgency ? "border-border" : "border-[#C8102E]"
+                }`}
+              >
+                <option value="">代理店を選択してください</option>
+                {agencyOptions.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-[11px] text-amber-700">
+                代理店マスタを取得できませんでした。「代理店管理」で登録状況をご確認ください。
+              </p>
+            )}
+            {!selectedAgency && agencyOptions.length > 0 && (
+              <p className="mt-1 text-[11px] text-[#C8102E]">発行には代理店の選択が必要です。</p>
+            )}
           </div>
         )}
         {phase === "review" && itinerary && (

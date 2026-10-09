@@ -16,11 +16,9 @@
  */
 
 import { sendMail, mailerConfigured } from "./mailer"
+import { opsRecipients } from "./ops-recipients"
 
 const SITE_URL = "https://bondex.express"
-
-// 社内通知メールの宛先 (ops-alert.ts と共通の考え方: ALERT_EMAIL があれば優先、無ければ support@)。
-const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
 
 export type NotifyKind =
   | "booking" // 🆕 新規予約(発行依頼)
@@ -97,26 +95,29 @@ export async function notifyBondEx(
   //     Slack が未設定/未接続でも「谷口さんのメールに必ず届く」ことを担保する経路。
   //     失敗しても Slack 送信を止めない (best-effort・throw しない)。
   if (EMAIL_KINDS.has(input.kind) && mailerConfigured()) {
-    try {
-      const bodyLines = [
-        `${meta.label}　${input.title}`,
-        "",
-        ...(input.lines ?? []).filter(Boolean).map((l) => `・${l}`),
-      ]
-      if (input.link) {
-        const url = input.link.startsWith("http") ? input.link : `${SITE_URL}${input.link}`
-        bodyLines.push("", `${input.linkLabel ?? "ダッシュボードで開く"}: ${url}`)
+    const bodyLines = [
+      `${meta.label}　${input.title}`,
+      "",
+      ...(input.lines ?? []).filter(Boolean).map((l) => `・${l}`),
+    ]
+    if (input.link) {
+      const url = input.link.startsWith("http") ? input.link : `${SITE_URL}${input.link}`
+      bodyLines.push("", `${input.linkLabel ?? "ダッシュボードで開く"}: ${url}`)
+    }
+    bodyLines.push("", "— BondEx 自動通知")
+    // ALERT_EMAIL(谷口個人) と support@ の両方へ送る (宛先ごとに送信・片方失敗でも他方に届く)。
+    for (const to of opsRecipients()) {
+      try {
+        const r = await sendMail({
+          to,
+          subject: `【BondEx】${meta.label}　${input.title}`,
+          text: bodyLines.join("\n"),
+        })
+        if (r.sent) sent = true
+        else errors.push(`email(${to}): ${r.error}`)
+      } catch (e) {
+        errors.push(`email(${to}): ${e instanceof Error ? e.message : String(e)}`)
       }
-      bodyLines.push("", "— BondEx 自動通知")
-      const r = await sendMail({
-        to: BONDEX_OPS_EMAIL,
-        subject: `【BondEx】${meta.label}　${input.title}`,
-        text: bodyLines.join("\n"),
-      })
-      if (r.sent) sent = true
-      else errors.push(`email: ${r.error}`)
-    } catch (e) {
-      errors.push(`email: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
