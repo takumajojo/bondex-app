@@ -379,7 +379,10 @@ async function runExtraction(
       max_tokens: 4096,
       tools: [TOOL_SCHEMA],
       tool_choice: { type: "tool", name: "extract_itinerary" },
-      system: SYSTEM_PROMPT,
+      // プロンプトキャッシュ: レンダリング順は tools→system なので、system に断点を置くと
+      // 「ツール定義＋システムプロンプト（約2千トークンの固定部分）」がまとめてキャッシュされる。
+      // 可変部分(documentBlock=解析対象)は後続の messages にあり自然に対象外。TTLは既定5分。
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
@@ -390,6 +393,12 @@ async function runExtraction(
         },
       ],
     })
+
+    // キャッシュ効果の検証ログ。cache_read>0 ならヒット（固定部分が約1/10課金）。
+    const u = message.usage
+    console.log(
+      `[itinerary-parse] cache read=${u.cache_read_input_tokens ?? 0} write=${u.cache_creation_input_tokens ?? 0} input=${u.input_tokens}`,
+    )
 
     const toolUse = message.content.find((c) => c.type === "tool_use")
     if (!toolUse || toolUse.type !== "tool_use") {
