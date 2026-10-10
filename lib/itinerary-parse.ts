@@ -353,13 +353,36 @@ export async function parseItineraryFile(
         }
   }
 
+  return runExtraction(client, documentBlock, {
+    agency: opts?.agency ?? "",
+    file_name: opts?.fileName ?? "",
+    file_hash: sha256Hex(buf),
+    file_size: buf.length,
+    file_type: mediaType,
+  })
+}
+
+// 解析のモデル実行＋学習ログ保存の共通処理（ファイル／テキスト両対応）。
+type ExtractionBlock =
+  | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } }
+  | { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } }
+  | { type: "text"; text: string }
+
+async function runExtraction(
+  client: Anthropic,
+  documentBlock: ExtractionBlock,
+  log: { agency: string; file_name: string; file_hash: string; file_size: number; file_type: string },
+): Promise<ParseItineraryResult> {
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
       tools: [TOOL_SCHEMA],
       tool_choice: { type: "tool", name: "extract_itinerary" },
-      system: SYSTEM_PROMPT,
+      // プロンプトキャッシュ: レンダリング順は tools→system なので、system に断点を置くと
+      // 「ツール定義＋システムプロンプト（約2千トークンの固定部分）」がまとめてキャッシュされる。
+      // 可変部分(documentBlock=解析対象)は後続の messages にあり自然に対象外。TTLは既定5分。
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
@@ -371,24 +394,48 @@ export async function parseItineraryFile(
       ],
     })
 
+    // キャッシュ効果の検証ログ。cache_read>0 ならヒット（固定部分が約1/10課金）。
+    const u = message.usage
+    console.log(
+      `[itinerary-parse] cache read=${u.cache_read_input_tokens ?? 0} write=${u.cache_creation_input_tokens ?? 0} input=${u.input_tokens}`,
+    )
+
     const toolUse = message.content.find((c) => c.type === "tool_use")
     if (!toolUse || toolUse.type !== "tool_use") {
       return { ok: false, status: 502, error: "Model did not return tool_use" }
     }
 
     const cleaned = scrubOtaPrefixes(toolUse.input)
-
-    await saveParseLog({
-      agency: opts?.agency ?? "",
-      file_name: opts?.fileName ?? "",
-      file_hash: sha256Hex(buf),
-      file_size: buf.length,
-      file_type: mediaType,
-      ai_raw_output: cleaned,
-    })
-
+    await saveParseLog({ ...log, ai_raw_output: cleaned })
     return { ok: true, data: cleaned }
   } catch (err) {
     return { ok: false, status: 502, error: err instanceof Error ? err.message : "Anthropic error" }
   }
+}
+
+/**
+ * 依頼メール等の「テキスト」を解析する（ファイルではなく本文の貼り付け／転送用）。
+ * 抽出スキーマ・モデルは parseItineraryFile と共通。認証は呼び出し側で済ませておくこと。
+ */
+export async function parseItineraryText(
+  text: string,
+  opts?: { agency?: string },
+): Promise<ParseItineraryResult> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, status: 500, error: "ANTHROPIC_API_KEY not configured" }
+  }
+  const trimmed = (text || "").trim()
+  if (!trimmed) return { ok: false, status: 400, error: "Empty text" }
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const documentBlock: ExtractionBlock = {
+    type: "text",
+    text: `Luggage forwarding request — email / message content (free text):\n\n${trimmed.slice(0, MAX_SPREADSHEET_TEXT)}`,
+  }
+  return runExtraction(client, documentBlock, {
+    agency: opts?.agency ?? "",
+    file_name: "email-paste.txt",
+    file_hash: sha256Hex(Buffer.from(trimmed, "utf8")),
+    file_size: Buffer.byteLength(trimmed, "utf8"),
+    file_type: "text/plain",
+  })
 }
