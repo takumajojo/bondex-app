@@ -20,8 +20,13 @@ export type ResidenceAddress = {
   city: string
   /** 番地・町名（例: 神南1-2-3）。 */
   street: string
-  /** 建物名・部屋番号（任意）。 */
+  /** 建物名・部屋番号／物件名（日本語）。民泊・バケーションレンタルの物件名として使う（例: 京都駅ゲストハウス道 #102）。任意。 */
   building: string
+  /**
+   * 物件名（英語）。民泊・バケーションレンタル向け。お客様が読むバウチャーで
+   * building（日本語）より優先して施設名として表示する（例: Kyoto Station Guesthouse Michi #102）。任意。
+   */
+  propertyNameEn?: string
 }
 
 export const EMPTY_RESIDENCE: ResidenceAddress = {
@@ -32,6 +37,7 @@ export const EMPTY_RESIDENCE: ResidenceAddress = {
   city: "",
   street: "",
   building: "",
+  propertyNameEn: "",
 }
 
 function str(v: unknown): string {
@@ -58,7 +64,20 @@ export function cleanResidence(raw: unknown): ResidenceAddress | null {
     city: str(o.city),
     street: str(o.street),
     building: str(o.building),
+    propertyNameEn: str(o.propertyNameEn),
   }
+}
+
+/**
+ * 民泊・バケーションレンタルの物件名（施設名）。英語優先・無ければ日本語(building)。
+ * どちらも無ければ空文字（＝住所のみ表示）。バウチャー/画面の施設名表示に使う。
+ */
+export function residencePropertyName(raw: unknown, locale: "ja" | "en" = "en"): string {
+  const r = cleanResidence(raw)
+  if (!r) return ""
+  const en = (r.propertyNameEn || "").trim()
+  const ja = (r.building || "").trim()
+  return locale === "en" ? en || ja : ja || en
 }
 
 /** 必須フィールドのキー（呼び出し側で言語別ラベルに変換する）。 */
@@ -118,6 +137,18 @@ export function residenceOneLine(raw: unknown): string {
   const zip = r.zip ? `〒${r.zip} ` : ""
   const bld = r.building ? ` ${r.building}` : ""
   return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
+
+/**
+ * 住所のみを1行に整形（物件名／建物名は含めない）。中身が無ければ空文字。
+ * バウチャーで「物件名（施設名）を見出し＋住所を補足」のように物件名と住所を
+ * 分けて表示する用途に使う（residenceOneLine は物件名込みの1行表記）。
+ */
+export function residenceAddressLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}`.trim()
 }
 
 /**

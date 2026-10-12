@@ -47,6 +47,7 @@ type Leg = {
   originCheckIn: string
   toCheckOut: string
   deliveryTime: string
+  pickupTime: string
   recipient: string
   suitcaseCount: number
   itemType: ItemTypeKey
@@ -74,6 +75,7 @@ const emptyLeg = (): Leg => ({
   originCheckIn: "",
   toCheckOut: "",
   deliveryTime: "before-noon", // 既定は午前中着 (ランオペの基本希望)。翌日着×午前中はタイト警告を出す
+  pickupTime: "",
   recipient: "",
   suitcaseCount: 1,
   itemType: "suitcase", // 既定はスーツケース (従来どおり)
@@ -199,8 +201,10 @@ const messages = {
     resCityPlaceholder: "e.g. Shibuya-ku",
     resStreet: "Street & number",
     resStreetPlaceholder: "e.g. Jingumae 1-2-3",
-    resBuilding: "Building / room (optional)",
-    resBuildingPlaceholder: "e.g. Sunny Mansion 305",
+    resBuilding: "Property / building / room (optional)",
+    resBuildingPlaceholder: "e.g. Kyoto Station Guesthouse Michi #102",
+    resPropEn: "Property name in English (optional)",
+    resPropEnPlaceholder: "e.g. Kyoto Station Guesthouse Michi #102",
     zipLoading: "Looking up the address…",
     zipNotFound: "No address found for this postal code — please enter it manually.",
     resFieldLabels: {
@@ -236,6 +240,9 @@ const messages = {
     toCheckOut: "Check-out at delivery hotel (optional)",
     originCheckIn: "Check-in at pickup hotel (optional)",
     deliveryTime: "Delivery time slot",
+    pickupTime: "Pickup time (vacation rental)",
+    pickupTimePh: "e.g. 9:30 AM",
+    pickupTimeHint: "Shown on the voucher for vacation rentals / Airbnb (no front desk). Be present at this time.",
     nextDayRisk:
       "This schedule is tight — with a morning slot we can't promise the arrival date. To lock the date in, remove the time slot. Keep \"Before noon\" anyway?",
     removeTimeSlot: "Remove the time slot (lock the date)",
@@ -467,8 +474,10 @@ const messages = {
     resCityPlaceholder: "例: 渋谷区",
     resStreet: "番地・町名",
     resStreetPlaceholder: "例: 神宮前1-2-3",
-    resBuilding: "建物名・部屋番号（任意）",
-    resBuildingPlaceholder: "例: サニーマンション305",
+    resBuilding: "物件名・建物名・部屋番号（任意）",
+    resBuildingPlaceholder: "例: 京都駅ゲストハウス道 #102",
+    resPropEn: "物件名（英語・任意）",
+    resPropEnPlaceholder: "例: Kyoto Station Guesthouse Michi #102",
     zipLoading: "住所を検索中…",
     zipNotFound: "該当する郵便番号が見つかりません。手入力してください。",
     resFieldLabels: {
@@ -504,6 +513,9 @@ const messages = {
     toCheckOut: "お届け先ホテルのチェックアウト日（任意）",
     originCheckIn: "集荷元ホテルのチェックイン日（任意）",
     deliveryTime: "配達時間帯",
+    pickupTime: "集荷時刻（民泊・バケーションレンタル）",
+    pickupTimePh: "例) 9:30 AM",
+    pickupTimeHint: "民泊・Airbnb（フロント無し）のバウチャーに表示します。この時刻に現地でご対応ください。",
     nextDayRisk:
       "この日程だと「午前中」では配達日をお約束できません。日付を確実にするには時間指定を外してください。それでも午前中にしますか？",
     removeTimeSlot: "時間指定を外す（日付を確実にする）",
@@ -737,6 +749,11 @@ function ResidenceFields({
         <input id={`${idPrefix}-bld`} className={inputCls} value={value.building} maxLength={60}
           placeholder={t.resBuildingPlaceholder} autoComplete="off"
           onChange={(e) => onChange({ building: e.target.value })} />
+      </Field>
+      <Field label={t.resPropEn} htmlFor={`${idPrefix}-propen`}>
+        <input id={`${idPrefix}-propen`} className={inputCls} value={value.propertyNameEn ?? ""} maxLength={80}
+          placeholder={t.resPropEnPlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ propertyNameEn: e.target.value })} />
       </Field>
     </div>
   )
@@ -1163,6 +1180,7 @@ export default function AgencyNewBookingPage() {
             originCheckIn: "",
             toCheckOut: "",
             deliveryTime: ((r.delivery_time as string) || "before-noon"),
+            pickupTime: ((r.pickup_time as string) || ""),
             recipient: "",
             suitcaseCount: (r.suitcase_count as number) ?? 1,
             itemType: it.itemType,
@@ -1443,6 +1461,7 @@ export default function AgencyNewBookingPage() {
           originCheckIn: "",
           toCheckOut: ymd(s.to?.checkOut) || ymd(s.shipmentDate),
           deliveryTime: "before-noon",
+          pickupTime: "",
           recipient: s.recipient || "",
           suitcaseCount: 1, // 旅程表には個数が無いことが多い → 既定 1、後で修正
           itemType: "suitcase" as const, // 旅程表からは判別不可 → 既定スーツケース。必要なら手動変更
@@ -2491,6 +2510,15 @@ export default function AgencyNewBookingPage() {
                     <option key={slot} value={slot}>{slotLabel(slot, locale)}</option>
                   ))}
                 </select>
+                {leg.fromKind === "residence" ? (
+                  <div className="mt-2 space-y-1">
+                    <label htmlFor={`pt${i}`} className="text-[12px] font-medium text-[#334155]">{t.pickupTime}</label>
+                    <input id={`pt${i}`} type="text" className={inputCls} value={leg.pickupTime}
+                      placeholder={t.pickupTimePh} autoComplete="off"
+                      onChange={(e) => updateLeg(i, { pickupTime: e.target.value })} />
+                    <p className="text-[11px] text-[#64748b] leading-relaxed">{t.pickupTimeHint}</p>
+                  </div>
+                ) : null}
                 {isNextDayEarlySlotRisky(leg.shipmentDate, leg.expectedArrival, leg.deliveryTime) && (
                   <div className="mt-1.5 rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
                     <p className="text-[12px] text-amber-900 font-medium flex items-start gap-1.5 leading-relaxed">

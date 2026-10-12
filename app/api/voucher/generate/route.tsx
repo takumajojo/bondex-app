@@ -7,7 +7,7 @@ import { buildVoucherFileName } from "@/lib/utils"
 import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
-import { cleanResidence } from "@/lib/residence"
+import { cleanResidence, residenceAddressLine } from "@/lib/residence"
 import { PRICING } from "@/lib/pricing"
 import {
   VoucherDocument,
@@ -34,6 +34,8 @@ interface RequestShipment {
   recipient: unknown
   suitcaseCount: unknown
   dropOffTime?: unknown
+  pickupTime?: unknown
+  deliveryTime?: unknown
   pickUpNote?: unknown
   specialNote?: unknown
   noteTarget?: unknown
@@ -96,24 +98,20 @@ async function buildSupportQr(): Promise<{ uri?: string; kind: "whatsapp" | "ema
   }
 }
 
-/** 個人宅(民泊)住所を1行に整形。voucher-regen の residenceLine と同じ体裁。 */
-function residenceLine(raw: unknown): string {
-  const r = cleanResidence(raw)
-  if (!r || (!r.street && !r.city)) return ""
-  const zip = r.zip ? `〒${r.zip} ` : ""
-  const bld = r.building ? ` ${r.building}` : ""
-  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
-}
-
 function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   const from = (s.from as { hotel?: string; address?: string; city?: string; residence?: unknown }) ?? {}
   const to = (s.to as { hotel?: string; address?: string; city?: string; residence?: unknown }) ?? {}
   const suitcaseCount = Math.max(1, Math.floor(Number(s.suitcaseCount) || 1))
-  // 個人宅(民泊)は住所を residence から1行化して address に入れる(ホテル名は空のことがある)。
+  // 個人宅/民泊/バケーションレンタル: 住所(建物名除く)を address、物件名を propertyName(日)/
+  // propertyNameEn(英) に分けて渡す。residence が有効（住所か氏名がある）なら isResidence=true。
+  const fromRes = cleanResidence(from.residence)
+  const toRes = cleanResidence(to.residence)
+  const fromIsRes = !!(fromRes && (fromRes.street || fromRes.city || fromRes.name))
+  const toIsRes = !!(toRes && (toRes.street || toRes.city || toRes.name))
   const fromHotel = asString(from.hotel)
   const toHotel = asString(to.hotel)
-  const fromAddress = residenceLine(from.residence) || asString(from.address)
-  const toAddress = residenceLine(to.residence) || asString(to.address)
+  const fromAddress = fromIsRes ? residenceAddressLine(from.residence) : asString(from.address)
+  const toAddress = toIsRes ? residenceAddressLine(to.residence) : asString(to.address)
   // 各サイドに「ホテル名」または「住所(個人宅含む)」のどちらかが無ければ無効。
   if ((!fromHotel && !fromAddress) || (!toHotel && !toAddress)) return null
   const destinationNights =
@@ -123,15 +121,23 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   return {
     shipmentDate: asString(s.shipmentDate),
     expectedArrival: asString(s.expectedArrival),
+    pickupTime: asString(s.pickupTime).trim() || undefined,
+    deliveryTime: asString(s.deliveryTime).trim() || undefined,
     from: {
       hotel: fromHotel,
       address: fromAddress,
       city: asString(from.city),
+      isResidence: fromIsRes,
+      propertyName: fromRes?.building || "",
+      propertyNameEn: fromRes?.propertyNameEn || "",
     },
     to: {
       hotel: toHotel,
       address: toAddress,
       city: asString(to.city),
+      isResidence: toIsRes,
+      propertyName: toRes?.building || "",
+      propertyNameEn: toRes?.propertyNameEn || "",
     },
     recipient: asString(s.recipient),
     suitcaseCount,

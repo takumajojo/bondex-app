@@ -12,16 +12,7 @@ import {
   normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
-import { cleanResidence } from "@/lib/residence"
-
-/** 個人宅住所を1行に整形（バウチャーの住所欄用）。ホテル(null)なら空文字。 */
-function residenceLine(raw: unknown): string {
-  const r = cleanResidence(raw)
-  if (!r || (!r.street && !r.city)) return ""
-  const zip = r.zip ? `〒${r.zip} ` : ""
-  const bld = r.building ? ` ${r.building}` : ""
-  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
-}
+import { cleanResidence, residenceAddressLine } from "@/lib/residence"
 
 /**
  * 発行済み shipments データから Voucher PDF を再生成する共有ロジック。
@@ -43,7 +34,7 @@ export async function regenerateVoucherPdf(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, from_hotel, from_city, from_check_in, from_residence, to_hotel, to_city, to_check_out, to_residence, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en, booking_type, tour_leader_name",
+      "booking_id, leg_index, agency, representative, traveler_count, booking_name, tour_number, group_name, shipment_date, expected_arrival, delivery_time, pickup_time, from_hotel, from_city, from_check_in, from_residence, to_hotel, to_city, to_check_out, to_residence, recipient, suitcase_count, amount_yen, notes, note_target, guest_language, carrier, from_place_id, to_place_id, from_hotel_en, to_hotel_en, booking_type, tour_leader_name",
     )
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
@@ -174,22 +165,43 @@ export async function regenerateVoucherPdf(
     guestLanguage: normalizeGuestLanguage(data[0].guest_language),
     // 既定 = ガイド同梱。呼び出し側が false を渡したときだけ省く。
     includeHowto: opts?.includeHowto !== false,
-    shipments: (data as Row[]).map((s) => ({
-      shipmentDate: s.shipment_date,
-      expectedArrival: s.expected_arrival ?? s.shipment_date,
-      // 個人宅は住所を1行に整形して address に入れる（ホテルは空＝名称のみ表示）。
-      from: { hotel: s.from_hotel ?? "", address: residenceLine(s.from_residence), city: s.from_city ?? "" },
-      to: { hotel: s.to_hotel ?? "", address: residenceLine(s.to_residence), city: s.to_city ?? "" },
-      fromHotelEn: enName.get(s.leg_index)?.from,
-      toHotelEn: enName.get(s.leg_index)?.to,
-      recipient: s.recipient ?? "",
-      suitcaseCount: s.suitcase_count ?? 0,
-      bookingName: s.booking_name ?? undefined,
-      fromCheckIn: s.from_check_in ?? undefined,
-      toCheckOut: s.to_check_out ?? undefined,
-      specialNote: s.notes ?? undefined,
-      noteTarget: (s.note_target as "from" | "to" | "both" | null) ?? undefined,
-    })),
+    shipments: (data as Row[]).map((s) => {
+      // 個人宅/民泊/バケーションレンタルは住所(建物名除く)を address に、物件名を propertyName(日)/
+      // propertyNameEn(英) に分けて渡す。residence(jsonb) が存在する側を isResidence にする。
+      const fromRes = cleanResidence(s.from_residence)
+      const toRes = cleanResidence(s.to_residence)
+      return {
+        shipmentDate: s.shipment_date,
+        expectedArrival: s.expected_arrival ?? s.shipment_date,
+        pickupTime: (s as { pickup_time?: string | null }).pickup_time ?? undefined,
+        deliveryTime: (s as { delivery_time?: string | null }).delivery_time ?? undefined,
+        from: {
+          hotel: s.from_hotel ?? "",
+          address: residenceAddressLine(s.from_residence),
+          city: s.from_city ?? "",
+          isResidence: s.from_residence != null,
+          propertyName: fromRes?.building || "",
+          propertyNameEn: fromRes?.propertyNameEn || "",
+        },
+        to: {
+          hotel: s.to_hotel ?? "",
+          address: residenceAddressLine(s.to_residence),
+          city: s.to_city ?? "",
+          isResidence: s.to_residence != null,
+          propertyName: toRes?.building || "",
+          propertyNameEn: toRes?.propertyNameEn || "",
+        },
+        fromHotelEn: enName.get(s.leg_index)?.from,
+        toHotelEn: enName.get(s.leg_index)?.to,
+        recipient: s.recipient ?? "",
+        suitcaseCount: s.suitcase_count ?? 0,
+        bookingName: s.booking_name ?? undefined,
+        fromCheckIn: s.from_check_in ?? undefined,
+        toCheckOut: s.to_check_out ?? undefined,
+        specialNote: s.notes ?? undefined,
+        noteTarget: (s.note_target as "from" | "to" | "both" | null) ?? undefined,
+      }
+    }),
   }
 
   const buf = await renderToBuffer(<VoucherDocument data={input} />)

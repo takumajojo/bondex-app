@@ -13,7 +13,7 @@ import {
   normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
-import { cleanResidence } from "@/lib/residence"
+import { cleanResidence, residenceAddressLine } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -41,6 +41,8 @@ interface PreviewLeg {
   toResidence?: unknown
   shipmentDate?: unknown
   expectedArrival?: unknown
+  pickupTime?: unknown
+  deliveryTime?: unknown
   fromCheckIn?: unknown
   toCheckOut?: unknown
   recipient?: unknown
@@ -150,11 +152,32 @@ export async function POST(req: NextRequest) {
     supportQrKind: waUrl ? "whatsapp" : "email",
     guestLanguage,
     includeHowto: body.includeHowto !== false,
-    shipments: rawLegs.map((l) => ({
+    shipments: rawLegs.map((l) => {
+      const fromRes = cleanResidence(l.fromResidence)
+      const toRes = cleanResidence(l.toResidence)
+      const fromIsRes = !!(fromRes && (fromRes.street || fromRes.city || fromRes.name))
+      const toIsRes = !!(toRes && (toRes.street || toRes.city || toRes.name))
+      return {
       shipmentDate: str(l.shipmentDate),
       expectedArrival: str(l.expectedArrival) || str(l.shipmentDate),
-      from: { hotel: str(l.fromHotel), address: previewResidenceLine(l.fromResidence), city: str(l.fromCity) },
-      to: { hotel: str(l.toHotel), address: previewResidenceLine(l.toResidence), city: str(l.toCity) },
+      pickupTime: str(l.pickupTime) || undefined,
+      deliveryTime: str(l.deliveryTime) || undefined,
+      from: {
+        hotel: str(l.fromHotel),
+        address: fromIsRes ? residenceAddressLine(l.fromResidence) : previewResidenceLine(l.fromResidence),
+        city: str(l.fromCity),
+        isResidence: fromIsRes,
+        propertyName: fromRes?.building || "",
+        propertyNameEn: fromRes?.propertyNameEn || "",
+      },
+      to: {
+        hotel: str(l.toHotel),
+        address: toIsRes ? residenceAddressLine(l.toResidence) : previewResidenceLine(l.toResidence),
+        city: str(l.toCity),
+        isResidence: toIsRes,
+        propertyName: toRes?.building || "",
+        propertyNameEn: toRes?.propertyNameEn || "",
+      },
       recipient: str(l.recipient) || str(l.toHotel),
       suitcaseCount: Math.max(1, Math.floor(Number(l.suitcaseCount) || 1)),
       bookingName: str(body.bookingName) || undefined,
@@ -166,7 +189,8 @@ export async function POST(req: NextRequest) {
         | "to"
         | "both"
         | undefined,
-    })),
+      }
+    }),
   }
 
   try {

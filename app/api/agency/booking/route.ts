@@ -56,6 +56,7 @@ interface LegInput {
   originCheckIn: string
   toCheckOut: string
   deliveryTime: string
+  pickupTime: string
   recipient: string
   suitcaseCount: number
   itemType: string
@@ -114,6 +115,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   }
   const rawDelivery = s(o.deliveryTime)
   const deliveryTime = DELIVERY_SLOT_SET.has(rawDelivery) ? rawDelivery : ""
+  const pickupTime = s(o.pickupTime).slice(0, 40)
   const fromCheckIn = DATE_RE.test(s(o.fromCheckIn)) ? s(o.fromCheckIn) : ""
   const originCheckIn = DATE_RE.test(s(o.originCheckIn)) ? s(o.originCheckIn) : ""
   const toCheckOut = DATE_RE.test(s(o.toCheckOut)) ? s(o.toCheckOut) : ""
@@ -136,6 +138,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     originCheckIn,
     toCheckOut,
     deliveryTime,
+    pickupTime,
     recipient,
     suitcaseCount,
     itemType,
@@ -402,6 +405,7 @@ export async function POST(req: NextRequest) {
       origin_check_in: leg.originCheckIn || null,
       to_check_out: leg.toCheckOut || null,
       delivery_time: leg.deliveryTime || null,
+      pickup_time: leg.pickupTime || null,
       from_hotel: leg.fromHotel,
       from_city: leg.fromCity || null,
       from_prefecture: leg.fromPrefecture || null,
@@ -517,6 +521,7 @@ export async function POST(req: NextRequest) {
           legIndex: i,
           carrier: "sagawa",
           shipmentDate: leg.shipmentDate,
+          pickupTime: leg.pickupTime || "",
           deliveryDate: leg.expectedArrival,
           deliveryTime: leg.deliveryTime || "before-noon",
           suitcaseCount: leg.suitcaseCount,
