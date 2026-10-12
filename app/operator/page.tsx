@@ -46,7 +46,8 @@ import { OperatorCardReminder } from "@/components/operator-card-reminder"
 import { buildVoucherFileName } from "@/lib/utils"
 import { generateBookingId } from "@/lib/booking-id"
 import { normalizeGuestLanguage, type GuestLanguage } from "@/lib/guest-language"
-import { cleanResidence, type ResidenceAddress } from "@/lib/residence"
+import { cleanResidence, EMPTY_RESIDENCE, residenceError, residenceFieldLabel, type ResidenceAddress } from "@/lib/residence"
+import { ResidenceFields } from "@/components/residence-fields"
 import { PRICING } from "@/lib/pricing"
 import { toKatakanaReading } from "@/lib/romaji-kana"
 
@@ -155,6 +156,8 @@ const messages = {
     manualEntrySub: "Skip AI parsing and fill in the form by hand.",
     orDivider: "or",
     hotelNameLabel: "Hotel name",
+    kindHotel: "Hotel",
+    kindResidence: "Private residence (minpaku)",
     hotelNamePlaceholder: "e.g. Hilton Tokyo",
     cityLabel: "City / area",
     cityPlaceholder: "e.g. Tokyo",
@@ -327,6 +330,8 @@ const messages = {
     manualEntrySub: "AI 読み取りをスキップして手入力で進めます。",
     orDivider: "または",
     hotelNameLabel: "ホテル名",
+    kindHotel: "ホテル",
+    kindResidence: "個人宅（民泊など）",
     hotelNamePlaceholder: "例: ヒルトン東京",
     cityLabel: "都市・エリア",
     cityPlaceholder: "例: 東京",
@@ -473,20 +478,6 @@ function residenceOneLine(r: ResidenceAddress): string {
   const zip = r.zip ? `〒${r.zip} ` : ""
   const bld = r.building ? ` ${r.building}` : ""
   return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
-}
-
-/** 個人宅の読み取り専用カード（発行画面。ホテル検索の代わりに表示）。 */
-function ResidenceCard({ r }: { r: ResidenceAddress }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-[12px] leading-relaxed">
-      <span className="inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 mr-1.5">
-        個人宅
-      </span>
-      <span className="font-medium">{r.name}</span>
-      <p className="mt-1 text-muted-foreground">{residenceOneLine(r)}</p>
-      {r.phone && <p className="text-muted-foreground">☎ {r.phone}</p>}
-    </div>
-  )
 }
 
 interface ParsedShipmentLocation {
@@ -1905,8 +1896,18 @@ function ReviewView({
   if (shipments.length === 0) missing.push(t.noLegs)
   shipments.forEach((s, i) => {
     const legPrefix = shipments.length > 1 ? `Leg ${i + 1}: ` : ""
-    if (!s.from.hotel.trim()) missing.push(`${legPrefix}${t.from} ${t.hotelNameLabel}`)
-    if (!s.to.hotel.trim()) missing.push(`${legPrefix}${t.to} ${t.hotelNameLabel}`)
+    if (s.from.residence) {
+      const e = residenceError(s.from.residence)
+      if (e) missing.push(`${legPrefix}${t.from}（${t.kindResidence}）${residenceFieldLabel(e, locale === "ja" ? "ja" : "en")}`)
+    } else if (!s.from.hotel.trim()) {
+      missing.push(`${legPrefix}${t.from} ${t.hotelNameLabel}`)
+    }
+    if (s.to.residence) {
+      const e = residenceError(s.to.residence)
+      if (e) missing.push(`${legPrefix}${t.to}（${t.kindResidence}）${residenceFieldLabel(e, locale === "ja" ? "ja" : "en")}`)
+    } else if (!s.to.hotel.trim()) {
+      missing.push(`${legPrefix}${t.to} ${t.hotelNameLabel}`)
+    }
     if (!s.shipmentDate) missing.push(`${legPrefix}${t.dropOffDateLabel}`)
     if (!s.expectedArrival) missing.push(`${legPrefix}${t.arrivalDateLabel}`)
     if (!s.recipient.trim()) missing.push(`${legPrefix}${t.recipientLabelFull}`)
@@ -2204,8 +2205,29 @@ function ShipmentRow({
             <MapPin className="w-3 h-3" strokeWidth={1.5} />
             {t.from}
           </p>
+          {/* ホテル検索 ⇄ 個人宅（民泊など Google Maps に無い住所）の切替 */}
+          <div className="flex gap-1.5">
+            <button type="button"
+              onClick={() => onUpdate(index, { from: { ...shipment.from, residence: null } })}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${!shipment.from.residence ? "border-foreground bg-foreground text-background" : "border-border bg-white text-muted-foreground hover:text-foreground"}`}>
+              {t.kindHotel}
+            </button>
+            <button type="button"
+              onClick={() => onUpdate(index, { from: { ...shipment.from, hotel: "", address: "", placeId: undefined, residence: shipment.from.residence ?? { ...EMPTY_RESIDENCE } } })}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${shipment.from.residence ? "border-foreground bg-foreground text-background" : "border-border bg-white text-muted-foreground hover:text-foreground"}`}>
+              {t.kindResidence}
+            </button>
+          </div>
           {shipment.from.residence ? (
-            <ResidenceCard r={shipment.from.residence} />
+            <ResidenceFields
+              value={shipment.from.residence}
+              locale={locale === "ja" ? "ja" : "en"}
+              idPrefix={`from-res-${index}`}
+              postalUrl="/api/operator/postal"
+              onChange={(patch) =>
+                onUpdate(index, { from: { ...shipment.from, residence: { ...shipment.from.residence!, ...patch } } })
+              }
+            />
           ) : (
             <>
               <div className="space-y-1">
@@ -2249,8 +2271,29 @@ function ShipmentRow({
             <MapPin className="w-3 h-3" strokeWidth={1.5} />
             {t.to}
           </p>
+          {/* ホテル検索 ⇄ 個人宅（民泊など Google Maps に無い住所）の切替 */}
+          <div className="flex gap-1.5">
+            <button type="button"
+              onClick={() => onUpdate(index, { to: { ...shipment.to, residence: null } })}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${!shipment.to.residence ? "border-foreground bg-foreground text-background" : "border-border bg-white text-muted-foreground hover:text-foreground"}`}>
+              {t.kindHotel}
+            </button>
+            <button type="button"
+              onClick={() => onUpdate(index, { to: { ...shipment.to, hotel: "", address: "", placeId: undefined, residence: shipment.to.residence ?? { ...EMPTY_RESIDENCE } } })}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${shipment.to.residence ? "border-foreground bg-foreground text-background" : "border-border bg-white text-muted-foreground hover:text-foreground"}`}>
+              {t.kindResidence}
+            </button>
+          </div>
           {shipment.to.residence ? (
-            <ResidenceCard r={shipment.to.residence} />
+            <ResidenceFields
+              value={shipment.to.residence}
+              locale={locale === "ja" ? "ja" : "en"}
+              idPrefix={`to-res-${index}`}
+              postalUrl="/api/operator/postal"
+              onChange={(patch) =>
+                onUpdate(index, { to: { ...shipment.to, residence: { ...shipment.to.residence!, ...patch } } })
+              }
+            />
           ) : (
             <>
               <div className="space-y-1">
@@ -2599,10 +2642,10 @@ function ConfirmView({
                   onChange={(v) => onSetLegVerification(i, "names", v)}
                 >
                   <p className="text-sm text-foreground">
-                    <span className="text-muted-foreground">{t.fromShort}</span> {s.from.hotel}
+                    <span className="text-muted-foreground">{t.fromShort}</span> {s.from.residence ? residenceOneLine(s.from.residence) : s.from.hotel}
                   </p>
                   <p className="text-sm text-foreground">
-                    <span className="text-muted-foreground">{t.toShort}</span> {s.to.hotel}
+                    <span className="text-muted-foreground">{t.toShort}</span> {s.to.residence ? residenceOneLine(s.to.residence) : s.to.hotel}
                   </p>
                 </VerifyBlock>
 
@@ -2633,12 +2676,12 @@ function ConfirmView({
                     <>
                       <AddressCheckBadge
                         t={t}
-                        label={s.from.hotel}
+                        label={s.from.residence ? residenceOneLine(s.from.residence) : s.from.hotel}
                         check={fromCheck}
                       />
                       <AddressCheckBadge
                         t={t}
-                        label={s.to.hotel}
+                        label={s.to.residence ? residenceOneLine(s.to.residence) : s.to.hotel}
                         check={toCheck}
                       />
                     </>
@@ -2646,11 +2689,11 @@ function ConfirmView({
                 >
                   <p className="text-sm text-foreground leading-snug">
                     <span className="text-muted-foreground">{t.fromShort}</span>{" "}
-                    {s.from.address || s.from.city}
+                    {s.from.residence ? residenceOneLine(s.from.residence) : s.from.address || s.from.city}
                   </p>
                   <p className="text-sm text-foreground leading-snug">
                     <span className="text-muted-foreground">{t.toShort}</span>{" "}
-                    {s.to.address || s.to.city}
+                    {s.to.residence ? residenceOneLine(s.to.residence) : s.to.address || s.to.city}
                   </p>
                 </VerifyBlock>
               </li>
