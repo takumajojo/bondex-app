@@ -11,7 +11,7 @@ import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
-import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
+import { cleanResidence, endpointLabel, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
 import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
@@ -617,7 +617,7 @@ export async function POST(req: NextRequest) {
       legCount: legs.length,
       locale,
       waybillNotNeeded: true,
-      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel, suitcaseCount: l.suitcaseCount })),
+      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: endpointLabel(l.fromHotel, l.fromResidence), toHotel: endpointLabel(l.toHotel, l.toResidence), suitcaseCount: l.suitcaseCount })),
     }, attachments)
     noticeEmailSent = mail.sent
   } else if (needsLabelWait) {

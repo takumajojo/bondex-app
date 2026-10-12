@@ -10,6 +10,7 @@ import { getTrackingProvider } from "@/lib/tracking"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
+import { endpointLabel } from "@/lib/residence"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -121,7 +122,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await sb
       .from("shipments")
-      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, tour_number, shipment_date, tracking_numbers, tracking_detail")
+      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail")
       .not("tracking_numbers", "is", null)
       .not("status", "in", '("delivered","cancelled","failed")')
       // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
@@ -408,8 +409,8 @@ export async function GET(req: NextRequest) {
               kind: "pickup",
               title: `${row.booking_id as string}-L${(row.leg_index as number) + 1}（${row.agency as string}）`,
               lines: [
-                `集荷元: ${(row.from_hotel as string) ?? ""}`,
-                `お届け先: ${(row.to_hotel as string) ?? ""}`,
+                `集荷元: ${endpointLabel(row.from_hotel, row.from_residence)}`,
+                `お届け先: ${endpointLabel(row.to_hotel, row.to_residence)}`,
                 `代表者: ${(row.representative as string) ?? ""}`,
               ],
               link: `/track/${row.booking_id as string}`,
@@ -438,7 +439,7 @@ export async function GET(req: NextRequest) {
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
             {
               const rep = (row.representative as string) ?? ""
-              const toHotel = (row.to_hotel as string) ?? ""
+              const toHotel = endpointLabel(row.to_hotel, row.to_residence)
               await pushToAgency(row.agency as string, {
                 kind: "delivered",
                 templateParams: [rep, toHotel, legRef], // bondex_delivered の {{1}}{{2}}{{3}}
@@ -451,7 +452,7 @@ export async function GET(req: NextRequest) {
               kind: "delivery",
               title: `${row.booking_id as string}-L${(row.leg_index as number) + 1}（${row.agency as string}）`,
               lines: [
-                `お届け先: ${(row.to_hotel as string) ?? ""}`,
+                `お届け先: ${endpointLabel(row.to_hotel, row.to_residence)}`,
                 `代表者: ${(row.representative as string) ?? ""}`,
               ],
               link: `/track/${row.booking_id as string}`,
@@ -501,12 +502,12 @@ export async function GET(req: NextRequest) {
         const agencyEmail = agencyEmailByName.get(s.agency) ?? null
         const agencyEn = agencyForeignByName.get(s.agency) ?? false
         await sendOpsAlert({
-          subject: `【集荷漏れの可能性】${s.booking_id}-L${s.leg_index + 1} ${s.from_hotel}`,
+          subject: `【集荷漏れの可能性】${s.booking_id}-L${s.leg_index + 1} ${endpointLabel(s.from_hotel, s.from_residence)}`,
           lines: [
             `予約: ${s.booking_id} (区間 ${s.leg_index + 1})`,
             `代表者: ${s.representative} / 受取人: ${s.recipient}`,
             `発送日: ${s.shipment_date} を過ぎても集荷が確認できていません (現在: ${s.status})`,
-            `発送元: ${s.from_hotel} → ${s.to_hotel}`,
+            `発送元: ${endpointLabel(s.from_hotel, s.from_residence)} → ${endpointLabel(s.to_hotel, s.to_residence)}`,
             `追跡番号: ${(s.tracking_numbers ?? []).join(", ") || "未発行"}`,
             `対応: 発送元ホテルへ荷物の有無を確認し、必要なら集荷を再手配してください。`,
           ],
@@ -518,7 +519,7 @@ export async function GET(req: NextRequest) {
                   `Booking: ${s.booking_id} (leg ${s.leg_index + 1})`,
                   `Traveler: ${s.representative}`,
                   `The ship date ${s.shipment_date} has passed but pickup is not confirmed yet.`,
-                  `Route: ${s.from_hotel} → ${s.to_hotel}`,
+                  `Route: ${endpointLabel(s.from_hotel, s.from_residence)} → ${endpointLabel(s.to_hotel, s.to_residence)}`,
                   `We are checking with the origin hotel and the carrier, and will re-arrange pickup if needed.`,
                 ],
               }
@@ -543,12 +544,12 @@ export async function GET(req: NextRequest) {
       const overdueIds: string[] = []
       for (const s of overdue) {
         await sendOpsAlert({
-          subject: `【配達遅延の可能性】${s.booking_id}-L${s.leg_index + 1} → ${s.to_hotel}`,
+          subject: `【配達遅延の可能性】${s.booking_id}-L${s.leg_index + 1} → ${endpointLabel(s.to_hotel, s.to_residence)}`,
           lines: [
             `予約: ${s.booking_id} (区間 ${s.leg_index + 1}) / 代理店: ${s.agency}`,
             `代表者: ${s.representative}`,
             `予定到着日 ${s.expected_arrival} を過ぎても配達完了が確認できていません (現在: ${s.status})`,
-            `区間: ${s.from_hotel} → ${s.to_hotel}`,
+            `区間: ${endpointLabel(s.from_hotel, s.from_residence)} → ${endpointLabel(s.to_hotel, s.to_residence)}`,
             `追跡番号: ${(s.tracking_numbers ?? []).join(", ") || "未発行"}`,
             `対応: 追跡状況を確認し、遅延・不着なら配送業者へ照会してください。`,
             `追跡: https://bondex.express/track/${s.booking_id}`,

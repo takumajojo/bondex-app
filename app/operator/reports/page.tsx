@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Download, Loader2, RefreshCw } from "lucide-react"
+import { cleanResidence, endpointLabel } from "@/lib/residence"
 
 interface Row {
   booking_id: string
@@ -16,8 +17,10 @@ interface Row {
   picked_up_at: string | null
   shipment_date: string | null
   from_hotel: string | null
+  from_residence: unknown
   from_prefecture: string | null
   to_hotel: string | null
+  to_residence: unknown
   to_prefecture: string | null
   to_city: string | null
   suitcase_count: number | null
@@ -200,10 +203,10 @@ export default function ReportsPage() {
                       <td className="px-3 py-2">{r.agency}</td>
                       <td className="px-3 py-2 tabular-nums">{jstDate(r.picked_up_at)}</td>
                       <td className="px-3 py-2 text-xs">
-                        <span className="text-muted-foreground">{r.from_prefecture} </span>{r.from_hotel}
+                        <span className="text-muted-foreground">{r.from_prefecture || cleanResidence(r.from_residence)?.prefecture || ""} </span>{endpointLabel(r.from_hotel, r.from_residence)}
                       </td>
                       <td className="px-3 py-2 text-xs">
-                        <span className="text-muted-foreground">{r.to_prefecture} </span>{r.to_hotel}
+                        <span className="text-muted-foreground">{r.to_prefecture || cleanResidence(r.to_residence)?.prefecture || ""} </span>{endpointLabel(r.to_hotel, r.to_residence)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.suitcase_count}</td>
                       <td className="px-3 py-2 text-xs">{STATUS_LABEL[r.status ?? ""] ?? r.status}</td>

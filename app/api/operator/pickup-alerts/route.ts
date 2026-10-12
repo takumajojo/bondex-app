@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString()
   const { data, error } = await sb
     .from("shipments")
-    .select("id, booking_id, leg_index, agency, representative, from_hotel, to_hotel, suitcase_count, picked_up_at")
+    .select("id, booking_id, leg_index, agency, representative, from_hotel, from_residence, to_hotel, to_residence, suitcase_count, picked_up_at")
     .not("picked_up_at", "is", null)
     .is("pickup_ack_at", null)
     .gte("picked_up_at", since)

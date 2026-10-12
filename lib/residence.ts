@@ -107,3 +107,27 @@ export function residenceError(r: ResidenceAddress): ResidenceField | null {
 export function isResidenceKind(v: unknown): boolean {
   return v === "residence"
 }
+
+/**
+ * 個人宅住所を1行に整形（表示・メール・バウチャー用）。中身が無ければ空文字。
+ * 体裁は lib/voucher-regen の residenceLine と統一。
+ */
+export function residenceOneLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  const bld = r.building ? ` ${r.building}` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
+
+/**
+ * 区間の片側（発送元/お届け先）の表示名。
+ * 個人宅（民泊など）なら住所を、そうでなければホテル名を返す。
+ * ※ 発行時 DB の from_hotel/to_hotel には個人宅の「氏名」が入るため、
+ *   表示では residence を優先し、氏名ではなく住所を見せる。
+ */
+export function endpointLabel(hotel: unknown, residenceRaw: unknown): string {
+  const line = residenceOneLine(residenceRaw)
+  if (line) return line
+  return typeof hotel === "string" ? hotel.trim() : ""
+}

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { InvoiceDocument, type InvoiceLineItem } from "@/lib/invoice-pdf"
 import type { ShipmentRecord } from "@/lib/shipments-db"
 import { TAX_RATE, grossOf } from "@/lib/tax"
+import { endpointLabel } from "@/lib/residence"
 
 /**
  * 月次請求書の組み立て — 手動DL (api/invoices/generate) と自動送付
@@ -108,7 +109,7 @@ export async function buildMonthlyInvoice(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, from_hotel_en, to_hotel_en, representative, tour_number, suitcase_count, amount_yen, status",
+      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, representative, tour_number, suitcase_count, amount_yen, status",
     )
     .eq("agency", agencyName)
     .gte("shipment_date", fromDate)
@@ -141,8 +142,8 @@ export async function buildMonthlyInvoice(
     bookingRef: `${s.booking_id}-L${(s.leg_index ?? 0) + 1}`,
     tourNumber: s.tour_number || undefined,
     // 英語の請求書は英語の施設名があればそちらを使う (無ければ登録時の表記のまま)
-    fromHotel: (locale === "en" && s.from_hotel_en) || s.from_hotel || "",
-    toHotel: (locale === "en" && s.to_hotel_en) || s.to_hotel || "",
+    fromHotel: endpointLabel((locale === "en" && s.from_hotel_en) || s.from_hotel, s.from_residence),
+    toHotel: endpointLabel((locale === "en" && s.to_hotel_en) || s.to_hotel, s.to_residence),
     representative: s.representative ?? "",
     suitcaseCount: s.suitcase_count ?? 0,
     amountYen: s.amount_yen ?? 0,
@@ -244,8 +245,8 @@ export async function buildChargeInvoice(
       shipmentDate: shipment.shipment_date,
       bookingRef: `${shipment.booking_id}-L${shipment.leg_index + 1}`,
       tourNumber: shipment.tour_number || undefined,
-      fromHotel: (locale === "en" && shipment.from_hotel_en) || shipment.from_hotel || "",
-      toHotel: (locale === "en" && shipment.to_hotel_en) || shipment.to_hotel || "",
+      fromHotel: endpointLabel((locale === "en" && shipment.from_hotel_en) || shipment.from_hotel, shipment.from_residence),
+      toHotel: endpointLabel((locale === "en" && shipment.to_hotel_en) || shipment.to_hotel, shipment.to_residence),
       representative: shipment.representative ?? "",
       suitcaseCount: shipment.suitcase_count ?? 0,
       amountYen: netYen,
