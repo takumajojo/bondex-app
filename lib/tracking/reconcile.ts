@@ -14,6 +14,7 @@ import { getTrackingProvider } from "@/lib/tracking"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { endpointLabel } from "@/lib/residence"
+import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
 import { notifyBondEx } from "@/lib/notify"
 import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { sendOpsAlert } from "@/lib/ops-alert"
@@ -48,6 +49,11 @@ export async function reconcileTrackingNow(
   sb: SupabaseClient,
   shipmentId: string,
 ): Promise<ReconcileResult> {
+  // 追跡同期の一時停止中（佐川の追跡停止・流出対応）は照会をスキップ。
+  // 番号の保存・差し替え自体は呼び出し側で継続し、ステータス前進のみ行わない。
+  if (TRACKING_SYNC_PAUSED) {
+    return { changed: false, note: "追跡同期は一時停止中（佐川の追跡停止・外部要因により照会をスキップ）" }
+  }
   try {
     const { data: row, error } = await sb
       .from("shipments")

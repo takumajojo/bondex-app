@@ -11,6 +11,7 @@ import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-no
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 import { endpointLabel } from "@/lib/residence"
+import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -99,6 +100,13 @@ export async function GET(req: NextRequest) {
   }
   if (authHeader !== `Bearer ${expected}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // 追跡同期の一時停止（佐川の追跡停止・流出対応中）。
+  // 追跡照会（Ship&co）も未達アラート（集荷漏れ/配達遅延）も行わず即終了し、
+  // 429 エラーの蓄積と誤アラートを抑制する。復旧したら lib/tracking-pause.ts で解除。
+  if (TRACKING_SYNC_PAUSED) {
+    return NextResponse.json({ ok: true, paused: true, note: "追跡同期は一時停止中（佐川の追跡停止・外部要因）" })
   }
 
   // 二重起動ロック (GitHub Actions の誤判定リトライ対策・2026-08-31 監査対応)。
