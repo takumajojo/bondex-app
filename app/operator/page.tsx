@@ -1064,8 +1064,8 @@ export default function OperatorPage() {
       shipments: itinerary.shipments.map((s) => ({
         shipmentDate: s.shipmentDate,
         expectedArrival: s.expectedArrival,
-        from: { hotel: s.from.hotel, address: s.from.address, city: s.from.city },
-        to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city },
+        from: { hotel: s.from.hotel, address: s.from.address, city: s.from.city, residence: s.from.residence ?? undefined },
+        to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city, residence: s.to.residence ?? undefined },
         recipient: s.recipient,
         suitcaseCount: s.suitcaseCount,
         specialNote: s.specialNote,
