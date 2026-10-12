@@ -5,6 +5,7 @@
 -- （delivery_time）と対になる集荷時刻を保持し、バウチャーに明示する。
 --
 -- 形式は自由テキスト（例: "9:30 AM" / "09:30"）。null = 未指定（従来どおり）。
+-- 適用状況: 本番 Supabase へ適用済み（2026-10-12）。
 
 alter table shipments
   add column if not exists pickup_time text;
