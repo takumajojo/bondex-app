@@ -20,6 +20,8 @@ const L = {
     bld: "物件名・建物名・部屋番号（任意）", bldPh: "例) 京都駅ゲストハウス道 #102",
     propEn: "物件名（英語・任意）", propEnPh: "例) Kyoto Station Guesthouse Michi #102",
     propEnHint: "民泊・バケーションレンタル(Airbnb)の物件名。バウチャーで英語を優先表示します。",
+    addrEn: "住所（英語・任意）", addrEnPh: "例) 28-2 Higashikujo Minami Sanno-cho, Minami-ku, Kyoto 601-8011, Japan",
+    addrEnHint: "外国人ゲスト向けの英語バウチャーに表示する英語住所。Airbnb確認書の英語住所をそのまま貼り付けてください（送り状は日本語住所を使用）。",
     loading: "住所を検索中…",
     notFound: "該当する郵便番号が見つかりません。手入力してください。",
   },
@@ -34,6 +36,8 @@ const L = {
     bld: "Property / building / room (optional)", bldPh: "e.g. Kyoto Station Guesthouse Michi #102",
     propEn: "Property name in English (optional)", propEnPh: "e.g. Kyoto Station Guesthouse Michi #102",
     propEnHint: "Vacation rental / Airbnb property name. Shown first (over Japanese) on the voucher.",
+    addrEn: "Address in English (optional)", addrEnPh: "e.g. 28-2 Higashikujo Minami Sanno-cho, Minami-ku, Kyoto 601-8011, Japan",
+    addrEnHint: "Shown on the English voucher for overseas guests. Paste the English address from the Airbnb confirmation (the courier label still uses the Japanese address).",
     loading: "Looking up…",
     notFound: "Postal code not found. Please enter the address manually.",
   },
@@ -154,6 +158,11 @@ export function ResidenceFields({
         <input className={inputCls} value={value.propertyNameEn ?? ""} maxLength={80} placeholder={t.propEnPh}
           autoComplete="off" onChange={(e) => onChange({ propertyNameEn: e.target.value })} />
         <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{t.propEnHint}</span>
+      </Field>
+      <Field label={t.addrEn}>
+        <input className={inputCls} value={value.addressEn ?? ""} maxLength={160} placeholder={t.addrEnPh}
+          autoComplete="off" onChange={(e) => onChange({ addressEn: e.target.value })} />
+        <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{t.addrEnHint}</span>
       </Field>
     </div>
   )

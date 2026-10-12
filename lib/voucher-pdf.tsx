@@ -190,6 +190,12 @@ export interface VoucherShipmentLocation {
   propertyName?: string
   /** 物件名（英語, 例: Kyoto Station Guesthouse Michi #102）。お客様向けに優先表示。 */
   propertyNameEn?: string
+  /**
+   * 日本語住所（地名解決用のヒント）。民泊で address を英語にすると voucher-area の
+   * 地名判定（箱根町→HAKONE 等）が効かなくなるため、別途日本語住所を渡して地名解決に使う。
+   * 表示には使わない（表示は address）。
+   */
+  addressJa?: string
 }
 
 export interface VoucherShipment {
@@ -1571,7 +1577,7 @@ function VoucherPage({
     const noteForFrom =
       shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? shipment.specialNote : ""
     const areaOf = (loc: VoucherShipmentLocation, hotelEn?: string): VoucherArea =>
-      voucherAreaOf(loc.address, loc.city, loc.hotel, hotelEn) ?? voucherAreaFallback(loc.city, safeText(loc.hotel), hotelEn)
+      voucherAreaOf(loc.addressJa || loc.address, loc.city, loc.hotel, hotelEn) ?? voucherAreaFallback(loc.city, safeText(loc.hotel), hotelEn)
     const support: V2Ctx["support"] = (() => {
       switch (contactMode) {
         case "hidden":

@@ -725,7 +725,7 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
           <Text style={s.hsK}>{h.jb(res ? "DELIVER TO" : "お届け先 / TO")}</Text>
           <Text style={[s.hsV, (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 24 ? { fontSize: 8.5, lineHeight: 1.2 } : (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 14 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa)}</Text>
           {!res && ctx.toHotelEn ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.toHotelEn)}</Text> : null}
-          {ctx.toAddress ? <Text style={[s.hsS, { fontSize: 6.8 }, clamp(2)]}>{h.jb(ctx.toAddress)}</Text> : null}
+          {ctx.toAddress ? <Text style={[s.hsS, { fontSize: res ? 6.2 : 6.8 }, clamp(res ? 3 : 2)]}>{h.jb(ctx.toAddress)}</Text> : null}
         </View>
       </View>
 

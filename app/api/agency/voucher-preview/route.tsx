@@ -13,7 +13,7 @@ import {
   normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
-import { cleanResidence, residenceAddressLine } from "@/lib/residence"
+import { cleanResidence, residenceAddressLine, residenceAddressLineEn } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -164,19 +164,21 @@ export async function POST(req: NextRequest) {
       deliveryTime: str(l.deliveryTime) || undefined,
       from: {
         hotel: str(l.fromHotel),
-        address: fromIsRes ? residenceAddressLine(l.fromResidence) : previewResidenceLine(l.fromResidence),
+        address: fromIsRes ? residenceAddressLineEn(l.fromResidence) : previewResidenceLine(l.fromResidence),
         city: str(l.fromCity),
         isResidence: fromIsRes,
         propertyName: fromRes?.building || "",
         propertyNameEn: fromRes?.propertyNameEn || "",
+        addressJa: fromIsRes ? residenceAddressLine(l.fromResidence) : undefined,
       },
       to: {
         hotel: str(l.toHotel),
-        address: toIsRes ? residenceAddressLine(l.toResidence) : previewResidenceLine(l.toResidence),
+        address: toIsRes ? residenceAddressLineEn(l.toResidence) : previewResidenceLine(l.toResidence),
         city: str(l.toCity),
         isResidence: toIsRes,
         propertyName: toRes?.building || "",
         propertyNameEn: toRes?.propertyNameEn || "",
+        addressJa: toIsRes ? residenceAddressLine(l.toResidence) : undefined,
       },
       recipient: str(l.recipient) || str(l.toHotel),
       suitcaseCount: Math.max(1, Math.floor(Number(l.suitcaseCount) || 1)),

@@ -205,6 +205,8 @@ const messages = {
     resBuildingPlaceholder: "e.g. Kyoto Station Guesthouse Michi #102",
     resPropEn: "Property name in English (optional)",
     resPropEnPlaceholder: "e.g. Kyoto Station Guesthouse Michi #102",
+    resAddrEn: "Address in English (optional)",
+    resAddrEnPlaceholder: "e.g. 28-2 Higashikujo Minami Sanno-cho, Minami-ku, Kyoto 601-8011, Japan",
     zipLoading: "Looking up the address…",
     zipNotFound: "No address found for this postal code — please enter it manually.",
     resFieldLabels: {
@@ -478,6 +480,8 @@ const messages = {
     resBuildingPlaceholder: "例: 京都駅ゲストハウス道 #102",
     resPropEn: "物件名（英語・任意）",
     resPropEnPlaceholder: "例: Kyoto Station Guesthouse Michi #102",
+    resAddrEn: "住所（英語・任意）",
+    resAddrEnPlaceholder: "例: 28-2 Higashikujo Minami Sanno-cho, Minami-ku, Kyoto 601-8011, Japan",
     zipLoading: "住所を検索中…",
     zipNotFound: "該当する郵便番号が見つかりません。手入力してください。",
     resFieldLabels: {
@@ -754,6 +758,11 @@ function ResidenceFields({
         <input id={`${idPrefix}-propen`} className={inputCls} value={value.propertyNameEn ?? ""} maxLength={80}
           placeholder={t.resPropEnPlaceholder} autoComplete="off"
           onChange={(e) => onChange({ propertyNameEn: e.target.value })} />
+      </Field>
+      <Field label={t.resAddrEn} htmlFor={`${idPrefix}-addren`}>
+        <input id={`${idPrefix}-addren`} className={inputCls} value={value.addressEn ?? ""} maxLength={160}
+          placeholder={t.resAddrEnPlaceholder} autoComplete="off"
+          onChange={(e) => onChange({ addressEn: e.target.value })} />
       </Field>
     </div>
   )

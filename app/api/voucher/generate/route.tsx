@@ -7,7 +7,7 @@ import { buildVoucherFileName } from "@/lib/utils"
 import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
-import { cleanResidence, residenceAddressLine } from "@/lib/residence"
+import { cleanResidence, residenceAddressLine, residenceAddressLineEn } from "@/lib/residence"
 import { PRICING } from "@/lib/pricing"
 import {
   VoucherDocument,
@@ -98,15 +98,6 @@ async function buildSupportQr(): Promise<{ uri?: string; kind: "whatsapp" | "ema
   }
 }
 
-/** 個人宅(民泊)住所を1行に整形。voucher-regen の residenceLine と同じ体裁。 */
-function residenceLine(raw: unknown): string {
-  const r = cleanResidence(raw)
-  if (!r || (!r.street && !r.city)) return ""
-  const zip = r.zip ? `〒${r.zip} ` : ""
-  const bld = r.building ? ` ${r.building}` : ""
-  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
-}
-
 function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   const from = (s.from as { hotel?: string; address?: string; city?: string; residence?: unknown }) ?? {}
   const to = (s.to as { hotel?: string; address?: string; city?: string; residence?: unknown }) ?? {}
@@ -119,8 +110,8 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   const toIsRes = !!(toRes && (toRes.street || toRes.city || toRes.name))
   const fromHotel = asString(from.hotel)
   const toHotel = asString(to.hotel)
-  const fromAddress = fromIsRes ? residenceAddressLine(from.residence) : asString(from.address)
-  const toAddress = toIsRes ? residenceAddressLine(to.residence) : asString(to.address)
+  const fromAddress = fromIsRes ? residenceAddressLineEn(from.residence) : asString(from.address)
+  const toAddress = toIsRes ? residenceAddressLineEn(to.residence) : asString(to.address)
   // 各サイドに「ホテル名」または「住所(個人宅含む)」のどちらかが無ければ無効。
   if ((!fromHotel && !fromAddress) || (!toHotel && !toAddress)) return null
   const destinationNights =
@@ -139,6 +130,7 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
       isResidence: fromIsRes,
       propertyName: fromRes?.building || "",
       propertyNameEn: fromRes?.propertyNameEn || "",
+      addressJa: fromIsRes ? residenceAddressLine(from.residence) : undefined,
     },
     to: {
       hotel: toHotel,
@@ -147,6 +139,7 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
       isResidence: toIsRes,
       propertyName: toRes?.building || "",
       propertyNameEn: toRes?.propertyNameEn || "",
+      addressJa: toIsRes ? residenceAddressLine(to.residence) : undefined,
     },
     recipient: asString(s.recipient),
     suitcaseCount,

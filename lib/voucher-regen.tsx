@@ -12,7 +12,7 @@ import {
   normalizeGuestLanguage,
   type VoucherInput,
 } from "@/lib/voucher-pdf"
-import { cleanResidence, residenceAddressLine } from "@/lib/residence"
+import { cleanResidence, residenceAddressLine, residenceAddressLineEn } from "@/lib/residence"
 
 /**
  * 発行済み shipments データから Voucher PDF を再生成する共有ロジック。
@@ -177,19 +177,21 @@ export async function regenerateVoucherPdf(
         deliveryTime: (s as { delivery_time?: string | null }).delivery_time ?? undefined,
         from: {
           hotel: s.from_hotel ?? "",
-          address: residenceAddressLine(s.from_residence),
+          address: residenceAddressLineEn(s.from_residence),
           city: s.from_city ?? "",
           isResidence: s.from_residence != null,
           propertyName: fromRes?.building || "",
           propertyNameEn: fromRes?.propertyNameEn || "",
+          addressJa: s.from_residence != null ? residenceAddressLine(s.from_residence) : undefined,
         },
         to: {
           hotel: s.to_hotel ?? "",
-          address: residenceAddressLine(s.to_residence),
+          address: residenceAddressLineEn(s.to_residence),
           city: s.to_city ?? "",
           isResidence: s.to_residence != null,
           propertyName: toRes?.building || "",
           propertyNameEn: toRes?.propertyNameEn || "",
+          addressJa: s.to_residence != null ? residenceAddressLine(s.to_residence) : undefined,
         },
         fromHotelEn: enName.get(s.leg_index)?.from,
         toHotelEn: enName.get(s.leg_index)?.to,

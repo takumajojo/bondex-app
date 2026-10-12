@@ -27,6 +27,13 @@ export type ResidenceAddress = {
    * building（日本語）より優先して施設名として表示する（例: Kyoto Station Guesthouse Michi #102）。任意。
    */
   propertyNameEn?: string
+  /**
+   * 住所（英語・1行）。民泊・バケーションレンタル向け。お客様（外国人ゲスト）が読む
+   * 英語バウチャーでは日本語住所ではなくこの英語住所を表示する
+   * （例: 53 Motohakone, Hakone-machi, Ashigarashimo-gun, Kanagawa 250-0522, Japan）。任意。
+   * ※ 送り状（佐川）側は従来どおり構造化した日本語住所を使う（日本の配送業者向け）。
+   */
+  addressEn?: string
 }
 
 export const EMPTY_RESIDENCE: ResidenceAddress = {
@@ -38,6 +45,7 @@ export const EMPTY_RESIDENCE: ResidenceAddress = {
   street: "",
   building: "",
   propertyNameEn: "",
+  addressEn: "",
 }
 
 function str(v: unknown): string {
@@ -65,6 +73,7 @@ export function cleanResidence(raw: unknown): ResidenceAddress | null {
     street: str(o.street),
     building: str(o.building),
     propertyNameEn: str(o.propertyNameEn),
+    addressEn: str(o.addressEn),
   }
 }
 
@@ -149,6 +158,17 @@ export function residenceAddressLine(raw: unknown): string {
   if (!r || (!r.street && !r.city)) return ""
   const zip = r.zip ? `〒${r.zip} ` : ""
   return `${zip}${r.prefecture}${r.city}${r.street}`.trim()
+}
+
+/**
+ * 英語バウチャー用の住所1行。英語住所(addressEn)があればそれを、無ければ
+ * 日本語住所(residenceAddressLine)にフォールバックする。
+ * 外国人ゲスト向けバウチャーの住所表示に使う（送り状は別途・日本語構造化住所を使用）。
+ */
+export function residenceAddressLineEn(raw: unknown): string {
+  const r = cleanResidence(raw)
+  const en = (r?.addressEn || "").trim()
+  return en || residenceAddressLine(raw)
 }
 
 /**
