@@ -13,6 +13,7 @@
 import { sendMail } from "./mailer"
 import { buildAgencyStatusEmail, type StatusEmailData } from "./agency-status-email"
 import { bondexTrackUrl } from "./track-url"
+import { endpointLabel } from "./residence"
 
 /** shipments 行 (Supabase snake_case) と ShipmentRecord のどちらも満たす最小形。 */
 export interface StatusRow {
@@ -23,6 +24,8 @@ export interface StatusRow {
   representative?: string | null
   from_hotel?: string | null
   to_hotel?: string | null
+  from_residence?: unknown
+  to_residence?: unknown
   shipment_date?: string | null
   tracking_numbers?: string[] | null
 }
@@ -36,8 +39,9 @@ export function statusDataFromRow(row: StatusRow, contactPerson: string | null):
     legIndex: row.leg_index,
     tourNumber: row.tour_number ?? null,
     representative: row.representative ?? "",
-    fromHotel: row.from_hotel ?? "",
-    toHotel: row.to_hotel ?? "",
+    // 個人宅（民泊）は from_hotel に氏名が入るため、表示は住所を優先する。
+    fromHotel: endpointLabel(row.from_hotel, row.from_residence),
+    toHotel: endpointLabel(row.to_hotel, row.to_residence),
     shipmentDate: row.shipment_date ?? "",
     trackingNumbers: row.tracking_numbers ?? [],
     // バウチャーの追跡QRと必ず同一URL（lib/track-url.ts の単一ソース）。

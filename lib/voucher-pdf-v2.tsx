@@ -59,6 +59,13 @@ export type V2Ctx = {
   hasManifest: boolean
   dropWhenEn: string
   pickWhenEn: string
+  /** 発送元/お届け先が民泊・バケーションレンタル(Airbnb 等)か。フロント前提の文言を使わない。 */
+  fromIsResidence: boolean
+  toIsResidence: boolean
+  /** 集荷時刻 (民泊のみ, 例 "9:30 AM")。空=非表示。 */
+  pickupTimeText: string
+  /** 配達時間帯 (民泊のみ, 例 "6:00 PM – 8:00 PM")。空=非表示。 */
+  deliveryWindowText: string
   presentText: string // ゲスト言語の「受付でご提示ください」
   copyTagEn: string
   copyTagJa: string
@@ -71,6 +78,15 @@ export type V2Ctx = {
   noteForFrom: string
   noteForTo: string
   zf: Style
+}
+
+// 民泊/バケーションレンタル(Airbnb 等)向けの短い受け渡し文言。フロント前提を使わない。
+// 「現地で立ち会ってください」の詳細は Page 2 の案内に記載する。
+const RENTAL_V2 = {
+  dropEn: "Hand over directly to the driver",
+  dropJa: "指定の集荷時間にドライバーへ直接お渡しください",
+  pickEn: "Receive directly from the driver",
+  pickJa: "指定の時間帯にドライバーから直接お受け取りください",
 }
 
 const RED = "#c8102e"
@@ -352,7 +368,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
             <Text style={s.bandKicker}>USE THIS VOUCHER IN</Text>
             <Text style={[s.bandUseIn, ctx.fromArea.en.length > 14 ? { fontSize: 11 } : ctx.fromArea.en.length > 8 ? { fontSize: 14 } : {}, clamp(1)]}>{ctx.fromArea.en}</Text>
             <Text style={s.bandDate}>{`${h.formatEnDate(ctx.shipmentDate)}  ${h.dowLabel(ctx.shipmentDate)}`}</Text>
-            <Text style={[s.bandNote, clamp(1)]}>{h.jb(`この用紙は${ctx.fromArea.ja}のホテルでご利用ください`)}</Text>
+            <Text style={[s.bandNote, clamp(1)]}>{h.jb(ctx.fromIsResidence ? `${ctx.fromArea.ja}での集荷時にご提示ください` : `この用紙は${ctx.fromArea.ja}のホテルでご利用ください`)}</Text>
           </View>
         </View>
       </View>
@@ -362,7 +378,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
         <View style={{ flex: 1, paddingTop: mm(1) }}>
           <Text style={s.h1}>LUGGAGE FORWARDING VOUCHER</Text>
           <Text style={s.h1Ja}>{h.jb("荷物配送引換証")}</Text>
-          <Text style={[{ fontSize: 7, color: INK_SOFT, marginTop: mm(2.5), lineHeight: 1.45 }, zf, clamp(3)]}>{h.jb(ctx.presentText)}</Text>
+          <Text style={[{ fontSize: 7, color: INK_SOFT, marginTop: mm(2.5), lineHeight: 1.45 }, zf, clamp(3)]}>{h.jb((ctx.fromIsResidence || ctx.toIsResidence) ? "Please show this voucher to the driver at pickup and delivery. Hand over and receive your luggage directly from the driver." : ctx.presentText)}</Text>
         </View>
         <View style={s.qrModule}>
           <Text style={[s.qrHead, { backgroundColor: RED }]}>TRACKING / 追跡</Text>
@@ -380,7 +396,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.card}>
           <View style={[s.cardHead, { backgroundColor: RED }]}>
             <Text style={s.cardNo}>01</Text>
-            <Text style={s.cardHeadText}>{h.jb("DROP OFF  /  お預け")}</Text>
+            <Text style={s.cardHeadText}>{h.jb(ctx.fromIsResidence ? "PICKUP  /  集荷" : "DROP OFF  /  お預け")}</Text>
           </View>
           <View style={[s.cardBody, { backgroundColor: RED_TINT }]}>
             <View style={{ flex: 1, justifyContent: "space-between" }}>
@@ -391,18 +407,23 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                   {h.formatEnDate(ctx.shipmentDate)} <Text style={{ fontSize: 9, color: RED }}>{h.dowLabel(ctx.shipmentDate)}</Text>
                 </Text>
               </View>
+              {ctx.fromIsResidence && ctx.pickupTimeText ? (
+                <Text style={{ fontSize: 10, fontWeight: 700, color: RED, marginTop: mm(1.2) }}>
+                  {h.jb(`PICKUP TIME: ${ctx.pickupTimeText}`)}
+                </Text>
+              ) : null}
               <View style={[s.row, { alignItems: "flex-start", marginTop: mm(3) }]}>
                 <VIcon name="hotel" size={mm(7)} style={{ marginRight: mm(2.5), marginTop: mm(0.5) }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s.cardHotelEn, (ctx.fromHotelEn || ctx.fromHotelJa).length > 26 ? { fontSize: 10.5 } : {}, clamp(2)]}>{h.jb(ctx.fromHotelEn || ctx.fromHotelJa)}</Text>
-                  {ctx.fromHotelEn ? <Text style={[s.cardHotelJa, clamp(1)]}>{h.jb(ctx.fromHotelJa)}</Text> : null}
-                  {ctx.fromAddress ? <Text style={[s.cardAddr, clamp(1)]}>{h.jb(ctx.fromAddress)}</Text> : null}
+                  {ctx.fromHotelEn && ctx.fromHotelJa ? <Text style={[s.cardHotelJa, clamp(1)]}>{h.jb(ctx.fromHotelJa)}</Text> : null}
+                  {ctx.fromAddress ? <Text style={[s.cardAddr, clamp(2)]}>{h.jb(ctx.fromAddress)}</Text> : null}
                 </View>
               </View>
               </View>
               <View style={{ marginTop: mm(3) }}>
-                <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.dropWhenEn)}</Text>
-                <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb("チェックアウトまでにフロントへお預けください")}</Text>
+                <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.fromIsResidence ? RENTAL_V2.dropEn : ctx.dropWhenEn)}</Text>
+                <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb(ctx.fromIsResidence ? RENTAL_V2.dropJa : "チェックアウトまでにフロントへお預けください")}</Text>
               </View>
             </View>
             <View style={{ justifyContent: "center", marginLeft: mm(3) }}>
@@ -416,7 +437,7 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.card}>
           <View style={[s.cardHead, { backgroundColor: INK }]}>
             <Text style={s.cardNo}>02</Text>
-            <Text style={s.cardHeadText}>{h.jb("COLLECT  /  お受け取り")}</Text>
+            <Text style={s.cardHeadText}>{h.jb(ctx.toIsResidence ? "DELIVERY  /  お届け" : "COLLECT  /  お受け取り")}</Text>
           </View>
           <View style={[s.cardBody, { backgroundColor: GRAY_BG }]}>
             <View style={{ flex: 1, justifyContent: "space-between" }}>
@@ -427,18 +448,23 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
                   {h.formatEnDate(ctx.expectedArrival)} <Text style={{ fontSize: 9, color: RED }}>{h.dowLabel(ctx.expectedArrival)}</Text>
                 </Text>
               </View>
+              {ctx.toIsResidence && ctx.deliveryWindowText ? (
+                <Text style={{ fontSize: 10, fontWeight: 700, color: INK, marginTop: mm(1.2) }}>
+                  {h.jb(`DELIVERY: ${ctx.deliveryWindowText}`)}
+                </Text>
+              ) : null}
               <View style={[s.row, { alignItems: "flex-start", marginTop: mm(3) }]}>
                 <VIcon name="hotel" size={mm(7)} style={{ marginRight: mm(2.5), marginTop: mm(0.5) }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s.cardHotelEn, (ctx.toHotelEn || ctx.toHotelJa).length > 26 ? { fontSize: 10.5 } : {}, clamp(2)]}>{h.jb(ctx.toHotelEn || ctx.toHotelJa)}</Text>
-                  {ctx.toHotelEn ? <Text style={[s.cardHotelJa, clamp(1)]}>{h.jb(ctx.toHotelJa)}</Text> : null}
-                  {ctx.toAddress ? <Text style={[s.cardAddr, clamp(1)]}>{h.jb(ctx.toAddress)}</Text> : null}
+                  {ctx.toHotelEn && ctx.toHotelJa ? <Text style={[s.cardHotelJa, clamp(1)]}>{h.jb(ctx.toHotelJa)}</Text> : null}
+                  {ctx.toAddress ? <Text style={[s.cardAddr, clamp(2)]}>{h.jb(ctx.toAddress)}</Text> : null}
                 </View>
               </View>
               </View>
               <View style={{ marginTop: mm(3) }}>
-                <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.pickWhenEn)}</Text>
-                <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb("チェックイン時にお受け取りいただけます")}</Text>
+                <Text style={[s.cardWhenEn, zf, clamp(1)]}>{h.jb(ctx.toIsResidence ? RENTAL_V2.pickEn : ctx.pickWhenEn)}</Text>
+                <Text style={[s.cardWhenJa, clamp(1)]}>{h.jb(ctx.toIsResidence ? RENTAL_V2.pickJa : "チェックイン時にお受け取りいただけます")}</Text>
               </View>
             </View>
             <View style={{ justifyContent: "center", marginLeft: mm(3) }}>
@@ -483,9 +509,22 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
           <Text style={s.infoK}>SERVICE  /  サービス種別</Text>
           <View style={[s.row, { alignItems: "center" }]}>
             <VIcon name="route" size={mm(6.5)} style={{ marginRight: mm(2) }} />
-            <View>
-              <Text style={s.infoV}>Hotel → Hotel</Text>
-              <Text style={s.infoS}>{h.jb("ホテル間配送")}</Text>
+            <View style={{ flex: 1 }}>
+              {(() => {
+                const f = ctx.fromIsResidence
+                const t = ctx.toIsResidence
+                const svc = f && t
+                  ? { en: "Vacation Rental", ja: "民泊・バケーションレンタル配送" }
+                  : !f && !t
+                    ? { en: "Hotel → Hotel", ja: "ホテル間配送" }
+                    : { en: f ? "Rental → Hotel" : "Hotel → Rental", ja: "ホテル⇄民泊配送" }
+                return (
+                  <>
+                    <Text style={[s.infoV, svc.en.length > 13 ? { fontSize: 9.5, lineHeight: 1.2 } : {}, clamp(1)]}>{svc.en}</Text>
+                    <Text style={[s.infoS, clamp(1)]}>{h.jb(svc.ja)}</Text>
+                  </>
+                )
+              })()}
             </View>
           </View>
         </View>
@@ -539,17 +578,17 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
         <View style={{ flex: 1 }}>
           <View style={[s.row, { alignItems: "center" }]}>
             <VIcon name="hotel-white" size={mm(9)} style={{ marginRight: mm(3) }} />
-            <Text style={s.staffTitle}>{h.jb("HOTEL STAFF  /  ホテルご担当者様へ")}</Text>
+            <Text style={s.staffTitle}>{h.jb(ctx.fromIsResidence ? "GUEST / HOST  /  集荷・お届けのご案内" : "HOTEL STAFF  /  ホテルご担当者様へ")}</Text>
           </View>
           <View style={[s.row, { marginTop: mm(2.2), alignItems: "center" }]}>
             <View style={{ flex: 1, paddingRight: mm(3), borderRightWidth: mm(0.3), borderRightColor: "#5a5a62" }}>
-              <Text style={s.staffJa}>{h.jb("お荷物をお預かりの際は、\n次ページをご確認ください。")}</Text>
+              <Text style={s.staffJa}>{h.jb(ctx.fromIsResidence ? "集荷・お届けの手順は、\n次ページをご確認ください。" : "お荷物をお預かりの際は、\n次ページをご確認ください。")}</Text>
               <Text style={s.staffEn}>Please see the next page for detailed instructions.</Text>
             </View>
             <View style={[s.pageBox, { marginLeft: mm(4) }]}>
               <View>
-                <Text style={{ fontSize: 9, fontWeight: 700 }}>FOR HOTEL STAFF</Text>
-                <Text style={{ fontSize: 6.5, marginTop: mm(0.5) }}>{h.jb("ホテルスタッフ向け情報")}</Text>
+                <Text style={{ fontSize: 9, fontWeight: 700 }}>{ctx.fromIsResidence ? "FOR GUEST / HOST" : "FOR HOTEL STAFF"}</Text>
+                <Text style={{ fontSize: 6.5, marginTop: mm(0.5) }}>{h.jb(ctx.fromIsResidence ? "宿泊者・ホスト様向け情報" : "ホテルスタッフ向け情報")}</Text>
               </View>
               <VIcon name="arrow-right-black" size={mm(5.5)} style={{ marginHorizontal: mm(4) }} />
               <Text style={{ fontSize: 12, fontWeight: 700 }}>{`PAGE ${hotelPageNo}`}</Text>
@@ -568,27 +607,52 @@ export function TourLeaderPage({ ctx }: { ctx: V2Ctx }) {
 // ---------------------------------------------------------------------------
 export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
   const { h } = ctx
-  const who = ctx.isGroup ? "添乗員様（代表者様）" : "お客様"
-  const steps: Array<{ icon: VoucherIconName; title: string; ja: string; en: string }> = [
-    {
-      icon: "luggage",
-      title: "お荷物をお預かり",
-      ja: ctx.isGroup ? "添乗員様（代表者様）が団体のお荷物をお持ち込みされます。" : "お客様がチェックアウト時にお荷物をお持ち込みされます。",
-      en: ctx.isGroup ? "Receive the luggage from the tour leader." : "Receive the luggage from the guest at check-out.",
-    },
-    {
-      icon: "clipboard-check",
-      title: "個数をご確認のうえ\n集荷まで保管",
-      ja: ctx.hasManifest ? "団体お荷物リスト（別紙）でご照合ください。" : "ご予約名と個数を控え、他のお荷物と区別して保管してください。",
-      en: "Check the number of bags and keep them until collection.",
-    },
-    {
-      icon: "delivery-truck",
-      title: "ドライバーへ引き渡し",
-      ja: "集荷ドライバーが送り状を持参し、貼付して集荷します。ドライバーへご予約名と個数をお伝えください。",
-      en: "The driver will bring and attach the shipping labels. Please hand the luggage to the driver.",
-    },
-  ]
+  // 発送元(from)が民泊/バケーションレンタルなら、ホテルスタッフ向けではなく
+  // 宿泊者・ホスト向けの「集荷のご案内」に切り替える。
+  const res = ctx.fromIsResidence
+  // 民泊/バケーションレンタルの Page 2 はゲスト本人が読む想定のため英語で記載し、
+  // ホストではなくゲストが対応する前提の文言にする（host は何もしない）。
+  const steps: Array<{ icon: VoucherIconName; title: string; ja: string; en: string }> = res
+    ? [
+        {
+          icon: "person",
+          title: "Be there at pickup time",
+          ja: "You (the guest) must be at the property at the scheduled pickup time to hand over the luggage.",
+          en: "",
+        },
+        {
+          icon: "luggage",
+          title: "Have your bags ready",
+          ja: "Have all of your luggage packed and ready for handover before the driver arrives.",
+          en: "",
+        },
+        {
+          icon: "delivery-truck",
+          title: "Hand to the driver",
+          ja: "Hand all luggage directly to the driver. The driver brings the labels — no labels and no payment needed from you.",
+          en: "",
+        },
+      ]
+    : [
+        {
+          icon: "luggage",
+          title: "お荷物をお預かり",
+          ja: ctx.isGroup ? "添乗員様（代表者様）が団体のお荷物をお持ち込みされます。" : "お客様がチェックアウト時にお荷物をお持ち込みされます。",
+          en: ctx.isGroup ? "Receive the luggage from the tour leader." : "Receive the luggage from the guest at check-out.",
+        },
+        {
+          icon: "clipboard-check",
+          title: "個数をご確認のうえ\n集荷まで保管",
+          ja: ctx.hasManifest ? "団体お荷物リスト（別紙）でご照合ください。" : "ご予約名と個数を控え、他のお荷物と区別して保管してください。",
+          en: "Check the number of bags and keep them until collection.",
+        },
+        {
+          icon: "delivery-truck",
+          title: "ドライバーへ引き渡し",
+          ja: "集荷ドライバーが送り状を持参し、貼付して集荷します。ドライバーへご予約名と個数をお伝えください。",
+          en: "The driver will bring and attach the shipping labels. Please hand the luggage to the driver.",
+        },
+      ]
   const fromEnUpper = ctx.fromHotelEn ? ctx.fromHotelEn.toUpperCase() : ""
   return (
     <Page size="A4" style={s.page} wrap={false}>
@@ -597,8 +661,8 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         right={
           <>
             <View style={s.hsTag}>
-              <Text style={s.hsTagEn}>FOR HOTEL STAFF</Text>
-              <Text style={s.hsTagJa}>{h.jb("ホテルご担当者様用")}</Text>
+              <Text style={s.hsTagEn}>{res ? "FOR GUEST" : "FOR HOTEL STAFF"}</Text>
+              <Text style={s.hsTagJa}>{res ? "VACATION RENTAL" : h.jb("ホテルご担当者様用")}</Text>
             </View>
             <RefBlock ctx={ctx} />
           </>
@@ -607,9 +671,9 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
 
       <View style={s.band}>
         <View style={{ flex: 1, justifyContent: "center", paddingRight: mm(2) }}>
-          <Text style={s.bandKicker}>{h.jb("FROM  /  発送元ホテル")}</Text>
-          <Text style={[s.bandUseIn, { fontSize: ctx.fromHotelJa.length > 26 ? 12 : ctx.fromHotelJa.length > 18 ? 14 : 17, marginTop: mm(1), lineHeight: 1.15 }, clamp(2)]}>{h.jb(ctx.fromHotelJa)}</Text>
-          <Text style={[s.bandDate, { marginTop: mm(1) }, clamp(1)]}>{h.jb(fromEnUpper && fromEnUpper.length <= 28 ? `ご担当者様へ  /  FOR ${fromEnUpper} STAFF` : "ご担当者様へ  /  DEAR FRONT DESK STAFF")}</Text>
+          <Text style={s.bandKicker}>{h.jb(res ? "FROM  /  PICKUP (VACATION RENTAL)" : "FROM  /  発送元ホテル")}</Text>
+          <Text style={[s.bandUseIn, { fontSize: (ctx.fromHotelEn || ctx.fromHotelJa).length > 26 ? 12 : (ctx.fromHotelEn || ctx.fromHotelJa).length > 18 ? 14 : 17, marginTop: mm(1), lineHeight: 1.15 }, clamp(2)]}>{h.jb(res ? (ctx.fromHotelEn || ctx.fromHotelJa) : ctx.fromHotelJa)}</Text>
+          <Text style={[s.bandDate, { marginTop: mm(1) }, clamp(1)]}>{h.jb(res ? "DEAR GUEST" : (fromEnUpper && fromEnUpper.length <= 28 ? `ご担当者様へ  /  FOR ${fromEnUpper} STAFF` : "ご担当者様へ  /  DEAR FRONT DESK STAFF"))}</Text>
         </View>
         <View style={s.bandDivider} />
         <View style={{ justifyContent: "center", width: mm(58) }}>
@@ -619,45 +683,55 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         </View>
       </View>
 
-      <Text style={[s.hsTitle, clamp(1)]}>{h.jb("お荷物のお預かりをお願いいたします")}</Text>
-      <Text style={s.hsTitleEn}>PLEASE KEEP THE LUGGAGE UNTIL COLLECTION</Text>
+      <Text style={[s.hsTitle, clamp(1)]}>{h.jb(res ? "PICKUP INSTRUCTIONS" : "お荷物のお預かりをお願いいたします")}</Text>
+      <Text style={s.hsTitleEn}>{res ? "There is no front desk — you (the guest) hand the luggage to the driver." : "PLEASE KEEP THE LUGGAGE UNTIL COLLECTION"}</Text>
       <Text style={s.hsGreetJa}>
-        {h.jb("平素より大変お世話になっております。ご宿泊のお客様のお荷物を、\n次のご宿泊先へ配送いたします。下記のとおりご対応くださいますようお願い申し上げます。")}
+        {res
+          ? "This is a vacation rental / Airbnb. There is no reception or front desk, and the host does not handle this —\nplease be present yourself at the scheduled pickup time."
+          : h.jb("平素より大変お世話になっております。ご宿泊のお客様のお荷物を、\n次のご宿泊先へ配送いたします。下記のとおりご対応くださいますようお願い申し上げます。")}
       </Text>
-      <Text style={s.hsGreetEn}>Thank you for your continued support. We will be delivering our guest&apos;s luggage to the next hotel.{"\n"}Please follow the instructions below.</Text>
+      <Text style={s.hsGreetEn}>{res
+        ? "Hand your luggage directly to the driver at pickup. No shipping labels and no payment are needed. If anything is unclear, contact BondEx."
+        : "Thank you for your continued support. We will be delivering our guest's luggage to the next hotel.\nPlease follow the instructions below."}</Text>
 
       {/* 要点 4 項目 */}
       <View style={s.hsPanel}>
         <View style={[s.hsCell, { borderLeftWidth: 0 }]}>
           <VIcon name="calendar" size={mm(8)} />
-          <Text style={s.hsK}>{h.jb("お預かり日 / DATE")}</Text>
-          <Text style={s.hsV}>{h.jb(h.formatJpDate(ctx.shipmentDate))}</Text>
-          <Text style={s.hsS}>{`${h.formatEnDate(ctx.shipmentDate)} ${h.dowLabel(ctx.shipmentDate)}`}</Text>
+          <Text style={s.hsK}>{h.jb(res ? "PICKUP" : "お預かり日 / DATE")}</Text>
+          <Text style={s.hsV}>{h.jb(res ? `${h.formatEnDate(ctx.shipmentDate)} ${h.dowLabel(ctx.shipmentDate)}` : h.formatJpDate(ctx.shipmentDate))}</Text>
+          {res
+            ? (ctx.pickupTimeText ? <Text style={[s.hsS, { color: RED, fontWeight: 700 }]}>{h.jb(ctx.pickupTimeText)}</Text> : null)
+            : (
+              <>
+                <Text style={s.hsS}>{`${h.formatEnDate(ctx.shipmentDate)} ${h.dowLabel(ctx.shipmentDate)}`}</Text>
+              </>
+            )}
         </View>
         <View style={s.hsCell}>
           <VIcon name={ctx.isGroup ? "group" : "person"} size={mm(8)} />
-          <Text style={s.hsK}>{h.jb("ご予約名 / GUEST")}</Text>
+          <Text style={s.hsK}>{h.jb(res ? "GUEST" : "ご予約名 / GUEST")}</Text>
           <Text style={[s.hsV, ctx.guestName.length > 28 ? { fontSize: 8.5, lineHeight: 1.2 } : ctx.guestName.length > 16 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(ctx.guestName)}</Text>
           {ctx.groupLine ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.groupLine)}</Text> : null}
         </View>
         <View style={s.hsCell}>
           <VIcon name="luggage-solid" size={mm(8)} />
-          <Text style={s.hsK}>{h.jb("お荷物の個数 / BAGS")}</Text>
-          <Text style={s.hsV}>{h.jb(`${ctx.bagCount} 個`)}</Text>
-          <Text style={s.hsS}>{`Total ${ctx.totalBags} bag${ctx.totalBags === 1 ? "" : "s"}`}</Text>
+          <Text style={s.hsK}>{h.jb(res ? "BAGS" : "お荷物の個数 / BAGS")}</Text>
+          <Text style={s.hsV}>{h.jb(res ? `${ctx.bagCount} bags` : `${ctx.bagCount} 個`)}</Text>
+          {res ? null : <Text style={s.hsS}>{`Total ${ctx.totalBags} bag${ctx.totalBags === 1 ? "" : "s"}`}</Text>}
         </View>
         <View style={s.hsCell}>
           <VIcon name="location-pin" size={mm(8)} />
-          <Text style={s.hsK}>{h.jb("お届け先 / TO")}</Text>
-          <Text style={[s.hsV, ctx.toHotelJa.length > 24 ? { fontSize: 8.5, lineHeight: 1.2 } : ctx.toHotelJa.length > 14 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(ctx.toHotelJa)}</Text>
-          {ctx.toHotelEn ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.toHotelEn)}</Text> : null}
-          {ctx.toAddress ? <Text style={[s.hsS, { fontSize: 6.8 }, clamp(1)]}>{h.jb(ctx.toAddress)}</Text> : null}
+          <Text style={s.hsK}>{h.jb(res ? "DELIVER TO" : "お届け先 / TO")}</Text>
+          <Text style={[s.hsV, (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 24 ? { fontSize: 8.5, lineHeight: 1.2 } : (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 14 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa)}</Text>
+          {!res && ctx.toHotelEn ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.toHotelEn)}</Text> : null}
+          {ctx.toAddress ? <Text style={[s.hsS, { fontSize: res ? 6.2 : 6.8 }, clamp(res ? 3 : 2)]}>{h.jb(ctx.toAddress)}</Text> : null}
         </View>
       </View>
 
       {/* ご対応の流れ */}
       <View style={s.todoTab}>
-        <Text style={s.todoTabText}>{h.jb("ご対応の流れ  /  WHAT TO DO")}</Text>
+        <Text style={s.todoTabText}>{h.jb(res ? "WHAT TO DO" : "ご対応の流れ  /  WHAT TO DO")}</Text>
       </View>
       <View style={s.todoPanel}>
         {steps.map((st, i) => (
@@ -676,7 +750,7 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
               </View>
               <Text style={[s.stepTitle, clamp(2)]}>{h.jb(st.title)}</Text>
               <Text style={[s.stepJa, clamp(4)]}>{h.jb(st.ja)}</Text>
-              <Text style={[s.stepEn, clamp(3)]}>{st.en}</Text>
+              {st.en ? <Text style={[s.stepEn, clamp(3)]}>{st.en}</Text> : null}
             </View>
           </React.Fragment>
         ))}
@@ -688,22 +762,37 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
       {/* 送り状不要・料金徴収不要 */}
       <View style={[s.noteBox, { height: mm(22) }]}>
         <VIcon name="no-label" size={mm(15)} style={{ marginRight: mm(5) }} />
-        <View style={{ flex: 1 }}>
-          <Text style={s.noteRed}>{h.jb("送り状のご用意・お荷物への取付けは不要です。")}</Text>
-          <Text style={s.noteEn}>No shipping labels are needed.</Text>
-          <Text style={[s.noteRed, { marginTop: mm(2) }]}>{h.jb("お客様からの料金徴収は不要です。")}</Text>
-          <Text style={s.noteEn}>No payment is required from the guests.</Text>
-        </View>
+        {res ? (
+          <View style={{ flex: 1 }}>
+            <Text style={s.noteRed}>No shipping labels needed — the driver brings and attaches them.</Text>
+            <Text style={[s.noteRed, { marginTop: mm(2) }]}>No payment required — do not pay the driver.</Text>
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <Text style={s.noteRed}>{h.jb("送り状のご用意・お荷物への取付けは不要です。")}</Text>
+            <Text style={s.noteEn}>No shipping labels are needed.</Text>
+            <Text style={[s.noteRed, { marginTop: mm(2) }]}>{h.jb("お客様からの料金徴収は不要です。")}</Text>
+            <Text style={s.noteEn}>No payment is required from the guests.</Text>
+          </View>
+        )}
       </View>
 
-      {/* 到着先ホテルへの電話は不要 */}
+      {/* 到着先の案内: ホテル=電話不要 / 民泊=配達時間帯に現地でお受け取り */}
       <View style={[s.noteBox, { height: mm(18) }]}>
         <VIcon name="info" size={mm(9)} style={{ marginRight: mm(4) }} />
-        <View style={{ flex: 1 }}>
-          <Text style={s.noteInk}>{h.jb("到着先ホテル様へのお電話は不要です。")}</Text>
-          <Text style={[s.noteEn, { color: INK, fontSize: 8.5 }]}>{h.jb("BondExより連絡済み・お受け入れ確認済みです。")}</Text>
-          <Text style={s.noteEn}>No need to contact the destination hotel. BondEx has already informed them.</Text>
-        </View>
+        {ctx.toIsResidence ? (
+          <View style={{ flex: 1 }}>
+            <Text style={s.noteInk}>{`DELIVERY (${ctx.toArea.en})${ctx.deliveryWindowText ? ` · ${ctx.deliveryWindowText}` : ""}`}</Text>
+            <Text style={[s.noteEn, { color: INK, fontSize: 8.5 }]}>You (the guest) must be at the property to receive the luggage directly from the driver.</Text>
+            <Text style={s.noteEn}>Please be present during the delivery window — there is no front desk to hold your bags.</Text>
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <Text style={s.noteInk}>{h.jb("到着先ホテル様へのお電話は不要です。")}</Text>
+            <Text style={[s.noteEn, { color: INK, fontSize: 8.5 }]}>{h.jb("BondExより連絡済み・お受け入れ確認済みです。")}</Text>
+            <Text style={s.noteEn}>No need to contact the destination hotel. BondEx has already informed them.</Text>
+          </View>
+        )}
       </View>
 
       {/* フッター連絡先 */}
@@ -740,16 +829,25 @@ export function HowToSendPage({
   logoPath,
   supportQrDataUri,
   supportQrKind,
+  rental = false,
 }: {
   logoPath: string
   supportQrDataUri?: string
   supportQrKind?: "whatsapp" | "email"
+  /** 民泊/バケーションレンタル(Airbnb 等)向け。フロント前提を避け「ドライバーへ直接受け渡し」に切替える。 */
+  rental?: boolean
 }) {
-  const steps: Array<{ no: string; title: string; icon: VoucherIconName; cap: string }> = [
-    { no: "01", title: "CHECK\nYOUR VOUCHER", icon: "voucher", cap: "Check the hotel and drop-off date on your voucher." },
-    { no: "02", title: "LEAVE IT AT\nRECEPTION", icon: "reception", cap: "Leave your luggage at the hotel reception by check-out." },
-    { no: "03", title: "THAT'S IT.", icon: "delivery", cap: "Your luggage will be delivered to the next hotel on your voucher." },
-  ]
+  const steps: Array<{ no: string; title: string; icon: VoucherIconName; cap: string }> = rental
+    ? [
+        { no: "01", title: "CHECK\nYOUR VOUCHER", icon: "voucher", cap: "Check the property and pickup date & time on your voucher." },
+        { no: "02", title: "HAND IT TO\nTHE DRIVER", icon: "delivery", cap: "Hand your luggage directly to the driver at the scheduled pickup time." },
+        { no: "03", title: "THAT'S IT.", icon: "delivery", cap: "Your luggage will be delivered to your next property. Please be there to receive it within the delivery window." },
+      ]
+    : [
+        { no: "01", title: "CHECK\nYOUR VOUCHER", icon: "voucher", cap: "Check the hotel and drop-off date on your voucher." },
+        { no: "02", title: "LEAVE IT AT\nRECEPTION", icon: "reception", cap: "Leave your luggage at the hotel reception by check-out." },
+        { no: "03", title: "THAT'S IT.", icon: "delivery", cap: "Your luggage will be delivered to the next hotel on your voucher." },
+      ]
   const banned: Array<{ icon: VoucherIconName; label: string }> = [
     { icon: "passport", label: "PASSPORT / ID" },
     { icon: "cash-card", label: "CASH / CARDS" },
@@ -773,13 +871,19 @@ export function HowToSendPage({
       <View style={[s.row, { marginTop: mm(8), alignItems: "center" }]}>
         <View style={{ flex: 1 }}>
           <Text style={s.htTitle}>HOW TO SEND{"\n"}YOUR LUGGAGE</Text>
-          <Text style={s.htSubRed}>Just leave your luggage at the hotel reception.</Text>
-          <Text style={s.htSub}>We&apos;ll deliver it to your next hotel.</Text>
+          <Text style={s.htSubRed}>
+            {rental
+              ? "Please hand your luggage directly to the driver at the scheduled pickup time."
+              : "Just leave your luggage at the hotel reception."}
+          </Text>
+          <Text style={s.htSub}>
+            {rental ? "We'll deliver it to your next property." : "We'll deliver it to your next hotel."}
+          </Text>
         </View>
         <View style={s.circle}>
           <Text style={s.circleText}>NO FORMS{"\n"}NO LABELS{"\n"}NO PAYMENT</Text>
           <View style={{ width: mm(30), height: mm(0.3), backgroundColor: "#9a9aa0", marginTop: mm(2.5) }} />
-          <Text style={s.circleSub}>AT HOTEL</Text>
+          <Text style={s.circleSub}>{rental ? "TO DRIVER" : "AT HOTEL"}</Text>
         </View>
       </View>
 

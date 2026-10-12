@@ -31,6 +31,7 @@ import HotelChangeModal, { type HotelChangeTarget } from "@/components/operator/
 import CorrectionModal, { type CorrectionTarget } from "@/components/operator/CorrectionModal"
 import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
 import { hotelDisplay } from "@/lib/hotel-name"
+import { residenceOneLine } from "@/lib/residence"
 
 type CountChange = {
   at: string
@@ -63,10 +64,12 @@ type Row = {
   from_prefecture: string | null
   from_hotel_ja: string | null
   from_hotel: string
+  from_residence: unknown
   from_place_id: string | null
   to_prefecture: string | null
   to_hotel_ja: string | null
   to_hotel: string
+  to_residence: unknown
   to_place_id: string | null
   change_deadline_at: string | null
   suitcase_count: number
@@ -607,8 +610,8 @@ export default function OperatorBookingDetailPage() {
                 <h2 className="text-sm font-semibold text-foreground">
                   LEG {r.leg_index + 1} / {rows.length}
                   <span className="ml-3 font-normal text-muted-foreground">
-                    {r.from_prefecture || ""} {hotelDisplay(r.from_hotel_ja, r.from_hotel, !!agencyOverseas[r.agency]).primary} →{" "}
-                    {r.to_prefecture || ""} {hotelDisplay(r.to_hotel_ja, r.to_hotel, !!agencyOverseas[r.agency]).primary}
+                    {residenceOneLine(r.from_residence) || `${r.from_prefecture || ""} ${hotelDisplay(r.from_hotel_ja, r.from_hotel, !!agencyOverseas[r.agency]).primary}`} →{" "}
+                    {residenceOneLine(r.to_residence) || `${r.to_prefecture || ""} ${hotelDisplay(r.to_hotel_ja, r.to_hotel, !!agencyOverseas[r.agency]).primary}`}
                   </span>
                 </h2>
                 <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${st.cls}`}>

@@ -5,6 +5,7 @@ import { listHotelContactDue, countBoardViews } from "@/lib/shipments-db"
 import { parseHotelContactInfo } from "@/lib/hotel-contact-info"
 import { lookupHotelHistory } from "@/lib/hotel-history"
 import { HOTEL_ROUTE_LABEL } from "@/lib/hotel-notification"
+import { endpointLabel } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -144,7 +145,7 @@ export async function GET(req: NextRequest) {
   if (sb) {
     const { data: pk } = await sb
       .from("shipments")
-      .select("id, booking_id, leg_index, representative, tour_number, from_hotel, from_hotel_ja, shipment_date")
+      .select("id, booking_id, leg_index, representative, tour_number, from_hotel, from_residence, from_hotel_ja, shipment_date")
       .eq("status", "issued")
       .is("pickup_requested_at", null)
       .gte("shipment_date", today)
@@ -156,7 +157,8 @@ export async function GET(req: NextRequest) {
       legIndex: r.leg_index as number,
       representative: (r.representative as string) ?? "",
       tourNumber: (r.tour_number as string | null) ?? null,
-      fromHotel: (r.from_hotel as string) ?? "",
+      // 個人宅（民泊）区間は from_hotel に氏名が入るため、集荷先として住所を表示する。
+      fromHotel: endpointLabel(r.from_hotel, r.from_residence),
       fromHotelJa: (r.from_hotel_ja as string | null) ?? null,
       shipmentDate: r.shipment_date as string,
       urgency: (r.shipment_date as string) <= today ? "overdue" : "due",

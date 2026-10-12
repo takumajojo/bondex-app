@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
+import { endpointLabel } from "@/lib/residence"
 
 export const runtime = "nodejs"
 
@@ -34,7 +35,7 @@ export async function GET(
   const { data, error } = await sb
     .from("shipments")
     .select(
-      "booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, recipient, status, tracking_numbers, tracking_detail, guest_language, carrier, created_at, updated_at",
+      "booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, from_residence, to_residence, recipient, status, tracking_numbers, tracking_detail, guest_language, carrier, created_at, updated_at",
     )
     .eq("booking_id", trimmed)
     .order("leg_index", { ascending: true })
@@ -95,8 +96,8 @@ export async function GET(
         legIndex: s.leg_index,
         shipmentDate: s.shipment_date,
         expectedArrival: s.expected_arrival,
-        fromHotel: s.from_hotel,
-        toHotel: s.to_hotel,
+        fromHotel: endpointLabel(s.from_hotel, s.from_residence),
+        toHotel: endpointLabel(s.to_hotel, s.to_residence),
         recipient: anonymize(s.recipient || ""),
         status: s.status,
         tracking,

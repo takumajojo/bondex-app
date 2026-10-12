@@ -11,7 +11,7 @@ import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { ALL_TIME_SLOTS } from "@/lib/carrier"
-import { cleanResidence, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
+import { cleanResidence, endpointLabel, residenceError, RESIDENCE_FIELD_LABELS_JA, type ResidenceAddress } from "@/lib/residence"
 import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
@@ -56,6 +56,7 @@ interface LegInput {
   originCheckIn: string
   toCheckOut: string
   deliveryTime: string
+  pickupTime: string
   recipient: string
   suitcaseCount: number
   itemType: string
@@ -114,6 +115,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
   }
   const rawDelivery = s(o.deliveryTime)
   const deliveryTime = DELIVERY_SLOT_SET.has(rawDelivery) ? rawDelivery : ""
+  const pickupTime = s(o.pickupTime).slice(0, 40)
   const fromCheckIn = DATE_RE.test(s(o.fromCheckIn)) ? s(o.fromCheckIn) : ""
   const originCheckIn = DATE_RE.test(s(o.originCheckIn)) ? s(o.originCheckIn) : ""
   const toCheckOut = DATE_RE.test(s(o.toCheckOut)) ? s(o.toCheckOut) : ""
@@ -136,6 +138,7 @@ function parseLeg(raw: unknown): LegInput | { error: string } {
     originCheckIn,
     toCheckOut,
     deliveryTime,
+    pickupTime,
     recipient,
     suitcaseCount,
     itemType,
@@ -402,6 +405,7 @@ export async function POST(req: NextRequest) {
       origin_check_in: leg.originCheckIn || null,
       to_check_out: leg.toCheckOut || null,
       delivery_time: leg.deliveryTime || null,
+      pickup_time: leg.pickupTime || null,
       from_hotel: leg.fromHotel,
       from_city: leg.fromCity || null,
       from_prefecture: leg.fromPrefecture || null,
@@ -517,6 +521,7 @@ export async function POST(req: NextRequest) {
           legIndex: i,
           carrier: "sagawa",
           shipmentDate: leg.shipmentDate,
+          pickupTime: leg.pickupTime || "",
           deliveryDate: leg.expectedArrival,
           deliveryTime: leg.deliveryTime || "before-noon",
           suitcaseCount: leg.suitcaseCount,
@@ -617,7 +622,7 @@ export async function POST(req: NextRequest) {
       legCount: legs.length,
       locale,
       waybillNotNeeded: true,
-      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: l.fromHotel, toHotel: l.toHotel, suitcaseCount: l.suitcaseCount })),
+      legs: legs.map((l, i) => ({ legIndex: i, shipmentDate: l.shipmentDate, expectedArrival: l.expectedArrival, fromHotel: endpointLabel(l.fromHotel, l.fromResidence), toHotel: endpointLabel(l.toHotel, l.toResidence), suitcaseCount: l.suitcaseCount })),
     }, attachments)
     noticeEmailSent = mail.sent
   } else if (needsLabelWait) {

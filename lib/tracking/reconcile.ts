@@ -13,6 +13,7 @@ import type { ShipmentStatus } from "@/lib/shipments-db"
 import { getTrackingProvider } from "@/lib/tracking"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
+import { endpointLabel } from "@/lib/residence"
 import { notifyBondEx } from "@/lib/notify"
 import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { sendOpsAlert } from "@/lib/ops-alert"
@@ -51,7 +52,7 @@ export async function reconcileTrackingNow(
     const { data: row, error } = await sb
       .from("shipments")
       .select(
-        "id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, tour_number, shipment_date, tracking_numbers, tracking_detail",
+        "id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail",
       )
       .eq("id", shipmentId)
       .maybeSingle()
@@ -178,7 +179,7 @@ export async function reconcileTrackingNow(
       await notifyBondEx({
         kind: "delivery",
         title: `${legRef}（${row.agency}）`,
-        lines: [`お届け先: ${row.to_hotel ?? ""}`, `代表者: ${row.representative ?? ""}`, `（番号入力時の即時照会で確定）`],
+        lines: [`お届け先: ${endpointLabel(row.to_hotel, row.to_residence)}`, `代表者: ${row.representative ?? ""}`, `（番号入力時の即時照会で確定）`],
         link: `/track/${row.booking_id}`,
         linkLabel: "追跡ページで確認",
       }).catch(() => {})
@@ -218,7 +219,7 @@ export async function reconcileTrackingNow(
       await notifyBondEx({
         kind: "pickup",
         title: `${legRef}（${row.agency}）`,
-        lines: [`集荷元: ${row.from_hotel ?? ""}`, `お届け先: ${row.to_hotel ?? ""}`, `代表者: ${row.representative ?? ""}`, `（番号入力時の即時照会で確定）`],
+        lines: [`集荷元: ${endpointLabel(row.from_hotel, row.from_residence)}`, `お届け先: ${endpointLabel(row.to_hotel, row.to_residence)}`, `代表者: ${row.representative ?? ""}`, `（番号入力時の即時照会で確定）`],
         link: `/track/${row.booking_id}`,
         linkLabel: "追跡ページで確認",
       }).catch(() => {})

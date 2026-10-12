@@ -179,6 +179,23 @@ export interface VoucherShipmentLocation {
   hotel: string
   address: string
   city: string
+  /**
+   * 個人宅・民泊・バケーションレンタル（Airbnb 等／ホテルでない宿泊）か。
+   * true のとき hotel には宿泊者の氏名が入り得るため、バウチャー表示では
+   * 氏名は出さず「物件名（あれば）＋住所」を場所として表示し、フロント前提の
+   * 文言（reception / front desk / check-out 等）を使わず「ドライバーへ直接受け渡し」運用にする。
+   */
+  isResidence?: boolean
+  /** 物件名（日本語, 例: 京都駅ゲストハウス道 #102）。民泊/バケーションレンタルの施設名。 */
+  propertyName?: string
+  /** 物件名（英語, 例: Kyoto Station Guesthouse Michi #102）。お客様向けに優先表示。 */
+  propertyNameEn?: string
+  /**
+   * 日本語住所（地名解決用のヒント）。民泊で address を英語にすると voucher-area の
+   * 地名判定（箱根町→HAKONE 等）が効かなくなるため、別途日本語住所を渡して地名解決に使う。
+   * 表示には使わない（表示は address）。
+   */
+  addressJa?: string
 }
 
 export interface VoucherShipment {
@@ -189,6 +206,10 @@ export interface VoucherShipment {
   recipient: string
   suitcaseCount: number
   dropOffTime?: string
+  /** 集荷時刻（任意・自由テキスト, 例 "9:30 AM"）。主に民泊/バケーションレンタルで表示。 */
+  pickupTime?: string
+  /** 配達時間帯スロット（DELIVERY_TIME_SLOTS の値, 例 "18-20"）。民泊では時間帯を明示表示。 */
+  deliveryTime?: string
   pickUpNote?: string
   specialNote?: string
   /** 申し送りの掲載先: "from"=発送元のみ / "to"=お届け先のみ (既定) / "both"=両方。 */
@@ -870,6 +891,67 @@ const GUEST_L10N = {
 } as const
 
 // ---------------------------------------------------------------------------
+// 民泊 / バケーションレンタル (Airbnb 等) 向け文言。
+// ホテルのフロント前提の文言 (reception / front desk / check-out / check-in) を使わず、
+// 「ドライバーへ直接受け渡し」運用に合わせる。英語は全ゲスト言語共通で使用し、
+// 日本語は常に併記 (配送現場・ホスト対応のため)。公開連絡先は BondEx に統一。
+// ---------------------------------------------------------------------------
+const RENTAL_WORDING = {
+  pickupTab: "PICKUP",
+  deliveryTab: "DELIVERY",
+  pickupTabJa: "集荷",
+  deliveryTabJa: "お届け",
+  dropMainEn: "Direct handover to driver",
+  dropNoteEn: "Please be present at the property at the scheduled pickup time.",
+  dropJa: "ドライバーへ直接お渡しください。指定の集荷時間には宿泊者またはホストの方が現地でご対応ください。",
+  pickMainEn: "Direct delivery from driver",
+  pickNoteEn: "Please ensure someone is present to receive the luggage.",
+  pickJa: "ドライバーから直接お受け取りください。指定の配達時間帯には宿泊者またはホストの方が必ず現地でお受け取りください。",
+} as const
+
+/**
+ * 区間の片側の短い場所ラベル。ホテルはホテル名、民泊/バケーションレンタルは
+ * 物件名(英→日)→無ければ住所。氏名は出さない。ルート一覧・付録の要約表示用。
+ */
+function locShortLabel(loc: VoucherShipmentLocation): string {
+  if (loc.isResidence) return (loc.propertyNameEn || loc.propertyName || loc.address || "").trim()
+  return (loc.hotel || "").trim()
+}
+
+/** 24h の時刻を 12h 表記 (AM/PM) に。6 → "6:00 AM", 18 → "6:00 PM"。 */
+function to12h(h: number): string {
+  const ap = h < 12 ? "AM" : "PM"
+  let hh = h % 12
+  if (hh === 0) hh = 12
+  return `${hh}:00 ${ap}`
+}
+
+/**
+ * 配達時間帯スロット (DELIVERY_TIME_SLOTS の値) を人が読む窓に整形。
+ *   "18-20" → en "6:00 PM – 8:00 PM" / ja "18:00〜20:00"
+ *   "before-noon" → en "By noon" / ja "午前中"
+ * 未指定・不明は空文字。
+ */
+function formatDeliveryWindow(slot: string | undefined, lang: "ja" | "en"): string {
+  const s = (slot || "").trim()
+  if (!s || s === "not-specified") return ""
+  const named: Record<string, { en: string; ja: string }> = {
+    "before-noon": { en: "By noon", ja: "午前中" },
+    "before-ten": { en: "By 10:00 AM", ja: "10:00まで" },
+    "before-five": { en: "By 5:00 PM", ja: "17:00まで" },
+  }
+  if (named[s]) return lang === "ja" ? named[s].ja : named[s].en
+  const m = s.match(/^(\d{1,2})-(\d{1,2})$/)
+  if (m) {
+    const a = Number(m[1])
+    const b = Number(m[2])
+    if (lang === "ja") return `${a}:00〜${b}:00`
+    return `${to12h(a)} – ${to12h(b)}`
+  }
+  return s
+}
+
+// ---------------------------------------------------------------------------
 // Page 1 — GUEST COPY (guest language primary / JP secondary)
 // ---------------------------------------------------------------------------
 
@@ -984,6 +1066,35 @@ function VoucherPage({
   const hasManifest = (data.groupLuggage?.length ?? 0) > 0
   const dropWhenEn = L.dropWhen(shipment.dropOffTime?.trim() ? safeText(shipment.dropOffTime) : undefined)
   const pickWhenEn = L.pickWhen(shipment.pickUpNote?.trim() ? safeText(shipment.pickUpNote) : undefined)
+
+  // ── 宿泊施設タイプ (民泊/バケーションレンタル = residence) 別の表示値 ─────────
+  // residence のとき hotel 欄には氏名が入り得るため、氏名は使わず
+  // 「物件名(あれば英→日)＋住所」を場所として表示する。物件名が無ければ住所のみ。
+  const fromIsRes = !!shipment.from.isResidence
+  const toIsRes = !!shipment.to.isResidence
+  const fromPropEn = shipment.from.propertyNameEn?.trim() || ""
+  const fromPropJa = shipment.from.propertyName?.trim() || ""
+  const toPropEn = shipment.to.propertyNameEn?.trim() || ""
+  const toPropJa = shipment.to.propertyName?.trim() || ""
+  const fromAddr = safeText(shipment.from.address)
+  const toAddr = safeText(shipment.to.address)
+  const fromCardMain = fromIsRes ? jb(fromPropEn || fromPropJa || fromAddr) : fromHotelGuest
+  const toCardMain = toIsRes ? jb(toPropEn || toPropJa || toAddr) : toHotelGuest
+  const fromCardSub = fromIsRes
+    ? (fromPropEn && fromPropJa && fromPropJa !== fromPropEn ? jb(fromPropJa) : "")
+    : (fromHotelGuestJa ? jb(fromHotelGuestJa) : "")
+  const toCardSub = toIsRes
+    ? (toPropEn && toPropJa && toPropJa !== toPropEn ? jb(toPropJa) : "")
+    : (toHotelGuestJa ? jb(toHotelGuestJa) : "")
+  const fromCardAddr = fromIsRes
+    ? ((fromPropEn || fromPropJa) ? jb(fromAddr) : "")
+    : (shipment.from.address ? jb(shipment.from.address) : "")
+  const toCardAddr = toIsRes
+    ? ((toPropEn || toPropJa) ? jb(toAddr) : "")
+    : (shipment.to.address ? jb(shipment.to.address) : "")
+  // 時刻は民泊/バケーションレンタルのときに明示 (ホテルは従来どおり「チェックアウトまで」等)。
+  const pickupTimeStr = fromIsRes ? safeText(shipment.pickupTime).trim() : ""
+  const deliveryWindowStr = toIsRes ? formatDeliveryWindow(shipment.deliveryTime, "en") : ""
 
   const contactCell = (() => {
     switch (contactMode) {
@@ -1139,22 +1250,39 @@ function VoucherPage({
 
         {/* journey */}
         <View style={vs.journey}>
-          {/* DROP-OFF */}
+          {/* DROP-OFF (ホテル=お預け / 民泊=集荷) */}
           <View style={vs.legCard}>
             <Text style={[vs.legTab, { backgroundColor: RED }]}>
-              {`1 HAND OVER${shipment.from.city ? ` · ${shipment.from.city}` : ""} / お預け`}
+              {fromIsRes
+                ? `1 ${RENTAL_WORDING.pickupTab}${shipment.from.city ? ` · ${shipment.from.city}` : ""} / ${RENTAL_WORDING.pickupTabJa}`
+                : `1 HAND OVER${shipment.from.city ? ` · ${shipment.from.city}` : ""} / お預け`}
             </Text>
             <View style={vs.legDateRow}>
               <Text style={vs.legDay}>{dayOfMonth(shipment.shipmentDate)}</Text>
               <Text style={vs.legMy}>{monthYear(shipment.shipmentDate)}</Text>
               <Text style={vs.legDow}>{dowLabel(shipment.shipmentDate)}</Text>
             </View>
-            <Text style={vs.legHotelEn}>{fromHotelGuest}</Text>
-            {fromHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(fromHotelGuestJa)}</Text> : null}
-            {shipment.from.address ? <Text style={vs.legHotelSub}>{jb(shipment.from.address)}</Text> : null}
+            {pickupTimeStr ? (
+              <Text style={[vs.legWhenEn, zf, { fontWeight: 700, color: RED, marginTop: mm(0.6) }]}>
+                {jb(pickupTimeStr)}
+              </Text>
+            ) : null}
+            <Text style={vs.legHotelEn}>{fromCardMain}</Text>
+            {fromCardSub ? <Text style={vs.legHotelSub}>{fromCardSub}</Text> : null}
+            {fromCardAddr ? <Text style={vs.legHotelSub}>{fromCardAddr}</Text> : null}
             <View style={vs.legWhen}>
-              <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
-              <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
+              {fromIsRes ? (
+                <>
+                  <Text style={[vs.legWhenEn, zf]}>{RENTAL_WORDING.dropMainEn}</Text>
+                  <Text style={vs.legWhenJa}>{RENTAL_WORDING.dropNoteEn}</Text>
+                  <Text style={vs.legWhenJa}>{jb(RENTAL_WORDING.dropJa)}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[vs.legWhenEn, zf]}>{jb(dropWhenEn)}</Text>
+                  <Text style={vs.legWhenJa}>{jb("チェックアウトまでに受付へお預けください")}</Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -1162,22 +1290,39 @@ function VoucherPage({
             <JourneyArrowIcon />
           </View>
 
-          {/* PICK-UP */}
+          {/* PICK-UP (ホテル=お受け取り / 民泊=お届け) */}
           <View style={vs.legCard}>
             <Text style={[vs.legTab, { backgroundColor: INK }]}>
-              {`2 COLLECT${shipment.to.city ? ` · ${shipment.to.city}` : ""} / お受け取り`}
+              {toIsRes
+                ? `2 ${RENTAL_WORDING.deliveryTab}${shipment.to.city ? ` · ${shipment.to.city}` : ""} / ${RENTAL_WORDING.deliveryTabJa}`
+                : `2 COLLECT${shipment.to.city ? ` · ${shipment.to.city}` : ""} / お受け取り`}
             </Text>
             <View style={vs.legDateRow}>
               <Text style={vs.legDay}>{dayOfMonth(shipment.expectedArrival)}</Text>
               <Text style={vs.legMy}>{monthYear(shipment.expectedArrival)}</Text>
               <Text style={vs.legDow}>{dowLabel(shipment.expectedArrival)}</Text>
             </View>
-            <Text style={vs.legHotelEn}>{toHotelGuest}</Text>
-            {toHotelGuestJa ? <Text style={vs.legHotelSub}>{jb(toHotelGuestJa)}</Text> : null}
-            {shipment.to.address ? <Text style={vs.legHotelSub}>{jb(shipment.to.address)}</Text> : null}
+            {deliveryWindowStr ? (
+              <Text style={[vs.legWhenEn, zf, { fontWeight: 700, color: INK, marginTop: mm(0.6) }]}>
+                {jb(deliveryWindowStr)}
+              </Text>
+            ) : null}
+            <Text style={vs.legHotelEn}>{toCardMain}</Text>
+            {toCardSub ? <Text style={vs.legHotelSub}>{toCardSub}</Text> : null}
+            {toCardAddr ? <Text style={vs.legHotelSub}>{toCardAddr}</Text> : null}
             <View style={vs.legWhen}>
-              <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
-              <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
+              {toIsRes ? (
+                <>
+                  <Text style={[vs.legWhenEn, zf]}>{RENTAL_WORDING.pickMainEn}</Text>
+                  <Text style={vs.legWhenJa}>{RENTAL_WORDING.pickNoteEn}</Text>
+                  <Text style={vs.legWhenJa}>{jb(RENTAL_WORDING.pickJa)}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[vs.legWhenEn, zf]}>{jb(pickWhenEn)}</Text>
+                  <Text style={vs.legWhenJa}>{jb("チェックイン時にお受け取りいただけます")}</Text>
+                </>
+              )}
             </View>
           </View>
         </View>
@@ -1229,7 +1374,7 @@ function VoucherPage({
                   <Text
                     style={[vs.rlRoute, { color }, ...(current ? [{ fontWeight: 700 as const }] : [])]}
                   >
-                    {`${jb(s.from.hotel)} → ${jb(s.to.hotel)}`}
+                    {`${jb(locShortLabel(s.from))} → ${jb(locShortLabel(s.to))}`}
                   </Text>
                   {current && <Text style={[vs.rlChip, zf]}>{jb(L.currentChip)}</Text>}
                 </View>
@@ -1284,51 +1429,82 @@ function VoucherPage({
         { main: "チェックイン時にお客様へお渡し", sub: "バウチャー記載のご予約名で照合してください" },
       ]
 
+  // Page 2 の宛先ラベル: 両側ホテル=従来「ホテルご担当者様へ」、両側民泊=「お客様・ホスト様へ」、
+  // 混在=中立表現。民泊側カードはフロント前提を使わず「集荷/お届けのご案内」に切替える (§9)。
+  const staffHeaderJa = (!fromIsRes && !toIsRes)
+    ? "ホテルご担当者様へ　お荷物のお取り扱いのお願い"
+    : (fromIsRes && toIsRes)
+      ? "お客様・ホスト様へ　集荷／お届けのご案内"
+      : "ご担当者様へ　お荷物のお取り扱いのお願い"
+  const staffHeaderEn = (!fromIsRes && !toIsRes)
+    ? "REQUEST TO HOTEL STAFF"
+    : (fromIsRes && toIsRes)
+      ? "PICKUP & DELIVERY INSTRUCTIONS"
+      : "REQUEST TO PROPERTY (HOTEL / HOST)"
+
   const hotelBody = (
     <>
-        {/* guest → hotel-staff 区切り。ホテルへは「依頼」なので挨拶文を添える (谷口さん 2026-08-27) */}
+        {/* guest → 施設/ホスト 区切り。 */}
         <View style={vs.staffDivider}>
           <Text style={vs.sdLabel}>
-            {jb("ホテルご担当者様へ　お荷物のお取り扱いのお願い")}{" "}
-            <Text style={vs.sdLabelEn}>/ REQUEST TO HOTEL STAFF</Text>
+            {jb(staffHeaderJa)}{" "}
+            <Text style={vs.sdLabelEn}>/ {staffHeaderEn}</Text>
           </Text>
         </View>
-        <Text style={vs.staffGreeting}>
-          {jb("平素より大変お世話になっております。お客様のお荷物につきまして、下記のとおりご対応くださいますようお願い申し上げます。何卒よろしくお願い申し上げます。")}
-        </Text>
+        {/* ホテルが絡むときだけ正式な依頼挨拶を出す (民泊のみのときは不要)。 */}
+        {(!fromIsRes || !toIsRes) ? (
+          <Text style={vs.staffGreeting}>
+            {jb("平素より大変お世話になっております。お客様のお荷物につきまして、下記のとおりご対応くださいますようお願い申し上げます。何卒よろしくお願い申し上げます。")}
+          </Text>
+        ) : null}
 
-        {/* ホテル別カード: 1軒 = 1枚。上から「どのホテルか → 何をするか → 予約の照合方法」の順。 */}
         <View style={vs.hotelCols}>
-          {/* ---- 01 発送元ホテル ---- */}
+          {/* ---- 01 発送元 (ホテル or 民泊/バケーションレンタル) ---- */}
           <View style={vs.hotelCard}>
             <Text style={[vs.hcHead, { backgroundColor: RED }]}>
               <Text style={vs.flowColHeadNo}>01  </Text>
-              {jb("発送元ホテル（ご出発ホテル）")}
+              {jb(fromIsRes ? "集荷元（民泊／バケーションレンタル）" : "発送元ホテル（ご出発ホテル）")}
             </Text>
             <View style={vs.hcBody}>
-              <Text style={vs.hcHotel}>{jb(fromHotelJa)}{jb(" 様")}</Text>
+              {fromIsRes ? (
+                <>
+                  <Text style={vs.hcHotel}>{fromCardMain}</Text>
+                  {fromCardAddr ? <Text style={vs.legHotelSub}>{fromCardAddr}</Text> : null}
+                  <Text style={vs.hcSection}>PICKUP INSTRUCTIONS / 集荷時のご案内</Text>
+                  <View style={vs.hcSteps}>
+                    <FlowStep color={RED} num="1" main="Be at the property at the scheduled pickup time." sub="指定の集荷時間に現地でお待ちください。" />
+                    <FlowStep color={RED} num="2" main="Prepare all luggage for handover." sub="すべてのお荷物を集荷できる状態でご準備ください。" />
+                    <FlowStep color={RED} num="3" main="Hand all luggage directly to the driver." sub="ドライバーへ直接お荷物をお渡しください。" />
+                  </View>
+                  <Text style={vs.hdSpecial}>{jb("・送り状のご用意・貼付は不要です / No shipping labels are needed")}</Text>
+                  <Text style={vs.hdSpecial}>{jb("・ドライバーへのお支払いは不要です / No payment is required")}</Text>
+                  <Text style={vs.hdSpecial}>{jb(`・ご不明点・集荷トラブルは BondEx へ / If there is any problem, contact BondEx ${data.supportPhone}`)}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={vs.hcHotel}>{jb(fromHotelJa)}{jb(" 様")}</Text>
 
-              <Text style={vs.hcSection}>ご対応の流れ</Text>
-              {/* 2026-08-27 文字量圧縮: 自明な補足 (2,3の sub) を削除し意味は保持 */}
-              <View style={vs.hcSteps}>
-                {fromSteps.map((st, k) => (
-                  <FlowStep key={k} color={RED} num={String(k + 1)} main={st.main} sub={st.sub} />
-                ))}
-              </View>
+                  <Text style={vs.hcSection}>ご対応の流れ</Text>
+                  <View style={vs.hcSteps}>
+                    {fromSteps.map((st, k) => (
+                      <FlowStep key={k} color={RED} num={String(k + 1)} main={st.main} sub={st.sub} />
+                    ))}
+                  </View>
 
-              <View style={vs.noCallBox}>
-                <NoCallIcon />
-                <View style={vs.ncWords}>
-                  <Text style={vs.ncTitle}>{jb("到着先ホテル様へのお電話は不要です")}</Text>
-                  <Text style={vs.ncSub}>
-                    {jb("BondExより連絡済み・お受け入れ確認済みです。")}
-                  </Text>
-                </View>
-              </View>
+                  <View style={vs.noCallBox}>
+                    <NoCallIcon />
+                    <View style={vs.ncWords}>
+                      <Text style={vs.ncTitle}>{jb("到着先ホテル様へのお電話は不要です")}</Text>
+                      <Text style={vs.ncSub}>
+                        {jb("BondExより連絡済み・お受け入れ確認済みです。")}
+                      </Text>
+                    </View>
+                  </View>
 
-              <Text style={vs.hcSection}>ご予約の照合</Text>
-              {/* 発送元では お客様が対面で荷物+バウチャーを渡すため予約照合日は不要。氏名のみ。 */}
-              <LookupGrid guestName={guestName} />
+                  <Text style={vs.hcSection}>ご予約の照合</Text>
+                  <LookupGrid guestName={guestName} />
+                </>
+              )}
               {/* 申し送り: 掲載先が発送元 or 両方 のとき発送元にも出す */}
               {shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? (
                 <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
@@ -1336,33 +1512,46 @@ function VoucherPage({
             </View>
           </View>
 
-          {/* ---- 02 到着先ホテル ---- */}
+          {/* ---- 02 到着先 (ホテル or 民泊/バケーションレンタル) ---- */}
           <View style={[vs.hotelCard, { marginLeft: mm(3.5) }]}>
             <Text style={[vs.hcHead, { backgroundColor: INK }]}>
               <Text style={vs.flowColHeadNo}>02  </Text>
-              {jb("到着先ホテル（次のご宿泊ホテル）")}
+              {jb(toIsRes ? "お届け先（民泊／バケーションレンタル）" : "到着先ホテル（次のご宿泊ホテル）")}
             </Text>
             <View style={vs.hcBody}>
-              <Text style={vs.hcHotel}>{jb(toHotelJa)}{jb(" 様")}</Text>
+              {toIsRes ? (
+                <>
+                  <Text style={vs.hcHotel}>{toCardMain}</Text>
+                  {toCardAddr ? <Text style={vs.legHotelSub}>{toCardAddr}</Text> : null}
+                  <Text style={vs.hcSection}>DELIVERY INSTRUCTIONS / 配達時のご案内</Text>
+                  <View style={vs.hcSteps}>
+                    <FlowStep color={INK} num="1" main="Someone must be present during the delivery window." sub="指定の配達時間帯に宿泊者またはホストの方が現地でお待ちください。" />
+                    <FlowStep color={INK} num="2" main="Receive all luggage directly from the driver." sub="ドライバーから直接お荷物をお受け取りください。" />
+                    <FlowStep color={INK} num="3" main="Check the bag count against this voucher." sub="本バウチャーの個数をご確認ください。" />
+                  </View>
+                  <Text style={vs.hdSpecial}>{jb(`・ご不明点・不在/住所確認は BondEx へ / Any problem, contact BondEx ${data.supportPhone}`)}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={vs.hcHotel}>{jb(toHotelJa)}{jb(" 様")}</Text>
 
-              <Text style={vs.hcSection}>ご対応の流れ</Text>
-              <View style={vs.hcSteps}>
-                {toSteps.map((st, k) => (
-                  <FlowStep key={k} color={INK} num={String(k + 1)} main={st.main} sub={st.sub} />
-                ))}
-              </View>
+                  <Text style={vs.hcSection}>ご対応の流れ</Text>
+                  <View style={vs.hcSteps}>
+                    {toSteps.map((st, k) => (
+                      <FlowStep key={k} color={INK} num={String(k + 1)} main={st.main} sub={st.sub} />
+                    ))}
+                  </View>
 
-              <Text style={vs.hcSection}>ご予約の照合</Text>
-              {/* 到着(お届け先)ホテルは お客様来訪前に荷物を保管するため「予約名 + チェックイン日」で
-                  照合する。fromCheckIn = お届け先ホテルのチェックイン日 (2026-07 谷口さん指示で
-                  発送元→到着に意味変更・発送日以降の強制は撤廃=早期配達可)。 */}
-              <LookupGrid
-                guestName={guestName}
-                dateEn="CHECK-IN"
-                dateJa="チェックイン日"
-                dateValue={shipment.fromCheckIn}
-                alwaysShowDate
-              />
+                  <Text style={vs.hcSection}>ご予約の照合</Text>
+                  <LookupGrid
+                    guestName={guestName}
+                    dateEn="CHECK-IN"
+                    dateJa="チェックイン日"
+                    dateValue={shipment.fromCheckIn}
+                    alwaysShowDate
+                  />
+                </>
+              )}
               {/* 申し送り: 掲載先が お届け先(既定) or 両方 のとき発送先に出す */}
               {shipment.specialNote && shipment.noteTarget !== "from" ? (
                 <Text style={vs.hdSpecial}>・{jb(shipment.specialNote)}</Text>
@@ -1388,7 +1577,7 @@ function VoucherPage({
     const noteForFrom =
       shipment.specialNote && (shipment.noteTarget === "from" || shipment.noteTarget === "both") ? shipment.specialNote : ""
     const areaOf = (loc: VoucherShipmentLocation, hotelEn?: string): VoucherArea =>
-      voucherAreaOf(loc.address, loc.city, loc.hotel, hotelEn) ?? voucherAreaFallback(loc.city, safeText(loc.hotel), hotelEn)
+      voucherAreaOf(loc.addressJa || loc.address, loc.city, loc.hotel, hotelEn) ?? voucherAreaFallback(loc.city, safeText(loc.hotel), hotelEn)
     const support: V2Ctx["support"] = (() => {
       switch (contactMode) {
         case "hidden":
@@ -1434,12 +1623,14 @@ function VoucherPage({
       companyName: safeText(data.companyName),
       shipmentDate: shipment.shipmentDate,
       expectedArrival: shipment.expectedArrival,
-      fromHotelJa,
-      fromHotelEn: fromEn,
-      fromAddress: safeText(shipment.from.address),
-      toHotelJa,
-      toHotelEn: toEn,
-      toAddress: safeText(shipment.to.address),
+      // 民泊/バケーションレンタルは施設名欄に「物件名(英→日)」を入れ、氏名は出さない。
+      // 物件名が無ければ住所を主表示にする(住所だけ)。ホテルは従来どおりホテル名。
+      fromHotelJa: fromIsRes ? (fromPropEn && fromPropJa && fromPropJa !== fromPropEn ? fromPropJa : "") : fromHotelJa,
+      fromHotelEn: fromIsRes ? ((fromPropEn || fromPropJa) || fromAddr) : fromEn,
+      fromAddress: fromIsRes ? ((fromPropEn || fromPropJa) ? fromAddr : "") : safeText(shipment.from.address),
+      toHotelJa: toIsRes ? (toPropEn && toPropJa && toPropJa !== toPropEn ? toPropJa : "") : toHotelJa,
+      toHotelEn: toIsRes ? ((toPropEn || toPropJa) || toAddr) : toEn,
+      toAddress: toIsRes ? ((toPropEn || toPropJa) ? toAddr : "") : safeText(shipment.to.address),
       fromArea: areaOf(shipment.from, shipment.fromHotelEn),
       toArea: areaOf(shipment.to, shipment.toHotelEn),
       bagCount: shipment.suitcaseCount,
@@ -1447,6 +1638,10 @@ function VoucherPage({
       hasManifest,
       dropWhenEn,
       pickWhenEn,
+      fromIsResidence: fromIsRes,
+      toIsResidence: toIsRes,
+      pickupTimeText: pickupTimeStr,
+      deliveryWindowText: deliveryWindowStr,
       presentText: isGroup ? L.presentGroup : L.present,
       copyTagEn: isGroup ? "TOUR LEADER COPY" : "GUEST COPY",
       copyTagJa: isGroup ? "添乗員様・代表者様 控え" : "お客様控え",
@@ -1519,7 +1714,7 @@ function GroupManifestPage({ data, pageNo = 0, pageCount = 1 }: { data: VoucherI
   const offset = pageNo * MANIFEST_ROWS_PER_PAGE
   const list = all.slice(offset, offset + MANIFEST_ROWS_PER_PAGE)
   const first = data.shipments[0]
-  const route = first ? `${first.from.hotel} → ${first.to.hotel}` : ""
+  const route = first ? `${locShortLabel(first.from)} → ${locShortLabel(first.to)}` : ""
   // 2列に分割 (左=前半・右=後半)
   const mid = Math.ceil(list.length / 2)
   const cols = [list.slice(0, mid), list.slice(mid)]
@@ -1692,6 +1887,9 @@ function GroupManifestPage({ data, pageNo = 0, pageCount = 1 }: { data: VoucherI
 export function VoucherDocument({ data }: { data: VoucherInput }) {
   const totalLegs = data.shipments.length
   const manifestPages = Math.ceil((data.groupLuggage?.length ?? 0) / MANIFEST_ROWS_PER_PAGE)
+  // 全区間が民泊/バケーションレンタル(発送元・お届け先とも)のとき、末尾ガイド(Page 3)を
+  // フロント前提ではなく「ドライバーへ直接受け渡し」版にする。混在時は従来ホテル版。
+  const howtoRental = totalLegs > 0 && data.shipments.every((s) => s.from.isResidence && s.to.isResidence)
   return (
     <Document
       // ロゴ/QR は透明PNG(SMask)。既定の PDF1.3 ヘッダだと SMask は仕様外扱いで一部の印刷経路が
@@ -1718,7 +1916,7 @@ export function VoucherDocument({ data }: { data: VoucherInput }) {
       {data.includeHowto !== false ? (
         resolveWaybillMode(data) === "driver_brings" ? (
           // v2: 原図 howto1 を再構築した静的ガイド (ベクター)。言語は英語のみ (原図に準拠)。
-          <HowToSendPage logoPath={LOGO_PATH} supportQrDataUri={data.supportQrDataUri} supportQrKind={data.supportQrKind} />
+          <HowToSendPage logoPath={LOGO_PATH} supportQrDataUri={data.supportQrDataUri} supportQrKind={data.supportQrKind} rental={howtoRental} />
         ) : (
           <HowToShipPage
             language={normalizeGuestLanguage(data.guestLanguage)}
@@ -2475,13 +2673,21 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
             <View style={ops.kvRow}>
               <Text style={ops.kvKey}>From</Text>
               <Text style={ops.kvValue}>
-                {safeText(s.from.hotel)} — {s.from.address || s.from.city}
+                {s.from.isResidence
+                  ? (s.from.propertyNameEn || s.from.propertyName
+                      ? `${locShortLabel(s.from)} — ${s.from.address}`
+                      : s.from.address)
+                  : `${safeText(s.from.hotel)} — ${s.from.address || s.from.city}`}
               </Text>
             </View>
             <View style={ops.kvRow}>
               <Text style={ops.kvKey}>To</Text>
               <Text style={ops.kvValue}>
-                {safeText(s.to.hotel)} — {s.to.address || s.to.city}
+                {s.to.isResidence
+                  ? (s.to.propertyNameEn || s.to.propertyName
+                      ? `${locShortLabel(s.to)} — ${s.to.address}`
+                      : s.to.address)
+                  : `${safeText(s.to.hotel)} — ${s.to.address || s.to.city}`}
               </Text>
             </View>
             <View style={ops.kvRow}>

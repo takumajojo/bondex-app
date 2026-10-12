@@ -169,6 +169,9 @@ const messages = {
     dropOffDateLabel: "Drop-off date",
     arrivalDateLabel: "Arrival date",
     deliveryTimeLabel: "Delivery time slot",
+    pickupTimeLabel: "Pickup time (vacation rental)",
+    pickupTimePh: "e.g. 9:30 AM",
+    pickupTimeHint: "Shown on the voucher for vacation rentals / Airbnb (no front desk). Be present at this time.",
     deliveryTimeNotSpecified: "Not specified",
     deliveryTimeBeforeNoon: "Before noon",
     deliveryTimeBeforeTen: "Before 10:00",
@@ -343,6 +346,9 @@ const messages = {
     dropOffDateLabel: "発送日 (集荷)",
     arrivalDateLabel: "到着日",
     deliveryTimeLabel: "配達時間帯",
+    pickupTimeLabel: "集荷時刻（民泊・バケーションレンタル）",
+    pickupTimePh: "例) 9:30 AM",
+    pickupTimeHint: "民泊・Airbnb（フロント無し）のバウチャーに表示します。この時刻に現地でご対応ください。",
     deliveryTimeNotSpecified: "指定なし",
     deliveryTimeBeforeNoon: "午前中",
     deliveryTimeBeforeTen: "10時まで",
@@ -542,6 +548,8 @@ interface EditableShipment extends ParsedShipment {
   specialNote: string
   /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon)。 */
   deliveryTime?: string
+  /** 集荷時刻 (任意・自由テキスト, 例 "9:30 AM")。民泊/バケーションレンタルでバウチャーに表示。 */
+  pickupTime?: string
   // ホテル連絡時用の追加情報 (任意)
   bookingName?: string    // 予約者名 (空なら recipient を使用)
   fromCheckIn?: string    // 発送元ホテルへのチェックイン日 (YYYY-MM-DD)
@@ -818,6 +826,7 @@ export default function OperatorPage() {
           productName: r.item_type ?? undefined,
           specialNote: r.notes ?? "",
           deliveryTime: r.delivery_time ?? undefined,
+          pickupTime: (r as { pickup_time?: string | null }).pickup_time ?? undefined,
           bookingName: r.booking_name ?? undefined,
           fromCheckIn: r.from_check_in ?? undefined,
           toCheckOut: r.to_check_out ?? undefined,
@@ -1064,6 +1073,8 @@ export default function OperatorPage() {
       shipments: itinerary.shipments.map((s) => ({
         shipmentDate: s.shipmentDate,
         expectedArrival: s.expectedArrival,
+        pickupTime: s.pickupTime || "",
+        deliveryTime: s.deliveryTime || "",
         from: { hotel: s.from.hotel, address: s.from.address, city: s.from.city, residence: s.from.residence ?? undefined },
         to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city, residence: s.to.residence ?? undefined },
         recipient: s.recipient,
@@ -1107,6 +1118,7 @@ export default function OperatorPage() {
             shipmentDate: s.shipmentDate,
             deliveryDate: s.expectedArrival,
             deliveryTime: s.deliveryTime || "before-noon",
+            pickupTime: s.pickupTime || "",
             suitcaseCount: s.suitcaseCount,
             productName: s.productName || "",
             from: {
@@ -2373,6 +2385,20 @@ function ShipmentRow({
             ))}
           </select>
         </div>
+        {/* 集荷時刻: 民泊・バケーションレンタル(フロント無し)のときバウチャーに明示する。 */}
+        {shipment.from.residence ? (
+          <div className="space-y-1 max-w-xs mt-3">
+            <label className="text-[11px] text-muted-foreground font-medium">{t.pickupTimeLabel}</label>
+            <input
+              type="text"
+              value={shipment.pickupTime ?? ""}
+              onChange={(e) => onUpdate(index, { pickupTime: e.target.value })}
+              placeholder={t.pickupTimePh}
+              className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-foreground"
+            />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">{t.pickupTimeHint}</p>
+          </div>
+        ) : null}
         {nextDayRisk && (
           <div className="mt-1.5 max-w-xs rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2" role="alert">
             <p className="text-[12px] text-amber-900 font-medium leading-relaxed">

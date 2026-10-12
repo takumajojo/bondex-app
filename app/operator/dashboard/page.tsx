@@ -40,6 +40,7 @@ import { LABEL_MAIL_ENABLED } from "@/lib/label-delivery"
 import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { hotelDisplay } from "@/lib/hotel-name"
+import { endpointLabel, residenceOneLine } from "@/lib/residence"
 
 type ShipmentStatus =
   | "requested"
@@ -62,10 +63,12 @@ interface Shipment {
   expected_arrival: string | null
   change_deadline_at: string | null
   from_hotel: string
+  from_residence: unknown
   from_city: string | null
   from_prefecture: string | null
   from_hotel_ja: string | null
   to_hotel: string
+  to_residence: unknown
   to_city: string | null
   to_prefecture: string | null
   to_hotel_ja: string | null
@@ -303,14 +306,26 @@ function LegEndpoint({
   prefecture,
   nameJa,
   nameEn,
+  residence,
   overseas = false,
 }: {
   prefecture: string | null
   nameJa: string | null
   nameEn: string
+  /** 個人宅（民泊）住所。あれば氏名(nameEn)ではなく住所を表示する。 */
+  residence?: unknown
   /** 海外代理店の予約か。true=英語名を主に日本語を併記 / false(既定)=日本語を主に英語を併記。 */
   overseas?: boolean
 }) {
+  // 個人宅（民泊）区間は nameEn に氏名が入るため、住所があれば住所を主表示にする。
+  const resLine = residenceOneLine(residence)
+  if (resLine) {
+    return (
+      <div>
+        <p className="text-foreground text-xs">{resLine}</p>
+      </div>
+    )
+  }
   const { primary, secondary } = hotelDisplay(nameJa, nameEn, overseas)
   return (
     <div>
@@ -458,7 +473,9 @@ export default function DashboardPage() {
     leg_index: number
     agency: string | null
     from_hotel: string
+    from_residence?: unknown
     to_hotel: string
+    to_residence?: unknown
     suitcase_count: number
     picked_up_at: string
   }
@@ -1008,7 +1025,7 @@ export default function DashboardPage() {
                     {a.agency ? <span className="text-muted-foreground"> ・ {a.agency}</span> : null}
                     <span className="text-muted-foreground">
                       {" "}
-                      ・ {a.from_hotel} → {a.to_hotel} ・ {a.suitcase_count}個
+                      ・ {endpointLabel(a.from_hotel, a.from_residence)} → {endpointLabel(a.to_hotel, a.to_residence)} ・ {a.suitcase_count}個
                     </span>
                     <span className="ml-1 text-emerald-700">
                       {new Date(a.picked_up_at).toLocaleString("ja-JP", {
@@ -1670,9 +1687,9 @@ export default function DashboardPage() {
                         <p className="text-xs text-foreground">{it.representative}</p>
                       </td>
                       <td className="p-3 align-top max-w-[280px]">
-                        <LegEndpoint prefecture={it.from_prefecture} nameJa={it.from_hotel_ja} nameEn={it.from_hotel} overseas={!!agencyOverseas[it.agency]} />
+                        <LegEndpoint prefecture={it.from_prefecture} nameJa={it.from_hotel_ja} nameEn={it.from_hotel} residence={it.from_residence} overseas={!!agencyOverseas[it.agency]} />
                         <p className="text-[10px] text-muted-foreground">↓</p>
-                        <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} overseas={!!agencyOverseas[it.agency]} />
+                        <LegEndpoint prefecture={it.to_prefecture} nameJa={it.to_hotel_ja} nameEn={it.to_hotel} residence={it.to_residence} overseas={!!agencyOverseas[it.agency]} />
                       </td>
                       <td className="p-3 align-top text-right">
                         <p className="font-medium text-foreground tabular-nums">
@@ -1695,7 +1712,7 @@ export default function DashboardPage() {
                           <span className="ml-1 font-normal text-[10px] text-muted-foreground">
                             {it.label_to === "hotel"
                               ? it.label_split
-                                ? `${it.from_hotel_ja || it.from_hotel}`
+                                ? `${residenceOneLine(it.from_residence) || it.from_hotel_ja || it.from_hotel}`
                                 : "最初のホテルへ一括"
                               : it.agency || "代理店"}
                           </span>
@@ -2022,7 +2039,7 @@ function EditShipmentModal({
           <div>
             <h2 className="text-lg font-semibold text-foreground">区間の編集</h2>
             <p className="text-xs text-muted-foreground mt-1 font-mono">
-              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {shipment.from_hotel} → {shipment.to_hotel}
+              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {endpointLabel(shipment.from_hotel, shipment.from_residence)} → {endpointLabel(shipment.to_hotel, shipment.to_residence)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
@@ -2156,7 +2173,7 @@ function StatusChangeModal({
           <div>
             <h2 className="text-lg font-semibold text-foreground">ステータスを変更</h2>
             <p className="text-xs text-muted-foreground mt-1 font-mono">
-              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {shipment.from_hotel} → {shipment.to_hotel}
+              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {endpointLabel(shipment.from_hotel, shipment.from_residence)} → {endpointLabel(shipment.to_hotel, shipment.to_residence)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">
@@ -2298,7 +2315,7 @@ function AdjustCountModal({
           <div>
             <h2 className="text-lg font-semibold text-foreground">個数を修正</h2>
             <p className="text-xs text-muted-foreground mt-1 font-mono">
-              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {shipment.from_hotel} → {shipment.to_hotel}
+              {shipment.booking_id}-L{shipment.leg_index + 1} ・ {endpointLabel(shipment.from_hotel, shipment.from_residence)} → {endpointLabel(shipment.to_hotel, shipment.to_residence)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 -m-1 text-muted-foreground hover:text-foreground">

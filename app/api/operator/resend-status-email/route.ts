@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   // 対象予約の全区間（leg）を取得
   const { data: legs, error } = await sb
     .from("shipments")
-    .select("agency, booking_id, leg_index, tour_number, representative, from_hotel, to_hotel, shipment_date, tracking_numbers, suitcase_count, picked_up_at, status")
+    .select("agency, booking_id, leg_index, tour_number, representative, from_hotel, to_hotel, from_residence, to_residence, shipment_date, tracking_numbers, suitcase_count, picked_up_at, status")
     .eq("booking_id", bookingId)
     .order("leg_index", { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

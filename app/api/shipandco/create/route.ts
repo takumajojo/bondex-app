@@ -52,6 +52,12 @@ const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 const FALLBACK_PHONE = "0000000000"
 const FALLBACK_ZIP = "0000000"
 
+// 民泊/バケーションレンタル(Airbnb 等)の送り状電話は BondEx サポートデスクに統一する。
+// ホストの番号(residence.phone)は DB(from_residence/to_residence)に内部保持し緊急時のみ使用、
+// 送り状・公開連絡先には出さない (配送上の問題はまず BondEx が窓口になる運用)。
+const BONDEX_SUPPORT_PHONE =
+  (process.env.BONDEX_SUPPORT_PHONE || "090-7005-4178").replace(/[^\d+]/g, "")
+
 // ヤマト制約: 出荷予定日は送り状発行日 (= 今日) から30日以内 (ES003001)
 const MAX_LEAD_DAYS = 30
 const MS_PER_DAY = 86_400_000
@@ -318,6 +324,8 @@ interface CreateBody {
   deliveryDate?: unknown
   /** 配達時間帯 (Ship&co の setup.time)。未指定は午前中 (before-noon) がデフォルト。 */
   deliveryTime?: unknown
+  /** 集荷時刻 (任意・自由テキスト, 例 "9:30 AM")。主に民泊/バケーションレンタルで使用。 */
+  pickupTime?: unknown
   /** バウチャー言語 (en/zh) — 再発行時に同じ言語で出すため DB に保存する */
   guestLanguage?: unknown
   suitcaseCount?: unknown
@@ -573,16 +581,17 @@ async function resolveYamatoAddress(
  * キャリアのフィールドへマッピングする。マッピング規則は resolveYamatoAddress と同一
  * （佐川: 住所1=市区町村 / 住所2=町名+番地 / 住所3=建物、ヤマト: address2=市区+町名番地）。
  *
- * 電話は本人（居住者）の番号を使う。ホテル発送では集荷連絡先を BondEx 番号(SENDER_PHONE)に
- * 上書きするが、個人宅の集荷・再配達は本人に連絡が要るため上書きしない。
+ * 電話は BondEx サポートデスク(BONDEX_SUPPORT_PHONE)を使う。民泊/バケーションレンタル(Airbnb)
+ * ではホスト番号が「Call host」の個人連絡先であり施設代表ではないため、送り状には出さず、
+ * 配送上の問題(不在・住所確認等)はまず BondEx が窓口になる運用に統一する。
+ * ホスト番号(res.phone)は DB の from_residence/to_residence に内部保持し緊急時のみ使用する。
  */
 function buildResidenceAddress(
   res: ResidenceAddress,
   carrierType: string,
 ): YamatoAddress {
   const zip = normalizeZip(res.zip) || FALLBACK_ZIP
-  let phone = res.phone.replace(/[^\d+]/g, "")
-  if (!phone) phone = FALLBACK_PHONE
+  const phone = BONDEX_SUPPORT_PHONE || FALLBACK_PHONE
   const nm = res.name.trim()
   const fullName = capName(/様\s*$/.test(nm) ? nm : `${nm} 様`)
   const buildingFull = res.building.trim()
@@ -657,6 +666,7 @@ export async function POST(req: NextRequest) {
   // キャリア側で判定されるため、実荷物での検証が必要 (拒否時は Ship&co がエラーを返す)。
   const rawDeliveryTime = typeof body.deliveryTime === "string" ? body.deliveryTime.trim() : ""
   const deliveryTime = carrier.timeSlots.includes(rawDeliveryTime) ? rawDeliveryTime : "before-noon"
+  const pickupTime = typeof body.pickupTime === "string" ? body.pickupTime.trim() : ""
 
   const rawDeliveryDate = typeof body.deliveryDate === "string" ? body.deliveryDate.trim() : ""
   // 配達希望日 = チェックイン日。形式不正なら未指定扱い (Yamato 標準配送日になる)
@@ -745,6 +755,7 @@ export async function POST(req: NextRequest) {
       shipment_date: shipmentDate,
       expected_arrival: deliveryDate || shipmentDate, // NOT NULL のためフォールバック
       delivery_time: deliveryTime || null,
+      pickup_time: pickupTime || null,
       from_hotel: fromHotel,
       from_place_id: fromPlaceId ?? null,
       from_check_in: fromCheckIn || null,
@@ -936,6 +947,7 @@ export async function POST(req: NextRequest) {
     // (null を入れると保存が拒否され、発行済みなのに DB 無記録になるため)。
     expected_arrival: deliveryDate || shipmentDate,
     delivery_time: deliveryTime || null,
+    pickup_time: pickupTime || null,
     carrier: carrier.id,
     from_hotel: fromHotel,
     from_city: fromAddr?.city || (fromInput.city ?? "") || null,

@@ -20,8 +20,20 @@ export type ResidenceAddress = {
   city: string
   /** 番地・町名（例: 神南1-2-3）。 */
   street: string
-  /** 建物名・部屋番号（任意）。 */
+  /** 建物名・部屋番号／物件名（日本語）。民泊・バケーションレンタルの物件名として使う（例: 京都駅ゲストハウス道 #102）。任意。 */
   building: string
+  /**
+   * 物件名（英語）。民泊・バケーションレンタル向け。お客様が読むバウチャーで
+   * building（日本語）より優先して施設名として表示する（例: Kyoto Station Guesthouse Michi #102）。任意。
+   */
+  propertyNameEn?: string
+  /**
+   * 住所（英語・1行）。民泊・バケーションレンタル向け。お客様（外国人ゲスト）が読む
+   * 英語バウチャーでは日本語住所ではなくこの英語住所を表示する
+   * （例: 53 Motohakone, Hakone-machi, Ashigarashimo-gun, Kanagawa 250-0522, Japan）。任意。
+   * ※ 送り状（佐川）側は従来どおり構造化した日本語住所を使う（日本の配送業者向け）。
+   */
+  addressEn?: string
 }
 
 export const EMPTY_RESIDENCE: ResidenceAddress = {
@@ -32,6 +44,8 @@ export const EMPTY_RESIDENCE: ResidenceAddress = {
   city: "",
   street: "",
   building: "",
+  propertyNameEn: "",
+  addressEn: "",
 }
 
 function str(v: unknown): string {
@@ -58,7 +72,21 @@ export function cleanResidence(raw: unknown): ResidenceAddress | null {
     city: str(o.city),
     street: str(o.street),
     building: str(o.building),
+    propertyNameEn: str(o.propertyNameEn),
+    addressEn: str(o.addressEn),
   }
+}
+
+/**
+ * 民泊・バケーションレンタルの物件名（施設名）。英語優先・無ければ日本語(building)。
+ * どちらも無ければ空文字（＝住所のみ表示）。バウチャー/画面の施設名表示に使う。
+ */
+export function residencePropertyName(raw: unknown, locale: "ja" | "en" = "en"): string {
+  const r = cleanResidence(raw)
+  if (!r) return ""
+  const en = (r.propertyNameEn || "").trim()
+  const ja = (r.building || "").trim()
+  return locale === "en" ? en || ja : ja || en
 }
 
 /** 必須フィールドのキー（呼び出し側で言語別ラベルに変換する）。 */
@@ -106,4 +134,51 @@ export function residenceError(r: ResidenceAddress): ResidenceField | null {
 /** 個人宅かどうか（kind 値の正規化）。 */
 export function isResidenceKind(v: unknown): boolean {
   return v === "residence"
+}
+
+/**
+ * 個人宅住所を1行に整形（表示・メール・バウチャー用）。中身が無ければ空文字。
+ * 体裁は lib/voucher-regen の residenceLine と統一。
+ */
+export function residenceOneLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  const bld = r.building ? ` ${r.building}` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
+
+/**
+ * 住所のみを1行に整形（物件名／建物名は含めない）。中身が無ければ空文字。
+ * バウチャーで「物件名（施設名）を見出し＋住所を補足」のように物件名と住所を
+ * 分けて表示する用途に使う（residenceOneLine は物件名込みの1行表記）。
+ */
+export function residenceAddressLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}`.trim()
+}
+
+/**
+ * 英語バウチャー用の住所1行。英語住所(addressEn)があればそれを、無ければ
+ * 日本語住所(residenceAddressLine)にフォールバックする。
+ * 外国人ゲスト向けバウチャーの住所表示に使う（送り状は別途・日本語構造化住所を使用）。
+ */
+export function residenceAddressLineEn(raw: unknown): string {
+  const r = cleanResidence(raw)
+  const en = (r?.addressEn || "").trim()
+  return en || residenceAddressLine(raw)
+}
+
+/**
+ * 区間の片側（発送元/お届け先）の表示名。
+ * 個人宅（民泊など）なら住所を、そうでなければホテル名を返す。
+ * ※ 発行時 DB の from_hotel/to_hotel には個人宅の「氏名」が入るため、
+ *   表示では residence を優先し、氏名ではなく住所を見せる。
+ */
+export function endpointLabel(hotel: unknown, residenceRaw: unknown): string {
+  const line = residenceOneLine(residenceRaw)
+  if (line) return line
+  return typeof hotel === "string" ? hotel.trim() : ""
 }

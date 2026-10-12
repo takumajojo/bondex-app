@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
+import { cleanResidence, endpointLabel } from "@/lib/residence"
 
 export const runtime = "nodejs"
 
@@ -12,7 +13,7 @@ export const runtime = "nodejs"
  */
 
 const SELECT =
-  "booking_id, leg_index, agency, representative, tour_number, picked_up_at, shipment_date, from_hotel, from_prefecture, from_city, to_hotel, to_prefecture, to_city, suitcase_count, amount_yen, status, cancelled_at, cancelled_by, cancel_source"
+  "booking_id, leg_index, agency, representative, tour_number, picked_up_at, shipment_date, from_hotel, from_residence, from_prefecture, from_city, to_hotel, to_residence, to_prefecture, to_city, suitcase_count, amount_yen, status, cancelled_at, cancelled_by, cancel_source"
 
 const CANCEL_SRC_JA: Record<string, string> = { agency: "代理店", operator: "運営", system: "自動" }
 
@@ -69,13 +70,21 @@ export async function GET(req: NextRequest) {
     ]
     const lines = [header.join(",")]
     for (const r of rows) {
+      // 個人宅（民泊）区間は from_hotel/to_hotel に氏名が入り、都道府県・市区の列も空になるため、
+      // residence(jsonb) から住所・都道府県・市区を補完して表示する。
+      const fromRes = cleanResidence(r.from_residence)
+      const toRes = cleanResidence(r.to_residence)
       lines.push(
         [
           `${r.booking_id}-L${(Number(r.leg_index) || 0) + 1}`,
           r.agency, r.representative, r.tour_number,
           jstDate(r.picked_up_at as string | null), r.shipment_date,
-          r.from_hotel, r.from_prefecture, r.from_city,
-          r.to_hotel, r.to_prefecture, r.to_city,
+          endpointLabel(r.from_hotel, r.from_residence),
+          r.from_prefecture || fromRes?.prefecture || "",
+          r.from_city || fromRes?.city || "",
+          endpointLabel(r.to_hotel, r.to_residence),
+          r.to_prefecture || toRes?.prefecture || "",
+          r.to_city || toRes?.city || "",
           r.suitcase_count, r.amount_yen, r.status,
           r.cancel_source ? (CANCEL_SRC_JA[String(r.cancel_source)] ?? r.cancel_source) : "",
           r.cancelled_by ?? "",
