@@ -98,6 +98,15 @@ async function buildSupportQr(): Promise<{ uri?: string; kind: "whatsapp" | "ema
   }
 }
 
+/** 個人宅(民泊)住所を1行に整形。voucher-regen の residenceLine と同じ体裁。 */
+function residenceLine(raw: unknown): string {
+  const r = cleanResidence(raw)
+  if (!r || (!r.street && !r.city)) return ""
+  const zip = r.zip ? `〒${r.zip} ` : ""
+  const bld = r.building ? ` ${r.building}` : ""
+  return `${zip}${r.prefecture}${r.city}${r.street}${bld}`.trim()
+}
+
 function normalizeShipment(s: RequestShipment): VoucherShipment | null {
   const from = (s.from as { hotel?: string; address?: string; city?: string; residence?: unknown }) ?? {}
   const to = (s.to as { hotel?: string; address?: string; city?: string; residence?: unknown }) ?? {}
