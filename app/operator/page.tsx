@@ -14,7 +14,6 @@ import {
   LogOut,
   ArrowLeft,
   Check,
-  Building2,
   CheckCircle2,
   ExternalLink,
   Languages,
@@ -2032,27 +2031,6 @@ function ReviewView({
           </ul>
         )}
 
-        {/* Tour Company (from settings) */}
-        <div className="mt-6 pt-6 border-t border-border flex items-center justify-between gap-3">
-          <div className="space-y-1 min-w-0">
-            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-              {t.tourCompany}
-            </p>
-            {settings?.tourCompany ? (
-              <p className="text-base font-medium text-foreground">{settings.tourCompany}</p>
-            ) : (
-              <p className="text-sm text-amber-700">{t.settingsRequired}</p>
-            )}
-          </div>
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            <Settings className="w-3.5 h-3.5" strokeWidth={1.5} />
-            {t.settings}
-          </button>
-        </div>
       </section>
 
       {/* Shipments */}
