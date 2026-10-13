@@ -33,6 +33,7 @@ async function sendViaSmtp(opts: {
   html?: string
   attachments?: MailAttachment[]
   replyTo?: string
+  bcc?: string | string[]
 }): Promise<SendResult> {
   const host = process.env.SMTP_HOST!
   const user = process.env.SMTP_USER!
@@ -53,6 +54,7 @@ async function sendViaSmtp(opts: {
     await transporter.sendMail({
       from,
       to: opts.to,
+      bcc: opts.bcc,
       replyTo: opts.replyTo,
       subject: opts.subject,
       text: opts.text,
@@ -79,6 +81,7 @@ async function sendViaResend(opts: {
   html?: string
   attachments?: MailAttachment[]
   replyTo?: string
+  bcc?: string | string[]
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY!
   // 既定は support@bondex.express (Resend で bondex.express を認証済みが前提)。ALERT_FROM_EMAIL で上書き可。
@@ -90,6 +93,7 @@ async function sendViaResend(opts: {
       body: JSON.stringify({
         from,
         to: [opts.to],
+        bcc: opts.bcc ? (Array.isArray(opts.bcc) ? opts.bcc : [opts.bcc]) : undefined,
         reply_to: opts.replyTo,
         subject: opts.subject,
         text: opts.text,
@@ -122,6 +126,7 @@ export async function sendMail(opts: {
   html?: string
   attachments?: MailAttachment[]
   replyTo?: string
+  bcc?: string | string[]
 }): Promise<SendResult> {
   if (!opts.to?.trim()) return { sent: false, error: "no recipient" }
 

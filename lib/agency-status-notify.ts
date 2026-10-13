@@ -74,13 +74,16 @@ export async function sendAgencyStatusEmail(
   if (list.length === 0) return false
   const mail = buildAgencyStatusEmail(kind, data, en ? "en" : "ja")
   let anySent = false
-  for (const to of list) {
+  for (let i = 0; i < list.length; i++) {
     const r = await sendMail({
-      to,
+      to: list[i],
       subject: mail.subject,
       text: mail.text,
       html: mail.html,
       replyTo: "support@bondex.express",
+      // 集荷/配達の顧客向けメールを運用で確認できるよう support@ に控えを残す
+      // (谷口さん指示 2026-10-13)。1イベント1通に収めるため先頭宛先のみ BCC。
+      bcc: i === 0 ? "support@bondex.express" : undefined,
     })
     if (r.sent) anySent = true
   }
