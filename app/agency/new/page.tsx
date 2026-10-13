@@ -2451,6 +2451,7 @@ export default function AgencyNewBookingPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label={t.shipmentDate} htmlFor={`sd${i}`} required>
                   <input id={`sd${i}`} type="date" className={inputCls} value={leg.shipmentDate}
+                    min={todayYmd()}
                     onChange={(e) => onShipDateChange(i, e.target.value)} required />
                 </Field>
                 <Field label={t.expectedArrival} htmlFor={`ea${i}`} required>

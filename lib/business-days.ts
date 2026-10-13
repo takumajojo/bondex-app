@@ -43,6 +43,12 @@ export function toYmd(d: Date): string {
   ).padStart(2, "0")}`
 }
 
+/** 今日 (JST) を YYYY-MM-DD で返す。Vercel は UTC 稼働なので +9h してから日付を読む。
+ * 発送日入力の min / 「過去日は不可」判定の基準に使う (集荷は必ず当日以降)。 */
+export function todayYmdJst(): string {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+}
+
 /** 土日でも祝日でもない日か。 */
 export function isBusinessDay(d: Date): boolean {
   const dow = d.getUTCDay()
