@@ -49,6 +49,7 @@ import { cleanResidence, EMPTY_RESIDENCE, residenceError, residenceFieldLabel, t
 import { ResidenceFields } from "@/components/residence-fields"
 import { PRICING } from "@/lib/pricing"
 import { toKatakanaReading } from "@/lib/romaji-kana"
+import { todayYmdJst } from "@/lib/business-days"
 
 const FLAT_RATE_YEN = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
 
@@ -1903,6 +1904,7 @@ function ReviewView({
 
   // バリデーション — 何が足りないかを具体的に表示する
   const missing: string[] = []
+  const todayYmd = todayYmdJst() // 発送日の過去日チェック基準 (JST)
   if (!settings?.tourCompany) missing.push(t.settingsRequired)
   if (shipments.length === 0) missing.push(t.noLegs)
   shipments.forEach((s, i) => {
@@ -1920,6 +1922,13 @@ function ReviewView({
       missing.push(`${legPrefix}${t.to} ${t.hotelNameLabel}`)
     }
     if (!s.shipmentDate) missing.push(`${legPrefix}${t.dropOffDateLabel}`)
+    // 過去日は発行不可 (年の取り違え=バウチャー読取で前年になる事故を確定前に止める)
+    else if (s.shipmentDate < todayYmd)
+      missing.push(
+        `${legPrefix}${t.dropOffDateLabel} — ${
+          locale === "ja" ? "過去日は指定できません（年をご確認ください）" : "past date not allowed (check the year)"
+        }`,
+      )
     if (!s.expectedArrival) missing.push(`${legPrefix}${t.arrivalDateLabel}`)
     if (!s.recipient.trim()) missing.push(`${legPrefix}${t.recipientLabelFull}`)
     // 配達日のヤマトレンジ判定 — shipmentDate と expectedArrival がそろっている時のみチェック
@@ -2146,6 +2155,7 @@ function ShipmentRow({
   onUpdate: (index: number, patch: Partial<EditableShipment>) => void
   onRemove: (index: number) => void
 }) {
+  const todayYmd = todayYmdJst() // 発送日は当日以降のみ (過去日を選べないよう input の min にする)
   // 配達日 (Arrival) のレンジ計算 — shipmentDate が確定したら有効
   const deliverableRange = shipment.shipmentDate
     ? getDeliverableRange(shipment.shipmentDate, "standard")
@@ -2334,6 +2344,7 @@ function ShipmentRow({
             <Input
               type="date"
               value={shipment.shipmentDate}
+              min={todayYmd}
               onChange={(e) => onUpdate(index, { shipmentDate: e.target.value })}
               className="h-10 text-sm"
               aria-label={t.dropOffDateLabel}
