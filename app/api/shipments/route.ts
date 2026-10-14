@@ -54,6 +54,12 @@ export async function GET(req: NextRequest) {
     const view = VIEWS.includes(viewRaw as (typeof VIEWS)[number])
       ? (viewRaw as (typeof VIEWS)[number])
       : undefined
+    // ページネーション: limit(1ページ件数・最大500) と offset(0始まり)。
+    // 上限超過をサイレントに切り捨てないため、1件多く取得して hasMore を判定する(T1-3)。
+    const pageLimit = sp.get("limit")
+      ? Math.min(500, Math.max(1, Number(sp.get("limit")) || 100))
+      : 100
+    const offset = sp.get("offset") ? Math.max(0, Number(sp.get("offset")) || 0) : 0
     const data = await listShipments({
       agency: sp.get("agency") || undefined,
       status: (sp.get("status") as ShipmentStatus) || undefined,
@@ -64,9 +70,17 @@ export async function GET(req: NextRequest) {
       sort: sp.get("sort") || undefined,
       archived: sp.get("archived") === "1" || sp.get("archived") === "true",
       todayYmd: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
-      limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
+      limit: pageLimit + 1,
+      offset,
     })
-    return NextResponse.json({ configured: true, shipments: data })
+    const hasMore = data.length > pageLimit
+    const shipments = hasMore ? data.slice(0, pageLimit) : data
+    return NextResponse.json({
+      configured: true,
+      shipments,
+      hasMore,
+      nextOffset: offset + pageLimit,
+    })
   } catch (err) {
     // どんなエラーでも JSON で返す (フロントの parse 失敗を防ぐ)
     const msg = err instanceof Error ? err.message : "Internal error"
