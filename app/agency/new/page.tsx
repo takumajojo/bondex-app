@@ -1558,10 +1558,12 @@ export default function AgencyNewBookingPage() {
   // includeHowto=false のときだけ ?howto=0 でご利用ガイドの同梱を外す (既定は同梱)。
   const downloadVoucher = async (bookingId: string) => {
     setDlBusy(true)
+    setError("")
     try {
       const sb = getBrowserSupabase()
       const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
       if (!token) {
+        // セッション切れ: 完了画面にバナー＋サインイン導線を出す(alert の誤誘導・無反応を撲滅・T1-2)。
         setError(t.notLoggedIn)
         return
       }
@@ -1571,7 +1573,8 @@ export default function AgencyNewBookingPage() {
         { headers: { Authorization: `Bearer ${token}` } },
       )
       if (!res.ok) {
-        alert(t.errNetwork)
+        // 401 はセッション切れ=再サインインで直る。それ以外のみ通信エラー表示。
+        setError(res.status === 401 ? t.notLoggedIn : t.errNetwork)
         return
       }
       const blob = await res.blob()
@@ -1584,7 +1587,7 @@ export default function AgencyNewBookingPage() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch {
-      alert(t.errNetwork)
+      setError(t.errNetwork)
     } finally {
       setDlBusy(false)
     }
@@ -1757,6 +1760,24 @@ export default function AgencyNewBookingPage() {
                     <span>{t.howtoToggle}</span>
                   </label>
                 </div>
+                {error && (
+                  <div
+                    className="mt-4 text-[13px] text-red-700 rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+                    role="alert"
+                  >
+                    {error}
+                    {error === t.notLoggedIn && (
+                      <a
+                        href="/agency/login?next=/agency"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 block font-medium underline underline-offset-2"
+                      >
+                        {t.signInNewTab}
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
