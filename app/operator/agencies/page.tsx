@@ -28,6 +28,8 @@ interface Agency {
   card_on_file: boolean | null
   created_via: string | null
   created_at: string
+  /** 代理店の既定単価 (税抜・円/個)。null=全体既定 4,980。 */
+  unit_price_yen: number | null
   /** 送り状(紙)の郵送先・差出人に使う構造化住所。未登録なら null。 */
   ship_address: ResidenceAddress | null
 }
@@ -161,6 +163,33 @@ export default function OperatorAgenciesPage() {
     setBusyId(null)
   }
 
+  // 代理店の既定単価 (税抜・円/個) を保存する。空欄 = 既定(4,980) に戻す。
+  const setUnitPrice = async (id: string, raw: string) => {
+    const trimmed = raw.trim()
+    const value: number | null = trimmed === "" ? null : Math.floor(Number(trimmed))
+    if (value !== null && (!Number.isFinite(value) || value <= 0)) {
+      alert("単価は正の整数で入力してください（空欄で既定の4,980円）")
+      return
+    }
+    setBusyId(id)
+    try {
+      const res = await fetch("/api/agencies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, unitPriceYen: value }),
+      })
+      if (res.ok) {
+        setAgencies((prev) => prev.map((a) => (a.id === id ? { ...a, unit_price_yen: value } : a)))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || "更新に失敗しました")
+      }
+    } catch {
+      alert("更新に失敗しました")
+    }
+    setBusyId(null)
+  }
+
   const pendingCount = useMemo(
     () => agencies.filter((a) => a.status === "pending").length,
     [agencies],
@@ -218,6 +247,7 @@ export default function OperatorAgenciesPage() {
                     <th className="text-left p-3 font-medium">代理店</th>
                     <th className="text-left p-3 font-medium">地域</th>
                     <th className="text-left p-3 font-medium">決済</th>
+                    <th className="text-left p-3 font-medium">単価 (円/個)</th>
                     <th className="text-left p-3 font-medium">通知 (申し送り)</th>
                     <th className="text-left p-3 font-medium">状態</th>
                     <th className="text-right p-3 font-medium">操作</th>
@@ -350,6 +380,26 @@ export default function OperatorAgenciesPage() {
                               {a.card_on_file ? "カード登録済み" : "カード未登録"}
                             </span>
                           )}
+                        </td>
+                        <td className="p-3 align-top">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              defaultValue={a.unit_price_yen ?? ""}
+                              placeholder="4980"
+                              disabled={busy}
+                              onBlur={(e) => {
+                                const cur = a.unit_price_yen ?? ""
+                                if (e.target.value.trim() !== String(cur)) setUnitPrice(a.id, e.target.value)
+                              }}
+                              className="w-20 rounded-md border border-border bg-white px-2 py-1 text-xs disabled:opacity-50"
+                              aria-label={`${a.name} の単価(円/個)`}
+                            />
+                            <span className="text-[10px] text-muted-foreground">円</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">空欄=既定 4,980</p>
                         </td>
                         <td className="p-3 align-top">
                           <select

@@ -18,6 +18,18 @@ export const PRICING = {
   volumeDiscount: 10,
 } as const
 
+/**
+ * 代理店の単価 (税抜・円/個) を解決する。
+ * 代理店に unit_price_yen が設定されていればそれを、無ければ全体既定 (4,980) を返す。
+ * 請求額 (amount_yen) の算出・見積表示・バウチャー総額のすべてでこの関数を通す
+ * (単価の散在を防ぎ、代理店別単価を1箇所で効かせるため・2026-10-21 谷口さん指示)。
+ */
+export function resolveUnitPriceYen(agencyUnitPriceYen: number | null | undefined): number {
+  return typeof agencyUnitPriceYen === "number" && agencyUnitPriceYen > 0
+    ? agencyUnitPriceYen
+    : PRICING.regularPrice
+}
+
 /** 円表示 (例: 4980 → "¥4,980")。全表示の唯一の整形元。 */
 export function formatYen(n: number): string {
   return "¥" + n.toLocaleString("ja-JP")

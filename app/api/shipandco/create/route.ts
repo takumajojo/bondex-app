@@ -10,7 +10,7 @@ import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
-import { PRICING } from "@/lib/pricing"
+import { resolveUnitPriceYen } from "@/lib/pricing"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
 
@@ -709,6 +709,14 @@ export async function POST(req: NextRequest) {
     noteTarget,
     isHotelNotificationMode(agencyMode) ? agencyMode : null,
   )
+  // 単価: 代理店の既定単価 (agencies.unit_price_yen)。未設定なら全体既定 (4,980)。
+  // この値 × 個数 を amount_yen (税抜小計) として保存する → 請求・課金が追従する。
+  const sbPrice = getSupabase()
+  const agencyUnitPrice = sbPrice
+    ? ((await sbPrice.from("agencies").select("unit_price_yen").eq("name", agency).maybeSingle()).data
+        ?.unit_price_yen as number | null | undefined)
+    : null
+  const unitPriceYen = resolveUnitPriceYen(agencyUnitPrice)
   const tourNumber = typeof body.tourNumber === "string" ? body.tourNumber.trim() : ""
   const groupName = typeof body.groupName === "string" ? body.groupName.trim() : ""
 
@@ -767,7 +775,7 @@ export async function POST(req: NextRequest) {
       recipient: (toInput.recipient ?? "").trim(),
       suitcase_count: suitcaseCount,
       item_type: (typeof body.productName === "string" && body.productName.trim()) || null,
-      amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
+      amount_yen: suitcaseCount * unitPriceYen, // 税抜小計 (代理店別単価 = agencies.unit_price_yen ?? 4,980)
       ship_ref_number: refNumber,
       issuable_from: issuableFrom,
       carrier: carrier.id,
@@ -968,7 +976,7 @@ export async function POST(req: NextRequest) {
     recipient: (toInput.recipient ?? "").trim(),
     suitcase_count: suitcaseCount,
     item_type: productName,
-    amount_yen: suitcaseCount * PRICING.regularPrice, // 税抜小計 (単価は lib/pricing.ts 一元管理)
+    amount_yen: suitcaseCount * unitPriceYen, // 税抜小計 (代理店別単価 = agencies.unit_price_yen ?? 4,980)
     ship_ref_number: refNumber,
     notes: specialNote || null,
     note_target: resolvedNoteTarget,
