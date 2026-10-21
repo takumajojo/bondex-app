@@ -424,9 +424,9 @@ export default function DashboardPage() {
   const [error, setError] = useState("")
   const [filterAgency, setFilterAgency] = useState("")
   const [filterStatus, setFilterStatus] = useState<"" | ShipmentStatus>("")
-  // 一覧の並び順
-  const [sortBy, setSortBy] = useState("created_desc")
-  // 過去履歴 (配達完了して2営業日超) の表示切替。既定=アクティブのみ。
+  // 一覧の並び順。既定=発送日(集荷)が近い順 (2026-10-21 谷口さん指示。依頼の新しい順ではなく対応が近い順)。
+  const [sortBy, setSortBy] = useState("ship_asc")
+  // 過去履歴 (配達完了) の表示切替。既定=アクティブのみ。
   const [showArchived, setShowArchived] = useState(false)
   // 検索 (予約番号 / 代表者 / 受取人 / ツアー番号) — 入力値と適用値を分離し
   // Enter / ボタンで適用 (1 文字ごとの API 叩きを防ぐ)
