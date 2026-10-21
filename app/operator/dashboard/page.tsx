@@ -30,7 +30,6 @@ import {
 import {
   applicableRoutes,
   hotelContactStatus,
-  HOTEL_ROUTE_LABEL,
   type NoteTarget,
   type HotelRoute,
 } from "@/lib/hotel-notification"
@@ -92,6 +91,7 @@ interface Shipment {
   note_target: string | null
   pickup_hotel_notified_at: string | null
   guest_hotel_notified_at: string | null
+  pickup_requested_at: string | null
   drive_url: string | null
   created_at: string
   charged_at: string | null
@@ -339,80 +339,36 @@ function LegEndpoint({
 }
 
 function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
+  // 一覧「対応」列の状態表示（読み取り専用）。済=☑緑／未=☐／期限超過の未対応=赤。
+  // ここでは状態を変えない（操作は不要・一目で状況が分かることが目的・2026-10-21 谷口さん）。
   const routes = applicableRoutes(effectiveNoteTarget(shipment.note_target))
-  const active = (["pickup", "guest"] as HotelRoute[]).filter((r) => routes[r])
-  const [pickupAt, setPickupAt] = useState<string | null>(shipment.pickup_hotel_notified_at)
-  const [guestAt, setGuestAt] = useState<string | null>(shipment.guest_hotel_notified_at)
-  const [busy, setBusy] = useState<HotelRoute | null>(null)
-  if (active.length === 0) return null
-
-  const toggle = async (route: HotelRoute, next: boolean) => {
-    setBusy(route)
-    try {
-      const b: Record<string, unknown> = { id: shipment.id }
-      b[route === "pickup" ? "pickupHotelNotified" : "guestHotelNotified"] = next
-      const res = await fetch("/api/shipments", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(b),
-      })
-      const d = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(d?.error || "更新失敗")
-      const at = next ? (d?.[route === "pickup" ? "pickupAt" : "guestAt"] ?? new Date().toISOString()) : null
-      if (route === "pickup") setPickupAt(at)
-      else setGuestAt(at)
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "更新に失敗しました")
-    } finally {
-      setBusy(null)
-    }
+  const pickupArrangeApplies = (["requested", "pending", "issued"] as string[]).includes(shipment.status)
+  type TaskItem = { key: string; label: string; done: boolean; urgent: boolean }
+  const items: TaskItem[] = []
+  if (pickupArrangeApplies) {
+    items.push({ key: "arrange", label: "集荷手配", done: !!shipment.pickup_requested_at, urgent: false })
   }
+  const hotelItem = (route: HotelRoute, label: string, notifiedAt: string | null): TaskItem => {
+    const cst = hotelContactStatus({ shipmentDate: shipment.shipment_date, notifiedAt, today: todayYmd() })
+    return { key: route, label, done: !!notifiedAt, urgent: cst.urgency === "overdue" || cst.urgency === "urgent" }
+  }
+  if (routes.pickup) items.push(hotelItem("pickup", "集荷元ホテル連絡", shipment.pickup_hotel_notified_at))
+  if (routes.guest) items.push(hotelItem("guest", "配送先ホテル連絡", shipment.guest_hotel_notified_at))
+  if (items.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
-      {active.map((r) => {
-        const sent = Boolean(r === "pickup" ? pickupAt : guestAt)
-          const cst = hotelContactStatus({
-            shipmentDate: shipment.shipment_date,
-            notifiedAt: r === "pickup" ? pickupAt : guestAt,
-            today: todayYmd(),
-          })
-          // 期限の緊急度で色を決める (連絡漏れを一目で分かるように・2026-09-01)
-          const tone = sent
-            ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
-            : cst.urgency === "overdue" || cst.urgency === "urgent"
-              ? "bg-red-100 text-red-800 border-red-300 hover:bg-red-200"
-              : cst.urgency === "due"
-                ? "bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200"
-                : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
-          const deadlineLabel = sent
-            ? ""
-            : cst.urgency === "overdue"
-              ? "期限超過"
-              : cst.urgency === "urgent"
-                ? `至急(期限${cst.deadline})`
-                : cst.deadline
-                  ? `${cst.deadline}まで`
-                  : ""
-          return (
-            <button
-              key={r}
-              type="button"
-              disabled={busy === r}
-              onClick={() => void toggle(r, !sent)}
-              title={
-                sent
-                  ? `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 完了。クリックで未完了に戻す`
-                  : `${HOTEL_ROUTE_LABEL[r]}への連絡（電話/メール）: 未完了。連絡期限=発送2営業日前。完了したらクリック`
-              }
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50 ${tone}`}
-            >
-              <span aria-hidden>{busy === r ? "…" : sent ? "☑" : "☐"}</span>
-              {HOTEL_ROUTE_LABEL[r]}連絡
-              {deadlineLabel && <span className="font-normal opacity-90">・{deadlineLabel}</span>}
-            </button>
-          )
-      })}
+    <div className="flex flex-col gap-0.5 mt-1.5">
+      {items.map((it) => (
+        <span
+          key={it.key}
+          className={`inline-flex items-center gap-1 text-[11px] whitespace-nowrap ${
+            it.done ? "text-emerald-700" : it.urgent ? "text-red-700 font-medium" : "text-muted-foreground"
+          }`}
+        >
+          <span aria-hidden>{it.done ? "☑" : "☐"}</span>
+          {it.label}
+        </span>
+      ))}
     </div>
   )
 }
@@ -1610,7 +1566,7 @@ export default function DashboardPage() {
                     {(LABEL_MAIL_ENABLED || WAYBILL_UI_ENABLED) && (
                       <th className="text-left p-3 font-medium">送り状</th>
                     )}
-                    <th className="text-left p-3 font-medium">ホテル連絡</th>
+                    <th className="text-left p-3 font-medium">対応（集荷手配・ホテル連絡）</th>
                     <th className="text-left p-3 font-medium">決済</th>
                     <th className="text-left p-3 font-medium">ステータス</th>
                   </tr>
