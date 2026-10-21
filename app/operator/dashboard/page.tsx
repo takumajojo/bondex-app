@@ -92,6 +92,7 @@ interface Shipment {
   note_target: string | null
   pickup_hotel_notified_at: string | null
   guest_hotel_notified_at: string | null
+  pickup_requested_at: string | null
   drive_url: string | null
   created_at: string
   charged_at: string | null
@@ -344,7 +345,29 @@ function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
   const [pickupAt, setPickupAt] = useState<string | null>(shipment.pickup_hotel_notified_at)
   const [guestAt, setGuestAt] = useState<string | null>(shipment.guest_hotel_notified_at)
   const [busy, setBusy] = useState<HotelRoute | null>(null)
-  if (active.length === 0) return null
+  // 集荷手配 (佐川へ集荷依頼済み) チェック。集荷前 (requested/pending/issued) のみ対象。
+  const pickupArrangeApplies = (["requested", "pending", "issued"] as string[]).includes(shipment.status)
+  const [pickupReqAt, setPickupReqAt] = useState<string | null>(shipment.pickup_requested_at)
+  const [pickupReqBusy, setPickupReqBusy] = useState(false)
+  if (active.length === 0 && !pickupArrangeApplies) return null
+
+  const togglePickupArrange = async (next: boolean) => {
+    setPickupReqBusy(true)
+    try {
+      const res = await fetch("/api/operator/sagawa-pickup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId: shipment.id, undo: !next }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(d?.error || "更新失敗")
+      setPickupReqAt(next ? new Date().toISOString() : null)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "更新に失敗しました")
+    } finally {
+      setPickupReqBusy(false)
+    }
+  }
 
   const toggle = async (route: HotelRoute, next: boolean) => {
     setBusy(route)
@@ -370,6 +393,26 @@ function HotelNotifyBadges({ shipment }: { shipment: Shipment }) {
 
   return (
     <div className="flex flex-wrap gap-1 mt-1.5">
+      {pickupArrangeApplies && (
+        <button
+          type="button"
+          disabled={pickupReqBusy}
+          onClick={() => void togglePickupArrange(!pickupReqAt)}
+          title={
+            pickupReqAt
+              ? "佐川への集荷手配: 済み。クリックで未手配に戻す"
+              : "佐川への集荷手配: 未。依頼したらクリック"
+          }
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50 ${
+            pickupReqAt
+              ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
+              : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+          }`}
+        >
+          <span aria-hidden>{pickupReqBusy ? "…" : pickupReqAt ? "☑" : "☐"}</span>
+          集荷手配
+        </button>
+      )}
       {active.map((r) => {
         const sent = Boolean(r === "pickup" ? pickupAt : guestAt)
           const cst = hotelContactStatus({
@@ -1610,7 +1653,7 @@ export default function DashboardPage() {
                     {(LABEL_MAIL_ENABLED || WAYBILL_UI_ENABLED) && (
                       <th className="text-left p-3 font-medium">送り状</th>
                     )}
-                    <th className="text-left p-3 font-medium">ホテル連絡</th>
+                    <th className="text-left p-3 font-medium">対応（集荷手配・ホテル連絡）</th>
                     <th className="text-left p-3 font-medium">決済</th>
                     <th className="text-left p-3 font-medium">ステータス</th>
                   </tr>
