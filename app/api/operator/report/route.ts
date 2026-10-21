@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { cleanResidence, endpointLabel } from "@/lib/residence"
 import { sagawaCostYen } from "@/lib/sagawa-rates"
+import { resolveUnitPriceYen } from "@/lib/pricing"
 
 export const runtime = "nodejs"
 
@@ -55,19 +56,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message, rows: [], summary: { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 } }, { status: 500 })
   }
   const rows = (data ?? []) as Array<Record<string, unknown>>
-  // 各区間に佐川原価(税抜)と粗利を付与する。
+  // 代理店ごとの単価（予定売上の算出用）。amount_yen 未確定（依頼中など発行前）でも、
+  //  請求書払いで課金予定なので「個数 × 代理店単価(既定4,980)」を売上として見込む（2026-10-21 谷口さん）。
+  const { data: agRows } = await sb.from("agencies").select("name, unit_price_yen")
+  const unitPriceByAgency = new Map<string, number | null>()
+  for (const a of agRows ?? []) unitPriceByAgency.set(String(a.name), (a.unit_price_yen as number | null) ?? null)
+
+  // 各区間に売上(見込み含む)・佐川原価(税抜)・粗利を付与する。
+  //  売上は amount_yen があればそれ、無ければ 個数×代理店単価 の見込み（請求書払いで課金予定）。
   //  原価は「実原価(運賃照会CSV取込=sagawa_cost_actual_yen)があればそれ、無ければ運賃表の概算」。
-  //  概算 = 届け先地帯の サイズ140 レート × 個数 (スーツケースは160でも140で集荷/請求・2026-10-21 谷口さん)。
-  //  取消/失敗は配送していないため原価0。届け先都道府県は residence(民泊) から補完。
+  //  概算 = 届け先地帯の サイズ140 レート × 個数 (スーツケースは160でも140で集荷/請求)。
+  //  取消/失敗は売上も原価も0。届け先都道府県は residence(民泊) から補完。
   for (const r of rows) {
     const st = String(r.status ?? "")
     const billable = st !== "cancelled" && st !== "failed"
-    // キャンセル/失敗は配送していないので売上も原価も0にする（一覧には出すが0・2026-10-21 谷口さん）。
-    const revenue = billable ? Number(r.amount_yen) || 0 : 0
+    const rawAmount = Number(r.amount_yen) || 0
+    const projected = Math.round(
+      (Number(r.suitcase_count) || 0) * resolveUnitPriceYen(unitPriceByAgency.get(String(r.agency ?? "")) ?? null),
+    )
+    // キャンセル/失敗は0。それ以外は確定額(amount_yen)、無ければ見込み(個数×単価)。
+    const revenue = !billable ? 0 : rawAmount > 0 ? rawAmount : projected
     const actual = r.sagawa_cost_actual_yen == null ? null : Number(r.sagawa_cost_actual_yen)
     const hasActual = actual != null && Number.isFinite(actual)
     const cost = !billable ? 0 : hasActual ? actual : sagawaCostYen((r.to_prefecture as string | null) || cleanResidence(r.to_residence)?.prefecture || "", Number(r.suitcase_count) || 0).yen
     r.amount_yen = revenue
+    r.revenue_is_estimate = billable && rawAmount <= 0 && revenue > 0 // 見込み(発行前で単価から算出)
     r.sagawa_cost_yen = cost
     r.cost_is_actual = billable && hasActual
     r.margin_yen = revenue - cost
@@ -83,7 +96,7 @@ export async function GET(req: NextRequest) {
       "予約番号", "代理店", "代表者", "ツアー番号", "集荷日", "発送日",
       "発送元ホテル", "発送元都道府県", "発送元市区",
       "お届け先ホテル", "お届け先都道府県", "お届け先市区",
-      "個数", "金額(売上)", "佐川原価", "原価種別", "粗利", "ステータス",
+      "個数", "金額(売上)", "売上種別", "佐川原価", "原価種別", "粗利", "ステータス",
       "取消経路", "取消実行者", "取消日時",
     ]
     const lines = [header.join(",")]
@@ -103,7 +116,7 @@ export async function GET(req: NextRequest) {
           endpointLabel(r.to_hotel, r.to_residence),
           r.to_prefecture || toRes?.prefecture || "",
           r.to_city || toRes?.city || "",
-          r.suitcase_count, r.amount_yen, r.sagawa_cost_yen, r.cost_is_actual ? "実" : "概算", r.margin_yen, r.status,
+          r.suitcase_count, r.amount_yen, r.revenue_is_estimate ? "見込み" : "確定", r.sagawa_cost_yen, r.cost_is_actual ? "実" : "概算", r.margin_yen, r.status,
           r.cancel_source ? (CANCEL_SRC_JA[String(r.cancel_source)] ?? r.cancel_source) : "",
           r.cancelled_by ?? "",
           r.cancelled_at ? new Date(r.cancelled_at as string).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) : "",
