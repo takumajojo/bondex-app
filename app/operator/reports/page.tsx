@@ -27,6 +27,7 @@ interface Row {
   amount_yen: number | null
   sagawa_cost_yen: number | null
   margin_yen: number | null
+  cost_is_actual: boolean | null
   status: string | null
 }
 interface Summary {
@@ -48,11 +49,21 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "キャンセル",
 }
 
+// 当月(JST)の初日・末日を YYYY-MM-DD で。既定の絞り込み期間に使う(2026-10-21 谷口さん)。
+function currentMonthRange(): { from: string; to: string } {
+  const now = new Date(Date.now() + 9 * 3600 * 1000)
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth() // 0-based
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` }
+}
+
 export default function ReportsPage() {
   const [agencies, setAgencies] = useState<string[]>([])
   const [agency, setAgency] = useState("")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
+  const [from, setFrom] = useState(() => currentMonthRange().from)
+  const [to, setTo] = useState(() => currentMonthRange().to)
   const [prefecture, setPrefecture] = useState("")
   const [status, setStatus] = useState("")
 
@@ -99,8 +110,34 @@ export default function ReportsPage() {
   }, [])
 
   const csvHref = `/api/operator/report?${new URLSearchParams(params).toString()}&format=csv`
-  const jstDate = (ts: string | null) =>
-    ts ? new Date(ts).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" }) : "—"
+
+  // 佐川の運賃照会CSVを取り込んで実原価を保存する (実原価があればレポートの原価はそちらを使う)。
+  const [importBusy, setImportBusy] = useState(false)
+  const onImportCsv = async (file: File | null) => {
+    if (!file) return
+    setImportBusy(true)
+    try {
+      const text = await file.text()
+      const res = await fetch("/api/operator/import-sagawa-costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: text }),
+      })
+      const d = (await res.json().catch(() => null)) as
+        | { ok?: boolean; rowsParsed?: number; updated?: number; notFound?: string[]; error?: string }
+        | null
+      if (!res.ok || !d?.ok) throw new Error(d?.error || `失敗 (${res.status})`)
+      alert(
+        `取込完了：${d.updated}区間に実原価を反映（CSV ${d.rowsParsed}行）。` +
+          (d.notFound && d.notFound.length ? `\n突合できなかった管理番号: ${d.notFound.join(", ")}` : ""),
+      )
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "取込に失敗しました")
+    } finally {
+      setImportBusy(false)
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -112,12 +149,29 @@ export default function ReportsPage() {
             </Link>
             <h1 className="text-base font-bold text-foreground">集荷実績レポート</h1>
           </div>
-          <a
-            href={csvHref}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#C8102E] px-3 py-2 text-sm font-semibold text-white hover:bg-[#a60d26]"
-          >
-            <Download className="w-4 h-4" strokeWidth={1.8} /> CSVダウンロード
-          </a>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-muted cursor-pointer">
+              {importBusy ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.8} /> : <Download className="w-4 h-4 rotate-180" strokeWidth={1.8} />}
+              佐川 実原価CSV取込
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                disabled={importBusy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null
+                  e.target.value = ""
+                  void onImportCsv(f)
+                }}
+              />
+            </label>
+            <a
+              href={csvHref}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#C8102E] px-3 py-2 text-sm font-semibold text-white hover:bg-[#a60d26]"
+            >
+              <Download className="w-4 h-4" strokeWidth={1.8} /> CSVダウンロード
+            </a>
+          </div>
         </div>
       </header>
 
@@ -135,11 +189,11 @@ export default function ReportsPage() {
               </select>
             </label>
             <label className="text-xs text-muted-foreground">
-              集荷日（から）
+              発送予定日（から）
               <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-2 text-sm" />
             </label>
             <label className="text-xs text-muted-foreground">
-              集荷日（まで）
+              発送予定日（まで）
               <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-2 text-sm" />
             </label>
             <label className="text-xs text-muted-foreground">
@@ -157,7 +211,7 @@ export default function ReportsPage() {
             </label>
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground">「集荷日」は佐川で実際に集荷された日（picked_up_at）で絞り込みます。</p>
+            <p className="text-[11px] text-muted-foreground">発送予定日で絞り込み。配送予定（未集荷）も「全て集荷された前提」で原価・粗利を表示します（状態で進捗を確認）。</p>
             <button onClick={() => void load()} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
               <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.6} /> 更新
             </button>
@@ -194,7 +248,7 @@ export default function ReportsPage() {
           </div>
         </section>
         <p className="text-[10px] text-muted-foreground -mt-1 px-1">
-          佐川原価＝届け先の地帯×サイズ140（スーツケース基準）の運賃×個数の<b>概算（2026-10-21運賃ベース）</b>。10/21前の実績は旧運賃（関東 約¥2,100/個）のため差があります。Ship&co・Stripe・固定費は未控除。取消/失敗は原価0。
+          佐川原価は<b>実原価（運賃照会CSV取込＝「実」）があればそれ、無ければ運賃表の概算（2026-10-21運賃ベース・「概算」）</b>。概算は 届け先地帯×サイズ140（スーツケース基準）×個数。Ship&co・Stripe・固定費は未控除。取消/失敗は原価0。
         </p>
 
         {/* 一覧 */}
@@ -206,14 +260,14 @@ export default function ReportsPage() {
                 <tr>
                   <th className="text-left font-medium px-3 py-2">予約番号</th>
                   <th className="text-left font-medium px-3 py-2">代理店</th>
-                  <th className="text-left font-medium px-3 py-2">集荷日</th>
+                  <th className="text-left font-medium px-3 py-2 whitespace-nowrap">発送予定日</th>
                   <th className="text-left font-medium px-3 py-2">発送元</th>
                   <th className="text-left font-medium px-3 py-2">お届け先</th>
                   <th className="text-right font-medium px-3 py-2">個数</th>
                   <th className="text-right font-medium px-3 py-2">売上</th>
                   <th className="text-right font-medium px-3 py-2">佐川原価</th>
                   <th className="text-right font-medium px-3 py-2">粗利</th>
-                  <th className="text-left font-medium px-3 py-2">状態</th>
+                  <th className="text-left font-medium px-3 py-2 whitespace-nowrap">状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,7 +280,7 @@ export default function ReportsPage() {
                     <tr key={`${r.booking_id}-${r.leg_index}`} className="border-t border-slate-100">
                       <td className="px-3 py-2 font-mono text-xs">{r.booking_id}-L{r.leg_index + 1}</td>
                       <td className="px-3 py-2">{r.agency}</td>
-                      <td className="px-3 py-2 tabular-nums">{jstDate(r.picked_up_at)}</td>
+                      <td className="px-3 py-2 tabular-nums whitespace-nowrap">{r.shipment_date ?? ""}</td>
                       <td className="px-3 py-2 text-xs">
                         <span className="text-muted-foreground">{r.from_prefecture || cleanResidence(r.from_residence)?.prefecture || ""} </span>{endpointLabel(r.from_hotel, r.from_residence)}
                       </td>
@@ -235,9 +289,14 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.suitcase_count}</td>
                       <td className="px-3 py-2 text-right tabular-nums">¥{(r.amount_yen ?? 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">¥{(r.sagawa_cost_yen ?? 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground whitespace-nowrap">
+                        ¥{(r.sagawa_cost_yen ?? 0).toLocaleString()}
+                        <span className={`ml-1 text-[9px] px-1 rounded ${r.cost_is_actual ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                          {r.cost_is_actual ? "実" : "概算"}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-emerald-700">¥{(r.margin_yen ?? 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs">{STATUS_LABEL[r.status ?? ""] ?? r.status}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">{STATUS_LABEL[r.status ?? ""] ?? r.status}</td>
                     </tr>
                   ))
                 )}
