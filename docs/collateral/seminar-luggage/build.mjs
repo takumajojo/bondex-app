@@ -89,8 +89,9 @@ function placeholderHtml(slide, ph, box) {
 function textBlockHtml(slide) {
   const t = slide.text
   const f = font(t.font)
-  const size = TYPE_ONLY && t.font !== "en" ? Math.round(t.size * TYPE_SCALE) : t.size
-  const pos = TYPE_ONLY ? `top:${Math.round((H - t.lines.length * size * t.lh) / 2)}px` : slide.anchor === "top" ? `top:${M.y}px` : `bottom:${M.y}px`
+  const fixed = slide.layout === "diagram" // 図のスライドは両版とも同じ位置・大きさ
+  const size = TYPE_ONLY && !fixed && t.font !== "en" ? Math.round(t.size * TYPE_SCALE) : t.size
+  const pos = TYPE_ONLY && !fixed ? `top:${Math.round((H - t.lines.length * size * t.lh) / 2)}px` : slide.anchor === "top" ? `top:${M.y}px` : `bottom:${M.y}px`
   // 行頭の「は約物の半角分だけ左へぶら下げ、文字の縦ラインを揃える
   const lines = t.lines.map((runs) =>
     `<div class="ln"${runs[0].t.startsWith("「") ? ' style="margin-left:-0.5em"' : ""}>${runs.map((r) => `<span style="color:${r.c ? C[r.c] : C.fg}">${esc(r.t)}</span>`).join("")}</div>`).join("")
@@ -112,6 +113,29 @@ function numberHtml(slide) {
   <div id="note" class="note" style="font-family:'${jr.family}';font-weight:${jr.weight}">${esc(t.note)}</div>`
 }
 
+// 2次ベジェを折れ線に分解（PPTX 側も同じ分割数で描く）
+export function qpts([[x0, y0], [cx, cy], [x1, y1]], n = 64) {
+  return Array.from({ length: n + 1 }, (_, i) => { const t = i / n, u = 1 - t; return [u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1] })
+}
+
+function diagramHtml(slide) {
+  const g = slide.diagram
+  const col = (k) => C[k]
+  const paths = g.paths.map((p) => {
+    const pts = p.q ? qpts(p.q) : p.pts
+    const d = "M" + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L")
+    const dash = p.dash ? `stroke-dasharray="${p.dash.join(" ")}"` : ""
+    return `<path d="${d}" fill="none" stroke="${col(p.c)}" stroke-opacity="${p.alpha ?? 1}" stroke-width="${p.w}" stroke-linecap="round" stroke-linejoin="round" ${dash}/>`
+  }).join("")
+  const dots = g.dots.map((o) => `<circle cx="${o.x}" cy="${o.y}" r="${o.r}" fill="${col(o.c)}"/>`).join("")
+  const labels = g.labels.map((l) => {
+    const f = font(l.font)
+    const box = l.align === "center" ? `left:${l.x - 900}px;width:1800px` : l.align === "right" ? `left:${l.x - 1800}px;width:1800px` : `left:${l.x}px`
+    return `<div class="lab" style="${box};top:${l.y}px;text-align:${l.align};font-family:'${f.family}';font-weight:${f.weight};font-size:${l.size}px;color:${col(l.c)}">${esc(l.t)}</div>`
+  }).join("")
+  return `<svg class="dg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${paths}${dots}</svg>${labels}`
+}
+
 function imgTag(ph, style) {
   return `<img src="${fileUrl(ph.path)}" style="position:absolute;${style};object-fit:cover;object-position:${ph.focal};opacity:${ph.opacity}">`
 }
@@ -127,6 +151,8 @@ function slideHtml(slide, res) {
     if (res.photo) body += imgTag(res.photo, `left:0;top:0;width:${hw}px;height:${SPLIT.h}px`)
     if (res.photo2) body += imgTag(res.photo2, `left:${hw + SPLIT.gap}px;top:0;width:${hw}px;height:${SPLIT.h}px`)
     body += textBlockHtml(slide)
+  } else if (slide.layout === "diagram") {
+    body += diagramHtml(slide) + textBlockHtml(slide)
   } else if (slide.layout === "number") {
     if (res.photo) body += imgTag(res.photo, `inset:0;width:${W}px;height:${H}px`)
     body += numberHtml(slide)
@@ -149,6 +175,8 @@ html,body{margin:0;padding:0;background:${C.bg}}
 .numwrap{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;white-space:nowrap}
 .sm{color:${C.fg};opacity:.78;line-height:1.3;letter-spacing:-0.01em}
 .num{line-height:1;color:${C.accent};margin:26px 0 30px}
+.dg{position:absolute;left:0;top:0}
+.lab{position:absolute;white-space:nowrap;line-height:1.42;letter-spacing:-0.01em}
 .note{position:absolute;left:${M.x}px;bottom:${M.y - 40}px;font-size:22px;color:${C.muted};letter-spacing:.01em}
 `
 

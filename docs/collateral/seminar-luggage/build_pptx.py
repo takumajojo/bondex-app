@@ -125,7 +125,7 @@ def add_scrim(slide, scrim):
 def headline(slide, s, m):
     t = s["text"]
     key = t["font"]
-    size = t["size"] * (TYPE_SCALE if TYPE_ONLY and key != "en" else 1)
+    size = t["size"] * (TYPE_SCALE if TYPE_ONLY and key != "en" and s["layout"] != "diagram" else 1)
     line = size * t["lh"]
     box = m["measured"]["txt"]
     hang = size * 0.5
@@ -179,6 +179,63 @@ def number_slide(slide, s, m):
     set_font(run, "jaRegular", 22, COL["muted"], 0.01)
 
 
+def qpts(q, n=64):
+    (x0, y0), (cx, cy), (x1, y1) = q
+    return [((1 - t) ** 2 * x0 + 2 * (1 - t) * t * cx + t * t * x1, (1 - t) ** 2 * y0 + 2 * (1 - t) * t * cy + t * t * y1) for t in (i / n for i in range(n + 1))]
+
+
+def line_style(shp, color_hex, width_px, alpha=1.0, dash=None):
+    """線の色・太さ・透明度・点線（丸端）を DrawingML で直接指定する"""
+    sppr = shp._element.spPr
+    for tag in ("a:ln", "a:solidFill", "a:noFill", "a:gradFill"):
+        for el in sppr.findall(qn(tag)):
+            sppr.remove(el)
+    etree.SubElement(sppr, qn("a:noFill"))
+    ln = etree.SubElement(sppr, qn("a:ln"), w=str(int(px(width_px))), cap="rnd")
+    fill = etree.SubElement(ln, qn("a:solidFill"))
+    clr = etree.SubElement(fill, qn("a:srgbClr"), val=color_hex.lstrip("#"))
+    if alpha < 1:
+        etree.SubElement(clr, qn("a:alpha"), val=str(int(alpha * 100000)))
+    if dash:
+        cd = etree.SubElement(ln, qn("a:custDash"))
+        etree.SubElement(cd, qn("a:ds"), d=str(int(dash[0] / width_px * 100000)), sp=str(int(dash[1] / width_px * 100000)))
+    etree.SubElement(ln, qn("a:round"))
+    style = shp._element.find(qn("p:style"))
+    if style is not None:
+        shp._element.remove(style)
+
+
+def diagram(slide, s):
+    g = s["diagram"]
+    hexc = SPEC["colors"]
+    for i, p in enumerate(g["paths"]):
+        pts = qpts(p["q"]) if "q" in p else [tuple(v) for v in p["pts"]]
+        fb = slide.shapes.build_freeform(px(pts[0][0]), px(pts[0][1]), scale=1.0)
+        fb.add_line_segments([(px(x), px(y)) for x, y in pts[1:]], close=False)
+        shp = fb.convert_to_shape()
+        shp.name = f"図・線{i + 1}"
+        line_style(shp, hexc[p["c"]], p["w"], p.get("alpha", 1), p.get("dash"))
+    for o in g["dots"]:
+        d = slide.shapes.add_shape(MSO_SHAPE.OVAL, px(o["x"] - o["r"]), px(o["y"] - o["r"]), px(o["r"] * 2), px(o["r"] * 2))
+        d.name = "図・点"
+        d.fill.solid()
+        d.fill.fore_color.rgb = COL[o["c"]]
+        d.line.fill.background()
+        style = d._element.find(qn("p:style"))
+        if style is not None:
+            d._element.remove(style)
+    for l in g["labels"]:
+        size, key = l["size"], l["font"]
+        x = l["x"] - 900 if l["align"] == "center" else l["x"] - 1800 if l["align"] == "right" else l["x"]
+        tb, tf = textbox(slide, x, l["y"] + BASELINE_DY[key] * size, 1800, size * 1.42, name="図・ラベル")
+        p = tf.paragraphs[0]
+        exact_spacing(p, size * 1.42)
+        p.alignment = {"center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}.get(l["align"], PP_ALIGN.LEFT)
+        run = p.add_run()
+        run.text = l["t"]
+        set_font(run, key, size, COL[l["c"]], -0.01)
+
+
 def notes_text(n):
     d = NOTES.get(n)
     if not d:
@@ -208,6 +265,9 @@ for s, m in zip(SPEC["slides"], MAN["slides"]):
             add_picture(slide, m["photo"], 0, 0, hw, split["h"], "写真・左（図の変更で差し替え）")
         if m.get("photo2"):
             add_picture(slide, m["photo2"], hw + split["gap"], 0, hw, split["h"], "写真・右（図の変更で差し替え）")
+        headline(slide, s, m)
+    elif s["layout"] == "diagram":
+        diagram(slide, s)
         headline(slide, s, m)
     elif s["layout"] == "number":
         if m.get("photo"):

@@ -65,7 +65,7 @@ ${[400, 500, 600].map((w) => `@font-face{font-family:"Inter";font-weight:${w};sr
 @page{size:A4;margin:0}
 *{box-sizing:border-box}
 html,body{margin:0;background:#fff;color:#111;font-family:"Noto Sans JP";-webkit-font-smoothing:antialiased}
-.pg{width:210mm;min-height:297mm;padding:14mm 17mm 12mm;break-after:page;position:relative}
+.pg{width:210mm;min-height:297mm;padding:13mm 17mm 9mm;break-after:page;position:relative}
 .eyebrow{font-family:Inter;font-weight:600;letter-spacing:.16em;font-size:9pt;color:#777}
 .cover h1{font-weight:500;font-size:22pt;line-height:1.45;margin:8mm 0 4mm;letter-spacing:-.01em}
 .cover .meta{font-size:10pt;color:#555;margin-bottom:9mm}
@@ -87,7 +87,7 @@ header{display:flex;gap:6mm;align-items:flex-start;padding-bottom:5mm;border-bot
 .thumb{width:70mm;height:39.4mm;border-radius:1.5mm;object-fit:cover;background:#0a0a0a}
 .lab{font-size:8pt;letter-spacing:.12em;color:#888;font-weight:500;margin:0 0 1.5mm}
 .purpose{font-size:10pt;line-height:1.7;color:#333;margin-bottom:5mm;word-break:auto-phrase}
-.script{font-size:12pt;line-height:1.82;color:#111;word-break:auto-phrase}
+.script{font-size:12pt;line-height:1.74;color:#111;word-break:auto-phrase}
 .script p{margin:0 0 2.6mm}
 .dir{color:#9a9a9a;font-size:.86em}
 p.dir{margin:1mm 0 2.6mm}
