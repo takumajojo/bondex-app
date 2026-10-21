@@ -239,7 +239,7 @@ def diagram(slide, s):
 def cover(slide, s, m):
     meas, c = m["measured"], s["cover"]
     b = meas["clogo"]
-    pic = slide.shapes.add_picture(str(DIR / "assets/bondex-logo-white.png"), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
+    pic = slide.shapes.add_picture(str(DIR / "assets/bondex-logo-red.png"), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
     pic.name = "BondEx ロゴ"
     headline(slide, s, m)
     b = meas["tag"]
@@ -304,7 +304,7 @@ for s, m in zip(SPEC["slides"], MAN["slides"]):
         number_slide(slide, s, m)
     if s.get("logo") and m["measured"].get("logo"):
         b = m["measured"]["logo"]
-        pic = slide.shapes.add_picture(str(DIR / "assets/bondex-logo-white.png"), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
+        pic = slide.shapes.add_picture(str(DIR / "assets/bondex-logo-red.png"), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
         pic.name = "BondEx ロゴ"
         blip = pic._element.find(".//" + qn("a:blip"))
         etree.SubElement(blip, qn("a:alphaModFix"), amt="92000")

@@ -158,7 +158,7 @@ function slideHtml(slide, res) {
     body += textBlockHtml(slide)
   } else if (slide.layout === "cover") {
     const c = slide.cover
-    body += `<img id="clogo" src="${fileUrl(path.join(DIR, "assets/bondex-logo-white.png"))}" style="position:absolute;left:${M.x}px;top:${M.y}px;height:52px">`
+    body += `<img id="clogo" src="${fileUrl(path.join(DIR, "assets/bondex-logo-red.png"))}" style="position:absolute;left:${M.x}px;top:${M.y}px;height:52px">`
     body += textBlockHtml(slide)
     const t = slide.text
     const tagTop = t.top + t.lines.length * t.size * t.lh + 44
@@ -171,7 +171,7 @@ function slideHtml(slide, res) {
     if (res.photo) body += imgTag(res.photo, `inset:0;width:${W}px;height:${H}px`)
     body += numberHtml(slide)
   }
-  if (slide.logo) body += `<img id="logo" src="${fileUrl(path.join(DIR, "assets/bondex-logo-white.png"))}" style="position:absolute;right:${M.x}px;bottom:${M.y + 22}px;height:40px;opacity:.92">`
+  if (slide.logo) body += `<img id="logo" src="${fileUrl(path.join(DIR, "assets/bondex-logo-red.png"))}" style="position:absolute;right:${M.x}px;bottom:${M.y + 22}px;height:40px;opacity:.92">`
   return `<section class="s">${body}</section>`
 }
 

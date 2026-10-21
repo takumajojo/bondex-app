@@ -21,7 +21,7 @@
 
 ### 表紙
 
-BondEx ロゴ（白）、講演タイトル「日本旅行から、『自分で荷物を運ぶ』をなくす。」、ブランドのタグライン「TRAVEL LIGHTER. TRAVEL FURTHER.」、公式サイト `https://bondex.express` の QR コード（`assets/qr-bondex-express.png`、誤り訂正レベル Q。PPTX では QR 画像にリンクも設定）。QR を作り直すときは `python3 -c "import segno; segno.make('https://bondex.express', error='q').save('assets/qr-bondex-express.png', scale=24, border=4, dark='#0A0A0A')"`。
+BondEx ロゴ（赤・`assets/bondex-logo-red.png`。スライド8右下も同じ）、講演タイトル「日本旅行から、『自分で荷物を運ぶ』をなくす。」、ブランドのタグライン「TRAVEL LIGHTER. TRAVEL FURTHER.」、公式サイト `https://bondex.express` の QR コード（`assets/qr-bondex-express.png`、誤り訂正レベル Q。PPTX では QR 画像にリンクも設定）。QR を作り直すときは `python3 -c "import segno; segno.make('https://bondex.express', error='q').save('assets/qr-bondex-express.png', scale=24, border=4, dark='#0A0A0A')"`。
 
 ## 実写の写真に差し替える手順
 
