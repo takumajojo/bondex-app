@@ -49,11 +49,21 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "キャンセル",
 }
 
+// 当月(JST)の初日・末日を YYYY-MM-DD で。既定の絞り込み期間に使う(2026-10-21 谷口さん)。
+function currentMonthRange(): { from: string; to: string } {
+  const now = new Date(Date.now() + 9 * 3600 * 1000)
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth() // 0-based
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-${pad(lastDay)}` }
+}
+
 export default function ReportsPage() {
   const [agencies, setAgencies] = useState<string[]>([])
   const [agency, setAgency] = useState("")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
+  const [from, setFrom] = useState(() => currentMonthRange().from)
+  const [to, setTo] = useState(() => currentMonthRange().to)
   const [prefecture, setPrefecture] = useState("")
   const [status, setStatus] = useState("")
 

@@ -61,13 +61,16 @@ export async function GET(req: NextRequest) {
   //  取消/失敗は配送していないため原価0。届け先都道府県は residence(民泊) から補完。
   for (const r of rows) {
     const st = String(r.status ?? "")
-    const shipped = st !== "cancelled" && st !== "failed"
+    const billable = st !== "cancelled" && st !== "failed"
+    // キャンセル/失敗は配送していないので売上も原価も0にする（一覧には出すが0・2026-10-21 谷口さん）。
+    const revenue = billable ? Number(r.amount_yen) || 0 : 0
     const actual = r.sagawa_cost_actual_yen == null ? null : Number(r.sagawa_cost_actual_yen)
     const hasActual = actual != null && Number.isFinite(actual)
-    const cost = !shipped ? 0 : hasActual ? actual : sagawaCostYen((r.to_prefecture as string | null) || cleanResidence(r.to_residence)?.prefecture || "", Number(r.suitcase_count) || 0).yen
+    const cost = !billable ? 0 : hasActual ? actual : sagawaCostYen((r.to_prefecture as string | null) || cleanResidence(r.to_residence)?.prefecture || "", Number(r.suitcase_count) || 0).yen
+    r.amount_yen = revenue
     r.sagawa_cost_yen = cost
-    r.cost_is_actual = shipped && hasActual
-    r.margin_yen = (Number(r.amount_yen) || 0) - cost
+    r.cost_is_actual = billable && hasActual
+    r.margin_yen = revenue - cost
   }
   const pieces = rows.reduce((s, r) => s + (Number(r.suitcase_count) || 0), 0)
   const amount = rows.reduce((s, r) => s + (Number(r.amount_yen) || 0), 0)
