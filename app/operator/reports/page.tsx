@@ -99,8 +99,6 @@ export default function ReportsPage() {
   }, [])
 
   const csvHref = `/api/operator/report?${new URLSearchParams(params).toString()}&format=csv`
-  const jstDate = (ts: string | null) =>
-    ts ? new Date(ts).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" }) : "—"
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -135,11 +133,11 @@ export default function ReportsPage() {
               </select>
             </label>
             <label className="text-xs text-muted-foreground">
-              集荷日（から）
+              発送予定日（から）
               <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-2 text-sm" />
             </label>
             <label className="text-xs text-muted-foreground">
-              集荷日（まで）
+              発送予定日（まで）
               <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-2 text-sm" />
             </label>
             <label className="text-xs text-muted-foreground">
@@ -157,7 +155,7 @@ export default function ReportsPage() {
             </label>
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground">「集荷日」は佐川で実際に集荷された日（picked_up_at）で絞り込みます。</p>
+            <p className="text-[11px] text-muted-foreground">発送予定日で絞り込み。配送予定（未集荷）も「全て集荷された前提」で原価・粗利を表示します（状態で進捗を確認）。</p>
             <button onClick={() => void load()} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
               <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.6} /> 更新
             </button>
@@ -206,14 +204,14 @@ export default function ReportsPage() {
                 <tr>
                   <th className="text-left font-medium px-3 py-2">予約番号</th>
                   <th className="text-left font-medium px-3 py-2">代理店</th>
-                  <th className="text-left font-medium px-3 py-2">集荷日</th>
+                  <th className="text-left font-medium px-3 py-2 whitespace-nowrap">発送予定日</th>
                   <th className="text-left font-medium px-3 py-2">発送元</th>
                   <th className="text-left font-medium px-3 py-2">お届け先</th>
                   <th className="text-right font-medium px-3 py-2">個数</th>
                   <th className="text-right font-medium px-3 py-2">売上</th>
                   <th className="text-right font-medium px-3 py-2">佐川原価</th>
                   <th className="text-right font-medium px-3 py-2">粗利</th>
-                  <th className="text-left font-medium px-3 py-2">状態</th>
+                  <th className="text-left font-medium px-3 py-2 whitespace-nowrap">状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,7 +224,7 @@ export default function ReportsPage() {
                     <tr key={`${r.booking_id}-${r.leg_index}`} className="border-t border-slate-100">
                       <td className="px-3 py-2 font-mono text-xs">{r.booking_id}-L{r.leg_index + 1}</td>
                       <td className="px-3 py-2">{r.agency}</td>
-                      <td className="px-3 py-2 tabular-nums">{jstDate(r.picked_up_at)}</td>
+                      <td className="px-3 py-2 tabular-nums whitespace-nowrap">{r.shipment_date ?? ""}</td>
                       <td className="px-3 py-2 text-xs">
                         <span className="text-muted-foreground">{r.from_prefecture || cleanResidence(r.from_residence)?.prefecture || ""} </span>{endpointLabel(r.from_hotel, r.from_residence)}
                       </td>
@@ -237,7 +235,7 @@ export default function ReportsPage() {
                       <td className="px-3 py-2 text-right tabular-nums">¥{(r.amount_yen ?? 0).toLocaleString()}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">¥{(r.sagawa_cost_yen ?? 0).toLocaleString()}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-emerald-700">¥{(r.margin_yen ?? 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs">{STATUS_LABEL[r.status ?? ""] ?? r.status}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">{STATUS_LABEL[r.status ?? ""] ?? r.status}</td>
                     </tr>
                   ))
                 )}

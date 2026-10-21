@@ -44,13 +44,11 @@ export async function GET(req: NextRequest) {
   if (agency) q = q.eq("agency", agency)
   if (status) q = q.eq("status", status)
   if (prefecture) q = q.eq("to_prefecture", prefecture)
-  if (from) q = q.gte("picked_up_at", `${from}T00:00:00+09:00`)
-  if (to) {
-    const d = new Date(`${to}T00:00:00+09:00`)
-    d.setUTCDate(d.getUTCDate() + 1) // to 当日を含める
-    q = q.lt("picked_up_at", d.toISOString())
-  }
-  q = q.order("picked_up_at", { ascending: false, nullsFirst: false }).limit(5000)
+  // 発送予定日(shipment_date)で絞る。集荷前の予定分も含めて「全て集荷された前提」で粗利を出すため
+  //  (2026-10-21 谷口さん。従来は集荷日=picked_up_at 基準で配送済みしか出なかった)。
+  if (from) q = q.gte("shipment_date", from)
+  if (to) q = q.lte("shipment_date", to)
+  q = q.order("shipment_date", { ascending: false, nullsFirst: false }).limit(5000)
 
   const { data, error } = await q
   if (error) {
