@@ -94,6 +94,7 @@ type Row = {
   label_mail_due: string | null
   pickup_hotel_notified_at: string | null
   guest_hotel_notified_at: string | null
+  pickup_requested_at: string | null
 }
 
 const STATUS_LABELS: Record<string, { ja: string; cls: string }> = {
@@ -152,6 +153,63 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
     <div className="flex items-baseline gap-2 text-xs">
       <span className="w-24 shrink-0 text-muted-foreground">{k}</span>
       <span className="text-foreground">{v}</span>
+    </div>
+  )
+}
+
+// 区間の「対応チェック」(操作可)。済にすると一覧(ダッシュボード)の状態表示も☑になる。
+// 本来は荷物問い合わせ連携で自動反映だが、復旧までは当面ここで手動運用 (2026-10-21 谷口さん)。
+function LegTaskChecklist({ row, onChanged }: { row: Row; onChanged: () => Promise<void> | void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const nt = row.note_target === "from" || row.note_target === "to" || row.note_target === "both" ? row.note_target : "to"
+  const pickupApplies = nt === "from" || nt === "both"
+  const guestApplies = nt === "to" || nt === "both"
+  const arrangeApplies = ["requested", "pending", "issued"].includes(row.status)
+
+  const toggleHotel = async (route: "pickup" | "guest", next: boolean) => {
+    setBusy(route)
+    try {
+      const b: Record<string, unknown> = { id: row.id }
+      b[route === "pickup" ? "pickupHotelNotified" : "guestHotelNotified"] = next
+      const res = await fetch("/api/shipments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "更新に失敗しました")
+      await onChanged()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "更新に失敗しました")
+    } finally {
+      setBusy(null)
+    }
+  }
+  const toggleArrange = async (next: boolean) => {
+    setBusy("arrange")
+    try {
+      const res = await fetch("/api/operator/sagawa-pickup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipmentId: row.id, undo: !next }) })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "更新に失敗しました")
+      await onChanged()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "更新に失敗しました")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const Check = ({ id, label, done, onToggle }: { id: string; label: string; done: boolean; onToggle: (next: boolean) => void }) => (
+    <label className={`inline-flex items-center gap-2 text-xs cursor-pointer select-none ${done ? "text-emerald-700" : "text-foreground"}`}>
+      <input type="checkbox" checked={done} disabled={busy === id} onChange={(e) => onToggle(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+      {label}
+      {busy === id && <span className="text-muted-foreground">…</span>}
+    </label>
+  )
+
+  if (!arrangeApplies && !pickupApplies && !guestApplies) return null
+  return (
+    <div className="rounded-xl border border-border bg-slate-50 p-3">
+      <p className="text-[11px] text-muted-foreground mb-2">対応チェック（済にすると一覧の状態も☑になります）</p>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {arrangeApplies && <Check id="arrange" label="集荷手配（佐川）済み" done={!!row.pickup_requested_at} onToggle={toggleArrange} />}
+        {pickupApplies && <Check id="pickup" label="集荷元ホテル連絡 済み" done={!!row.pickup_hotel_notified_at} onToggle={(n) => toggleHotel("pickup", n)} />}
+        {guestApplies && <Check id="guest" label="配送先ホテル連絡 済み" done={!!row.guest_hotel_notified_at} onToggle={(n) => toggleHotel("guest", n)} />}
+      </div>
     </div>
   )
 }
@@ -618,6 +676,8 @@ export default function OperatorBookingDetailPage() {
                   {st.ja}
                 </span>
               </div>
+
+              <LegTaskChecklist row={r} onChanged={load} />
 
               {/* 変更受付: 締切表示 + ホテル変更ボタン (物理ゲートで無効化) */}
               {(() => {
