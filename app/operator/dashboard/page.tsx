@@ -1190,24 +1190,40 @@ export default function DashboardPage() {
         )}
 
         {/* Status summary */}
-        <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {STATUS_OPTIONS.map((st) => (
+        {/* 状態タイルを「要対応（運営が動く）」と「進行中・完了」に分けて視線を誘導 (2026-10-21 谷口さん・見やすさ改善) */}
+        {(() => {
+          const ATTN: string[] = ["requested", "pending", "failed"] // 発行待ち/保留/失敗=運営の対応が要る
+          const Tile = (st: ShipmentStatus) => (
             <button
               key={st}
               onClick={() => setFilterStatus(filterStatus === st ? "" : st)}
               className={`rounded-xl border p-3 text-left transition-colors ${
                 filterStatus === st
                   ? "border-foreground bg-foreground text-background"
-                  : "border-border bg-white hover:border-foreground/40"
+                  : ATTN.includes(st) && counts[st] > 0
+                    ? "border-amber-300 bg-amber-50 hover:border-amber-400"
+                    : "border-border bg-white hover:border-foreground/40"
               }`}
             >
-              <p className="text-[10px] uppercase tracking-widest opacity-70 mb-1">
-                {STATUS_LABELS[st].ja}
-              </p>
+              <p className="text-[10px] uppercase tracking-widest opacity-70 mb-1">{STATUS_LABELS[st].ja}</p>
               <p className="text-xl font-semibold tabular-nums">{counts[st]}</p>
             </button>
-          ))}
-        </section>
+          )
+          const attn = STATUS_OPTIONS.filter((s) => ATTN.includes(s))
+          const flow = STATUS_OPTIONS.filter((s) => !ATTN.includes(s))
+          return (
+            <div className="space-y-3">
+              <div>
+                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">要対応</p>
+                <section className="grid grid-cols-3 gap-3">{attn.map(Tile)}</section>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">進行中・完了</p>
+                <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{flow.map(Tile)}</section>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* 運用ツール・接続状況 — 毎日見るものではないので既定は畳む（アテンションを上げるため）。
             承認待ち代理店・課金失敗などの「判断待ち」は上の要対応タイルに出るので、ここは畳んでよい。 */}
