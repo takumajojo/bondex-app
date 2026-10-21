@@ -16,7 +16,14 @@ const SPEC = JSON.parse(fs.readFileSync(path.join(DIR, "slides.json"), "utf8"))
 // 写真版が完成していればその画像、未完成ならタイポグラフィ版をサムネイルに使う
 const photoMan = path.join(DIR, "build/photo/manifest.json")
 const usePhoto = fs.existsSync(photoMan) && JSON.parse(fs.readFileSync(photoMan, "utf8")).complete
-const THUMBS = path.join(DIR, "build", usePhoto ? "photo" : "type", "png")
+const SRC = path.join(DIR, "build", usePhoto ? "photo" : "type", "png")
+// サムネイルは 960px の JPEG に縮小して埋め込む（原寸 PNG だと PDF が 20MB を超えるため）
+const THUMBS = path.join(DIR, "build", "thumbs")
+fs.mkdirSync(THUMBS, { recursive: true })
+for (const s of N.slides) {
+  const name = `slide-${String(s.n).padStart(2, "0")}`
+  execFileSync("convert", [path.join(SRC, `${name}.png`), "-resize", "960x", "-quality", "88", path.join(THUMBS, `${name}.jpg`)])
+}
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 const A = SPEC.colors.accent
 
@@ -50,7 +57,7 @@ const pages = rows.map((r) => `<section class="pg">
       <div class="msg">${esc(r.message)}</div>
       <div class="time"><b>${esc(r.time)}</b>　経過 ${r.from} → ${r.to}</div>
     </div>
-    <img class="thumb" src="file://${path.join(THUMBS, `slide-${String(r.n).padStart(2, "0")}.png`)}">
+    <img class="thumb" src="file://${path.join(THUMBS, `slide-${String(r.n).padStart(2, "0")}.jpg`)}">
   </header>
   <div class="lab">このページの目的</div>
   <div class="purpose">${esc(r.purpose)}</div>
