@@ -73,14 +73,10 @@
     },
     {
       "n": 2,
-      "layout": "split",
+      "layout": "full",
       "anchor": "bottom",
       "photo": {
-        "file": "s02a.jpg",
-        "focal": "50% 50%"
-      },
-      "photo2": {
-        "file": "s02b.jpg",
+        "file": "s02.jpg",
         "focal": "50% 50%"
       },
       "text": {
@@ -102,13 +98,14 @@
         ]
       },
       "brief": {
-        "title": "左：身軽に歩く旅行者／右：別ルートで運ばれるスーツケース",
-        "shot": "左：京都・奈良などの石畳や路地を、小さなショルダーバッグだけで歩く訪日旅行者（後ろ姿〜斜め後ろ）。右：配送トラックの荷台や仕分けラインに整然と並ぶスーツケース。左右とも同じ色温度・同じ明るさに揃える。",
-        "space": "各写真は 956×640 にトリミングされる（横長）。被写体は中央寄せ",
-        "keywords_ja": "観光客 後ろ姿 路地 京都 手ぶら / スーツケース トラック 荷台 配送 物流",
-        "keywords_en": "tourist walking alley Kyoto back view light bag / suitcases loaded delivery truck logistics",
+        "title": "ローラーコンベアで運ばれていくスーツケース（人とは別のルート）",
+        "shot": "物流のローラーコンベアに載ったスーツケースが、奥へ運ばれていく。人は写さない。代替の実写なら、空港・物流センターのコンベアや、配送トラックの荷台に並ぶスーツケース。",
+        "space": "画面下40%は暗め・情報量少なめ（文字を載せる）",
+        "keywords_ja": "スーツケース コンベア 物流 / スーツケース トラック 荷台",
+        "keywords_en": "suitcase on roller conveyor logistics / suitcases loaded delivery truck",
         "prompt": "A: Documentary photo, back view of a foreign traveler walking freely through a quiet stone-paved street in Kyoto with only a small shoulder bag, early morning soft light, 50mm. B: Documentary photo, several large hard-shell suitcases neatly loaded in the cargo area of a delivery truck, soft natural light, 50mm. Both: matching warm-neutral color grade, no text, no logos"
-      }
+      },
+      "scrim": "bottom"
     },
     {
       "n": 3,
