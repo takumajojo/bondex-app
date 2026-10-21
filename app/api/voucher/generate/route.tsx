@@ -8,7 +8,7 @@ import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
 import { cleanResidence, residenceAddressLine, residenceAddressLineEn } from "@/lib/residence"
-import { PRICING } from "@/lib/pricing"
+import { resolveUnitPriceYen } from "@/lib/pricing"
 import {
   VoucherDocument,
   OperationsDocument,
@@ -23,8 +23,6 @@ import {
 
 export const runtime = "nodejs"
 export const maxDuration = 60
-
-const FLAT_RATE_YEN = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
 
 interface RequestShipment {
   shipmentDate: unknown
@@ -252,10 +250,14 @@ export async function POST(req: NextRequest) {
   // 500 になるため、形式検証し不正なら生成する (姉妹ルート voucher/regenerate・agency/voucher と同じ)。
   const rawBookingId = asString(body.bookingId).trim()
   const bookingId = /^BDX-[\dA-Z]+(-[\dA-Z]+)?$/i.test(rawBookingId) ? rawBookingId : generateBookingId()
-  const totalAmount = shipments.reduce(
-    (sum, s) => sum + s.suitcaseCount * FLAT_RATE_YEN,
-    0,
-  )
+  // 代理店の既定単価 (税抜・円/個)。未設定なら全体既定 (4,980)。請求額と同じ単価でバウチャー総額を出す。
+  const sbPrice = getSupabase()
+  const agencyUnitPrice = sbPrice
+    ? ((await sbPrice.from("agencies").select("unit_price_yen").eq("name", tourCompany).maybeSingle()).data
+        ?.unit_price_yen as number | null | undefined)
+    : null
+  const unitPriceYen = resolveUnitPriceYen(agencyUnitPrice)
+  const totalAmount = shipments.reduce((sum, s) => sum + s.suitcaseCount * unitPriceYen, 0)
 
   const contactPersonName =
     asString(body.contactPersonName).trim() || SUPPORT_DEFAULTS.contactPersonName

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     }
     const { data, error } = await sb
       .from("agencies")
-      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, locale, payment_method, status, contract_status, card_on_file, billing_exempt, hotel_notification_mode, created_via, created_at, ship_address")
+      .select("id, name, contact_email, contact_person, contact_phone, country, is_domestic, locale, payment_method, status, contract_status, card_on_file, billing_exempt, hotel_notification_mode, unit_price_yen, created_via, created_at, ship_address")
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -66,6 +66,7 @@ export async function PATCH(req: NextRequest) {
     locale?: unknown
     hotelNotificationMode?: unknown
     shipAddress?: unknown
+    unitPriceYen?: unknown
   }
   try {
     body = (await req.json()) as {
@@ -74,6 +75,7 @@ export async function PATCH(req: NextRequest) {
       locale?: unknown
       hotelNotificationMode?: unknown
       shipAddress?: unknown
+      unitPriceYen?: unknown
     }
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -87,10 +89,24 @@ export async function PATCH(req: NextRequest) {
   // shipAddress は「空オブジェクト = 登録解除」も許すため undefined 判定で分ける
   const hasShipAddress = body.shipAddress !== undefined
   const shipAddress = hasShipAddress ? cleanResidence(body.shipAddress) : null
+  // 単価: 送られた時だけ更新。null/空 = 既定(4,980)に戻す、正の整数 = その単価。
+  const hasUnitPrice = body.unitPriceYen !== undefined
+  let unitPriceYen: number | null = null
+  if (hasUnitPrice) {
+    if (body.unitPriceYen === null || body.unitPriceYen === "") {
+      unitPriceYen = null
+    } else {
+      const n = Number(body.unitPriceYen)
+      if (!Number.isInteger(n) || n <= 0) {
+        return NextResponse.json({ error: "unitPriceYen must be a positive integer or null" }, { status: 400 })
+      }
+      unitPriceYen = n
+    }
+  }
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
-  if (!status && !locale && !hasMode && !hasShipAddress) {
+  if (!status && !locale && !hasMode && !hasShipAddress && !hasUnitPrice) {
     return NextResponse.json(
-      { error: "status, locale, hotelNotificationMode or shipAddress is required" },
+      { error: "status, locale, hotelNotificationMode, shipAddress or unitPriceYen is required" },
       { status: 400 },
     )
   }
@@ -119,6 +135,7 @@ export async function PATCH(req: NextRequest) {
   if (status) update.status = status
   if (locale) update.locale = locale
   if (hasMode) update.hotel_notification_mode = body.hotelNotificationMode
+  if (hasUnitPrice) update.unit_price_yen = unitPriceYen
   if (hasShipAddress) {
     const filled = shipAddress && Object.values(shipAddress).some((v) => v !== "")
     update.ship_address = filled ? shipAddress : null
