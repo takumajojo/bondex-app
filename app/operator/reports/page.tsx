@@ -24,12 +24,17 @@ interface Row {
   to_prefecture: string | null
   to_city: string | null
   suitcase_count: number | null
+  amount_yen: number | null
+  sagawa_cost_yen: number | null
+  margin_yen: number | null
   status: string | null
 }
 interface Summary {
   count: number
   pieces: number
   amount: number
+  cost: number
+  margin: number
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -52,7 +57,7 @@ export default function ReportsPage() {
   const [status, setStatus] = useState("")
 
   const [rows, setRows] = useState<Row[]>([])
-  const [summary, setSummary] = useState<Summary>({ count: 0, pieces: 0, amount: 0 })
+  const [summary, setSummary] = useState<Summary>({ count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
@@ -74,7 +79,7 @@ export default function ReportsPage() {
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || "読み込みに失敗しました")
       setRows(Array.isArray(d.rows) ? d.rows : [])
-      setSummary(d.summary ?? { count: 0, pieces: 0, amount: 0 })
+      setSummary(d.summary ?? { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 })
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました")
     } finally {
@@ -170,10 +175,27 @@ export default function ReportsPage() {
             <p className="text-2xl font-bold tabular-nums">{summary.pieces}</p>
           </div>
           <div className="rounded-2xl border border-border bg-white p-4">
-            <p className="text-[11px] text-muted-foreground">金額 合計（税抜ベース）</p>
+            <p className="text-[11px] text-muted-foreground">売上 合計（税抜）</p>
             <p className="text-2xl font-bold tabular-nums">¥{summary.amount.toLocaleString()}</p>
           </div>
+          <div className="rounded-2xl border border-border bg-white p-4">
+            <p className="text-[11px] text-muted-foreground">佐川原価 合計（税抜）</p>
+            <p className="text-2xl font-bold tabular-nums">¥{(summary.cost ?? 0).toLocaleString()}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-white p-4">
+            <p className="text-[11px] text-muted-foreground">粗利（売上−佐川原価）</p>
+            <p className="text-2xl font-bold tabular-nums text-emerald-700">¥{(summary.margin ?? 0).toLocaleString()}</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-white p-4">
+            <p className="text-[11px] text-muted-foreground">粗利率</p>
+            <p className="text-2xl font-bold tabular-nums">
+              {summary.amount > 0 ? Math.round(((summary.margin ?? 0) / summary.amount) * 100) : 0}%
+            </p>
+          </div>
         </section>
+        <p className="text-[10px] text-muted-foreground -mt-1 px-1">
+          佐川原価＝届け先の地帯×サイズ140（スーツケース基準）の運賃×個数の<b>概算（2026-10-21運賃ベース）</b>。10/21前の実績は旧運賃（関東 約¥2,100/個）のため差があります。Ship&co・Stripe・固定費は未控除。取消/失敗は原価0。
+        </p>
 
         {/* 一覧 */}
         <section className="rounded-2xl border border-border bg-white overflow-hidden">
@@ -188,14 +210,17 @@ export default function ReportsPage() {
                   <th className="text-left font-medium px-3 py-2">発送元</th>
                   <th className="text-left font-medium px-3 py-2">お届け先</th>
                   <th className="text-right font-medium px-3 py-2">個数</th>
+                  <th className="text-right font-medium px-3 py-2">売上</th>
+                  <th className="text-right font-medium px-3 py-2">佐川原価</th>
+                  <th className="text-right font-medium px-3 py-2">粗利</th>
                   <th className="text-left font-medium px-3 py-2">状態</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline" /> 読み込み中</td></tr>
+                  <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline" /> 読み込み中</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">該当する実績はありません</td></tr>
+                  <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">該当する実績はありません</td></tr>
                 ) : (
                   rows.map((r) => (
                     <tr key={`${r.booking_id}-${r.leg_index}`} className="border-t border-slate-100">
@@ -209,6 +234,9 @@ export default function ReportsPage() {
                         <span className="text-muted-foreground">{r.to_prefecture || cleanResidence(r.to_residence)?.prefecture || ""} </span>{endpointLabel(r.to_hotel, r.to_residence)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.suitcase_count}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">¥{(r.amount_yen ?? 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">¥{(r.sagawa_cost_yen ?? 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-emerald-700">¥{(r.margin_yen ?? 0).toLocaleString()}</td>
                       <td className="px-3 py-2 text-xs">{STATUS_LABEL[r.status ?? ""] ?? r.status}</td>
                     </tr>
                   ))

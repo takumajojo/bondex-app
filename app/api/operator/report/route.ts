@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { cleanResidence, endpointLabel } from "@/lib/residence"
+import { sagawaCostYen } from "@/lib/sagawa-rates"
 
 export const runtime = "nodejs"
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   const limit = rateLimit(req, "report")
   if (!limit.ok) return limit.response
   const sb = getSupabase()
-  if (!sb) return NextResponse.json({ rows: [], summary: { count: 0, pieces: 0, amount: 0 } })
+  if (!sb) return NextResponse.json({ rows: [], summary: { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 } })
 
   const sp = req.nextUrl.searchParams
   const agency = sp.get("agency") || ""
@@ -53,19 +54,33 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await q
   if (error) {
-    return NextResponse.json({ error: error.message, rows: [], summary: { count: 0, pieces: 0, amount: 0 } }, { status: 500 })
+    return NextResponse.json({ error: error.message, rows: [], summary: { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 } }, { status: 500 })
   }
   const rows = (data ?? []) as Array<Record<string, unknown>>
+  // 各区間に佐川原価(税抜)と粗利を付与する。原価 = 届け先地帯の サイズ140 レート × 個数
+  //  (スーツケースは160でも140で集荷・請求のため既定140・2026-10-21 谷口さん)。
+  //  取消/失敗は配送していないため原価0。届け先都道府県は residence(民泊) から補完。
+  for (const r of rows) {
+    const st = String(r.status ?? "")
+    const shipped = st !== "cancelled" && st !== "failed"
+    const toRes = cleanResidence(r.to_residence)
+    const pref = (r.to_prefecture as string | null) || toRes?.prefecture || ""
+    const cost = shipped ? sagawaCostYen(pref, Number(r.suitcase_count) || 0).yen : 0
+    r.sagawa_cost_yen = cost
+    r.margin_yen = (Number(r.amount_yen) || 0) - cost
+  }
   const pieces = rows.reduce((s, r) => s + (Number(r.suitcase_count) || 0), 0)
   const amount = rows.reduce((s, r) => s + (Number(r.amount_yen) || 0), 0)
-  const summary = { count: rows.length, pieces, amount }
+  const cost = rows.reduce((s, r) => s + (Number(r.sagawa_cost_yen) || 0), 0)
+  const margin = amount - cost
+  const summary = { count: rows.length, pieces, amount, cost, margin }
 
   if (format === "csv") {
     const header = [
       "予約番号", "代理店", "代表者", "ツアー番号", "集荷日", "発送日",
       "発送元ホテル", "発送元都道府県", "発送元市区",
       "お届け先ホテル", "お届け先都道府県", "お届け先市区",
-      "個数", "金額", "ステータス",
+      "個数", "金額(売上)", "佐川原価", "粗利", "ステータス",
       "取消経路", "取消実行者", "取消日時",
     ]
     const lines = [header.join(",")]
@@ -85,7 +100,7 @@ export async function GET(req: NextRequest) {
           endpointLabel(r.to_hotel, r.to_residence),
           r.to_prefecture || toRes?.prefecture || "",
           r.to_city || toRes?.city || "",
-          r.suitcase_count, r.amount_yen, r.status,
+          r.suitcase_count, r.amount_yen, r.sagawa_cost_yen, r.margin_yen, r.status,
           r.cancel_source ? (CANCEL_SRC_JA[String(r.cancel_source)] ?? r.cancel_source) : "",
           r.cancelled_by ?? "",
           r.cancelled_at ? new Date(r.cancelled_at as string).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) : "",
