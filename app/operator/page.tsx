@@ -19,6 +19,7 @@ import {
   Languages,
   FileText,
   Download,
+  Mail,
   Printer,
   Settings,
   X,
@@ -581,6 +582,8 @@ type Phase = "idle" | "parsing" | "review" | "confirm" | "generating" | "generat
 interface GeneratedDocs {
   bookingId: string
   voucherUrl: string
+  /** 依頼元の代理店名 (バウチャーPDFの送付先=代理店の登録メール解決に使う)。 */
+  agency: string
   /** ガイドをバウチャー末尾に同梱したか (別ファイルではなく voucherUrl の最終ページ) */
   howtoIncluded: boolean
   howtoLang: GuestLanguage
@@ -1229,6 +1232,7 @@ export default function OperatorPage() {
       setGeneratedDocs({
         bookingId: voucher.bookingId,
         voucherUrl: voucher.url,
+        agency: fromRequest?.agency || selectedAgency || tourCompanyFromSettings,
         howtoIncluded: itinerary.includeHowto !== false,
         howtoLang: guestLang,
         yamatoLabels,
@@ -3035,6 +3039,54 @@ function GeneratedView({
   onReset: () => void
   onBackToEdit: () => void
 }) {
+  // 依頼主(代理店の登録メール全員)へバウチャーPDFを送付する (谷口さんが内容確認後に手動で)。
+  const [sendState, setSendState] = useState<"idle" | "sending" | "done" | "error">("idle")
+  const [sendMsg, setSendMsg] = useState("")
+  const voucherFileName = buildVoucherFileName({
+    bookingId: docs.bookingId,
+    tourNumber: docs.tourNumber,
+    representativeLabel: docs.representativeLabel,
+    kind: "voucher",
+  })
+  const sendVoucherToAgency = async () => {
+    if (!docs.agency) {
+      setSendState("error")
+      setSendMsg("依頼元の代理店が不明です。送付できません。")
+      return
+    }
+    if (!window.confirm(`依頼主（${docs.agency}）の登録メール宛に、このバウチャーPDFを送付します。よろしいですか？`)) return
+    setSendState("sending")
+    setSendMsg("")
+    try {
+      const blob = await (await fetch(docs.voucherUrl)).blob()
+      const pdfBase64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader()
+        r.onload = () => resolve(String(r.result).split(",")[1] ?? "")
+        r.onerror = () => reject(new Error("PDFの読み込みに失敗しました"))
+        r.readAsDataURL(blob)
+      })
+      const res = await fetch("/api/operator/send-voucher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agency: docs.agency, bookingId: docs.bookingId, fileName: voucherFileName, pdfBase64 }),
+      })
+      const d = (await res.json().catch(() => null)) as { ok?: boolean; sentTo?: string[]; reason?: string; error?: string } | null
+      if (!res.ok || !d?.ok) {
+        const msg =
+          d?.reason === "no_agency_email"
+            ? "代理店のメールが未登録です（代理店管理→連絡先・ユーザーで登録してください）"
+            : d?.reason === "send_failed"
+              ? `送信に失敗しました（${d?.error ?? "mailer"}）`
+              : d?.error || `失敗しました (${res.status})`
+        throw new Error(msg)
+      }
+      setSendState("done")
+      setSendMsg(`送付しました：${(d.sentTo ?? []).join("、")}`)
+    } catch (e) {
+      setSendState("error")
+      setSendMsg(e instanceof Error ? e.message : "送付に失敗しました")
+    }
+  }
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-border bg-white p-8 flex items-start gap-4">
@@ -3064,6 +3116,33 @@ function GeneratedView({
           previewLabel={t.preview}
           openFullLabel={t.openFullPreview}
         />
+      </section>
+
+      {/* 依頼主(代理店の登録メール全員)へバウチャーPDFを送付。谷口さんが内容確認後に手動で送る。 */}
+      <section className="rounded-2xl border border-border bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">依頼主へバウチャーを送付</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {docs.agency || "（代理店不明）"} の登録メール全員へ、上のバウチャーPDFを添付して送ります。
+            </p>
+          </div>
+          <button
+            onClick={sendVoucherToAgency}
+            disabled={sendState === "sending" || sendState === "done" || !docs.agency}
+            className="h-10 px-4 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0"
+          >
+            {sendState === "sending" ? (
+              <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+            ) : (
+              <Mail className="w-4 h-4" strokeWidth={1.5} />
+            )}
+            {sendState === "done" ? "送付済み" : "依頼主へPDFを送付"}
+          </button>
+        </div>
+        {sendMsg && (
+          <p className={`text-xs mt-2 ${sendState === "error" ? "text-red-700" : "text-emerald-700"}`}>{sendMsg}</p>
+        )}
       </section>
 
       {docs.howtoIncluded && (
