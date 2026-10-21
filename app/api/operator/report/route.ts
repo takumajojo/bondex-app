@@ -14,7 +14,7 @@ export const runtime = "nodejs"
  */
 
 const SELECT =
-  "booking_id, leg_index, agency, representative, tour_number, picked_up_at, shipment_date, from_hotel, from_residence, from_prefecture, from_city, to_hotel, to_residence, to_prefecture, to_city, suitcase_count, amount_yen, status, cancelled_at, cancelled_by, cancel_source"
+  "booking_id, leg_index, agency, representative, tour_number, picked_up_at, shipment_date, from_hotel, from_residence, from_prefecture, from_city, to_hotel, to_residence, to_prefecture, to_city, suitcase_count, amount_yen, sagawa_cost_actual_yen, status, cancelled_at, cancelled_by, cancel_source"
 
 const CANCEL_SRC_JA: Record<string, string> = { agency: "代理店", operator: "運営", system: "自動" }
 
@@ -44,29 +44,29 @@ export async function GET(req: NextRequest) {
   if (agency) q = q.eq("agency", agency)
   if (status) q = q.eq("status", status)
   if (prefecture) q = q.eq("to_prefecture", prefecture)
-  if (from) q = q.gte("picked_up_at", `${from}T00:00:00+09:00`)
-  if (to) {
-    const d = new Date(`${to}T00:00:00+09:00`)
-    d.setUTCDate(d.getUTCDate() + 1) // to 当日を含める
-    q = q.lt("picked_up_at", d.toISOString())
-  }
-  q = q.order("picked_up_at", { ascending: false, nullsFirst: false }).limit(5000)
+  // 発送予定日(shipment_date)で絞る。集荷前の予定分も含めて「全て集荷された前提」で粗利を出すため
+  //  (2026-10-21 谷口さん。従来は集荷日=picked_up_at 基準で配送済みしか出なかった)。
+  if (from) q = q.gte("shipment_date", from)
+  if (to) q = q.lte("shipment_date", to)
+  q = q.order("shipment_date", { ascending: false, nullsFirst: false }).limit(5000)
 
   const { data, error } = await q
   if (error) {
     return NextResponse.json({ error: error.message, rows: [], summary: { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 } }, { status: 500 })
   }
   const rows = (data ?? []) as Array<Record<string, unknown>>
-  // 各区間に佐川原価(税抜)と粗利を付与する。原価 = 届け先地帯の サイズ140 レート × 個数
-  //  (スーツケースは160でも140で集荷・請求のため既定140・2026-10-21 谷口さん)。
+  // 各区間に佐川原価(税抜)と粗利を付与する。
+  //  原価は「実原価(運賃照会CSV取込=sagawa_cost_actual_yen)があればそれ、無ければ運賃表の概算」。
+  //  概算 = 届け先地帯の サイズ140 レート × 個数 (スーツケースは160でも140で集荷/請求・2026-10-21 谷口さん)。
   //  取消/失敗は配送していないため原価0。届け先都道府県は residence(民泊) から補完。
   for (const r of rows) {
     const st = String(r.status ?? "")
     const shipped = st !== "cancelled" && st !== "failed"
-    const toRes = cleanResidence(r.to_residence)
-    const pref = (r.to_prefecture as string | null) || toRes?.prefecture || ""
-    const cost = shipped ? sagawaCostYen(pref, Number(r.suitcase_count) || 0).yen : 0
+    const actual = r.sagawa_cost_actual_yen == null ? null : Number(r.sagawa_cost_actual_yen)
+    const hasActual = actual != null && Number.isFinite(actual)
+    const cost = !shipped ? 0 : hasActual ? actual : sagawaCostYen((r.to_prefecture as string | null) || cleanResidence(r.to_residence)?.prefecture || "", Number(r.suitcase_count) || 0).yen
     r.sagawa_cost_yen = cost
+    r.cost_is_actual = shipped && hasActual
     r.margin_yen = (Number(r.amount_yen) || 0) - cost
   }
   const pieces = rows.reduce((s, r) => s + (Number(r.suitcase_count) || 0), 0)
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
       "予約番号", "代理店", "代表者", "ツアー番号", "集荷日", "発送日",
       "発送元ホテル", "発送元都道府県", "発送元市区",
       "お届け先ホテル", "お届け先都道府県", "お届け先市区",
-      "個数", "金額(売上)", "佐川原価", "粗利", "ステータス",
+      "個数", "金額(売上)", "佐川原価", "原価種別", "粗利", "ステータス",
       "取消経路", "取消実行者", "取消日時",
     ]
     const lines = [header.join(",")]
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
           endpointLabel(r.to_hotel, r.to_residence),
           r.to_prefecture || toRes?.prefecture || "",
           r.to_city || toRes?.city || "",
-          r.suitcase_count, r.amount_yen, r.sagawa_cost_yen, r.margin_yen, r.status,
+          r.suitcase_count, r.amount_yen, r.sagawa_cost_yen, r.cost_is_actual ? "実" : "概算", r.margin_yen, r.status,
           r.cancel_source ? (CANCEL_SRC_JA[String(r.cancel_source)] ?? r.cancel_source) : "",
           r.cancelled_by ?? "",
           r.cancelled_at ? new Date(r.cancelled_at as string).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) : "",
