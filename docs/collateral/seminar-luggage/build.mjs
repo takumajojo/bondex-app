@@ -4,7 +4,7 @@
 //   node docs/collateral/seminar-luggage/build.mjs --type    写真なしのタイポグラフィ版
 //
 // 写真は photos/ に slides.json の file 名で置く。全写真が揃い解像度チェックを通った時だけ
-// BondEx_Seminar_Final.pdf を出力する。足りない場合は BondEx_Seminar_Draft.pdf になる。
+// BondEx_Seminar_Final_v2.pdf を出力する。足りない場合は BondEx_Seminar_Draft_v2.pdf になる。
 import fs from "node:fs"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
@@ -259,7 +259,7 @@ for (let i = 0; i < SPEC.slides.length; i++) {
   await el.screenshot({ path: path.join(BUILD, "png", `slide-${String(SPEC.slides[i].n).padStart(2, "0")}.png`) })
 }
 const complete = !TYPE_ONLY && problems.length === 0
-const pdfName = TYPE_ONLY ? "BondEx_Seminar_TypeOnly.pdf" : complete ? "BondEx_Seminar_Final.pdf" : "BondEx_Seminar_Draft.pdf"
+const pdfName = TYPE_ONLY ? "BondEx_Seminar_TypeOnly_v2.pdf" : complete ? "BondEx_Seminar_Final_v2.pdf" : "BondEx_Seminar_Draft_v2.pdf"
 await page.pdf({ path: path.join(OUT, pdfName), width: `${W}px`, height: `${H}px`, printBackground: true, preferCSSPageSize: true })
 await browser.close()
 

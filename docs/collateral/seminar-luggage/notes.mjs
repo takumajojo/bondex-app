@@ -36,7 +36,7 @@ const cover = `<section class="pg cover">
   <div class="meta">対象：${esc(N.audience)}　｜　所要：${esc(N.duration)}</div>
   <table class="plan">
     <thead><tr><th>#</th><th>表示メッセージ</th><th>時間</th><th>経過</th></tr></thead>
-    <tbody>${rows.map((r) => `<tr><td class="n">${r.n === 0 ? "表紙" : String(r.n).padStart(2, "0")}</td><td>${esc(r.message)}</td><td>${esc(r.time)}</td><td class="n">${r.from}–${r.to}</td></tr>`).join("")}</tbody>
+    <tbody>${rows.map((r) => `<tr><td class="n">${String(r.n).padStart(2, "0")}</td><td>${esc(r.message)}</td><td>${esc(r.time)}</td><td class="n">${r.from}–${r.to}</td></tr>`).join("")}</tbody>
   </table>
   <h2>登壇前に確認すること</h2>
   <ul class="caution">${N.cautions.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
@@ -46,7 +46,7 @@ const cover = `<section class="pg cover">
 const pages = rows.map((r) => `<section class="pg">
   <header>
     <div class="hl">
-      <div class="num">${r.n === 0 ? "表紙" : String(r.n).padStart(2, "0")}${r.n === 0 ? "" : "<span>/ 08</span>"}</div>
+      <div class="num">${String(r.n).padStart(2, "0")}<span>/ ${String(N.slides.length).padStart(2, "0")}</span></div>
       <div class="msg">${esc(r.message)}</div>
       <div class="time"><b>${esc(r.time)}</b>　経過 ${r.from} → ${r.to}</div>
     </div>
@@ -67,14 +67,14 @@ ${[400, 500, 600].map((w) => `@font-face{font-family:"Inter";font-weight:${w};sr
 html,body{margin:0;background:#fff;color:#111;font-family:"Noto Sans JP";-webkit-font-smoothing:antialiased}
 .pg{width:210mm;min-height:297mm;padding:13mm 17mm 9mm;break-after:page;position:relative}
 .eyebrow{font-family:Inter;font-weight:600;letter-spacing:.16em;font-size:9pt;color:#777}
-.cover h1{font-weight:500;font-size:22pt;line-height:1.45;margin:8mm 0 4mm;letter-spacing:-.01em}
-.cover .meta{font-size:10pt;color:#555;margin-bottom:9mm}
+.cover h1{font-weight:500;font-size:22pt;line-height:1.45;margin:6mm 0 3mm;letter-spacing:-.01em}
+.cover .meta{font-size:10pt;color:#555;margin-bottom:6mm}
 table.plan{width:100%;border-collapse:collapse;font-size:10.5pt}
 .plan th{font-weight:500;color:#777;text-align:left;font-size:8.5pt;letter-spacing:.06em;border-bottom:1px solid #111;padding:2mm 2mm}
-.plan td{border-bottom:1px solid #e3e3e3;padding:3mm 2mm;vertical-align:top}
+.plan td{border-bottom:1px solid #e3e3e3;padding:2.2mm 2mm;vertical-align:top}
 .plan td.n{font-family:Inter;font-variant-numeric:tabular-nums;white-space:nowrap;color:#444}
-.cover h2{font-weight:500;font-size:12pt;margin:10mm 0 3mm}
-ul.caution{margin:0;padding-left:5mm;font-size:10pt;line-height:1.75;color:#222}
+.cover h2{font-weight:500;font-size:12pt;margin:7mm 0 3mm}
+ul.caution{margin:0;padding-left:5mm;font-size:9.5pt;line-height:1.65;color:#222}
 ul.caution li{margin-bottom:1.2mm}
 .legend{margin-top:6mm;font-size:9pt;color:#555}
 header{display:flex;gap:6mm;align-items:flex-start;padding-bottom:5mm;border-bottom:1px solid #111;margin-bottom:5mm}
@@ -103,7 +103,7 @@ const page = await browser.newPage()
 await page.goto("file://" + path.join(BUILD, "notes.html"))
 await page.evaluate(() => document.fonts.ready)
 const overflow = await page.evaluate(() => [...document.querySelectorAll(".pg")].map((p, i) => [i, Math.round(p.scrollHeight / 3.7795)]).filter(([, h]) => h > 297))
-await page.pdf({ path: path.join(DIR, "out/BondEx_Seminar_Speaker_Notes.pdf"), format: "A4", printBackground: true, preferCSSPageSize: true })
+await page.pdf({ path: path.join(DIR, "out/BondEx_Seminar_Speaker_Notes_v2.pdf"), format: "A4", printBackground: true, preferCSSPageSize: true })
 await browser.close()
-console.log("PDF: out/BondEx_Seminar_Speaker_Notes.pdf", usePhoto ? "(写真版サムネイル)" : "(タイポグラフィ版サムネイル)")
+console.log("PDF: out/BondEx_Seminar_Speaker_Notes_v2.pdf", usePhoto ? "(写真版サムネイル)" : "(タイポグラフィ版サムネイル)")
 if (overflow.length) console.log("A4 を超えたページ（mm）:", JSON.stringify(overflow))

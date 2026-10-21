@@ -32,7 +32,7 @@
   },
   "slides": [
     {
-      "n": 0,
+      "n": 1,
       "layout": "cover",
       "text": {
         "font": "ja",
@@ -74,7 +74,115 @@
       }
     },
     {
-      "n": 1,
+      "n": 2,
+      "layout": "diagram",
+      "id": "intro",
+      "text": {
+        "font": "ja",
+        "size": 104,
+        "lh": 1.42,
+        "track": -0.01,
+        "top": 300,
+        "lines": [
+          [
+            {
+              "t": "なぜ、広告会社が"
+            }
+          ],
+          [
+            {
+              "t": "物流を始めたのか。"
+            }
+          ]
+        ]
+      },
+      "diagram": {
+        "paths": [
+          {
+            "pts": [
+              [
+                128,
+                720
+              ],
+              [
+                1792,
+                720
+              ]
+            ],
+            "c": "muted",
+            "w": 2,
+            "alpha": 0.45
+          }
+        ],
+        "dots": [],
+        "labels": [
+          {
+            "t": "2015年",
+            "x": 128,
+            "y": 754,
+            "size": 56,
+            "font": "ja",
+            "c": "fg",
+            "align": "left"
+          },
+          {
+            "t": "独立",
+            "x": 128,
+            "y": 838,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "left"
+          },
+          {
+            "t": "2025年",
+            "x": 708,
+            "y": 754,
+            "size": 56,
+            "font": "ja",
+            "c": "fg",
+            "align": "left"
+          },
+          {
+            "t": "BondEx構想",
+            "x": 708,
+            "y": 838,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "left"
+          },
+          {
+            "t": "2026年8月",
+            "x": 1288,
+            "y": 754,
+            "size": 56,
+            "font": "ja",
+            "c": "fg",
+            "align": "left"
+          },
+          {
+            "t": "サービス開始",
+            "x": 1288,
+            "y": 838,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "left"
+          }
+        ]
+      },
+      "brief": {
+        "title": "（自己紹介：写真なし）",
+        "shot": "-",
+        "space": "-",
+        "keywords_ja": "-",
+        "keywords_en": "-",
+        "prompt": "-"
+      }
+    },
+    {
+      "n": 3,
       "layout": "full",
       "anchor": "bottom",
       "photo": {
@@ -114,7 +222,7 @@
       }
     },
     {
-      "n": 2,
+      "n": 4,
       "layout": "full",
       "anchor": "bottom",
       "photo": {
@@ -150,7 +258,7 @@
       "scrim": "bottom"
     },
     {
-      "n": 3,
+      "n": 5,
       "layout": "full",
       "anchor": "top",
       "photo": {
@@ -186,7 +294,7 @@
       }
     },
     {
-      "n": 4,
+      "n": 6,
       "layout": "diagram",
       "anchor": "top",
       "text": {
@@ -369,7 +477,7 @@
       }
     },
     {
-      "n": 5,
+      "n": 7,
       "layout": "full",
       "anchor": "bottom",
       "photo": {
@@ -405,7 +513,7 @@
       }
     },
     {
-      "n": 6,
+      "n": 8,
       "layout": "number",
       "photo": {
         "file": "s06.jpg",
@@ -446,7 +554,7 @@
       }
     },
     {
-      "n": 7,
+      "n": 9,
       "layout": "full",
       "anchor": "bottom",
       "photo": {
@@ -482,7 +590,7 @@
       }
     },
     {
-      "n": 8,
+      "n": 10,
       "layout": "full",
       "anchor": "bottom",
       "photo": {

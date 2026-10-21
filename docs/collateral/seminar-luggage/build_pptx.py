@@ -320,7 +320,7 @@ for s, m in zip(SPEC["slides"], MAN["slides"]):
     if txt:
         slide.notes_slide.notes_text_frame.text = txt
 
-name = "BondEx_Seminar_TypeOnly.pptx" if TYPE_ONLY else MAN["pdfName"].replace(".pdf", ".pptx")
+name = "BondEx_Seminar_TypeOnly_v2.pptx" if TYPE_ONLY else MAN["pdfName"].replace(".pdf", ".pptx")
 out = DIR / "out" / name
 prs.save(out)
 print("PPTX:", out.relative_to(DIR))
