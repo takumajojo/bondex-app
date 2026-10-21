@@ -54,6 +54,9 @@ function coverCrop(img, box, focal) {
 }
 
 const problems = []
+const warnings = []
+// ChatGPT 画像（横 1672px）は 1.15 倍の拡大になる。1.2 倍までは警告にとどめて Final を出す
+const MAX_UPSCALE = 1.2
 
 function resolvePhoto(slide, key, box) {
   const ph = slide[key]
@@ -62,7 +65,9 @@ function resolvePhoto(slide, key, box) {
   if (fs.existsSync(p)) {
     const size = imageSize(p)
     const crop = coverCrop(size, box, ph.focal)
-    if (crop.upscale > 1.0001) problems.push(`slide ${slide.n}: ${ph.file} が ${size.w}×${size.h}px で不足（${box.w}×${box.h} に ${crop.upscale.toFixed(2)} 倍拡大が必要）`)
+    const msg = `slide ${slide.n}: ${ph.file} が ${size.w}×${size.h}px（${box.w}×${box.h} に ${crop.upscale.toFixed(2)} 倍拡大）`
+    if (crop.upscale > MAX_UPSCALE) problems.push(msg + " → 解像度不足")
+    else if (crop.upscale > 1.0001) warnings.push(msg)
     return { path: p, crop, box, placeholder: false, opacity: ph.opacity ?? 1, focal: ph.focal }
   }
   if (ph.optional) return null
@@ -248,4 +253,5 @@ fs.writeFileSync(path.join(BUILD, "manifest.json"), JSON.stringify({
 
 console.log(`PDF: out/${pdfName}`)
 console.log("fonts:", [...new Set(fontsUsed)].join(", ") || "(system fonts)")
+if (warnings.length && !TYPE_ONLY) { console.log("警告（軽い拡大あり）:"); for (const w of warnings) console.log("  - " + w) }
 if (problems.length && !TYPE_ONLY) { console.log("未完了の項目:"); for (const p of problems) console.log("  - " + p) }
