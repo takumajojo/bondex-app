@@ -36,7 +36,7 @@ const cover = `<section class="pg cover">
   <div class="meta">対象：${esc(N.audience)}　｜　所要：${esc(N.duration)}</div>
   <table class="plan">
     <thead><tr><th>#</th><th>表示メッセージ</th><th>時間</th><th>経過</th></tr></thead>
-    <tbody>${rows.map((r) => `<tr><td class="n">${String(r.n).padStart(2, "0")}</td><td>${esc(r.message)}</td><td>${esc(r.time)}</td><td class="n">${r.from}–${r.to}</td></tr>`).join("")}</tbody>
+    <tbody>${rows.map((r) => `<tr><td class="n">${r.n === 0 ? "表紙" : String(r.n).padStart(2, "0")}</td><td>${esc(r.message)}</td><td>${esc(r.time)}</td><td class="n">${r.from}–${r.to}</td></tr>`).join("")}</tbody>
   </table>
   <h2>登壇前に確認すること</h2>
   <ul class="caution">${N.cautions.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
@@ -46,7 +46,7 @@ const cover = `<section class="pg cover">
 const pages = rows.map((r) => `<section class="pg">
   <header>
     <div class="hl">
-      <div class="num">${String(r.n).padStart(2, "0")}<span>/ 08</span></div>
+      <div class="num">${r.n === 0 ? "表紙" : String(r.n).padStart(2, "0")}${r.n === 0 ? "" : "<span>/ 08</span>"}</div>
       <div class="msg">${esc(r.message)}</div>
       <div class="time"><b>${esc(r.time)}</b>　経過 ${r.from} → ${r.to}</div>
     </div>

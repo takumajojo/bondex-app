@@ -1,15 +1,15 @@
 # BondEx 講演スライド「日本旅行から『自分で荷物を運ぶ』という習慣をなくす。」
 
-観光・免税・商業施設関係者向け 15分講演（全8枚・16:9）。PoC刷新トラックではなく、営業・広報資料（collateral）の追加。
+観光・免税・商業施設関係者向け 15分講演（表紙＋本編8枚・16:9）。PoC刷新トラックではなく、営業・広報資料（collateral）の追加。
 
 ## 現在の状態
 
 | 納品物 | ファイル | 状態 |
 |---|---|---|
-| 登壇用PDF | `out/BondEx_Seminar_Final.pdf` | 完成（16:9・8枚） |
+| 登壇用PDF | `out/BondEx_Seminar_Final.pdf` | 完成（16:9・表紙＋8枚） |
 | 編集可能PPTX | `out/BondEx_Seminar_Final.pptx` | 完成（文字・図は編集可能、絵は「図の変更」で差し替え可能） |
 | 絵なし版 | `out/BondEx_Seminar_TypeOnly.pdf / .pptx` | 完成。黒地に文字だけの予備版 |
-| スピーカーノート | `out/BondEx_Seminar_Speaker_Notes.pdf` | 完成（A4・9ページ。表紙＝時間配分と登壇前の注意） |
+| スピーカーノート | `out/BondEx_Seminar_Speaker_Notes.pdf` | 完成（A4・10ページ。1ページ目＝時間配分と登壇前の注意） |
 | 写真ブリーフ | `PHOTO_BRIEF.md` | 実写に差し替える場合の構図・検索語・調達方法 |
 
 ### 絵について
@@ -18,6 +18,10 @@
 
 - 画像は 1672×941px のため、スライドでは 1.15 倍に拡大している（ビルドは 1.2 倍までを警告扱いにして Final を出力する）
 - 以前の試作として `cg/render.py`（Blender による 3DCG）も残している。使っていない
+
+### 表紙
+
+BondEx ロゴ（白）、講演タイトル「日本旅行から、『自分で荷物を運ぶ』をなくす。」、ブランドのタグライン「TRAVEL LIGHTER. TRAVEL FURTHER.」、公式サイト `https://bondex.express` の QR コード（`assets/qr-bondex-express.png`、誤り訂正レベル Q。PPTX では QR 画像にリンクも設定）。QR を作り直すときは `python3 -c "import segno; segno.make('https://bondex.express', error='q').save('assets/qr-bondex-express.png', scale=24, border=4, dark='#0A0A0A')"`。
 
 ## 実写の写真に差し替える手順
 

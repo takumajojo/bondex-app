@@ -32,6 +32,44 @@
   },
   "slides": [
     {
+      "n": 0,
+      "layout": "cover",
+      "text": {
+        "font": "ja",
+        "size": 104,
+        "lh": 1.42,
+        "track": -0.01,
+        "top": 300,
+        "lines": [
+          [
+            {
+              "t": "日本旅行から、"
+            }
+          ],
+          [
+            {
+              "t": "「自分で荷物を運ぶ」をなくす。"
+            }
+          ]
+        ]
+      },
+      "cover": {
+        "tagline": "TRAVEL LIGHTER. TRAVEL FURTHER.",
+        "qr": "assets/qr-bondex-express.png",
+        "qrUrl": "https://bondex.express",
+        "qrLabel": "BondEx 公式サイト",
+        "qrSize": 300
+      },
+      "brief": {
+        "title": "（表紙：写真なし）",
+        "shot": "-",
+        "space": "-",
+        "keywords_ja": "-",
+        "keywords_en": "-",
+        "prompt": "-"
+      }
+    },
+    {
       "n": 1,
       "layout": "full",
       "anchor": "bottom",

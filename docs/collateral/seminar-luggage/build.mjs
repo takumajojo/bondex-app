@@ -94,9 +94,9 @@ function placeholderHtml(slide, ph, box) {
 function textBlockHtml(slide) {
   const t = slide.text
   const f = font(t.font)
-  const fixed = slide.layout === "diagram" // 図のスライドは両版とも同じ位置・大きさ
+  const fixed = slide.layout === "diagram" || slide.layout === "cover" // 図と表紙は両版とも同じ位置・大きさ
   const size = TYPE_ONLY && !fixed && t.font !== "en" ? Math.round(t.size * TYPE_SCALE) : t.size
-  const pos = TYPE_ONLY && !fixed ? `top:${Math.round((H - t.lines.length * size * t.lh) / 2)}px` : slide.anchor === "top" ? `top:${M.y}px` : `bottom:${M.y}px`
+  const pos = t.top !== undefined ? `top:${t.top}px` : TYPE_ONLY && !fixed ? `top:${Math.round((H - t.lines.length * size * t.lh) / 2)}px` : slide.anchor === "top" ? `top:${M.y}px` : `bottom:${M.y}px`
   // 行頭の「は約物の半角分だけ左へぶら下げ、文字の縦ラインを揃える
   const lines = t.lines.map((runs) =>
     `<div class="ln"${runs[0].t.startsWith("「") ? ' style="margin-left:-0.5em"' : ""}>${runs.map((r) => `<span style="color:${r.c ? C[r.c] : C.fg}">${esc(r.t)}</span>`).join("")}</div>`).join("")
@@ -156,6 +156,15 @@ function slideHtml(slide, res) {
     if (res.photo) body += imgTag(res.photo, `left:0;top:0;width:${hw}px;height:${SPLIT.h}px`)
     if (res.photo2) body += imgTag(res.photo2, `left:${hw + SPLIT.gap}px;top:0;width:${hw}px;height:${SPLIT.h}px`)
     body += textBlockHtml(slide)
+  } else if (slide.layout === "cover") {
+    const c = slide.cover
+    body += `<img id="clogo" src="${fileUrl(path.join(DIR, "assets/bondex-logo-white.png"))}" style="position:absolute;left:${M.x}px;top:${M.y}px;height:52px">`
+    body += textBlockHtml(slide)
+    const t = slide.text
+    const tagTop = t.top + t.lines.length * t.size * t.lh + 44
+    body += `<div id="tag" class="tag" style="top:${tagTop}px;left:${M.x}px">${esc(c.tagline)}</div>`
+    body += `<img id="qr" src="${fileUrl(path.join(DIR, c.qr))}" style="position:absolute;right:${M.x}px;bottom:${M.y}px;width:${c.qrSize}px;height:${c.qrSize}px;border-radius:10px">`
+    body += `<div id="qrlab" class="qrlab" style="right:${M.x + c.qrSize + 32}px;bottom:${M.y}px">${esc(c.qrLabel)}</div>`
   } else if (slide.layout === "diagram") {
     body += diagramHtml(slide) + textBlockHtml(slide)
   } else if (slide.layout === "number") {
@@ -181,6 +190,8 @@ html,body{margin:0;padding:0;background:${C.bg}}
 .sm{color:${C.fg};opacity:.78;line-height:1.3;letter-spacing:-0.01em}
 .num{line-height:1;color:${C.accent};margin:26px 0 30px}
 .dg{position:absolute;left:0;top:0}
+.tag{position:absolute;white-space:nowrap;font-family:"Inter";font-weight:600;font-size:28px;line-height:1.42;letter-spacing:.2em;color:${C.muted}}
+.qrlab{position:absolute;white-space:nowrap;font-family:"Noto Sans JP";font-weight:400;font-size:24px;line-height:1.42;color:${C.muted};text-align:right}
 .lab{position:absolute;white-space:nowrap;line-height:1.42;letter-spacing:-0.01em}
 .note{position:absolute;left:${M.x}px;bottom:${M.y - 40}px;font-size:22px;color:${C.muted};letter-spacing:.01em}
 `
@@ -232,6 +243,7 @@ const layout = await page.evaluate(() => {
       post: box(sec.querySelector("#post")),
       // 数字行は 1 文字列ずつ：PPTX で和欧間の自動スペースが入らないよう別ボックスにする
       numRuns: [...sec.querySelectorAll(".nr")].map((el) => ({ ...box(el), baseline: el.querySelector(".bl").getBoundingClientRect().top - o.top })), note: box(sec.querySelector("#note")), logo: box(sec.querySelector("#logo")),
+      clogo: box(sec.querySelector("#clogo")), tag: box(sec.querySelector("#tag")), qr: box(sec.querySelector("#qr")), qrlab: box(sec.querySelector("#qrlab")),
     }
   })
 })
@@ -239,7 +251,7 @@ const layout = await page.evaluate(() => {
 // 4) PNG（1枚ずつ）と PDF
 for (let i = 0; i < SPEC.slides.length; i++) {
   const el = (await page.$$("section.s"))[i]
-  await el.screenshot({ path: path.join(BUILD, "png", `slide-${String(i + 1).padStart(2, "0")}.png`) })
+  await el.screenshot({ path: path.join(BUILD, "png", `slide-${String(SPEC.slides[i].n).padStart(2, "0")}.png`) })
 }
 const complete = !TYPE_ONLY && problems.length === 0
 const pdfName = TYPE_ONLY ? "BondEx_Seminar_TypeOnly.pdf" : complete ? "BondEx_Seminar_Final.pdf" : "BondEx_Seminar_Draft.pdf"

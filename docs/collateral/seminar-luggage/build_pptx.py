@@ -125,7 +125,7 @@ def add_scrim(slide, scrim):
 def headline(slide, s, m):
     t = s["text"]
     key = t["font"]
-    size = t["size"] * (TYPE_SCALE if TYPE_ONLY and key != "en" and s["layout"] != "diagram" else 1)
+    size = t["size"] * (TYPE_SCALE if TYPE_ONLY and key != "en" and s["layout"] not in ("diagram", "cover") else 1)
     line = size * t["lh"]
     box = m["measured"]["txt"]
     hang = size * 0.5
@@ -236,6 +236,33 @@ def diagram(slide, s):
         set_font(run, key, size, COL[l["c"]], -0.01)
 
 
+def cover(slide, s, m):
+    meas, c = m["measured"], s["cover"]
+    b = meas["clogo"]
+    pic = slide.shapes.add_picture(str(DIR / "assets/bondex-logo-white.png"), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
+    pic.name = "BondEx ロゴ"
+    headline(slide, s, m)
+    b = meas["tag"]
+    tb, tf = textbox(slide, b["x"], b["y"] + BASELINE_DY["en"] * 28, b["w"] + 80, b["h"], name="タグライン")
+    p = tf.paragraphs[0]
+    exact_spacing(p, 28 * 1.42)
+    run = p.add_run()
+    run.text = c["tagline"]
+    set_font(run, "en", 28, COL["muted"], 0.2)
+    b = meas["qr"]
+    pic = slide.shapes.add_picture(str(DIR / c["qr"]), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
+    pic.name = f"QRコード（{c['qrUrl']}）"
+    pic.click_action.hyperlink.address = c["qrUrl"]
+    b = meas["qrlab"]
+    tb, tf = textbox(slide, b["x"] + b["w"] - 600, b["y"] + BASELINE_DY["jaRegular"] * 24, 600, b["h"], name="QRの説明")
+    p = tf.paragraphs[0]
+    exact_spacing(p, 24 * 1.42)
+    p.alignment = PP_ALIGN.RIGHT
+    run = p.add_run()
+    run.text = c["qrLabel"]
+    set_font(run, "jaRegular", 24, COL["muted"])
+
+
 def notes_text(n):
     d = NOTES.get(n)
     if not d:
@@ -266,6 +293,8 @@ for s, m in zip(SPEC["slides"], MAN["slides"]):
         if m.get("photo2"):
             add_picture(slide, m["photo2"], hw + split["gap"], 0, hw, split["h"], "写真・右（図の変更で差し替え）")
         headline(slide, s, m)
+    elif s["layout"] == "cover":
+        cover(slide, s, m)
     elif s["layout"] == "diagram":
         diagram(slide, s)
         headline(slide, s, m)
