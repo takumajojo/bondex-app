@@ -164,6 +164,7 @@ function slideHtml(slide, res) {
     const tagTop = t.top + t.lines.length * t.size * t.lh + 44
     body += `<div id="tag" class="tag" style="top:${tagTop}px;left:${M.x}px">${esc(c.tagline)}</div>`
     body += `<img id="qr" src="${fileUrl(path.join(DIR, c.qr))}" style="position:absolute;right:${M.x}px;bottom:${M.y}px;width:${c.qrSize}px;height:${c.qrSize}px;border-radius:10px">`
+    body += `<div class="spk" style="left:${M.x}px;bottom:${M.y}px"><div id="spkorg" class="spkorg">${esc(c.speaker.org)}</div><div id="spkname" class="spkname">${esc(c.speaker.name)}</div></div>`
     body += `<div id="qrlab" class="qrlab" style="right:${M.x + c.qrSize + 32}px;bottom:${M.y}px">${esc(c.qrLabel)}</div>`
   } else if (slide.layout === "diagram") {
     body += diagramHtml(slide) + textBlockHtml(slide)
@@ -191,6 +192,9 @@ html,body{margin:0;padding:0;background:${C.bg}}
 .num{line-height:1;color:${C.accent};margin:26px 0 30px}
 .dg{position:absolute;left:0;top:0}
 .tag{position:absolute;white-space:nowrap;font-family:"Inter";font-weight:600;font-size:28px;line-height:1.42;letter-spacing:.2em;color:${C.muted}}
+.spk{position:absolute;white-space:nowrap}
+.spkorg{font-family:"Noto Sans JP";font-weight:400;font-size:26px;line-height:1.42;color:${C.muted};letter-spacing:.02em}
+.spkname{font-family:"Noto Sans JP";font-weight:500;font-size:44px;line-height:1.42;color:${C.fg};letter-spacing:.06em;margin-top:4px}
 .qrlab{position:absolute;white-space:nowrap;font-family:"Noto Sans JP";font-weight:400;font-size:24px;line-height:1.42;color:${C.muted};text-align:right}
 .lab{position:absolute;white-space:nowrap;line-height:1.42;letter-spacing:-0.01em}
 .note{position:absolute;left:${M.x}px;bottom:${M.y - 40}px;font-size:22px;color:${C.muted};letter-spacing:.01em}
@@ -244,6 +248,7 @@ const layout = await page.evaluate(() => {
       // 数字行は 1 文字列ずつ：PPTX で和欧間の自動スペースが入らないよう別ボックスにする
       numRuns: [...sec.querySelectorAll(".nr")].map((el) => ({ ...box(el), baseline: el.querySelector(".bl").getBoundingClientRect().top - o.top })), note: box(sec.querySelector("#note")), logo: box(sec.querySelector("#logo")),
       clogo: box(sec.querySelector("#clogo")), tag: box(sec.querySelector("#tag")), qr: box(sec.querySelector("#qr")), qrlab: box(sec.querySelector("#qrlab")),
+      spkorg: box(sec.querySelector("#spkorg")), spkname: box(sec.querySelector("#spkname")),
     }
   })
 })

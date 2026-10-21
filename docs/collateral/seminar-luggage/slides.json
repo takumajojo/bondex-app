@@ -58,7 +58,11 @@
         "qr": "assets/qr-bondex-express.png",
         "qrUrl": "https://bondex.express",
         "qrLabel": "BondEx 公式サイト",
-        "qrSize": 300
+        "qrSize": 300,
+        "speaker": {
+          "org": "株式会社JOJO　代表取締役",
+          "name": "谷口琢真"
+        }
       },
       "brief": {
         "title": "（表紙：写真なし）",

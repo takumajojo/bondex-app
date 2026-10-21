@@ -253,6 +253,14 @@ def cover(slide, s, m):
     pic = slide.shapes.add_picture(str(DIR / c["qr"]), px(b["x"]), px(b["y"]), px(b["w"]), px(b["h"]))
     pic.name = f"QRコード（{c['qrUrl']}）"
     pic.click_action.hyperlink.address = c["qrUrl"]
+    for key, font_key, size, color, track in (("spkorg", "jaRegular", 26, COL["muted"], 0.02), ("spkname", "ja", 44, COL["fg"], 0.06)):
+        b = meas[key]
+        tb, tf = textbox(slide, b["x"], b["y"] + BASELINE_DY[font_key] * size, b["w"] + 120, b["h"], name="登壇者")
+        p = tf.paragraphs[0]
+        exact_spacing(p, size * 1.42)
+        run = p.add_run()
+        run.text = c["speaker"]["org" if key == "spkorg" else "name"]
+        set_font(run, font_key, size, color, track)
     b = meas["qrlab"]
     tb, tf = textbox(slide, b["x"] + b["w"] - 600, b["y"] + BASELINE_DY["jaRegular"] * 24, 600, b["h"], name="QRの説明")
     p = tf.paragraphs[0]
