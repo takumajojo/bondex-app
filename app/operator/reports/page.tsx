@@ -28,6 +28,7 @@ interface Row {
   sagawa_cost_yen: number | null
   margin_yen: number | null
   cost_is_actual: boolean | null
+  revenue_is_estimate: boolean | null
   status: string | null
 }
 interface Summary {
@@ -288,7 +289,12 @@ export default function ReportsPage() {
                         <span className="text-muted-foreground">{r.to_prefecture || cleanResidence(r.to_residence)?.prefecture || ""} </span>{endpointLabel(r.to_hotel, r.to_residence)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.suitcase_count}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">¥{(r.amount_yen ?? 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        ¥{(r.amount_yen ?? 0).toLocaleString()}
+                        {r.revenue_is_estimate && (
+                          <span className="ml-1 text-[9px] px-1 rounded bg-sky-100 text-sky-700">見込み</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground whitespace-nowrap">
                         ¥{(r.sagawa_cost_yen ?? 0).toLocaleString()}
                         <span className={`ml-1 text-[9px] px-1 rounded ${r.cost_is_actual ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
