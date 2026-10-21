@@ -1,7 +1,6 @@
 import { getSupabase } from "@/lib/supabase"
 import type { ResidenceAddress } from "@/lib/residence"
 import { changeDeadlineAt } from "./change-deadline"
-import { businessDaysBefore } from "./business-days"
 import { LABEL_MAIL_ENABLED } from "./label-delivery"
 
 /**
@@ -454,21 +453,14 @@ export async function listShipments(filter?: {
       )
     }
   }
-  // 配達完了して2営業日経った区間: 既定=アクティブ一覧から除外 / archived=履歴として抽出。
-  // view(要対応タイル)使用時は対象外。基準=「配達完了日 <= 2営業日前」→ delivered_at < (2営業日前+1日)0時JST。
+  // 配達完了した区間は既定のアクティブ一覧から外し、「過去の履歴」(archived) でのみ表示する
+  // (2026-10-21 谷口さん指示。以前は配達完了から2営業日は一覧に残していたが、完了したら即・履歴へ)。
+  // view(要対応タイル)使用時は対象外。
   if (!filter?.view) {
-    const todayForArchive =
-      filter?.todayYmd ?? new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
-    const thresholdDate = businessDaysBefore(todayForArchive, 2)
-    if (thresholdDate) {
-      const d = new Date(`${thresholdDate}T00:00:00+09:00`)
-      d.setUTCDate(d.getUTCDate() + 1) // 閾値日の翌日0時JSTより前=履歴
-      const archiveBeforeTs = d.toISOString()
-      if (filter?.archived) {
-        q = q.eq("status", "delivered").lt("delivered_at", archiveBeforeTs)
-      } else {
-        q = q.or(`status.neq.delivered,delivered_at.gte.${archiveBeforeTs}`)
-      }
+    if (filter?.archived) {
+      q = q.eq("status", "delivered") // 過去の履歴 = 配達完了すべて
+    } else {
+      q = q.neq("status", "delivered") // アクティブ一覧 = 配達完了以外
     }
   }
   q = q.limit(filter?.limit ?? 100)
