@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { changeDeadlineAt } from "@/lib/change-deadline"
 import { notifyBondEx } from "@/lib/notify"
+import { amountForNewCount } from "@/lib/amount-recalc"
 import { postCorrectionAction, postCorrectionLabel } from "@/lib/shipment-change"
 
 export const runtime = "nodejs"
@@ -93,6 +94,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   if (legPatch.shipment_date !== undefined) {
     legPatch.change_deadline_at = changeDeadlineAt(String(legPatch.shipment_date))
+  }
+  // 個数が変わったら請求額も合わせる (確定済み・未課金のとき・2026-10-22)。
+  // 現状この承認は未発行 (amount_yen=0) の区間だけに反映されるため実質据え置きだが、経路を揃えておく。
+  if (legPatch.suitcase_count !== undefined) {
+    try {
+      const newAmount = await amountForNewCount(sb, shipment, Number(legPatch.suitcase_count))
+      if (newAmount !== undefined && newAmount !== shipment.amount_yen) legPatch.amount_yen = newAmount
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+    }
   }
 
   // 区間フィールドは未発行のときだけ反映 (承認までの間に cron 自動発行が走った場合の保護)。
