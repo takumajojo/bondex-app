@@ -41,6 +41,10 @@ import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed }
 import { hotelDisplay } from "@/lib/hotel-name"
 import { endpointLabel, residenceOneLine } from "@/lib/residence"
 
+// ページネーション1ページあたりの件数(T1-3)。通常一覧とサーバー抽出(要対応)一覧で分ける。
+const MAIN_PAGE = 100
+const BOARD_PAGE = 500
+
 type ShipmentStatus =
   | "requested"
   | "pending"
@@ -400,6 +404,11 @@ export default function DashboardPage() {
   const [labelBusyId, setLabelBusyId] = useState("")
   // 「状態の一望」用スナップショット (フィルタ非依存・全件)。要対応の集計と遅延の判定に使う。
   const [board, setBoard] = useState<Shipment[]>([])
+  // ページネーション(T1-3): 通常一覧(items)と要対応一覧(board)それぞれに「次ページあり」を保持。
+  // 旧実装は上限(100/500)で静かに切れ、古い未対応が辿れなかった。
+  const [listHasMore, setListHasMore] = useState(false)
+  const [boardHasMore, setBoardHasMore] = useState(false)
+  const [moreBusy, setMoreBusy] = useState(false)
   // 要対応の件数 (サーバー側 count・全件対象)。2026-08-31 監査対応:
   // 旧実装は最新500行のスナップショット集計で、総行数500超で件数が静かに狂った。
   const [boardCounts, setBoardCounts] = useState<Record<string, number> | null>(null)
@@ -481,18 +490,23 @@ export default function DashboardPage() {
       const listRes = await fetch("/api/shipments?limit=500")
       const listD = (await listRes.json()) as { shipments?: Shipment[] }
       setBoard((listD.shipments ?? []).filter((s) => ids.has(s.id)))
+      // ホテル連絡は id 集合での絞り込みのためページ送りは行わない。
+      setBoardHasMore(false)
     } catch {
       setBoard([])
+      setBoardHasMore(false)
     }
   }, [])
 
   const loadBoardRows = useCallback(async (view: string) => {
     try {
-      const res = await fetch(`/api/shipments?view=${encodeURIComponent(view)}&limit=500`)
-      const d = (await res.json()) as { shipments?: Shipment[] }
+      const res = await fetch(`/api/shipments?view=${encodeURIComponent(view)}&limit=${BOARD_PAGE}`)
+      const d = (await res.json()) as { shipments?: Shipment[]; hasMore?: boolean }
       setBoard(Array.isArray(d.shipments) ? d.shipments : [])
+      setBoardHasMore(Boolean(d.hasMore))
     } catch {
       setBoard([])
+      setBoardHasMore(false)
     }
   }, [])
   useEffect(() => {
@@ -510,13 +524,14 @@ export default function DashboardPage() {
       if (search) sp.set("search", search)
       if (sortBy) sp.set("sort", sortBy)
       if (showArchived) sp.set("archived", "1")
+      sp.set("limit", String(MAIN_PAGE))
       const res = await fetch(`/api/shipments?${sp.toString()}`)
       const text = await res.text()
       if (!res.ok) {
         // API 側でエラー — 本文 (HTML or JSON) を出してデバッグしやすく
         throw new Error(`API ${res.status}: ${text.slice(0, 200)}`)
       }
-      let data: { configured?: boolean; shipments?: Shipment[] }
+      let data: { configured?: boolean; shipments?: Shipment[]; hasMore?: boolean }
       try {
         data = JSON.parse(text)
       } catch {
@@ -524,6 +539,7 @@ export default function DashboardPage() {
       }
       setConfigured(Boolean(data.configured))
       setItems(Array.isArray(data.shipments) ? data.shipments : [])
+      setListHasMore(Boolean(data.hasMore))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
@@ -868,6 +884,49 @@ export default function DashboardPage() {
     if (viewFilter === "pay-unpaid") return items.filter((s) => !s.charged_at && !s.charge_error)
     return board
   }, [viewFilter, items, board])
+
+  // サーバー抽出の要対応ビュー (board を使う)。pay ピルと hotel-contact は別扱い。
+  const SERVER_VIEWS = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"]
+  const usesBoard = Boolean(viewFilter) && SERVER_VIEWS.includes(viewFilter)
+  // 「もっと見る」を出すか: 通常一覧/決済ピルは items、要対応は board、ホテル連絡は無効。
+  const hasMoreForView = usesBoard
+    ? boardHasMore
+    : viewFilter === "hotel-contact"
+      ? false
+      : listHasMore
+
+  // 次ページを取得して現在の一覧に追記する(T1-3: 上限で静かに切れないように)。
+  const loadMore = useCallback(async () => {
+    setMoreBusy(true)
+    try {
+      if (viewFilter && SERVER_VIEWS.includes(viewFilter)) {
+        const res = await fetch(
+          `/api/shipments?view=${encodeURIComponent(viewFilter)}&limit=${BOARD_PAGE}&offset=${board.length}`,
+        )
+        const d = (await res.json()) as { shipments?: Shipment[]; hasMore?: boolean }
+        setBoard((prev) => [...prev, ...(Array.isArray(d.shipments) ? d.shipments : [])])
+        setBoardHasMore(Boolean(d.hasMore))
+      } else {
+        const sp = new URLSearchParams()
+        if (filterAgency) sp.set("agency", filterAgency)
+        if (filterStatus) sp.set("status", filterStatus)
+        if (search) sp.set("search", search)
+        if (sortBy) sp.set("sort", sortBy)
+        if (showArchived) sp.set("archived", "1")
+        sp.set("limit", String(MAIN_PAGE))
+        sp.set("offset", String(items.length))
+        const res = await fetch(`/api/shipments?${sp.toString()}`)
+        const d = (await res.json()) as { shipments?: Shipment[]; hasMore?: boolean }
+        setItems((prev) => [...prev, ...(Array.isArray(d.shipments) ? d.shipments : [])])
+        setListHasMore(Boolean(d.hasMore))
+      }
+    } catch {
+      /* best-effort: 失敗しても既存の一覧は保持する */
+    } finally {
+      setMoreBusy(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewFilter, board.length, items.length, filterAgency, filterStatus, search, sortBy, showArchived])
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -1883,6 +1942,19 @@ export default function DashboardPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {!loading && rows.length > 0 && hasMoreForView && (
+            <div className="border-t border-border p-4 text-center">
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={moreBusy}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-xs font-medium text-foreground hover:bg-muted/40 disabled:opacity-60"
+              >
+                {moreBusy && <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />}
+                {moreBusy ? "読み込み中…" : "もっと見る"}
+              </button>
             </div>
           )}
         </section>

@@ -92,6 +92,10 @@ async function mapWithConcurrency<T, R>(
 
 const CONCURRENCY = 6
 
+// 稼働中(未配達・追跡番号あり)の取得上限。これを超えると超過分は今回の同期・集荷時課金・
+// 配達通知の対象から静かに漏れるため、到達を検知して運用へ通知する(2026-10 監査対応 T1-4)。
+const ACTIVE_FETCH_CAP = 1000
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
   const expected = process.env.CRON_SECRET
@@ -138,10 +142,27 @@ export async function GET(req: NextRequest) {
       // 「今動いている荷物」から確実に処理する (繁忙期に1000区間を超えても、
       // 期限が近い側は必ず対象に入る)。
       .order("shipment_date", { ascending: true })
-      .limit(1000)
+      .limit(ACTIVE_FETCH_CAP)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // 取得上限への到達検知: 超過分は追跡同期・集荷時課金・配達通知の対象から外れるため、
+    // サイレントにせず運用へ即アラートする(label-mail と同じ truncated 方式に揃える)。
+    const truncated = (data?.length ?? 0) >= ACTIVE_FETCH_CAP
+    if (truncated) {
+      await sendOpsAlert({
+        subject: `【要対応】追跡同期の対象が上限(${ACTIVE_FETCH_CAP}件)に達しました`,
+        lines: [
+          `稼働中(未配達・追跡番号あり)の区間が取得上限 ${ACTIVE_FETCH_CAP} 件に達しました。`,
+          `発送日が近い順に ${ACTIVE_FETCH_CAP} 件を処理していますが、超過分は今回の追跡同期・集荷時課金・配達完了通知の対象外です。`,
+          `対応: 恒常的に上限へ達している場合は取得のページ分割が必要です(開発)。`,
+        ],
+        agencyEmail: null,
+      }).catch(() => {
+        /* アラート送信失敗で本処理を止めない */
+      })
     }
 
     // ランドオペレーター通知用: 代理店名 → contact_email / 追加メール / 国内外フラグ の対応表を 1 回で引く
@@ -594,6 +615,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       overdueAlertsSent,
       pickupAlertsSent,
+      truncated, // 稼働中区間が取得上限に達し超過分を処理できなかったか(到達時は上でアラート済)
       checked: rows.length,
       tasksRun: tasks.length,
       updated,

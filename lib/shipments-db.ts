@@ -426,6 +426,8 @@ export async function listShipments(filter?: {
   /** true=過去履歴(配達完了して2営業日超のみ) / 既定=アクティブ(それを除外)。 */
   archived?: boolean
   limit?: number
+  /** 取得開始位置(0始まり)。ページネーション用。既定=0。 */
+  offset?: number
 }): Promise<ShipmentRecord[]> {
   const sb = getSupabase()
   if (!sb) return []
@@ -463,7 +465,11 @@ export async function listShipments(filter?: {
       q = q.neq("status", "delivered") // アクティブ一覧 = 配達完了以外
     }
   }
-  q = q.limit(filter?.limit ?? 100)
+  // offset ベースのページネーション。.range は両端含むので end = offset + limit - 1。
+  // 既定は offset=0 / limit=100 で従来挙動と同じ(先頭100件)。
+  const lim = filter?.limit ?? 100
+  const off = filter?.offset ?? 0
+  q = q.range(off, off + lim - 1)
   const { data, error } = await q
   if (error) {
     console.error("[shipments-db] listShipments failed", error.message)
