@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/lib/supabase": ["scripts/test-amount/fakes/supabase.ts"],
+      "@/lib/shipments-db": ["scripts/test-amount/fakes/shipments-db.ts"],
+      "@/lib/notify": ["scripts/test-amount/fakes/notify.ts"],
+      "@/lib/rate-limit": ["scripts/test-amount/fakes/rate-limit.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}

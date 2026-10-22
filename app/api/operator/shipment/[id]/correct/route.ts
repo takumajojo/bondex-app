@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
 import { changeDeadlineAt, isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { notifyBondEx } from "@/lib/notify"
+import { amountForNewCount } from "@/lib/amount-recalc"
 import {
   normalizeCorrection,
   snapshotBefore,
@@ -105,10 +106,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
 
   // ── フィールド反映 (この区間)。発送日が変われば締切を再計算。
+  let newAmountYen: number | null = null
   if (patchKeys.length > 0) {
     const legPatch: Record<string, unknown> = { ...patch }
     if (patch.shipment_date !== undefined) {
       legPatch.change_deadline_at = changeDeadlineAt(String(patch.shipment_date))
+    }
+    // 個数が変わったら請求額も合わせる (確定済み・未課金のとき)。据え置くと過大/過少請求になる。
+    if (patch.suitcase_count !== undefined) {
+      try {
+        const newAmount = await amountForNewCount(sb, shipment, Number(patch.suitcase_count))
+        if (newAmount !== undefined && newAmount !== shipment.amount_yen) {
+          legPatch.amount_yen = newAmount
+          newAmountYen = newAmount
+          changes.push(`金額: ¥${shipment.amount_yen.toLocaleString("ja-JP")} → ¥${newAmount.toLocaleString("ja-JP")}（税抜）`)
+        }
+      } catch (e) {
+        return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+      }
     }
     const { error: upErr } = await sb.from("shipments").update(legPatch).eq("id", shipmentId)
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
@@ -127,7 +142,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // ── 監査行 (承認済み・operator 直接訂正)
   const before = snapshotBefore(patch, shipment)
   if (agencyChanged) before.agency = shipment.agency
+  if (newAmountYen !== null) before.amount_yen = shipment.amount_yen
   const fields: Record<string, unknown> = { ...patch }
+  if (newAmountYen !== null) fields.amount_yen = newAmountYen
   if (agencyChanged) fields.agency = newAgency
   const nowIso = new Date().toISOString()
   await sb

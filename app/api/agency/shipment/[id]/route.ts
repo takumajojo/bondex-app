@@ -6,6 +6,7 @@ import { getShipment } from "@/lib/shipments-db"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
+import { amountForNewCount } from "@/lib/amount-recalc"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { legLockedForAgency, isSelfServiceCutoffPassed, normalizeRepresentative } from "@/lib/agency-self-service"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
@@ -26,7 +27,8 @@ export const runtime = "nodejs"
  *  - 代表者名は予約単位 → 全区間に反映。受取人名が旧代表者名と同じなら揃える。
  *  - 団体 (booking_type='group') の個数変更は不可 (荷物リストと不整合になるため。
  *    団体ダッシュボードでリストを編集する)。
- *  - 未発行は amount_yen=0 のため、個数変更しても請求は発行時に個数×¥5,000で確定=ズレない。
+ *  - 個数変更時は請求額も「新個数 × 代理店単価」に更新する (確定済み・未課金のとき。lib/amount-recalc.ts)。
+ *    未確定 (amount_yen=0) は発行時に個数×単価で確定するので据え置き。
  * 変更は BondEx へ Slack 通知 (kind=change)。
  */
 
@@ -276,6 +278,15 @@ export async function PATCH(
   }
 
   // ── 締切内: 即時反映。集荷と同時刻の変更が「佐川へ渡した情報と DB の食い違い」を生まないよう条件付き。
+  // 個数が変わったら請求額も合わせる (確定済み・未課金のとき・2026-10-22)。
+  if (patch.suitcase_count !== undefined) {
+    try {
+      const newAmount = await amountForNewCount(sb, shipment, Number(patch.suitcase_count))
+      if (newAmount !== undefined && newAmount !== shipment.amount_yen) patch.amount_yen = newAmount
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+    }
+  }
   if (Object.keys(patch).length > 0) {
     const { data: upd2, error } = await sb
       .from("shipments")
