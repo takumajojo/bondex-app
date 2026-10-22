@@ -1,0 +1,630 @@
+{
+  "canvas": {
+    "w": 1920,
+    "h": 1080
+  },
+  "colors": {
+    "bg": "#0A0A0A",
+    "fg": "#FFFFFF",
+    "muted": "#A3A3A3",
+    "accent": "#F26A1B"
+  },
+  "fonts": {
+    "ja": {
+      "family": "Noto Sans JP",
+      "pptx": "Noto Sans JP Medium",
+      "weight": 500
+    },
+    "jaRegular": {
+      "family": "Noto Sans JP",
+      "pptx": "Noto Sans JP",
+      "weight": 400
+    },
+    "en": {
+      "family": "Inter",
+      "pptx": "Inter SemiBold",
+      "weight": 600
+    }
+  },
+  "margin": {
+    "x": 128,
+    "y": 116
+  },
+  "slides": [
+    {
+      "n": 1,
+      "layout": "cover",
+      "text": {
+        "font": "ja",
+        "size": 104,
+        "lh": 1.42,
+        "track": -0.01,
+        "top": 300,
+        "lines": [
+          [
+            {
+              "t": "日本旅行から、"
+            }
+          ],
+          [
+            {
+              "t": "「自分で荷物を運ぶ」をなくす。"
+            }
+          ]
+        ]
+      },
+      "cover": {
+        "tagline": "TRAVEL LIGHTER. TRAVEL FURTHER.",
+        "qr": "assets/qr-bondex-express.png",
+        "qrUrl": "https://bondex.express",
+        "qrLabel": "BondEx 公式サイト",
+        "qrSize": 300,
+        "speaker": {
+          "org": "株式会社JOJO　代表取締役",
+          "name": "谷口琢真"
+        }
+      },
+      "brief": {
+        "title": "（表紙：写真なし）",
+        "shot": "-",
+        "space": "-",
+        "keywords_ja": "-",
+        "keywords_en": "-",
+        "prompt": "-"
+      }
+    },
+    {
+      "n": 2,
+      "layout": "diagram",
+      "id": "intro",
+      "text": {
+        "font": "ja",
+        "size": 104,
+        "lh": 1.42,
+        "track": -0.01,
+        "top": 300,
+        "lines": [
+          [
+            {
+              "t": "なぜ、広告会社が"
+            }
+          ],
+          [
+            {
+              "t": "物流を始めたのか。"
+            }
+          ]
+        ]
+      },
+      "diagram": {
+        "paths": [
+          {
+            "pts": [
+              [
+                128,
+                720
+              ],
+              [
+                1792,
+                720
+              ]
+            ],
+            "c": "muted",
+            "w": 2,
+            "alpha": 0.45
+          }
+        ],
+        "dots": [],
+        "labels": [
+          {
+            "t": "2015年",
+            "x": 128,
+            "y": 754,
+            "size": 56,
+            "font": "ja",
+            "c": "fg",
+            "align": "left"
+          },
+          {
+            "t": "独立",
+            "x": 128,
+            "y": 838,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "left"
+          },
+          {
+            "t": "2025年",
+            "x": 708,
+            "y": 754,
+            "size": 56,
+            "font": "ja",
+            "c": "fg",
+            "align": "left"
+          },
+          {
+            "t": "BondEx構想",
+            "x": 708,
+            "y": 838,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "left"
+          },
+          {
+            "t": "2026年8月",
+            "x": 1288,
+            "y": 754,
+            "size": 56,
+            "font": "ja",
+            "c": "fg",
+            "align": "left"
+          },
+          {
+            "t": "サービス開始",
+            "x": 1288,
+            "y": 838,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "left"
+          }
+        ]
+      },
+      "brief": {
+        "title": "（自己紹介：写真なし）",
+        "shot": "-",
+        "space": "-",
+        "keywords_ja": "-",
+        "keywords_en": "-",
+        "prompt": "-"
+      }
+    },
+    {
+      "n": 3,
+      "layout": "full",
+      "anchor": "bottom",
+      "photo": {
+        "file": "s01.jpg",
+        "focal": "50% 45%"
+      },
+      "scrim": "bottom",
+      "text": {
+        "font": "en",
+        "size": 150,
+        "lh": 1.04,
+        "track": -0.025,
+        "lines": [
+          [
+            {
+              "t": "OVER TOURISM?"
+            }
+          ],
+          [
+            {
+              "t": "OR "
+            },
+            {
+              "t": "“OVER LUGGAGE”?",
+              "c": "accent"
+            }
+          ]
+        ]
+      },
+      "brief": {
+        "title": "大型ターミナル駅を行き交う、スーツケースの流れ",
+        "shot": "東京駅・新宿駅・京都駅クラスのコンコース。多数の訪日旅行者が大型スーツケースを引いて移動している。やや高い位置からの俯瞰〜目線の高さ。人の顔は判別できない程度のブレ・距離感でよい。",
+        "space": "画面下40%は暗め・情報量少なめ（文字を載せる）",
+        "keywords_ja": "駅 コンコース 外国人観光客 スーツケース 混雑 / 京都駅 スーツケース 観光客",
+        "keywords_en": "Tokyo station crowd tourists suitcases / Kyoto station travelers rolling luggage concourse",
+        "prompt": "Documentary photograph, wide shot of a busy Japanese railway station concourse at daytime, dozens of international tourists pulling large hard-shell suitcases, natural motion blur on people, high vantage point, soft overcast light from skylights, muted colors, 35mm lens, shot on Sony A7IV, no readable signage, no text, no logos"
+      }
+    },
+    {
+      "n": 4,
+      "layout": "full",
+      "anchor": "bottom",
+      "photo": {
+        "file": "s02.jpg",
+        "focal": "50% 50%"
+      },
+      "text": {
+        "font": "ja",
+        "size": 92,
+        "lh": 1.42,
+        "track": -0.01,
+        "lines": [
+          [
+            {
+              "t": "人と荷物は、"
+            }
+          ],
+          [
+            {
+              "t": "一緒に移動する必要があるのか？"
+            }
+          ]
+        ]
+      },
+      "brief": {
+        "title": "ローラーコンベアで運ばれていくスーツケース（人とは別のルート）",
+        "shot": "物流のローラーコンベアに載ったスーツケースが、奥へ運ばれていく。人は写さない。代替の実写なら、空港・物流センターのコンベアや、配送トラックの荷台に並ぶスーツケース。",
+        "space": "画面下40%は暗め・情報量少なめ（文字を載せる）",
+        "keywords_ja": "スーツケース コンベア 物流 / スーツケース トラック 荷台",
+        "keywords_en": "suitcase on roller conveyor logistics / suitcases loaded delivery truck",
+        "prompt": "A: Documentary photo, back view of a foreign traveler walking freely through a quiet stone-paved street in Kyoto with only a small shoulder bag, early morning soft light, 50mm. B: Documentary photo, several large hard-shell suitcases neatly loaded in the cargo area of a delivery truck, soft natural light, 50mm. Both: matching warm-neutral color grade, no text, no logos"
+      },
+      "scrim": "bottom"
+    },
+    {
+      "n": 5,
+      "layout": "full",
+      "anchor": "top",
+      "photo": {
+        "file": "s03.jpg",
+        "focal": "50% 60%"
+      },
+      "scrim": "top",
+      "text": {
+        "font": "ja",
+        "size": 100,
+        "lh": 1.42,
+        "track": -0.01,
+        "lines": [
+          [
+            {
+              "t": "「配送できる」だけでは、"
+            }
+          ],
+          [
+            {
+              "t": "使われない。"
+            }
+          ]
+        ]
+      },
+      "brief": {
+        "title": "駅のホーム、スーツケースと電車に乗り込む後ろ姿",
+        "shot": "日本の駅ホーム（特急・ロマンスカー的な車両でも可、車両名・社名が読めないこと）。大型スーツケースを持った旅行者が乗車しようとする後ろ姿。「ここまで運んできてしまった」が伝わる距離感。",
+        "space": "画面上35%は空・天井など情報量少なめ（文字を載せる）",
+        "keywords_ja": "駅ホーム スーツケース 後ろ姿 乗車 外国人",
+        "keywords_en": "traveler suitcase boarding train platform Japan back view",
+        "prompt": "Documentary photograph, back view of an international traveler with a large suitcase about to board a limited express train at a Japanese station platform, platform roof in upper frame, evening light, shallow depth of field, 35mm, no readable signs, no text, no logos"
+      }
+    },
+    {
+      "n": 6,
+      "layout": "diagram",
+      "anchor": "top",
+      "text": {
+        "font": "ja",
+        "size": 92,
+        "lh": 1.42,
+        "track": -0.01,
+        "lines": [
+          [
+            {
+              "t": "荷物を手放す場所を、"
+            }
+          ],
+          [
+            {
+              "t": "旅の中に。"
+            }
+          ]
+        ]
+      },
+      "diagram": {
+        "paths": [
+          {
+            "pts": [
+              [
+                400,
+                690
+              ],
+              [
+                560,
+                690
+              ]
+            ],
+            "c": "fg",
+            "w": 6
+          },
+          {
+            "q": [
+              [
+                560,
+                690
+              ],
+              [
+                960,
+                440
+              ],
+              [
+                1360,
+                690
+              ]
+            ],
+            "c": "fg",
+            "w": 5,
+            "dash": [
+              1,
+              16
+            ],
+            "alpha": 0.85
+          },
+          {
+            "q": [
+              [
+                560,
+                690
+              ],
+              [
+                960,
+                940
+              ],
+              [
+                1360,
+                690
+              ]
+            ],
+            "c": "accent",
+            "w": 8
+          },
+          {
+            "pts": [
+              [
+                1360,
+                690
+              ],
+              [
+                1520,
+                690
+              ]
+            ],
+            "c": "fg",
+            "w": 6
+          }
+        ],
+        "dots": [
+          {
+            "x": 400,
+            "y": 690,
+            "r": 17,
+            "c": "fg"
+          },
+          {
+            "x": 1520,
+            "y": 690,
+            "r": 17,
+            "c": "fg"
+          }
+        ],
+        "labels": [
+          {
+            "t": "ホテル",
+            "x": 400,
+            "y": 576,
+            "size": 48,
+            "font": "ja",
+            "c": "fg",
+            "align": "center"
+          },
+          {
+            "t": "チェックアウトで預ける",
+            "x": 400,
+            "y": 724,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "center"
+          },
+          {
+            "t": "次のホテル",
+            "x": 1520,
+            "y": 576,
+            "size": 48,
+            "font": "ja",
+            "c": "fg",
+            "align": "center"
+          },
+          {
+            "t": "先に届いている",
+            "x": 1520,
+            "y": 724,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "center"
+          },
+          {
+            "t": "人は、身軽に観光へ。",
+            "x": 960,
+            "y": 483,
+            "size": 42,
+            "font": "ja",
+            "c": "fg",
+            "align": "center"
+          },
+          {
+            "t": "荷物は、今ある物流で。",
+            "x": 960,
+            "y": 842,
+            "size": 42,
+            "font": "ja",
+            "c": "accent",
+            "align": "center"
+          },
+          {
+            "t": "旅行会社・DMCからの依頼を受けて、BondExが手配します",
+            "x": 960,
+            "y": 912,
+            "size": 30,
+            "font": "jaRegular",
+            "c": "muted",
+            "align": "center"
+          }
+        ]
+      },
+      "brief": {
+        "title": "（写真なし：図で表現）",
+        "shot": "ホテル→次のホテルの間で、人のルートと荷物のルートが分かれて合流する図。写真は使わない。",
+        "space": "-",
+        "keywords_ja": "-",
+        "keywords_en": "-",
+        "prompt": "-"
+      }
+    },
+    {
+      "n": 7,
+      "layout": "full",
+      "anchor": "bottom",
+      "photo": {
+        "file": "s05.jpg",
+        "focal": "65% 50%"
+      },
+      "scrim": "left",
+      "text": {
+        "font": "ja",
+        "size": 100,
+        "lh": 1.42,
+        "track": -0.01,
+        "lines": [
+          [
+            {
+              "t": "「持ちたくない」が、"
+            }
+          ],
+          [
+            {
+              "t": "購買を止めている。"
+            }
+          ]
+        ]
+      },
+      "brief": {
+        "title": "商業施設で、商品を手に迷う訪日旅行者",
+        "shot": "洗練された商業施設のブティック。訪日旅行者が気に入ったバッグ・商品を手に取りつつ、腕時計やスマホを見て迷っている（この後の予定がある）。表情で「欲しいけれど…」が伝わること。ブランドロゴは写さない。",
+        "space": "人物は画面右寄り。左半分は暗めの店内（文字を載せる）",
+        "keywords_ja": "ブティック 外国人 女性 商品 迷う 買い物 高級",
+        "keywords_en": "tourist hesitating holding luxury bag boutique shopping Tokyo",
+        "prompt": "Editorial photograph in an elegant Tokyo department store boutique, an international traveler holding a leather handbag she likes, glancing at her watch with a hesitant expression, subject on the right third, softly lit darker interior on the left, 50mm, shallow depth of field, no brand logos, no text"
+      }
+    },
+    {
+      "n": 8,
+      "layout": "number",
+      "photo": {
+        "file": "s06.jpg",
+        "focal": "50% 50%",
+        "optional": true,
+        "opacity": 0.22
+      },
+      "text": {
+        "pre": "配送を伝えた結果、",
+        "num": [
+          {
+            "t": "約",
+            "font": "ja",
+            "size": 180
+          },
+          {
+            "t": "50",
+            "font": "en",
+            "size": 420
+          },
+          {
+            "t": "万円",
+            "font": "ja",
+            "size": 180
+          }
+        ],
+        "post": "の購入へ。",
+        "small": 64,
+        "note": "※ 登壇者の実体験（1件）。一般的な効果を示す数値ではありません。"
+      },
+      "brief": {
+        "title": "（任意）ショッピングバッグ／高級商業施設",
+        "shot": "背景に22%の濃度で敷く。紙のショッピングバッグや吹き抜けの商業施設など、ボケた写真で可。無くても完成（黒背景）。",
+        "space": "全面に文字が載るため、コントラストの低い写真",
+        "keywords_ja": "ショッピングバッグ 高級 ボケ / 商業施設 吹き抜け 夜",
+        "keywords_en": "shopping bags luxury blurred / department store atrium bokeh",
+        "prompt": "Soft-focus photograph of elegant paper shopping bags on a marble counter in a luxury store, very dark and low contrast, bokeh, no logos, no text"
+      }
+    },
+    {
+      "n": 9,
+      "layout": "full",
+      "anchor": "bottom",
+      "photo": {
+        "file": "s07.jpg",
+        "focal": "50% 50%"
+      },
+      "scrim": "bottom",
+      "text": {
+        "font": "ja",
+        "size": 100,
+        "lh": 1.42,
+        "track": -0.01,
+        "lines": [
+          [
+            {
+              "t": "「買う」と「持つ」を"
+            }
+          ],
+          [
+            {
+              "t": "分離する。"
+            }
+          ]
+        ]
+      },
+      "brief": {
+        "title": "購入した商品をその場で配送手配し、手ぶらで店を出る",
+        "shot": "商業施設のカウンターで、スタッフが購入品の箱に配送伝票（文字は読めない）を貼る／梱包する。その奥で、訪日旅行者が手ぶらで店を出ていく。前景＝商品と配送、後景＝身軽な旅行者。",
+        "space": "画面下40%はカウンター天板など情報量少なめ（文字を載せる）",
+        "keywords_ja": "店員 梱包 配送 カウンター 手ぶら 観光客 / 免税 カウンター 配送",
+        "keywords_en": "shop staff packing purchase for delivery counter tourist leaving hands-free",
+        "prompt": "Editorial photograph at a premium Japanese department store counter, a staff member in uniform sealing a wrapped box with a blank shipping label in the foreground, in the soft-focus background an international tourist walking out of the store carrying nothing, warm light, 35mm, no readable text, no logos"
+      }
+    },
+    {
+      "n": 10,
+      "layout": "full",
+      "anchor": "bottom",
+      "photo": {
+        "file": "s08.jpg",
+        "focal": "50% 40%"
+      },
+      "scrim": "bottom",
+      "logo": true,
+      "text": {
+        "font": "ja",
+        "size": 108,
+        "lh": 1.42,
+        "track": -0.01,
+        "lines": [
+          [
+            {
+              "t": "人は旅する。"
+            }
+          ],
+          [
+            {
+              "t": "荷物は物流に任せる。"
+            }
+          ]
+        ]
+      },
+      "brief": {
+        "title": "京都の風景を、身軽に歩く旅行者（ラストシーン）",
+        "shot": "京都（産寧坂・八坂の塔・嵐山など）を、小さなバッグだけで自由に歩く訪日旅行者。人物は小さめ、風景が主役。早朝または夕方の斜光、映画のラストカットのような余韻。",
+        "space": "画面下40%は道・影など情報量少なめ（文字を載せる）",
+        "keywords_ja": "京都 八坂の塔 観光客 後ろ姿 夕暮れ / 嵐山 旅行者 手ぶら",
+        "keywords_en": "Kyoto Yasaka pagoda traveler back view golden hour / Arashiyama tourist walking light",
+        "prompt": "Cinematic wide photograph of a traveler walking freely up a stone-paved slope in Higashiyama, Kyoto with the Yasaka pagoda in the distance, golden hour side light, traveler small in frame carrying only a light bag, film-like color grade, 35mm anamorphic feel, no text, no logos"
+      }
+    }
+  ]
+}
