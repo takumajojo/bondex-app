@@ -127,8 +127,18 @@ export async function reconcileTrackingNow(
       if (bestStatus === "delivered") updatePayload.delivered_at = deliveredAt ?? checkedAt
     }
 
-    const { error: upErr } = await sb.from("shipments").update(updatePayload).eq("id", shipmentId)
+    // 読んだ時点の status で条件付き更新する。並走した定時の sync-tracking が先に進めていたら
+    // 0 行になり、ここでは代理店メール等の副作用を起こさない (完了メールの二重送信防止)。
+    const { data: updatedRows, error: upErr } = await sb
+      .from("shipments")
+      .update(updatePayload)
+      .eq("id", shipmentId)
+      .eq("status", row.status as string)
+      .select("id")
     if (upErr) return { changed: false, note: `DB更新失敗: ${upErr.message}` }
+    if ((updatedRows ?? []).length === 0) {
+      return { changed: false, note: "同時に動いた定時の追跡同期が先に反映済み(二重通知を避けてスキップ)" }
+    }
 
     if (!statusAdvances || !bestStatus) {
       const raw = results.find((r) => r.rawStatus)?.rawStatus

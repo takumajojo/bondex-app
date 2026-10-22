@@ -244,6 +244,14 @@ export async function GET(req: NextRequest) {
         }
         anySuccess = true
 
+        // 集荷前 (issued) の番号は佐川側にまだ荷物データが無く、Ship&co は "exception" を返す
+        // (2026-09-29 実測: 集荷前の問合番号は佐川の追跡で「お荷物データが登録されておりません」)。
+        // 新運用では集荷前に番号を入れるので、これを異常として通知しない。
+        // 集荷されないまま発送日を過ぎた場合は、下の「集荷漏れアラート」が拾う。
+        if (tr.exception && progressionRank(row.status as ShipmentStatus) < progressionRank("picked_up")) {
+          return { number: tr.number, status: null, rawStatus: tr.rawStatus, checkedAt }
+        }
+
         // 異常系を最優先 — provider が正規化済み (異常時は status=null)。前進判定には使わない。
         if (tr.exception) {
           const alreadyAlerted = prevAlerted.get(tr.number) === tr.exception
@@ -366,13 +374,22 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      const { error: updateError } = await sb
+      // 読んだ時点の status で条件付き更新する。並走した別の実行 (番号入力時の即時照会
+      // lib/tracking/reconcile.ts や手動実行) が先に進めていたら 0 行になり、ここでは
+      // 課金・完了メール等の副作用を起こさない (完了メールの二重送信防止)。
+      const { data: updatedRows, error: updateError } = await sb
         .from("shipments")
         .update(updatePayload)
         .eq("id", row.id)
+        .eq("status", row.status)
+        .select("id")
 
       if (updateError) {
         failures.push({ bookingId: row.booking_id, leg: row.leg_index, reason: updateError.message })
+        continue
+      }
+      if ((updatedRows ?? []).length === 0) {
+        skipped++
         continue
       }
       if (statusAdvances) updated++

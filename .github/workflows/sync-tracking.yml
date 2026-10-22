@@ -1,22 +1,17 @@
 name: Sync Yamato tracking
 
-# Vercel Hobby プランの cron は 1日1回までしか許可されないため
-# (公式ドキュメント: https://vercel.com/docs/cron-jobs/usage-and-pricing)、
-# GitHub Actions から定期的に /api/cron/sync-tracking を叩く方式にしている。
+# 定時実行は Supabase の pg_cron に移した (2026-10-22 谷口さん)。GitHub Actions の schedule は
+# 実測で2〜6時間おきにしか動かず (15分設定でも間引かれる)、配達完了メールが遅れたため。
+#   pg_cron ジョブ名: sync-tracking-30min (sql/052_pg_cron_sync_tracking.sql)
+#   日本時間 8:00〜21:30 の30分おき (22:00〜翌8:00 は止める)
+#   CRON_SECRET は Supabase Vault の "cron_secret" に保存
+# このワークフローは手動実行 (Actions タブの "Run workflow") 用に残す。
 #
 # 事前設定が必要:
 #   Repository → Settings → Secrets and variables → Actions
 #   New repository secret: CRON_SECRET = <Vercel 側と同じ値>
 
 on:
-  schedule:
-    # 15分間隔。※GitHub Actions のスケジュールは高負荷時に遅延・間引かれる (実測で数時間空くことがある)
-    #   ため、これは「バックストップ」。集荷/配達の反映を確実にリアルタイム化するには、外部の
-    #   信頼できるスケジューラ (例: cron-job.org) から下記を15分毎に叩く運用を主にする:
-    #     GET https://bondex.express/api/cron/sync-tracking
-    #     Header: Authorization: Bearer <CRON_SECRET>   (Vercel/GitHub と同じ値)
-    #   二重起動は acquireCronLock('sync-tracking') で無害化済み (同時実行は skip される)。
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}  # 手動実行 (Actions タブから "Run workflow" で即実行できる)
 
 jobs:
