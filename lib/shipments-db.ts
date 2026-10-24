@@ -65,6 +65,8 @@ export interface ShipmentRecord {
   item_type: string | null
   amount_yen: number
   tracking_numbers: string[] | null
+  /** 運営が佐川へ集荷依頼を連絡した時刻 (migration 038)。非NULL=集荷依頼済み。 */
+  pickup_requested_at?: string | null
   /** 追跡番号ごとの明細 (sync-tracking cron が更新)。shape は lib/group-luggage-db.ts の TrackingDetailEntry。 */
   tracking_detail: unknown[] | null
   label_url: string | null

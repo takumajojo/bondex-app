@@ -15,6 +15,7 @@ import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { notifyBondEx } from "@/lib/notify"
+import { alertSagawaCancel, alertSagawaChange } from "@/lib/sagawa-alert"
 import { pushToAgency } from "@/lib/agency-push"
 
 export const runtime = "nodejs"
@@ -213,6 +214,21 @@ export async function PATCH(req: NextRequest) {
       : await updateShipmentFields(id, patch)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
 
+  // 集荷依頼後(佐川手配済み)の日程/個数変更は、佐川キャンセル＋再採番が必要なため運用へ通知。
+  if (patch.shipment_date !== undefined || patch.suitcase_count !== undefined) {
+    const shipB = await getShipment(id)
+    if (shipB) {
+      const parts: string[] = []
+      if (patch.shipment_date !== undefined) parts.push(`発送(集荷)日 → ${patch.shipment_date}`)
+      if (patch.suitcase_count !== undefined) parts.push(`個数 → ${patch.suitcase_count}`)
+      await alertSagawaChange({
+        shipment: shipB,
+        legRef: `${shipB.booking_id}-L${shipB.leg_index + 1}`,
+        changeSummary: parts.join(" / "),
+      })
+    }
+  }
+
   // 手動で picked_up / delivered にした場合、記録時刻を初回のみセット
   // (集荷通知の picked_up_at / 過去履歴の delivered_at。既にあれば上書きしない)。
   if (patch.status === "delivered" || patch.status === "picked_up") {
@@ -247,6 +263,12 @@ export async function PATCH(req: NextRequest) {
           ],
           link: `/track/${ship.booking_id}`,
           linkLabel: "追跡ページで確認",
+        })
+        // 集荷依頼後(佐川手配済み)のキャンセルは、佐川の集荷取消が必要なため運用へ通知。
+        await alertSagawaCancel({
+          shipment: ship,
+          legRef: `${ship.booking_id}-L${ship.leg_index + 1}`,
+          cancelledBy: "運営（ダッシュボード）",
         })
       }
     } catch (e) {
