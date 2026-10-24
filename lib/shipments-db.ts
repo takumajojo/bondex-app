@@ -453,14 +453,14 @@ export async function listShipments(filter?: {
       )
     }
   }
-  // 配達完了した区間は既定のアクティブ一覧から外し、「過去の履歴」(archived) でのみ表示する
-  // (2026-10-21 谷口さん指示。以前は配達完了から2営業日は一覧に残していたが、完了したら即・履歴へ)。
+  // 配達完了・キャンセルした区間は既定のアクティブ一覧から外し、「過去の履歴」(archived) でのみ表示する
+  // (2026-10-21 谷口さん指示: 配達完了は完了したら即・履歴へ。2026-10-24 谷口さん指示: キャンセルも同様に即・履歴へ)。
   // view(要対応タイル)使用時は対象外。
   if (!filter?.view) {
     if (filter?.archived) {
-      q = q.eq("status", "delivered") // 過去の履歴 = 配達完了すべて
+      q = q.in("status", ["delivered", "cancelled"]) // 過去の履歴 = 配達完了 + キャンセル
     } else {
-      q = q.neq("status", "delivered") // アクティブ一覧 = 配達完了以外
+      q = q.not("status", "in", "(delivered,cancelled)") // アクティブ一覧 = 配達完了・キャンセル以外
     }
   }
   q = q.limit(filter?.limit ?? 100)
