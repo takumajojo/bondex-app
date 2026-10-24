@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
+import { alertSagawaChange } from "@/lib/sagawa-alert"
 import { changeDeadlineAt } from "@/lib/change-deadline"
 import { notifyBondEx } from "@/lib/notify"
 import { amountForNewCount } from "@/lib/amount-recalc"
@@ -163,6 +164,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     link: `/operator/bookings/${cr.booking_id}`,
     linkLabel: "予約詳細で確認",
   }).catch(() => {})
+
+  // 集荷依頼後(佐川手配済み)の日程/個数変更の承認は、佐川キャンセル＋再採番が必要なため運用へ通知。
+  if (changedKeys.includes("shipment_date") || changedKeys.includes("suitcase_count")) {
+    const summary = changedKeys
+      .filter((k) => k !== "agency")
+      .map((k) => `${k}: → ${String(fields[k])}`)
+      .join(" / ")
+    await alertSagawaChange({ shipment, legRef, changeSummary: summary })
+  }
 
   return NextResponse.json({ ok: true, status: "approved", downstream, downstreamLabel })
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
+import { alertSagawaCancel } from "@/lib/sagawa-alert"
 import { sendMail } from "@/lib/mailer"
 import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
@@ -221,6 +222,11 @@ export async function POST(req: NextRequest) {
     link: `/track/${shipment.booking_id}`,
     linkLabel: "追跡ページで確認",
   })
+
+  // 集荷依頼後(佐川手配済み)の区間キャンセルは、佐川の集荷取消が必要なため運用へ通知。
+  if (cancel) {
+    await alertSagawaCancel({ shipment, legRef, cancelledBy: "運営（個数調整・集荷不可）" })
+  }
 
   return NextResponse.json({
     ok: true,

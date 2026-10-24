@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
+import { alertSagawaCancel, alertSagawaChange } from "@/lib/sagawa-alert"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
@@ -120,6 +121,8 @@ export async function PATCH(
       link: `/track/${shipment.booking_id}`,
       linkLabel: "追跡ページで確認",
     })
+    // 集荷依頼後(佐川手配済み)のキャンセルは、佐川の集荷取消が必要なため運用へ通知。
+    await alertSagawaCancel({ shipment, legRef, cancelledBy: `代理店セルフ取消（${auth.agency.name}）` })
     return NextResponse.json({ ok: true, cancelled: true })
   }
 
@@ -334,6 +337,11 @@ export async function PATCH(
 
   // 変更を代理店へメール通知し、最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
   await sendBookingUpdateEmail(shipment.booking_id, changes)
+
+  // 集荷依頼後(佐川手配済み)の日程/個数変更は、佐川のキャンセル＋再採番が必要なため運用へ通知。
+  if (patch.shipment_date !== undefined || patch.suitcase_count !== undefined) {
+    await alertSagawaChange({ shipment, legRef, changeSummary: changes.join(" / ") })
+  }
 
   return NextResponse.json({ ok: true })
 }

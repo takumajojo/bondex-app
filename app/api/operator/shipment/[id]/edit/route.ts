@@ -7,6 +7,7 @@ import { normalizeRepresentative } from "@/lib/agency-self-service"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
 import { normalizeTrackingNo } from "@/lib/tracking-format"
 import { reconcileTrackingNow } from "@/lib/tracking/reconcile"
+import { alertTrackingNumberChanged } from "@/lib/sagawa-alert"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -143,6 +144,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       const sync = await reconcileTrackingNow(sb, shipmentId)
       trackingSyncNote = sync.note
       results.push(`即時追跡照会: ${sync.note}`)
+    }
+    // 問い合わせ番号(追跡番号)の差し替え(再採番) → BondEx へ通知。初回入力(旧番号なし)は対象外。
+    const oldSorted = JSON.stringify([...oldTracking].sort())
+    const newSorted = JSON.stringify([...(tracking ?? [])].sort())
+    if (oldTracking.length > 0 && oldSorted !== newSorted) {
+      await alertTrackingNumberChanged({
+        legRef: `${shipment.booking_id}-L${shipment.leg_index + 1}`,
+        bookingId: shipment.booking_id,
+        agency: shipment.agency,
+        oldNumbers: oldTracking,
+        newNumbers: tracking ?? [],
+      })
     }
   }
   let driveResynced = false

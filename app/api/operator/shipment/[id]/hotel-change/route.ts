@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { alertSagawaChange } from "@/lib/sagawa-alert"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { isChangeDeadlinePassed } from "@/lib/change-deadline"
 
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: ship, error: fetchErr } = await sb
     .from("shipments")
     .select(
-      "id, booking_id, leg_index, agency, status, shipment_date, change_deadline_at, label_sent_at, tracking_numbers, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
+      "id, booking_id, leg_index, agency, status, shipment_date, change_deadline_at, label_sent_at, tracking_numbers, pickup_requested_at, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
     )
     .eq("id", shipmentId)
     .maybeSingle()
@@ -170,6 +171,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         ? (ship.to_hotel_ja as string) || (ship.to_hotel as string)
         : (ship.from_hotel_ja as string) || (ship.from_hotel as string)
     await sendBookingUpdateEmail(ship.booking_id as string, [`${sideJa}ホテル: ${oldHotelName} → ${newHotelJa}`])
+    // 集荷依頼後(佐川手配済み)のホテル(場所)変更は、佐川キャンセル＋再採番が必要なため運用へ通知。
+    // ※追跡番号発行済みは上の物理ゲートで弾かれるので、ここは pickup_requested_at のみが該当。
+    await alertSagawaChange({
+      shipment: {
+        pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null,
+        tracking_numbers: ship.tracking_numbers,
+        booking_id: ship.booking_id as string,
+        agency: ship.agency as string,
+      },
+      legRef: `${ship.booking_id}-L${(ship.leg_index as number) + 1}`,
+      changeSummary: `${sideJa}ホテル: ${oldHotelName} → ${newHotelJa}`,
+    })
   }
 
   return NextResponse.json({
