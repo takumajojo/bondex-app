@@ -84,6 +84,21 @@ export async function GET(req: NextRequest) {
       from_hotel: string; from_hotel_ja: string | null; shipment_date: string
     }>
 
+    // 1b) 佐川への集荷取消: 集荷依頼済みのままキャンセル・未集荷・取消未連絡・発送日が今日以降。
+    const { data: cx } = await sb
+      .from("shipments")
+      .select("booking_id, leg_index, agency, from_hotel, from_hotel_ja, shipment_date")
+      .eq("status", "cancelled")
+      .not("pickup_requested_at", "is", null)
+      .is("pickup_cancel_notified_at", null)
+      .is("picked_up_at", null)
+      .gte("shipment_date", today)
+      .order("shipment_date", { ascending: true })
+    const sagawaCancel = (cx ?? []) as Array<{
+      booking_id: string; leg_index: number; agency: string
+      from_hotel: string; from_hotel_ja: string | null; shipment_date: string
+    }>
+
     // 2) ホテル連絡 (due/urgent/overdue)。区間×ルートに展開して期限が厳しい順に。
     const hotelRows = await listHotelContactDue(today)
     const hotelTasks = hotelRows
@@ -110,10 +125,18 @@ export async function GET(req: NextRequest) {
       .map(([k, n]) => `${COUNT_LABEL[k] ?? k} ${n}`)
 
     const countsTotal = Object.values(counts).reduce((s, n) => s + (typeof n === "number" ? n : 0), 0)
-    const total = sagawa.length + hotelTasks.length + countsTotal
+    const total = sagawaCancel.length + sagawa.length + hotelTasks.length + countsTotal
 
     // ── メール本文 (簡潔・プレーンテキスト)
     const lines: string[] = []
+    if (sagawaCancel.length > 0) {
+      lines.push(`■ 佐川へ集荷取消の連絡（${sagawaCancel.length}件）※集荷依頼済みの区間がキャンセルされました`)
+      for (const c of sagawaCancel) {
+        const hotel = c.from_hotel_ja || c.from_hotel || "—"
+        lines.push(`  【集荷中止】 ${c.booking_id}-L${c.leg_index + 1}  ${hotel}  発送 ${mmdd(c.shipment_date)}（${c.agency}）`)
+      }
+      lines.push("")
+    }
     if (sagawa.length > 0) {
       lines.push(`■ 佐川への集荷依頼（${sagawa.length}件）※集荷の前日までに佐川へご連絡`)
       for (const s of sagawa) {
@@ -136,13 +159,13 @@ export async function GET(req: NextRequest) {
       lines.push("")
     }
 
-    const hasTodo = sagawa.length > 0 || hotelTasks.length > 0 || countParts.length > 0
+    const hasTodo = sagawaCancel.length > 0 || sagawa.length > 0 || hotelTasks.length > 0 || countParts.length > 0
     const bodyLines = hasTodo
       ? [...lines, `ダッシュボード: ${SITE_URL}/operator/dashboard`]
       : ["本日、対応が必要なTODOはありません。", "", `ダッシュボード: ${SITE_URL}/operator/dashboard`]
 
     const subject = hasTodo
-      ? `【BondEx】本日のTODO（${mmdd(today)}）｜集荷依頼${sagawa.length}・ホテル連絡${hotelTasks.length}`
+      ? `【BondEx】本日のTODO（${mmdd(today)}）｜${sagawaCancel.length > 0 ? `集荷取消${sagawaCancel.length}・` : ""}集荷依頼${sagawa.length}・ホテル連絡${hotelTasks.length}`
       : `【BondEx】本日のTODO（${mmdd(today)}）｜対応事項なし`
 
     if (!opsAlertConfigured()) {
@@ -160,6 +183,7 @@ export async function GET(req: NextRequest) {
       today,
       total,
       sagawa: sagawa.length,
+      sagawaCancel: sagawaCancel.length,
       hotel: hotelTasks.length,
       otherCounts: counts,
       notified: result,

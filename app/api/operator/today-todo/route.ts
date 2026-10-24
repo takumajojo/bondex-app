@@ -29,6 +29,22 @@ export interface SagawaPickupTask {
   urgency: string
 }
 
+export interface SagawaCancelTask {
+  shipmentId: string
+  bookingId: string
+  legIndex: number
+  agency: string
+  representative: string
+  tourNumber: string | null
+  fromHotel: string
+  fromHotelJa: string | null
+  toHotel: string
+  shipmentDate: string
+  cancelledAt: string | null
+  cancelledBy: string | null
+  urgency: string
+}
+
 export interface HotelTodoTask {
   shipmentId: string
   bookingId: string
@@ -165,13 +181,47 @@ export async function GET(req: NextRequest) {
     }))
   }
 
+  // 佐川への集荷取消タスク (2026-10-24): 集荷依頼済みのままキャンセルされ、未集荷・取消未連絡の区間。
+  // 発送日が過ぎたものは対象外 (連絡しても意味がない)。
+  let sagawaCancelTasks: SagawaCancelTask[] = []
+  if (sb) {
+    const { data: cx } = await sb
+      .from("shipments")
+      .select(
+        "id, booking_id, leg_index, agency, representative, tour_number, from_hotel, from_residence, from_hotel_ja, to_hotel, to_hotel_ja, shipment_date, cancelled_at, cancelled_by",
+      )
+      .eq("status", "cancelled")
+      .not("pickup_requested_at", "is", null)
+      .is("pickup_cancel_notified_at", null)
+      .is("picked_up_at", null)
+      .gte("shipment_date", today)
+      .order("shipment_date", { ascending: true })
+    sagawaCancelTasks = (cx ?? []).map((r) => ({
+      shipmentId: r.id as string,
+      bookingId: r.booking_id as string,
+      legIndex: r.leg_index as number,
+      agency: (r.agency as string) ?? "",
+      representative: (r.representative as string) ?? "",
+      tourNumber: (r.tour_number as string | null) ?? null,
+      fromHotel: endpointLabel(r.from_hotel, r.from_residence),
+      fromHotelJa: (r.from_hotel_ja as string | null) ?? null,
+      toHotel: ((r.to_hotel_ja as string | null) || (r.to_hotel as string)) ?? "",
+      shipmentDate: r.shipment_date as string,
+      cancelledAt: (r.cancelled_at as string | null) ?? null,
+      cancelledBy: (r.cancelled_by as string | null) ?? null,
+      // 発送が今日/明日なら至急 (集荷員が向かう前に止める)。
+      urgency: (r.shipment_date as string) <= tomorrow ? "overdue" : "due",
+    }))
+  }
+
   // 他カテゴリの件数 (チップ表示・既存フィルタへ誘導)。
   const counts = (await countBoardViews(today)) ?? {}
 
   const total =
     hotelTasks.length +
     sagawaPickupTasks.length +
+    sagawaCancelTasks.length +
     Object.entries(counts).reduce((s, [, n]) => s + (typeof n === "number" ? n : 0), 0)
 
-  return NextResponse.json({ today, total, hotelTasks, sagawaPickupTasks, counts })
+  return NextResponse.json({ today, total, hotelTasks, sagawaPickupTasks, sagawaCancelTasks, counts })
 }
