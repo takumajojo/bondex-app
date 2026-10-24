@@ -13,14 +13,13 @@
  *   - 番号入力時の即時照会（lib/tracking/reconcile）
  * をスキップする。
  *
- * 既定は停止（true）。佐川の追跡が復旧したら解除する:
- *   - このファイルの既定を false に戻す（コード変更＋再デプロイ）か、
- *   - 環境変数 TRACKING_SYNC_PAUSED=false を設定する（env が優先）。
+ * 佐川の追跡は 2026-10-24 に復旧（谷口さんへのヒアリング）。既定を再開（false）に戻した。
+ * 再度停止が必要になったら、環境変数 TRACKING_SYNC_PAUSED=true を設定する（env が優先）か、
+ * このファイルの既定を true に戻す（コード変更＋再デプロイ）。
  *
- * ※ 追跡が止まっている間も、集荷/配達の確定は運用画面の手入力・即時照会の手動運用で対応する。
- * ※ app/api/operator/track-test（手動の追跡テスト）は、復旧確認用に停止対象から除外している。
+ * ※ app/api/operator/track-test（手動の追跡テスト）は、停止対象から除外している（復旧確認用）。
  */
 export const TRACKING_SYNC_PAUSED: boolean =
   process.env.TRACKING_SYNC_PAUSED != null
     ? process.env.TRACKING_SYNC_PAUSED.toLowerCase() === "true"
-    : true
+    : false
