@@ -38,11 +38,28 @@ interface SagawaPickupTask {
   urgency: string
 }
 
+interface SagawaCancelTask {
+  shipmentId: string
+  bookingId: string
+  legIndex: number
+  agency: string
+  representative: string
+  tourNumber: string | null
+  fromHotel: string
+  fromHotelJa: string | null
+  toHotel: string
+  shipmentDate: string
+  cancelledAt: string | null
+  cancelledBy: string | null
+  urgency: string
+}
+
 interface TodoData {
   today: string
   total: number
   hotelTasks: HotelTask[]
   sagawaPickupTasks?: SagawaPickupTask[]
+  sagawaCancelTasks?: SagawaCancelTask[]
   counts: Record<string, number>
 }
 
@@ -111,6 +128,22 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
     setBusy("")
   }
 
+  const markCancelNotified = async (t: SagawaCancelTask) => {
+    setBusy("cx-" + t.shipmentId)
+    try {
+      const res = await fetch("/api/operator/sagawa-pickup-cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId: t.shipmentId }),
+      })
+      if (!res.ok) throw new Error("更新に失敗しました")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "更新に失敗しました")
+    }
+    setBusy("")
+  }
+
   if (error && !data) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
@@ -138,6 +171,7 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
   const sagawaPickups = data.sagawaPickupTasks ?? []
   const pkOverdue = sagawaPickups.filter((t) => t.urgency === "overdue")
   const pkDue = sagawaPickups.filter((t) => t.urgency !== "overdue")
+  const sagawaCancels = data.sagawaCancelTasks ?? []
 
   const categoryChips = Object.entries(CATEGORY_LABEL)
     .map(([view, label]) => ({ view, label, count: data.counts[view] ?? 0 }))
@@ -162,11 +196,16 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
       </div>
 
       {/* カテゴリチップ (件数・クリックで一覧フィルタへ) */}
-      {(data.hotelTasks.length > 0 || sagawaPickups.length > 0 || categoryChips.length > 0) && (
+      {(data.hotelTasks.length > 0 || sagawaPickups.length > 0 || sagawaCancels.length > 0 || categoryChips.length > 0) && (
         <div className="flex items-center gap-2 flex-wrap px-5 py-2.5 border-b border-slate-100">
           <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF2F2] text-[#C8102E] border border-[#FECACA] px-3 py-1 text-[11px] font-semibold">
             <Phone className="w-3 h-3" strokeWidth={1.8} /> ホテル連絡 {data.hotelTasks.length}
           </span>
+          {sagawaCancels.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-600 text-white px-3 py-1 text-[11px] font-semibold">
+              🚫 佐川集荷取消 {sagawaCancels.length}
+            </span>
+          )}
           {sagawaPickups.length > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 text-[11px] font-semibold">
               🚚 佐川集荷依頼 {sagawaPickups.length}
@@ -184,10 +223,18 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
         </div>
       )}
 
-      {data.hotelTasks.length === 0 && sagawaPickups.length === 0 && categoryChips.length === 0 ? (
+      {data.hotelTasks.length === 0 && sagawaPickups.length === 0 && sagawaCancels.length === 0 && categoryChips.length === 0 ? (
         <div className="px-5 py-6 text-center text-sm text-muted-foreground">今日のホテル連絡・対応タスクはありません 🎉</div>
       ) : (
         <div>
+          {sagawaCancels.length > 0 && (
+            <>
+              <div className="px-5 pt-3 pb-1 text-[11px] font-bold text-red-700">🚫 佐川へ集荷取消の連絡（依頼済みの区間がキャンセル）</div>
+              {sagawaCancels.map((t) => (
+                <SagawaCancelRow key={t.shipmentId} t={t} busy={busy} onDone={markCancelNotified} />
+              ))}
+            </>
+          )}
           {sagawaPickups.length > 0 && (
             <>
               <div className="px-5 pt-3 pb-1 text-[11px] font-bold text-blue-700">🚚 佐川へ集荷依頼（集荷の前日までに連絡）</div>
@@ -326,6 +373,59 @@ function SagawaPickupRow({
         >
           {isBusy ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.8} /> : <Check className="w-3 h-3" strokeWidth={2} />}
           依頼済みにする
+        </button>
+        <a href={`/operator/bookings/${encodeURIComponent(t.bookingId)}`} className="text-[11px] text-blue-600 hover:underline">
+          詳細 →
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// 佐川への集荷取消タスク1行。「取消連絡済み」で pickup_cancel_notified_at を記録し TODO から消す。
+function SagawaCancelRow({
+  t,
+  busy,
+  onDone,
+}: {
+  t: SagawaCancelTask
+  busy: string
+  onDone: (t: SagawaCancelTask) => void
+}) {
+  const isBusy = busy === "cx-" + t.shipmentId
+  const md = (() => {
+    const d = new Date(`${t.shipmentDate}T00:00:00+09:00`)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  })()
+  return (
+    <div className="flex items-start gap-3 px-5 py-3 border-t border-slate-100 bg-red-50/40">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center flex-wrap gap-1.5">
+          <span className="font-mono text-[12px] font-medium text-foreground line-through decoration-red-400">
+            {t.bookingId}-L{t.legIndex + 1}
+          </span>
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${t.urgency === "overdue" ? "bg-red-600 text-white" : "bg-red-100 text-red-700"}`}>
+            {t.urgency === "overdue" ? "集荷中止・至急" : "集荷中止"}
+          </span>
+          <span className="text-[11px] text-muted-foreground">発送予定 {md}</span>
+          {t.agency && <span className="text-[11px] text-muted-foreground">・{t.agency}</span>}
+        </div>
+        <p className="mt-0.5 text-[12px] text-foreground">
+          集荷場所：{t.fromHotelJa || t.fromHotel}
+          <span className="text-muted-foreground"> → {t.toHotel}</span>
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {t.representative ? `${t.representative} 様 · ` : ""}佐川へ集荷依頼済み → キャンセルされました。佐川へ集荷中止を連絡してください。
+        </p>
+      </div>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <button
+          onClick={() => onDone(t)}
+          disabled={isBusy}
+          className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          {isBusy ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.8} /> : <Check className="w-3 h-3" strokeWidth={2} />}
+          取消連絡済みにする
         </button>
         <a href={`/operator/bookings/${encodeURIComponent(t.bookingId)}`} className="text-[11px] text-blue-600 hover:underline">
           詳細 →
