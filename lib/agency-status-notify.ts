@@ -13,7 +13,7 @@
 import { sendMail } from "./mailer"
 import { buildAgencyStatusEmail, type StatusEmailData } from "./agency-status-email"
 import { bondexTrackUrl } from "./track-url"
-import { endpointLabel } from "./residence"
+import { endpointLabelLocalized } from "./residence"
 
 /** shipments 行 (Supabase snake_case) と ShipmentRecord のどちらも満たす最小形。 */
 export interface StatusRow {
@@ -24,14 +24,20 @@ export interface StatusRow {
   representative?: string | null
   from_hotel?: string | null
   to_hotel?: string | null
+  from_hotel_en?: string | null
+  to_hotel_en?: string | null
   from_residence?: unknown
   to_residence?: unknown
   shipment_date?: string | null
   tracking_numbers?: string[] | null
 }
 
-/** shipment 行 + 代理店担当者名 → ステータス通知メールの入力。 */
-export function statusDataFromRow(row: StatusRow, contactPerson: string | null): StatusEmailData {
+/**
+ * shipment 行 + 代理店担当者名 → ステータス通知メールの入力。
+ * en=true（代理店ロケールが英語）のときはホテル名を英語表記(*_hotel_en)で出す
+ * （海外代理店/ゲストが読めるように。請求書と同じ英語優先ポリシー）。
+ */
+export function statusDataFromRow(row: StatusRow, contactPerson: string | null, en = false): StatusEmailData {
   return {
     agencyName: row.agency ?? "",
     contactPerson,
@@ -40,8 +46,9 @@ export function statusDataFromRow(row: StatusRow, contactPerson: string | null):
     tourNumber: row.tour_number ?? null,
     representative: row.representative ?? "",
     // 個人宅（民泊）は from_hotel に氏名が入るため、表示は住所を優先する。
-    fromHotel: endpointLabel(row.from_hotel, row.from_residence),
-    toHotel: endpointLabel(row.to_hotel, row.to_residence),
+    // 英語ロケールの代理店には英語施設名を優先（カタカナの抜けを防ぐ）。
+    fromHotel: endpointLabelLocalized(row.from_hotel, row.from_hotel_en, row.from_residence, en),
+    toHotel: endpointLabelLocalized(row.to_hotel, row.to_hotel_en, row.to_residence, en),
     shipmentDate: row.shipment_date ?? "",
     trackingNumbers: row.tracking_numbers ?? [],
     // バウチャーの追跡QRと必ず同一URL（lib/track-url.ts の単一ソース）。

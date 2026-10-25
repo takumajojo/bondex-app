@@ -182,3 +182,20 @@ export function endpointLabel(hotel: unknown, residenceRaw: unknown): string {
   if (line) return line
   return typeof hotel === "string" ? hotel.trim() : ""
 }
+
+/**
+ * 代理店・顧客向け表示用の施設ラベル（英語ロケール対応）。
+ * en=true（代理店ロケールが英語）かつ英語施設名(hotelEn)があれば英語名を優先し、
+ * 無ければ日本語名にフォールバックする。請求書(lib/invoice-build) と同じ英語優先ポリシーを
+ * 共通化し、集荷/配達通知メール等での英語名の「抜け」を防ぐための単一ヘルパー。
+ * 個人宅（民泊）の場合は従来どおり住所を優先（endpointLabel に委譲）。
+ */
+export function endpointLabelLocalized(
+  hotelJa: unknown,
+  hotelEn: unknown,
+  residenceRaw: unknown,
+  en: boolean,
+): string {
+  const he = typeof hotelEn === "string" ? hotelEn.trim() : ""
+  return endpointLabel(en && he ? he : hotelJa, residenceRaw)
+}

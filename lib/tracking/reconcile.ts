@@ -58,7 +58,7 @@ export async function reconcileTrackingNow(
     const { data: row, error } = await sb
       .from("shipments")
       .select(
-        "id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail",
+        "id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail",
       )
       .eq("id", shipmentId)
       .maybeSingle()
@@ -172,7 +172,7 @@ export async function reconcileTrackingNow(
       try {
         agencyEmailSent = await sendAgencyStatusEmail(
           "delivered",
-          statusDataFromRow(row, agencyContact),
+          statusDataFromRow(row, agencyContact, agencyEn),
           agencyEmail,
           agencyEn,
         )
@@ -213,7 +213,7 @@ export async function reconcileTrackingNow(
       try {
         agencyEmailSent = await sendAgencyStatusEmail(
           "picked_up",
-          statusDataFromRow(row, agencyContact),
+          statusDataFromRow(row, agencyContact, agencyEn),
           agencyEmail,
           agencyEn,
         )

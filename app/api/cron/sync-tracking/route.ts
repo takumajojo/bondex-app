@@ -10,7 +10,7 @@ import { getTrackingProvider } from "@/lib/tracking"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
-import { endpointLabel } from "@/lib/residence"
+import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
 import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
 
 export const runtime = "nodejs"
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await sb
       .from("shipments")
-      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail")
+      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail")
       .not("tracking_numbers", "is", null)
       .not("status", "in", '("delivered","cancelled","failed")')
       // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
@@ -424,7 +424,7 @@ export async function GET(req: NextRequest) {
           try {
             const sent = await sendAgencyStatusEmail(
               "picked_up",
-              statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null),
+              statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null, agencyForeignByName.get(row.agency as string) ?? false),
               agencyEmailsByName.get(row.agency as string) ?? agencyEmailByName.get(row.agency as string) ?? null,
               agencyForeignByName.get(row.agency as string) ?? false,
             )
@@ -457,19 +457,21 @@ export async function GET(req: NextRequest) {
             // 送信結果を必ず捕捉する (旧: 戻り値を捨てており、実際は失敗しても "通知済み" に見えた)。
             emailSent = await sendAgencyStatusEmail(
               "delivered",
-              statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null),
+              statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null, agencyForeignByName.get(row.agency as string) ?? false),
               recipients,
               agencyForeignByName.get(row.agency as string) ?? false,
             )
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
             {
               const rep = (row.representative as string) ?? ""
+              const agencyEn = agencyForeignByName.get(row.agency as string) ?? false
               const toHotel = endpointLabel(row.to_hotel, row.to_residence)
+              const toHotelEn = endpointLabelLocalized(row.to_hotel, (row as { to_hotel_en?: string | null }).to_hotel_en, row.to_residence, true)
               await pushToAgency(row.agency as string, {
                 kind: "delivered",
-                templateParams: [rep, toHotel, legRef], // bondex_delivered の {{1}}{{2}}{{3}}
+                templateParams: [rep, agencyEn ? toHotelEn : toHotel, legRef], // bondex_delivered の {{1}}{{2}}{{3}}
                 textJa: `【BondEx】配達完了 ${legRef}\n${rep} 様のお荷物が ${toHotel} に到着しました。\nhttps://bondex.express/track/${row.booking_id}`,
-                textEn: `[BondEx] Delivered ${legRef}\nLuggage for ${rep} has arrived at ${toHotel}.\nhttps://bondex.express/track/${row.booking_id}`,
+                textEn: `[BondEx] Delivered ${legRef}\nLuggage for ${rep} has arrived at ${toHotelEn}.\nhttps://bondex.express/track/${row.booking_id}`,
               })
             }
             // 社内通知(Slack集約)

@@ -13,6 +13,7 @@ import {
 import { isSupabaseConfigured, getSupabase } from "@/lib/supabase"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
+import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
 import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { notifyBondEx } from "@/lib/notify"
 import { alertSagawaCancel, alertSagawaChange } from "@/lib/sagawa-alert"
@@ -309,7 +310,7 @@ export async function PATCH(req: NextRequest) {
           }
           await sendAgencyStatusEmail(
             patch.status as "picked_up" | "delivered",
-            statusDataFromRow(ship, contactPerson),
+            statusDataFromRow(ship, contactPerson, english),
             agencyEmail,
             english,
           )
@@ -331,11 +332,13 @@ export async function PATCH(req: NextRequest) {
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
             {
               const legRef = `${ship.booking_id}-L${ship.leg_index + 1}`
+              const toHotelJa = endpointLabel(ship.to_hotel, ship.to_residence)
+              const toHotelEn = endpointLabelLocalized(ship.to_hotel, ship.to_hotel_en, ship.to_residence, true)
               await pushToAgency(ship.agency, {
                 kind: "delivered",
-                templateParams: [ship.representative, ship.to_hotel, legRef], // bondex_delivered の {{1}}{{2}}{{3}}
-                textJa: `【BondEx】配達完了 ${legRef}\n${ship.representative} 様のお荷物が ${ship.to_hotel} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
-                textEn: `[BondEx] Delivered ${legRef}\nLuggage for ${ship.representative} has arrived at ${ship.to_hotel}.\nhttps://bondex.express/track/${ship.booking_id}`,
+                templateParams: [ship.representative, english ? toHotelEn : toHotelJa, legRef], // bondex_delivered の {{1}}{{2}}{{3}}
+                textJa: `【BondEx】配達完了 ${legRef}\n${ship.representative} 様のお荷物が ${toHotelJa} に到着しました。\nhttps://bondex.express/track/${ship.booking_id}`,
+                textEn: `[BondEx] Delivered ${legRef}\nLuggage for ${ship.representative} has arrived at ${toHotelEn}.\nhttps://bondex.express/track/${ship.booking_id}`,
               })
             }
             // 社内通知(Slack集約)
