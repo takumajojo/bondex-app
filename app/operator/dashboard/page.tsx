@@ -576,8 +576,10 @@ export default function DashboardPage() {
   // 課金失敗の区間を手動で再試行する (chargeShipmentIfDue を operator 権限で叩く)。
   const retryCharge = useCallback(
     async (id: string) => {
-      // 実カードへの課金アクションのため、ワンクリック実行を避けて確認を挟む
-      if (!confirm("カード決済を今すぐ再試行します。よろしいですか？\n（課金済みの場合は二重課金されません）")) return
+      // 実カードへの課金アクションのため、ワンクリック実行を避けて確認を挟む。
+      // 再試行(課金失敗の区間)でも初回課金(集荷手配済み・未課金の区間)でも同じ関数を使う。
+      // どちらの経路でも集荷完了メールは送らず、請求書兼領収書のみ送付・ステータスは変更しない。
+      if (!confirm("カードに課金します。よろしいですか？\n（集荷完了メールは送られません／請求書兼領収書のみ送付・二重課金は防止されます）")) return
       setChargingId(id)
       try {
         const res = await fetch("/api/operator/charge-retry", {
@@ -1800,6 +1802,26 @@ export default function DashboardPage() {
                                       {chargingId === it.id ? "決済を再試行中…" : "決済を再試行…"}
                                     </button>
                                   )}
+                                  {/* 手動課金 (集荷手配済み・未課金・課金失敗もしていないカード区間)。
+                                      佐川は集荷済みだが追跡未反映でステータスが進まず課金が宙に浮いた区間を、
+                                      集荷完了メールを再送せずに課金するための経路。集荷完了メールは送らず
+                                      請求書兼領収書のみ送付し、ステータスも変更しない (charge-retry と同一)。 */}
+                                  {!it.charged_at &&
+                                    !it.charge_error &&
+                                    !!it.pickup_requested_at &&
+                                    agencyPayMethod[it.agency] === "card" && (
+                                      <button
+                                        onClick={() => {
+                                          setOpenMenuId(null)
+                                          void retryCharge(it.id)
+                                        }}
+                                        disabled={chargingId === it.id}
+                                        className="w-full px-3 py-2 text-left text-xs font-semibold text-blue-600 hover:bg-muted/40 disabled:opacity-50"
+                                        title="この区間のカード決済を今すぐ実行します（集荷完了メールは送らず、請求書兼領収書のみ送付・ステータスは変更しません）"
+                                      >
+                                        {chargingId === it.id ? "課金処理中…" : "この区間を課金…（集荷メールなし）"}
+                                      </button>
+                                    )}
                                   <button
                                     onClick={() => {
                                       setOpenMenuId(null)
