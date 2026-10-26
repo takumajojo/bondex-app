@@ -263,7 +263,7 @@ export async function saveShipment(
  * 2026-08-31 監査対応: 従来は「最新500行スナップショット」をクライアントで集計しており、
  * 総行数が500を超えると古い行の課金失敗・郵送待ちが件数ごと静かに消えていた。
  */
-export type BoardView = "delay-pickup" | "delay-delivery" | "charge-failed" | "failed" | "label-mail"
+export type BoardView = "delay-pickup" | "delay-delivery" | "charge-failed" | "failed" | "label-mail" | "limit-reached"
 
 function applyBoardView(
   q: ReturnType<ReturnType<typeof getSupabase> extends infer _ ? any : never>,
@@ -279,6 +279,9 @@ function applyBoardView(
       return q.not("charge_error", "is", null).is("charged_at", null)
     case "failed":
       return q.eq("status", "failed")
+    case "limit-reached":
+      // 追跡番号が Ship&co 15回上限(429)に達した区間。自動では配達完了を検知できないため手動確認・別一覧。
+      return q.eq("tracking_limit_reached", true).not("status", "in", '("delivered","cancelled","failed")')
     case "label-mail":
       // 郵送管理を取り下げている間は常に 0 件 (2026-09-24)。復活時は LABEL_MAIL_ENABLED を true に。
       if (!LABEL_MAIL_ENABLED) return q.eq("id", "00000000-0000-0000-0000-000000000000")
@@ -395,7 +398,7 @@ export async function countBoardViews(
 ): Promise<Record<BoardView, number> | null> {
   const sb = getSupabase()
   if (!sb) return null
-  const views: BoardView[] = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"]
+  const views: BoardView[] = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail", "limit-reached"]
   const out = {} as Record<BoardView, number>
   const results = await Promise.all(
     views.map((v) =>

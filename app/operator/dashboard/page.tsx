@@ -418,6 +418,8 @@ export default function DashboardPage() {
     | "label-mail"
     // ホテル連絡の期限待ち
     | "hotel-contact"
+    // 追跡15回上限(429)に達し手動確認が必要
+    | "limit-reached"
   >("")
   // 決済再試行の実行中 shipment id
   const [chargingId, setChargingId] = useState<string | null>(null)
@@ -840,6 +842,7 @@ export default function DashboardPage() {
     const failed = c["failed"] ?? 0
     const mail = c["label-mail"] ?? 0
     const hotel = c["hotel-contact"] ?? 0
+    const limitReached = c["limit-reached"] ?? 0
     const mailUrgent = board.filter(
       (s) => isLabelMailPending(s) && labelMailUrgency(s) !== "due",
     ).length
@@ -852,14 +855,15 @@ export default function DashboardPage() {
       mailUrgent,
       hotel,
       hotelUrgent: hotelCountUrgent,
-      total: pendingAgencies + pickup + delivery + chargeFailed + failed + mail + hotel,
+      limitReached,
+      total: pendingAgencies + pickup + delivery + chargeFailed + failed + mail + hotel + limitReached,
     }
   }, [boardCounts, board, pendingAgencies, hotelCountUrgent])
 
   // 要対応タイル選択中は、そのカテゴリの行をサーバーから取得済み (board)。
   // 決済ピル (pay-paid/pay-unpaid) だけは通常一覧のクライアント絞り込みのまま。
   useEffect(() => {
-    const serverViews = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"]
+    const serverViews = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail", "limit-reached"]
     if (serverViews.includes(viewFilter)) void loadBoardRows(viewFilter)
     else if (viewFilter === "hotel-contact") void loadHotelRows()
   }, [viewFilter, loadBoardRows])
@@ -1126,6 +1130,27 @@ export default function DashboardPage() {
                   <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-red-800">
                     <Clock className="w-3 h-3" strokeWidth={2} />
                     配送遅れ（到着超過）
+                  </p>
+                </button>
+              )}
+              {attention.limitReached > 0 && (
+                <button
+                  onClick={() => setViewFilter(viewFilter === "limit-reached" ? "" : "limit-reached")}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    viewFilter === "limit-reached"
+                      ? "border-red-500 ring-1 ring-red-400 bg-red-100"
+                      : "border-red-200 bg-red-50 hover:border-red-400"
+                  }`}
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-red-800">
+                    {attention.limitReached}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-red-800">
+                    <AlertTriangle className="w-3 h-3" strokeWidth={2} />
+                    追跡上限（手動確認）
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    佐川で状況確認し手動で完了に
                   </p>
                 </button>
               )}

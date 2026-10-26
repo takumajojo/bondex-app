@@ -66,6 +66,8 @@ export async function sendAgencyStatusEmail(
   data: StatusEmailData,
   agencyEmail: string | string[] | null,
   en: boolean,
+  // Resend 冪等キーの基底 (配達完了の再送で重複を防ぐ)。宛先ごとに base:index で一意化する。
+  idempotencyKeyBase?: string,
 ): Promise<boolean> {
   // 宛先を大文字小文字を無視して重複排除(先勝ち)。
   const seen = new Set<string>()
@@ -91,6 +93,8 @@ export async function sendAgencyStatusEmail(
       // 集荷/配達の顧客向けメールを運用で確認できるよう support@ に控えを残す
       // (谷口さん指示 2026-10-13)。1イベント1通に収めるため先頭宛先のみ BCC。
       bcc: i === 0 ? "support@bondex.express" : undefined,
+      // 宛先ごとに一意の冪等キー (送信成功→DB記録前クラッシュ→再送の重複を Resend 側で排除)。
+      idempotencyKey: idempotencyKeyBase ? `${idempotencyKeyBase}:${i}` : undefined,
     })
     if (r.sent) anySent = true
   }
