@@ -313,6 +313,7 @@ export async function PATCH(req: NextRequest) {
             statusDataFromRow(ship, contactPerson, english),
             agencyEmail,
             english,
+            patch.status === "delivered" ? `delivered-${ship.booking_id}-L${ship.leg_index + 1}` : undefined,
           )
           // 配達完了メールを送れたら delivered_notified_at を記録。
           // cron の再送ループ (delivered かつ NULL を再送) と重複させないための重複防止キー。

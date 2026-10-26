@@ -11,6 +11,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { getTrackingProvider } from "@/lib/tracking"
+import type { TrackingProvider } from "@/lib/tracking/types"
+import { legProgressStatus } from "@/lib/tracking/poll-policy"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { endpointLabel } from "@/lib/residence"
@@ -48,6 +50,8 @@ export interface ReconcileResult {
 export async function reconcileTrackingNow(
   sb: SupabaseClient,
   shipmentId: string,
+  // 追跡プロバイダ。既定は env に従う (shipandco)。結合テストでモックを注入するために引数化。
+  provider: TrackingProvider = getTrackingProvider(),
 ): Promise<ReconcileResult> {
   // 追跡同期の一時停止中（佐川の追跡停止・流出対応）は照会をスキップ。
   // 番号の保存・差し替え自体は呼び出し側で継続し、ステータス前進のみ行わない。
@@ -70,9 +74,12 @@ export async function reconcileTrackingNow(
     if (TERMINAL.has(row.status as string)) {
       return { changed: false, note: `終端ステータス(${row.status})のため照会スキップ` }
     }
+    // 15回上限に達した区間は照会しない (cron と同じ扱い・残枠を使わない)。佐川で確認し手動で完了にする。
+    if ((row.tracking_limit_reached as boolean | null) ?? false) {
+      return { changed: false, note: "追跡上限到達(15回)のため照会スキップ — 佐川で確認し手動で配達完了にしてください" }
+    }
 
     const carrier = (row.carrier as string | null) ?? null
-    const provider = getTrackingProvider()
     const checkedAt = new Date().toISOString()
 
     // 各番号を照会 → 正規化済み結果。最も進んでいない番号を代表とする (1個でも未着なら区間は未着扱い)。
@@ -88,12 +95,14 @@ export async function reconcileTrackingNow(
     }
     const detail = results.map((tr) => {
       const prev = prevByNumber.get(tr.number) ?? { number: tr.number }
+      // 回数は cron と同じ tracking_detail.queryCount を共有する (即時照会も1回=1消費)。
+      const queryCount = ((prev.queryCount as number | undefined) ?? 0) + 1
       // 429 = 追跡番号あたり15回上限。最後の正常ステータス(prev)を残し、上限フラグを立てる(別一覧・手動)。
       if (tr.rateLimited) {
         legLimitReached = true
-        return { ...prev, number: tr.number, limitReached: true, lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED", checkedAt }
+        return { ...prev, number: tr.number, queryCount, limitReached: true, lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED", checkedAt }
       }
-      if (tr.noData) return { ...prev, number: tr.number, checkedAt }
+      if (tr.noData) return { ...prev, number: tr.number, queryCount, checkedAt }
       anySuccess = true
       if (tr.exception) {
         // 異常系は前進に使わない (異常アラートは cron 側に委ねる)。詳細だけ残す。
@@ -104,6 +113,7 @@ export async function reconcileTrackingNow(
           exception: tr.exception,
           location: tr.location,
           date: tr.date,
+          queryCount,
           checkedAt,
         }
       }
@@ -114,13 +124,17 @@ export async function reconcileTrackingNow(
           bestStatus = tr.status
         }
       }
-      return { number: tr.number, status: tr.status, rawStatus: tr.rawStatus, location: tr.location, date: tr.date, checkedAt }
+      return { number: tr.number, status: tr.status, rawStatus: tr.rawStatus, location: tr.location, date: tr.date, queryCount, checkedAt }
     })
 
     if (!anySuccess) {
       // プロバイダがこの番号の現況をまだ返していない (佐川側の反映待ち等)。DB は変更しない。
       return { changed: false, note: "追跡データなし(キャリア未反映の可能性)" }
     }
+
+    // leg 代表ステータスを全番号の最劣で確定 (1番号でも未取得/未着なら delivered にしない=確認漏れ防止)。
+    bestStatus = legProgressStatus(detail as Array<{ number?: string; status?: ShipmentStatus | null }>, numbers)
+    bestRank = bestStatus ? progressionRank(bestStatus) : -1
 
     // history 由来の実イベント時刻 (集荷/配達)。複数番号なら最も早いものを採る。無ければ照会時刻で代替。
     const collectedAt = results.map((r) => r.collectedAt).filter(Boolean).sort()[0] as string | undefined
@@ -190,6 +204,7 @@ export async function reconcileTrackingNow(
           statusDataFromRow(row, agencyContact, agencyEn),
           agencyEmail,
           agencyEn,
+          `delivered-${row.booking_id}-L${(row.leg_index as number) + 1}`,
         )
         // 送信できたら delivered_notified_at を記録 (cron の再送ループと重複させない)。
         if (agencyEmailSent) {

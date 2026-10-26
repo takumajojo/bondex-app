@@ -21,14 +21,11 @@ update shipments
 set delivered_notified_at = coalesce(delivered_at, now())
 where status = 'delivered' and delivered_notified_at is null;
 
--- (2) 既存の稼働中(未終端・追跡番号あり)の区間は「上限到達扱い」にする。
---     → 10/24 以降 15分毎に大量照会済みで残枠が読めないため、新カウンターで "残り15回" と
---       誤認させない。これらは別一覧で手動確認し、手動で配達完了を登録する (当面の運用)。
-update shipments
-set tracking_limit_reached = true
-where status not in ('delivered','cancelled','failed')
-  and tracking_numbers is not null
-  and jsonb_array_length(tracking_numbers) > 0;
+-- (2) 既存の稼働中番号は「残回数不明」として扱う (tracking_limit_reached は立てない・2026-10-26 谷口さん)。
+--     ・tracking_limit_reached=true にするのは 429 を実際に受けた番号だけ (cron/即時照会が検知して記録)。
+--     ・既存番号は queryCount を持たない = 残回数不明。照会は継続し、429 が返った時点で上限到達＝別一覧へ。
+--     一律に上限到達扱いにすると、まだ残枠のある既存番号まで自動照会から外れて手動に回るため、やめる。
+--     (poll-policy は queryCount 未知の番号を budget あり=照会可として扱い、429 で limitReached にする)。
 
 -- 別一覧(429到達)を素早く引くための部分インデックス。
 create index if not exists idx_shipments_limit_reached

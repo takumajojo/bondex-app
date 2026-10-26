@@ -12,7 +12,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
 import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
-import { shouldQueryLeg, numberHasBudget, type NumberMeta } from "@/lib/tracking/poll-policy"
+import { shouldQueryLeg, numberHasBudget, legProgressStatus, type NumberMeta } from "@/lib/tracking/poll-policy"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -385,6 +385,13 @@ export async function GET(req: NextRequest) {
         updatePayload.tracking_limit_reached = true
       }
 
+      // leg 代表ステータスを全番号の最劣で確定する (1番号でも未取得/未着なら delivered にしない=確認漏れ防止)。
+      bestStatus = legProgressStatus(
+        detail as Array<{ number?: string; status?: ShipmentStatus | null }>,
+        trackingNumbers,
+      )
+      bestRank = bestStatus ? progressionRank(bestStatus) : -1
+
       // history 由来の実イベント時刻 (集荷/配達)。複数番号なら最も早いものを採る。
       // 無ければ従来どおり「検知した時刻(now)」で代替する。
       const collectedAt = resultsForRow.map((r) => r.collectedAt).filter(Boolean).sort()[0] as string | undefined
@@ -512,6 +519,7 @@ export async function GET(req: NextRequest) {
               statusDataFromRow(row, agencyContactByName.get(row.agency as string) ?? null, agencyForeignByName.get(row.agency as string) ?? false),
               recipients,
               agencyForeignByName.get(row.agency as string) ?? false,
+              `delivered-${row.booking_id}-L${(row.leg_index as number) + 1}`,
             )
             // 代理店へのプッシュ通知 (WhatsApp=承認テンプレ / LINE=自由文・登録があれば。メールの補完)
             {
@@ -594,6 +602,7 @@ export async function GET(req: NextRequest) {
           statusDataFromRow(s as unknown as StatusRow, agencyContactByName.get(s.agency as string) ?? null, en),
           recipients,
           en,
+          `delivered-${s.booking_id}-L${(s.leg_index as number) + 1}`,
         )
         if (sent) {
           try {

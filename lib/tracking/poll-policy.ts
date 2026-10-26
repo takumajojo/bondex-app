@@ -106,3 +106,22 @@ export function remainingBudget(numbersMeta: NumberMeta[]): number {
     ...numbersMeta.map((m) => (m.limitReached ? 0 : Math.max(0, TRACKING_MAX_QUERIES - (m.queryCount ?? 0)))),
   )
 }
+
+// leg の進捗ステータス = 全追跡番号の最も遅れた確定ステータス。
+// 1番号でも未確定(noData/429/exception=status無し)なら、その番号は最劣(-1)扱いにして leg を前進
+// させない → 「一部だけ取得できた時に delivered と誤判定する」確認漏れ・完了メール誤送信を防ぐ。
+const PROGRESSION_FULL: ShipmentStatus[] = ["issued", "picked_up", "in_transit", "delivered"]
+export function legProgressStatus(
+  detail: Array<{ number?: string; status?: ShipmentStatus | null }>,
+  trackingNumbers: string[],
+): ShipmentStatus | null {
+  if (trackingNumbers.length === 0) return null
+  let minRank = Infinity
+  for (const num of trackingNumbers) {
+    const d = detail.find((x) => x.number === num)
+    const st = d?.status ?? null
+    const r = st ? PROGRESSION_FULL.indexOf(st) : -1 // 未確定(noData/429/exception)は -1 = 最劣
+    if (r < minRank) minRank = r
+  }
+  return minRank >= 0 ? PROGRESSION_FULL[minRank] : null
+}

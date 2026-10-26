@@ -34,6 +34,7 @@ async function sendViaSmtp(opts: {
   attachments?: MailAttachment[]
   replyTo?: string
   bcc?: string | string[]
+  idempotencyKey?: string // SMTP は冪等キー非対応。型整合のため受けるだけ (使わない)。
 }): Promise<SendResult> {
   const host = process.env.SMTP_HOST!
   const user = process.env.SMTP_USER!
@@ -82,6 +83,7 @@ async function sendViaResend(opts: {
   attachments?: MailAttachment[]
   replyTo?: string
   bcc?: string | string[]
+  idempotencyKey?: string
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY!
   // 既定は support@bondex.express (Resend で bondex.express を認証済みが前提)。ALERT_FROM_EMAIL で上書き可。
@@ -89,7 +91,13 @@ async function sendViaResend(opts: {
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      // Idempotency-Key: 送信成功後に DB 記録前に落ちて再送されても、Resend 側で重複を排除する
+      // (24時間窓)。宛先ごとに一意のキーを渡す (呼び出し側で base+宛先index を組む)。
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
+      },
       body: JSON.stringify({
         from,
         to: [opts.to],
@@ -127,8 +135,19 @@ export async function sendMail(opts: {
   attachments?: MailAttachment[]
   replyTo?: string
   bcc?: string | string[]
+  /** Resend の冪等キー (24h)。送信成功→DB記録前クラッシュ時の再送で重複を防ぐ。宛先ごとに一意にする。 */
+  idempotencyKey?: string
 }): Promise<SendResult> {
   if (!opts.to?.trim()) return { sent: false, error: "no recipient" }
+
+  // 結合テスト用: MAIL_TEST_CAPTURE=1 のときは実送信せず、送信内容を記録して成功を返す
+  // (本番では未設定。顧客へ実送信せずに完了メール/冪等キー/再送フローを検証するため)。
+  if (process.env.MAIL_TEST_CAPTURE === "1") {
+    const g = globalThis as unknown as { __capturedMails?: Array<Record<string, unknown>> }
+    g.__capturedMails = g.__capturedMails ?? []
+    g.__capturedMails.push({ to: opts.to, subject: opts.subject, idempotencyKey: opts.idempotencyKey, bcc: opts.bcc })
+    return { sent: true, via: "resend" }
+  }
 
   // HTML が cid:bondex-logo を参照していれば、ロゴをインライン添付として自動付与する。
   // (リモート画像 <img src=https://…> はメールクライアントでブロックされ表示されないため、
