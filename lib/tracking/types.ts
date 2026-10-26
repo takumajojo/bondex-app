@@ -42,6 +42,10 @@ export interface TrackingResult {
   deliveredAt?: string
   /** キャリアの時系列イベント履歴 (診断/タイムライン表示用・加工せず保持)。 */
   history?: TrackingEvent[]
+  /** Ship&co が追跡番号あたり15回上限(429 TRACKING_LIMIT_EXCEEDED)を返した。noData とは区別する。 */
+  rateLimited?: boolean
+  /** エラー時のコード (例: TRACKING_LIMIT_EXCEEDED)。画面表示/別一覧の判定に使う。 */
+  errorCode?: string
 }
 
 export interface TrackingProvider {

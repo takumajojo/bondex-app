@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     const sp = req.nextUrl.searchParams
     // view = 要対応カテゴリ (運営ダッシュボードのタイル絞り込み)。サーバー側で全件から抽出する
-    const VIEWS = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail"] as const
+    const VIEWS = ["delay-pickup", "delay-delivery", "charge-failed", "failed", "label-mail", "limit-reached"] as const
     const viewRaw = sp.get("view")
     const view = VIEWS.includes(viewRaw as (typeof VIEWS)[number])
       ? (viewRaw as (typeof VIEWS)[number])
@@ -308,12 +308,21 @@ export async function PATCH(req: NextRequest) {
             // 主メール + 追加メールの全宛先へ(cron/reconcile と同じ挙動に揃える)。
             agencyEmail = await agencyRecipientEmails(sb, ship.agency)
           }
-          await sendAgencyStatusEmail(
+          const statusEmailSent = await sendAgencyStatusEmail(
             patch.status as "picked_up" | "delivered",
             statusDataFromRow(ship, contactPerson, english),
             agencyEmail,
             english,
           )
+          // 配達完了メールを送れたら delivered_notified_at を記録。
+          // cron の再送ループ (delivered かつ NULL を再送) と重複させないための重複防止キー。
+          if (patch.status === "delivered" && statusEmailSent && sb) {
+            await sb
+              .from("shipments")
+              .update({ delivered_notified_at: new Date().toISOString() })
+              .eq("id", id)
+              .is("delivered_notified_at", null)
+          }
           // 集荷完了 → support@ へ社内通知 (メール + Slack)。配達完了は下でまとめて通知。
           if (patch.status === "picked_up") {
             await notifyBondEx({

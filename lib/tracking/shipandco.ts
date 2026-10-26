@@ -153,7 +153,7 @@ async function fetchTracking(
   token: string,
   carrier: "sagawa" | "yamato",
   trackingNumber: string,
-): Promise<TrackingResponse | null> {
+): Promise<{ data: TrackingResponse | null; rateLimited: boolean; errorCode?: string }> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), SHIPANDCO_TIMEOUT_MS)
   try {
@@ -165,16 +165,29 @@ async function fetchTracking(
       },
     )
     if (!res.ok) {
+      // 429 = 追跡番号あたり15回上限(TRACKING_LIMIT_EXCEEDED)。noData と区別して呼び出し側へ伝える
+      // (この番号は以降 自動照会から外し、別一覧で手動確認する)。本文はコードのみ拾い、生本文は保持しない。
+      if (res.status === 429) {
+        let errorCode: string | undefined
+        try {
+          const b = (await res.json()) as { code?: string } | null
+          if (b && typeof b.code === "string") errorCode = b.code
+        } catch {
+          /* 本文が JSON でなくても 429 の事実は変わらない */
+        }
+        console.error(`[sync-tracking] Ship&co 429 rate limit for ${carrier}/${trackingNumber}`)
+        return { data: null, rateLimited: true, errorCode: errorCode ?? "TRACKING_LIMIT_EXCEEDED" }
+      }
       console.error(
         `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${carrier}/${trackingNumber}`,
       )
-      return null
+      return { data: null, rateLimited: false }
     }
-    return (await res.json()) as TrackingResponse
+    return { data: (await res.json()) as TrackingResponse, rateLimited: false }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     console.error(`[cron/sync-tracking] Ship&co call failed for ${carrier}/${trackingNumber}: ${reason}`)
-    return null
+    return { data: null, rateLimited: false }
   } finally {
     clearTimeout(timer)
   }
@@ -189,7 +202,19 @@ export const shipandcoTrackingProvider: TrackingProvider = {
       return { number: trackingNumber, noData: true, status: null, exception: null }
     }
     const path = trackingCarrierPath(carrier)
-    const tracking = await fetchTracking(token, path, trackingNumber)
+    const { data: tracking, rateLimited, errorCode } = await fetchTracking(token, path, trackingNumber)
+    // 15回上限(429)は noData と区別する。最後に正常取得したステータスの保持は、呼び出し側(DB)が
+    // tracking_detail を上書きしないことで行う。ここでは rateLimited を伝えるだけ。
+    if (rateLimited) {
+      return {
+        number: trackingNumber,
+        noData: true,
+        rateLimited: true,
+        errorCode: errorCode ?? "TRACKING_LIMIT_EXCEEDED",
+        status: null,
+        exception: null,
+      }
+    }
     const history = Array.isArray(tracking?.history) ? tracking!.history : undefined
     const derived = deriveEventTimes(history)
     const current = tracking?.current_status

@@ -7,11 +7,12 @@ import { listPickupMisses, markPickupAlerted, listDeliveryOverdue, markDeliveryO
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { getTrackingProvider } from "@/lib/tracking"
-import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
+import { statusDataFromRow, sendAgencyStatusEmail, type StatusRow } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
 import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
+import { shouldQueryLeg, numberHasBudget, type NumberMeta } from "@/lib/tracking/poll-policy"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -130,7 +131,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await sb
       .from("shipments")
-      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, tour_number, shipment_date, tracking_numbers, tracking_detail")
+      .select("id, booking_id, leg_index, agency, status, carrier, representative, recipient, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, tour_number, shipment_date, expected_arrival, tracking_numbers, tracking_detail, tracking_limit_reached, delivered_notified_at")
       .not("tracking_numbers", "is", null)
       .not("status", "in", '("delivered","cancelled","failed")')
       // 2026-08-31 監査対応: limit 未指定は PostgREST 既定の1000行で静かに切れ、
@@ -179,18 +180,45 @@ export async function GET(req: NextRequest) {
     )
     const skippedNoTracking = (data?.length ?? 0) - rows.length
 
-    // Step 1: 全 shipment × 全追跡番号をフラットなタスク一覧にして、まとめて並列取得。
-    // 「1 leg 内で直列」ではなく「全体で並列」にすることで、leg 数や口数に関わらず
-    // 総所要時間が ceil(タスク総数 / CONCURRENCY) × 平均レイテンシ に収まる。
+    // Step 1: 照会の配分 (lib/tracking/poll-policy)。集荷日は抑制・配達予定日は2時間ごと・
+    //   1番号15回以内。既存の上限到達(tracking_limit_reached)や残枠切れの番号は照会しない。
+    //   照会しない番号/区間は前回の tracking_detail をそのまま維持する (Step 2)。
     type Task = { rowIndex: number; trackingNumber: string; carrier: string | null }
+    // tracking_detail(前回) から 番号→照会メタ(最終照会時刻・回数・上限) を引く。
+    const metaFromDetail = (td: unknown): Map<string, NumberMeta> => {
+      const m = new Map<string, NumberMeta>()
+      for (const d of (Array.isArray(td) ? td : []) as Array<Record<string, unknown>>) {
+        const num = String(d.number ?? "")
+        if (!num) continue
+        m.set(num, {
+          lastCheckedAt: (d.checkedAt as string | undefined) ?? null,
+          queryCount: (d.queryCount as number | undefined) ?? 0,
+          limitReached: (d.limitReached as boolean | undefined) ?? false,
+        })
+      }
+      return m
+    }
+    const now = new Date()
     const tasks: Task[] = []
     rows.forEach((row, rowIndex) => {
       const trackingNumbers = (row.tracking_numbers as string[] | null) ?? []
       const carrier = (row.carrier as string | null) ?? null
-      trackingNumbers.forEach((num) => tasks.push({ rowIndex, trackingNumber: num, carrier }))
+      const metaByNumber = metaFromDetail(row.tracking_detail)
+      const numbersMeta = trackingNumbers.map((n) => metaByNumber.get(n) ?? {})
+      const pollRow = {
+        status: row.status as ShipmentStatus,
+        shipment_date: (row.shipment_date as string | null) ?? null,
+        expected_arrival: (row.expected_arrival as string | null) ?? null,
+        tracking_limit_reached: (row.tracking_limit_reached as boolean | null) ?? false,
+      }
+      if (!shouldQueryLeg(pollRow, numbersMeta, now)) return // この区間は今回は照会しない (detail 維持)
+      // 残枠のある番号だけ照会する (上限到達番号は別一覧・手動)。
+      trackingNumbers.forEach((num) => {
+        if (numberHasBudget(metaByNumber.get(num) ?? {})) tasks.push({ rowIndex, trackingNumber: num, carrier })
+      })
     })
 
-    const checkedAt = new Date().toISOString()
+    const checkedAt = now.toISOString()
 
     // 追跡プロバイダ経由で取得 (Phase A: shipandco)。carrier→照会先の対応付けと
     // ステータス正規化・異常検知はプロバイダ内で行い、cron は正規化済み結果だけを扱う。
@@ -216,61 +244,78 @@ export async function GET(req: NextRequest) {
     const chargesMade: Array<{ bookingId: string; leg: number; amountYen: number }> = []
     const chargeFailures: Array<{ bookingId: string; leg: number; error: string }> = []
 
-    interface PrevDetail {
-      number: string
-      alertedException?: string
-    }
-
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       const row = rows[rowIndex]
       const resultsForRow = taskResults.filter((t) => t.rowIndex === rowIndex).map((t) => t.result)
+      // この区間は今回照会していない (poll-policy でゲート) → DB は触らず前回の detail を維持。
+      if (resultsForRow.length === 0) {
+        skipped++
+        continue
+      }
+      const resultByNumber = new Map(resultsForRow.map((r) => [r.number, r]))
+      const trackingNumbers = (row.tracking_numbers as string[] | null) ?? []
 
-      // 前回 cron が保存した「通知済み異常」を番号単位で引き継ぐ —
-      // 同じ遅延に対して毎時アラートを打ち続けないための重複防止。
+      // 前回 detail を番号単位で引く (照会しなかった番号・429・noData 時に「最後の正常」を維持)。
+      const prevByNumber = new Map<string, Record<string, unknown>>()
       const prevAlerted = new Map<string, string>()
-      for (const d of (row.tracking_detail as PrevDetail[] | null) ?? []) {
-        if (d.alertedException) prevAlerted.set(d.number, d.alertedException)
+      for (const d of (row.tracking_detail as Array<Record<string, unknown>> | null) ?? []) {
+        const num = String(d.number ?? "")
+        if (num) prevByNumber.set(num, d)
+        if (d.alertedException) prevAlerted.set(num, d.alertedException as string)
       }
 
       let bestRank = -1
       let bestStatus: ShipmentStatus | null = null
       let sawUnmapped: string | null = null
       let anySuccess = false
+      let legLimitReached = (row.tracking_limit_reached as boolean | null) ?? false
       const newExceptions: Array<{ number: string; label: string; raw: string; location?: string }> = []
 
-      const detail = resultsForRow.map((tr) => {
+      // 全番号ぶんの detail を作る。今回照会した番号は更新し、照会しなかった番号は前回を維持。
+      const detail = trackingNumbers.map((num) => {
+        const tr = resultByNumber.get(num)
+        const prev = prevByNumber.get(num) ?? { number: num }
+        if (!tr) return prev // 今回照会しなかった番号 → 前回を維持
+        const queryCount = ((prev.queryCount as number | undefined) ?? 0) + 1
+
+        // 429 = 追跡番号あたり15回上限。最後に取れた正常ステータス(prev)を残して上書きしない。
+        if (tr.rateLimited) {
+          legLimitReached = true
+          return {
+            ...prev,
+            number: num,
+            queryCount,
+            limitReached: true,
+            lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED",
+            checkedAt,
+          }
+        }
+        // データ未取得 → 前回の正常ステータスは保持し、照会時刻と回数だけ更新。
         if (tr.noData) {
-          return { number: tr.number, checkedAt, alertedException: prevAlerted.get(tr.number) }
+          return { ...prev, number: num, queryCount, checkedAt }
         }
         anySuccess = true
 
-        // 集荷前 (issued) の番号は佐川側にまだ荷物データが無く、Ship&co は "exception" を返す
-        // (2026-09-29 実測: 集荷前の問合番号は佐川の追跡で「お荷物データが登録されておりません」)。
-        // 新運用では集荷前に番号を入れるので、これを異常として通知しない。
-        // 集荷されないまま発送日を過ぎた場合は、下の「集荷漏れアラート」が拾う。
+        // 集荷前 (issued) の番号は佐川側にまだ荷物データが無く "exception" を返す。異常通知しない。
         if (tr.exception && progressionRank(row.status as ShipmentStatus) < progressionRank("picked_up")) {
-          return { number: tr.number, status: null, rawStatus: tr.rawStatus, checkedAt }
+          return { number: num, status: null, rawStatus: tr.rawStatus, queryCount, checkedAt }
         }
 
         // 異常系を最優先 — provider が正規化済み (異常時は status=null)。前進判定には使わない。
         if (tr.exception) {
-          const alreadyAlerted = prevAlerted.get(tr.number) === tr.exception
+          const alreadyAlerted = prevAlerted.get(num) === tr.exception
           if (!alreadyAlerted) {
-            newExceptions.push({
-              number: tr.number,
-              label: tr.exception,
-              raw: tr.rawStatus ?? "",
-              location: tr.location,
-            })
+            newExceptions.push({ number: num, label: tr.exception, raw: tr.rawStatus ?? "", location: tr.location })
           }
           return {
-            number: tr.number,
+            number: num,
             status: null,
             rawStatus: tr.rawStatus,
             exception: tr.exception,
             alertedException: tr.exception,
             location: tr.location,
             date: tr.date,
+            queryCount,
             checkedAt,
           }
         }
@@ -285,14 +330,7 @@ export async function GET(req: NextRequest) {
         } else {
           sawUnmapped = tr.rawStatus ?? null
         }
-        return {
-          number: tr.number,
-          status: mapped,
-          rawStatus: tr.rawStatus,
-          location: tr.location,
-          date: tr.date,
-          checkedAt,
-        }
+        return { number: num, status: mapped, rawStatus: tr.rawStatus, location: tr.location, date: tr.date, queryCount, checkedAt }
       })
 
       // 新規の異常があれば BondEx + ランドオペレーターへ即時通知 (代理店は言語設定で出し分け)
@@ -339,12 +377,12 @@ export async function GET(req: NextRequest) {
         )
       }
 
-      // Ship&co 側が今回まるごと応答しなかった場合 (全滅) は、既存の
-      // tracking_detail を空で上書きしない — 一時的な障害で
-      // 「今どこにあるか」の情報を消してしまわないため。
-      const updatePayload: Record<string, unknown> = {}
-      if (anySuccess) {
-        updatePayload.tracking_detail = detail
+      // detail は全番号ぶん (照会しなかった番号は前回維持) なので常に書き込んでよい —
+      // 全滅時でも前回同等で、情報は失われない。
+      const updatePayload: Record<string, unknown> = { tracking_detail: detail }
+      // いずれかの番号が 429(上限到達) になったら、区間を別一覧(手動確認)へ回す。
+      if (legLimitReached && !((row.tracking_limit_reached as boolean | null) ?? false)) {
+        updatePayload.tracking_limit_reached = true
       }
 
       // history 由来の実イベント時刻 (集荷/配達)。複数番号なら最も早いものを採る。
@@ -395,6 +433,20 @@ export async function GET(req: NextRequest) {
       if (statusAdvances) updated++
       if (anySuccess) detailUpdated++
       if (!statusAdvances && !anySuccess) skipped++
+
+      // 追跡番号が 15回上限(429)に達した区間 → 別一覧(手動確認)へ回し、担当者へ一度だけ通知。
+      if (updatePayload.tracking_limit_reached === true) {
+        await sendOpsAlert({
+          subject: `【追跡上限到達】${row.booking_id}-L${(row.leg_index as number) + 1} 手動確認が必要`,
+          lines: [
+            `この区間の追跡番号が Ship&co の照会上限(15回)に達しました。自動では配達完了を検知できません。`,
+            `佐川の荷物問い合わせ(Web/電話)で状況を確認し、配達完了ならダッシュボードで手動で完了にしてください。`,
+            `追跡番号: ${((row.tracking_numbers as string[] | null) ?? []).join(", ") || "未発行"}`,
+            `追跡: https://bondex.express/track/${row.booking_id}`,
+          ],
+          agencyEmail: null,
+        }).catch(() => {})
+      }
 
       // ── ステータス前進に伴う副作用 (いずれも best-effort・cron 本体は巻き込まない) ──
       if (statusAdvances && bestStatus) {
@@ -485,7 +537,15 @@ export async function GET(req: NextRequest) {
               link: `/track/${row.booking_id as string}`,
               linkLabel: "追跡ページで確認",
             })
-            if (emailSent) deliveryNotified++
+            if (emailSent) {
+              deliveryNotified++
+              // 完了メール送信成功 → delivered_notified_at を記録 (重複防止 + 失敗時の再送対象から外す)。
+              try {
+                await sb.from("shipments").update({ delivered_notified_at: new Date().toISOString() }).eq("id", row.id)
+              } catch {
+                /* 記録失敗は best-effort。次回の再送ループが拾う。 */
+              }
+            }
           } catch (e) {
             console.error("[sync-tracking] delivery notify failed:", e instanceof Error ? e.message : e)
           }
@@ -507,6 +567,45 @@ export async function GET(req: NextRequest) {
           }
         }
       }
+    }
+
+    // ------------------------------------------------------------------
+    // 配達完了メールの再送: delivered だが delivered_notified_at が NULL の区間
+    //   (前回 送信に失敗したもの) を拾って再送する。成功で notified_at を記録=重複防止。
+    //   過去便(マイグレーションで notified_at 済)・既に送信済みは対象外 = 過去便へ再送しない。
+    // ------------------------------------------------------------------
+    let deliveryResent = 0
+    try {
+      const { data: pending } = await sb
+        .from("shipments")
+        .select("id, booking_id, leg_index, agency, representative, tour_number, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, shipment_date, tracking_numbers")
+        .eq("status", "delivered")
+        .is("delivered_notified_at", null)
+        .not("tracking_numbers", "is", null)
+        .limit(200)
+      for (const s of pending ?? []) {
+        const recipients =
+          agencyEmailsByName.get(s.agency as string) ??
+          (agencyEmailByName.get(s.agency as string) ? [agencyEmailByName.get(s.agency as string) as string] : [])
+        if (recipients.length === 0) continue // 宛先が無い区間は再送できない (別途 ops で把握済み)
+        const en = agencyForeignByName.get(s.agency as string) ?? false
+        const sent = await sendAgencyStatusEmail(
+          "delivered",
+          statusDataFromRow(s as unknown as StatusRow, agencyContactByName.get(s.agency as string) ?? null, en),
+          recipients,
+          en,
+        )
+        if (sent) {
+          try {
+            await sb.from("shipments").update({ delivered_notified_at: new Date().toISOString() }).eq("id", s.id)
+          } catch {
+            /* best-effort */
+          }
+          deliveryResent++
+        }
+      }
+    } catch (err) {
+      console.error("[sync-tracking] delivery re-notify failed:", err instanceof Error ? err.message : err)
     }
 
     // ------------------------------------------------------------------
@@ -595,6 +694,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       overdueAlertsSent,
+      deliveryResent,
       pickupAlertsSent,
       checked: rows.length,
       tasksRun: tasks.length,
