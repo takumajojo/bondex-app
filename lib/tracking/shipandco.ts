@@ -215,3 +215,132 @@ export const shipandcoTrackingProvider: TrackingProvider = {
     }
   },
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// 診断専用（track-test?raw=1 からのみ使用）。
+// noData に畳み込む前の「Ship&co の実応答」を切り分けるために、HTTP ステータス・
+// Content-Type・レスポンスのキー構造・配送ステータス/日時・エラーコード(安全加工)
+// だけを返す。未加工の本文は返さず、ログにも残さない。自動リトライはしない。
+// 呼び出しは 1 回だけ（通常の fetchOne とは別経路なので二重照会にならない）。
+// ────────────────────────────────────────────────────────────────────────────
+export interface TrackingDiagnostic {
+  httpStatus: number | null
+  ok: boolean
+  contentType: string | null
+  /** レスポンスのキー名のみ（値は含めない）。現行パーサーとの整合確認用。 */
+  keyStructure: { top: string[]; current_status: string[]; historyItem: string[] } | null
+  /** 配送ステータス（current_status.status の生値）と日時。配送情報に限定。 */
+  deliveryStatus: string | null
+  deliveryDate: string | null
+  /** history の各イベントのステータスと日時のみ（氏名/住所/location は含めない）。 */
+  historyStatuses: Array<{ status: string | null; date: string | null }> | null
+  historyLength: number
+  /** エラー時のコードと、安全に加工した短いメッセージ（個人情報・長い数字列を除去）。 */
+  errorCode: string | null
+  safeMessage: string | null
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v)
+const keysOf = (v: unknown): string[] => (isObj(v) ? Object.keys(v) : [])
+
+/** エラーメッセージの安全加工: 制御文字除去・長い数字列(電話/郵便/番号)伏せ・ASCII印字のみ・120字。 */
+function sanitizeMessage(s: string): string {
+  return s
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\d{6,}/g, "***")
+    .replace(/[^\x20-\x7E]/g, "")
+    .trim()
+    .slice(0, 120)
+}
+
+export async function fetchTrackingDiagnostic(
+  carrier: string | null | undefined,
+  trackingNumber: string,
+): Promise<TrackingDiagnostic> {
+  const empty: TrackingDiagnostic = {
+    httpStatus: null, ok: false, contentType: null, keyStructure: null,
+    deliveryStatus: null, deliveryDate: null, historyStatuses: null,
+    historyLength: 0, errorCode: null, safeMessage: null,
+  }
+  const token = process.env.SHIPANDCO_API_KEY
+  if (!token) return { ...empty, safeMessage: "SHIPANDCO_API_KEY not configured" }
+
+  const path = trackingCarrierPath(carrier)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), SHIPANDCO_TIMEOUT_MS)
+  try {
+    const res = await fetch(
+      `${SHIPANDCO_BASE}/tracking/${path}/${encodeURIComponent(trackingNumber)}`,
+      { headers: { "x-access-token": token, "Content-Type": "application/json" }, signal: controller.signal },
+    )
+    const contentType = res.headers.get("content-type")
+    // 本文はキー構造・配送ステータス抽出のためだけに読む。生のまま返す/ログ保存はしない。
+    const text = await res.text()
+    let parsed: unknown = null
+    try {
+      parsed = text ? JSON.parse(text) : null
+    } catch {
+      parsed = null
+    }
+
+    const obj = isObj(parsed) ? parsed : {}
+    const current = isObj(obj.current_status) ? obj.current_status : undefined
+    const history = Array.isArray(obj.history) ? obj.history : undefined
+    const firstHistory = history && isObj(history[0]) ? history[0] : undefined
+
+    const keyStructure =
+      parsed != null
+        ? { top: keysOf(parsed), current_status: keysOf(current), historyItem: keysOf(firstHistory) }
+        : null
+
+    const deliveryStatus = current && typeof current.status === "string" ? current.status : null
+    const deliveryDate = current && typeof current.date === "string" ? current.date : null
+    const historyStatuses = history
+      ? history.map((e) => {
+          const ev = isObj(e) ? e : {}
+          return {
+            status: typeof ev.status === "string" ? ev.status : null,
+            date: typeof ev.date === "string" ? ev.date : null,
+          }
+        })
+      : null
+
+    let errorCode: string | null = null
+    let safeMessage: string | null = null
+    if (!res.ok) {
+      errorCode =
+        isObj(obj.error) && typeof obj.error.code === "string"
+          ? obj.error.code
+          : typeof obj.code === "string"
+            ? obj.code
+            : null
+      const rawMsg =
+        isObj(obj.error) && typeof obj.error.message === "string"
+          ? obj.error.message
+          : typeof obj.message === "string"
+            ? obj.message
+            : null
+      safeMessage = rawMsg ? sanitizeMessage(rawMsg) : `HTTP ${res.status}`
+    }
+
+    return {
+      httpStatus: res.status,
+      ok: res.ok,
+      contentType,
+      keyStructure,
+      deliveryStatus,
+      deliveryDate,
+      historyStatuses,
+      historyLength: history ? history.length : 0,
+      errorCode,
+      safeMessage,
+    }
+  } catch (err) {
+    // タイムアウト/ネットワーク障害。本文なし。理由は型名のみ（個人情報を含めない）。
+    const name = err instanceof Error ? err.name : "Error"
+    return { ...empty, safeMessage: name === "AbortError" ? "timeout (10s)" : "network error" }
+  } finally {
+    clearTimeout(timer)
+  }
+}
