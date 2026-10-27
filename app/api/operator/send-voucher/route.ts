@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { sendMail } from "@/lib/mailer"
+import { voucherAttachment } from "@/lib/voucher-attachment"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -10,9 +11,11 @@ export const maxDuration = 60
  * 新規依頼の完了後、谷口さんが内容を確認して「依頼主へ」バウチャー PDF を送付する口
  * (BondEx 運用のみ — middleware で認証済み。2026-10-21 谷口さん指示)。
  *
- * - 宛先 = その代理店の登録メール全員 (agencies.contact_email 主 + agency_emails 追加)。
- * - 本文は簡潔なカバーノート、添付は操作画面で確認したバウチャー PDF そのもの (pdfBase64)。
- * - 送信控えは support@ に BCC (顧客メールの運用確認用・既存方針に合わせる)。
+ * 2026-10-27 改修: バウチャー PDF は **サーバ側で bookingId から再生成**する (voucherAttachment)。
+ *   旧実装はブラウザが表示中の PDF(blob)を base64 にしてアップロードしていたが、
+ *   その送信リクエストがサイズ/接続断でネットワーク層から失敗し、画面に生の "Load failed" が
+ *   出て送れないことがあった。受付メール(app/api/agency/booking)と同じサーバ生成経路に一本化し、
+ *   クライアントからの pdfBase64 送信を廃止。宛先はその代理店の登録メール全員、控えは support@ に BCC。
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured()) {
@@ -24,16 +27,39 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     agency?: string
     bookingId?: string
-    fileName?: string
-    pdfBase64?: string
   }
-  const agency = body.agency?.trim() || ""
   const bookingId = body.bookingId?.trim() || ""
-  const pdfBase64 = typeof body.pdfBase64 === "string" ? body.pdfBase64 : ""
-  const fileName = body.fileName?.trim() || `bondex-voucher-${bookingId || "booking"}.pdf`
-  if (!agency || !pdfBase64) {
-    return NextResponse.json({ error: "agency and pdfBase64 are required" }, { status: 400 })
+  if (!bookingId) {
+    return NextResponse.json({ error: "bookingId is required" }, { status: 400 })
   }
+
+  // 代理店名: 明示指定が無ければ予約レコードから解決する (送付先=代理店の登録メール)。
+  let agency = body.agency?.trim() || ""
+  if (!agency) {
+    const { data: row } = await sb
+      .from("shipments")
+      .select("agency")
+      .eq("booking_id", bookingId)
+      .limit(1)
+      .maybeSingle()
+    agency = (row?.agency as string | null)?.trim() || ""
+  }
+  if (!agency) {
+    return NextResponse.json({ ok: false, reason: "no_agency", error: "依頼元の代理店が特定できません" }, { status: 400 })
+  }
+
+  // バウチャー PDF をサーバ側で再生成 (How to ガイド同梱)。生成できなければ送らない。
+  const att = await voucherAttachment(bookingId, { expectedAgency: agency })
+  if (!att) {
+    return NextResponse.json(
+      { ok: false, reason: "voucher_generation_failed", error: "バウチャーPDFの生成に失敗しました" },
+      { status: 500 },
+    )
+  }
+  // 原因切り分け用のサイズ計測 (base64 文字数 ≒ 実バイトの 4/3)。
+  console.log(
+    `[send-voucher] ${bookingId} voucher PDF: base64=${att.contentBase64.length} chars (~${Math.round((att.contentBase64.length * 3) / 4 / 1024)} KB)`,
+  )
 
   const recipients = await agencyRecipientEmails(sb, agency)
   if (recipients.length === 0) {
@@ -66,7 +92,7 @@ export async function POST(req: NextRequest) {
         "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
       ].join("\n")
 
-  const attachments = [{ filename: fileName, contentBase64: pdfBase64 }]
+  const attachments = [{ filename: att.filename, contentBase64: att.contentBase64 }]
   const sentTo: string[] = []
   let firstError: string | undefined
   for (let i = 0; i < recipients.length; i++) {

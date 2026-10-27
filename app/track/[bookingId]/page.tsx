@@ -70,6 +70,8 @@ interface L10n {
   privacy: string
   status: Record<StatusKey, string>
   steps: [string, string, string, string] // issued / picked_up / in_transit / delivered
+  /** 集荷前(発行済)で配送会社サイトがまだ番号を認識しないときの代替ラベル。 */
+  afterPickup: string
 }
 
 const L: Record<Lang, L10n> = {
@@ -84,6 +86,7 @@ const L: Record<Lang, L10n> = {
     privacy: "This page is accessible by URL only. Please do not share it publicly.",
     status: { pending: "Pending", issued: "Arranged", picked_up: "Picked up", in_transit: "In transit", delivered: "Delivered", failed: "Failed", cancelled: "Cancelled" },
     steps: ["Issued", "Picked up", "In transit", "Delivered"],
+    afterPickup: "Trackable after pickup",
   },
   ja: {
     title: "お荷物の追跡",
@@ -96,6 +99,7 @@ const L: Record<Lang, L10n> = {
     privacy: "このページは URL を知っている方のみ閲覧できます。公開での共有はお控えください。",
     status: { pending: "手配待ち", issued: "手配済", picked_up: "集荷済", in_transit: "配送中", delivered: "配達完了", failed: "発行失敗", cancelled: "キャンセル" },
     steps: ["手配済", "集荷済", "配送中", "配達完了"],
+    afterPickup: "集荷後に追跡可能",
   },
   zh: {
     title: "行李追踪",
@@ -108,6 +112,7 @@ const L: Record<Lang, L10n> = {
     privacy: "本页面仅可通过网址访问，请勿公开分享。",
     status: { pending: "待出单", issued: "已安排", picked_up: "已揽收", in_transit: "运送中", delivered: "已送达", failed: "出单失败", cancelled: "已取消" },
     steps: ["已出单", "已揽收", "运送中", "已送达"],
+    afterPickup: "揽收后可追踪",
   },
   it: {
     title: "Traccia i tuoi bagagli",
@@ -120,6 +125,7 @@ const L: Record<Lang, L10n> = {
     privacy: "Questa pagina è accessibile solo tramite URL. Non condividerla pubblicamente.",
     status: { pending: "In attesa", issued: "Organizzato", picked_up: "Ritirato", in_transit: "In transito", delivered: "Consegnato", failed: "Non riuscito", cancelled: "Annullato" },
     steps: ["Emessa", "Ritirato", "In transito", "Consegnato"],
+    afterPickup: "Dopo il ritiro",
   },
   fr: {
     title: "Suivez vos bagages",
@@ -132,6 +138,7 @@ const L: Record<Lang, L10n> = {
     privacy: "Cette page n'est accessible que par son URL. Merci de ne pas la partager publiquement.",
     status: { pending: "En attente", issued: "Organisé", picked_up: "Collecté", in_transit: "En transit", delivered: "Livré", failed: "Échec", cancelled: "Annulé" },
     steps: ["Émise", "Collecté", "En transit", "Livré"],
+    afterPickup: "Après le retrait",
   },
   es: {
     title: "Rastrea tu equipaje",
@@ -144,6 +151,7 @@ const L: Record<Lang, L10n> = {
     privacy: "Esta página solo es accesible por su URL. Por favor, no la compartas públicamente.",
     status: { pending: "Pendiente", issued: "Organizado", picked_up: "Recogido", in_transit: "En tránsito", delivered: "Entregado", failed: "Fallido", cancelled: "Cancelado" },
     steps: ["Emitida", "Recogido", "En tránsito", "Entregado"],
+    afterPickup: "Tras la recogida",
   },
 }
 
@@ -155,6 +163,11 @@ const CARRIER_NAME: Record<string, { ja: string; en: string }> = {
 function carrierName(carrier: string, lang: Lang): string {
   const c = CARRIER_NAME[carrier] ?? CARRIER_NAME.sagawa
   return lang === "ja" ? c.ja : c.en
+}
+// 配送会社サイトが送り状番号を認識するのは「集荷後」。発行済(未集荷)で外部リンクを押すと
+// 配送会社側の「該当なし」エラーページに飛び、壊れていると誤解される。集荷済以降のみリンク化する。
+function isCarrierTrackable(status: string | null): boolean {
+  return status === "picked_up" || status === "in_transit" || status === "delivered"
 }
 async function fetchTrack(
   bookingId: string,
@@ -274,14 +287,20 @@ export default async function TrackPage({
                         <div key={t.number} className="rounded-lg border border-border p-3">
                           <div className="flex items-center justify-between gap-2 mb-3">
                             <span className="font-mono text-[11px] text-foreground truncate">{t.number}</span>
-                            <a
-                              href={carrierTrackUrl(data.carrier, t.number)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
-                            >
-                              {cName} ↗
-                            </a>
+                            {isCarrierTrackable(leg.status) ? (
+                              <a
+                                href={carrierTrackUrl(data.carrier, t.number)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                              >
+                                {cName} ↗
+                              </a>
+                            ) : (
+                              <span className="shrink-0 text-[10px] text-muted-foreground/60" title={tr.afterPickup}>
+                                {tr.afterPickup}
+                              </span>
+                            )}
                           </div>
                           <TrackingStepper status={t.status} steps={tr.steps} />
                           {(t.location || t.date) && (

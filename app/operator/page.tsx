@@ -3042,12 +3042,6 @@ function GeneratedView({
   // 依頼主(代理店の登録メール全員)へバウチャーPDFを送付する (谷口さんが内容確認後に手動で)。
   const [sendState, setSendState] = useState<"idle" | "sending" | "done" | "error">("idle")
   const [sendMsg, setSendMsg] = useState("")
-  const voucherFileName = buildVoucherFileName({
-    bookingId: docs.bookingId,
-    tourNumber: docs.tourNumber,
-    representativeLabel: docs.representativeLabel,
-    kind: "voucher",
-  })
   const sendVoucherToAgency = async () => {
     if (!docs.agency) {
       setSendState("error")
@@ -3058,26 +3052,26 @@ function GeneratedView({
     setSendState("sending")
     setSendMsg("")
     try {
-      const blob = await (await fetch(docs.voucherUrl)).blob()
-      const pdfBase64 = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader()
-        r.onload = () => resolve(String(r.result).split(",")[1] ?? "")
-        r.onerror = () => reject(new Error("PDFの読み込みに失敗しました"))
-        r.readAsDataURL(blob)
-      })
+      // PDF はサーバ側で bookingId から再生成する (2026-10-27 改修)。
+      // 旧実装は表示中の PDF を base64 でアップロードしており、サイズ/接続断で "Load failed" になっていた。
       const res = await fetch("/api/operator/send-voucher", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agency: docs.agency, bookingId: docs.bookingId, fileName: voucherFileName, pdfBase64 }),
-      })
+        body: JSON.stringify({ agency: docs.agency, bookingId: docs.bookingId }),
+      }).catch(() => null)
+      if (!res) {
+        throw new Error("送信リクエストが届きませんでした（通信環境をご確認のうえ再実行してください）")
+      }
       const d = (await res.json().catch(() => null)) as { ok?: boolean; sentTo?: string[]; reason?: string; error?: string } | null
       if (!res.ok || !d?.ok) {
         const msg =
           d?.reason === "no_agency_email"
             ? "代理店のメールが未登録です（代理店管理→連絡先・ユーザーで登録してください）"
-            : d?.reason === "send_failed"
-              ? `送信に失敗しました（${d?.error ?? "mailer"}）`
-              : d?.error || `失敗しました (${res.status})`
+            : d?.reason === "voucher_generation_failed"
+              ? "バウチャーPDFの生成に失敗しました（予約内容をご確認ください）"
+              : d?.reason === "send_failed"
+                ? `送信に失敗しました（${d?.error ?? "mailer"}）`
+                : d?.error || `失敗しました (${res.status})`
         throw new Error(msg)
       }
       setSendState("done")
