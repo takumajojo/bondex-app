@@ -441,8 +441,13 @@ export async function GET(req: NextRequest) {
       if (anySuccess) detailUpdated++
       if (!statusAdvances && !anySuccess) skipped++
 
-      // 追跡番号が 15回上限(429)に達した区間 → 別一覧(手動確認)へ回し、担当者へ一度だけ通知。
-      if (updatePayload.tracking_limit_reached === true) {
+      // 追跡番号が 15回上限(429)に達した区間 → 別一覧(手動確認)へ回す。
+      // 通知は集荷済み(picked_up)以降のみ — 集荷前(issued)の既存番号が過去429で誤発報しないため
+      //  (別一覧への記録 tracking_limit_reached は status に関わらず維持・2026-10-27 谷口さん)。
+      if (
+        updatePayload.tracking_limit_reached === true &&
+        progressionRank(row.status as ShipmentStatus) >= progressionRank("picked_up")
+      ) {
         await sendOpsAlert({
           subject: `【追跡上限到達】${row.booking_id}-L${(row.leg_index as number) + 1} 手動確認が必要`,
           lines: [

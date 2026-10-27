@@ -85,6 +85,22 @@ check(
     new Date(tOf("2026-11-13", "10:00")),
   ) === false,
 )
+check(
+  "集荷抑制: 発送当日の朝(8時・集荷前)は照会しない",
+  shouldQueryLeg(
+    { status: "issued", shipment_date: "2026-11-15", expected_arrival: "2026-11-16", tracking_limit_reached: false },
+    [{ queryCount: 0 }],
+    new Date(tOf("2026-11-15", "08:00")),
+  ) === false,
+)
+check(
+  "集荷抑制: 発送当日の夕方(18時以降・集荷見込み後)は照会する",
+  shouldQueryLeg(
+    { status: "issued", shipment_date: "2026-11-15", expected_arrival: "2026-11-16", tracking_limit_reached: false },
+    [{ queryCount: 0 }],
+    new Date(tOf("2026-11-15", "18:30")),
+  ) === true,
+)
 
 // --- 夜間は照会しない / 配達予定日の日中は照会する ---
 const inTransit: PollRow = { status: "in_transit", shipment_date: "2026-11-10", expected_arrival: "2026-11-11", tracking_limit_reached: false }
