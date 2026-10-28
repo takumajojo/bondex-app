@@ -80,6 +80,8 @@ export interface LandingMessages {
     photoTitle: string
     photoBody: string
     photoAlt: string
+    /** エンティティ定義文 (AI検索・検索エンジンが「BondExとは」に引用する1文) */
+    definition: string
   }
   philosophy: {
     eyebrow: string
@@ -250,6 +252,12 @@ export interface LandingMessages {
     commercial: string
     disclaimer: string
     copyrightSuffix: string
+    about: string
+  }
+  guides: {
+    heading: string
+    leadTime: string
+    groupTours: string
   }
 }
 
@@ -324,6 +332,7 @@ const ja: LandingMessages = {
     photoTitle: "ゲストは手ぶらで、次の街へ。",
     photoBody: "お荷物はホテルからホテルへ、BondEx が配送手配",
     photoAlt: "スーツケースを持たずに日本を旅行する家族",
+    definition: "BondEx（ボンデックス）は、株式会社JOJO（東京・世田谷）が運営する、旅行会社・DMC・ランドオペレーター向けの訪日旅行ホテル間荷物配送の手配代行サービスです。",
   },
   philosophy: {
     eyebrow: "BondEx の哲学",
@@ -705,6 +714,12 @@ const ja: LandingMessages = {
     disclaimer:
       "BondEx は運送人ではなく、旅程情報を受けて物流業者への発送を取り次ぐ取次サービスです。実運送・運送責任・補償は当社が利用する物流業者の運送約款に準じます。",
     copyrightSuffix: " / BondEx",
+    about: "運営会社",
+  },
+  guides: {
+    heading: "もっと詳しく",
+    leadTime: "ホテル間荷物配送の所要日数と受付締切",
+    groupTours: "団体ツアーの荷物配送を手配する手順",
   },
 }
 
@@ -779,6 +794,7 @@ const en: LandingMessages = {
     photoTitle: "Guests move on, hands-free.",
     photoBody: "BondEx forwards their luggage hotel to hotel.",
     photoAlt: "A family traveling in Japan without carrying suitcases",
+    definition: "BondEx is a luggage-forwarding coordination service for travel agencies, DMCs and land operators handling inbound travel to Japan, operated by JOJO Co., Ltd. (Tokyo).",
   },
   philosophy: {
     eyebrow: "The BondEx philosophy",
@@ -1065,6 +1081,12 @@ const en: LandingMessages = {
     disclaimer:
       "BondEx is not a carrier; it is an intermediary service that receives itinerary information and arranges shipping with logistics providers. Actual transport, carriage liability, and compensation follow the terms of carriage of the logistics providers we use.",
     copyrightSuffix: " / BondEx",
+    about: "About BondEx",
+  },
+  guides: {
+    heading: "Read more",
+    leadTime: "Delivery lead times and booking cut-offs",
+    groupTours: "Luggage forwarding for group tours",
   },
 }
 
@@ -1139,6 +1161,7 @@ const es: LandingMessages = {
     photoTitle: "Los viajeros siguen su ruta, sin equipaje.",
     photoBody: "BondEx reenvía su equipaje de hotel a hotel.",
     photoAlt: "Una familia viajando por Japón sin cargar maletas",
+    definition: "BondEx es un servicio de coordinación del envío de equipaje entre hoteles en Japón para agencias de viajes, receptivos (DMC) y operadores, operado por JOJO Co., Ltd. (Tokio).",
   },
   philosophy: {
     eyebrow: "La filosofía de BondEx",
@@ -1419,6 +1442,12 @@ const es: LandingMessages = {
     disclaimer:
       "BondEx no es un transportista; es un servicio de intermediación que recibe la información del itinerario y organiza el envío con proveedores logísticos. El transporte real, la responsabilidad de transporte y la cobertura se rigen por las condiciones de transporte de los proveedores logísticos que utilizamos.",
     copyrightSuffix: " / BondEx",
+    about: "Sobre BondEx",
+  },
+  guides: {
+    heading: "Más información (en inglés)",
+    leadTime: "Plazos de entrega y límites de reserva",
+    groupTours: "Envío de equipaje para grupos",
   },
 }
 
@@ -1493,6 +1522,7 @@ const fr: LandingMessages = {
     photoTitle: "Les voyageurs poursuivent leur route, les mains libres.",
     photoBody: "BondEx réexpédie leurs bagages d'hôtel en hôtel.",
     photoAlt: "Une famille voyageant au Japon sans porter de valises",
+    definition: "BondEx est un service de coordination du transfert de bagages entre hôtels au Japon pour les agences de voyages, réceptifs (DMC) et tour-opérateurs, opéré par JOJO Co., Ltd. (Tokyo).",
   },
   philosophy: {
     eyebrow: "La philosophie BondEx",
@@ -1773,6 +1803,12 @@ const fr: LandingMessages = {
     disclaimer:
       "BondEx n'est pas un transporteur ; c'est un service d'intermédiation qui reçoit les informations d'itinéraire et organise l'expédition auprès de prestataires logistiques. Le transport réel, la responsabilité de transport et l'indemnisation relèvent des conditions de transport des prestataires logistiques que nous utilisons.",
     copyrightSuffix: " / BondEx",
+    about: "À propos de BondEx",
+  },
+  guides: {
+    heading: "En savoir plus (en anglais)",
+    leadTime: "Délais de livraison et dates limites de réservation",
+    groupTours: "Transfert de bagages pour les groupes",
   },
 }
 
@@ -1847,6 +1883,7 @@ const zh: LandingMessages = {
     photoTitle: "旅客轻装上阵，前往下一站。",
     photoBody: "BondEx 将行李在酒店之间转运。",
     photoAlt: "一家人无需拖行李箱畅游日本",
+    definition: "BondEx（ボンデックス）是由 JOJO 株式会社（东京·世田谷）运营、面向旅行社与地接社的日本酒店间行李转运代办服务。",
   },
   philosophy: {
     eyebrow: "BondEx 的理念",
@@ -2127,6 +2164,12 @@ const zh: LandingMessages = {
     disclaimer:
       "BondEx 并非承运人，而是一项居间服务：接收行程信息并代为向物流商安排发货。实际运输、运输责任与赔偿均依照我们所使用物流商的运输条款。",
     copyrightSuffix: " / BondEx",
+    about: "关于 BondEx",
+  },
+  guides: {
+    heading: "了解更多（英文）",
+    leadTime: "配送所需天数与预订截止",
+    groupTours: "团体旅行的行李转运",
   },
 }
 
@@ -2201,6 +2244,7 @@ const it: LandingMessages = {
     photoTitle: "Gli ospiti proseguono, a mani libere.",
     photoBody: "BondEx inoltra i loro bagagli di hotel in hotel.",
     photoAlt: "Una famiglia in viaggio in Giappone senza portare valigie",
+    definition: "BondEx è un servizio di coordinamento del trasferimento bagagli tra hotel in Giappone per agenzie di viaggio, DMC e operatori incoming, gestito da JOJO Co., Ltd. (Tokyo).",
   },
   philosophy: {
     eyebrow: "La filosofia di BondEx",
@@ -2481,6 +2525,12 @@ const it: LandingMessages = {
     disclaimer:
       "BondEx non è un vettore; è un servizio di intermediazione che riceve le informazioni dell'itinerario e organizza la spedizione con i fornitori logistici. Il trasporto effettivo, la responsabilità di trasporto e il risarcimento seguono le condizioni di trasporto dei fornitori logistici che utilizziamo.",
     copyrightSuffix: " / BondEx",
+    about: "Chi è BondEx",
+  },
+  guides: {
+    heading: "Approfondisci (in inglese)",
+    leadTime: "Tempi di consegna e termini di prenotazione",
+    groupTours: "Trasferimento bagagli per i gruppi",
   },
 }
 

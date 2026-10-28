@@ -1,0 +1,32 @@
+# BondEx (ボンデックス)
+
+> BondEx is a luggage-forwarding coordination service for travel agencies, DMCs and land operators handling inbound travel to Japan. Operated by JOJO Co., Ltd. (株式会社JOJO), Setagaya, Tokyo. Official website: https://bondex.express (the only official site). Launched August 2026.
+
+BondEx（ボンデックス）は、株式会社JOJO（東京・世田谷）が運営する、旅行会社・DMC・ランドオペレーター向けの訪日旅行ホテル間荷物配送の手配代行サービスです。
+
+## What it does
+- Receives an itinerary (PDF, Excel or image) and shipping dates from the agency
+- Contacts the departure and arrival hotels, arranges carrier pickup (Sagawa Express / Yamato Transport), issues traveler vouchers
+- Tracks shipments, handles exceptions (missed pickup, delay, loss/damage, guest inquiries) and reports pickup/delivery to the agency by email
+- One consolidated monthly invoice; overseas agencies may pay by credit card
+- BondEx is a coordinating agent (取次), not a carrier; the contract of carriage is between the traveler/agency and the carrier
+
+## Key facts
+- Price: ¥4,980 per item excluding tax, flat for any size or weight; no setup or monthly fee; 10% off from 50 items/month; first-time trial ¥3,980 per item for the first 2 items per company
+- Lead time: next-day arrival with a morning pickup (Tokyo→Kyoto/Osaka/Nagoya/Kanazawa); Tokyo→Fukuoka/Hokkaido 2 days; Honshu→Okinawa 2 days or more; not a same-day service
+- Cut-offs: FIT by 16:00 JST the day before pickup; groups 5 days ahead as a rule; last-minute changes handled wherever possible
+- Coverage: up to ¥300,000 per item under the carrier's terms (suitcase shells and wheels excluded)
+- Languages: Japanese, English, Spanish, French, Chinese, Italian (website); multilingual vouchers
+- Contact: support@bondex.express
+
+## Not to be confused with
+The Web3 talent network / BDXN token "Bondex", the Japanese welfare-services company 株式会社Bondex, the paint and adhesive brands "BONDEX", and the hair-care line "Bondex" are unrelated to this service.
+
+## Pages
+- Service overview (Japanese): https://bondex.express/
+- Service overview (English): https://bondex.express/en
+- About / company profile: https://bondex.express/about (EN: https://bondex.express/en/about)
+- Delivery lead times and booking cut-offs: https://bondex.express/guide/lead-time (EN: https://bondex.express/en/guide/lead-time)
+- Luggage forwarding for group tours: https://bondex.express/guide/group-tours (EN: https://bondex.express/en/guide/group-tours)
+- Shipment tracking: https://bondex.express/track
+- Corporate site of the operator: https://www.jojotokyo.com

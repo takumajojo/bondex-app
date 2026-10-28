@@ -200,6 +200,22 @@ export function Landing({ lang }: { lang: Locale }) {
 
   return (
     <main className="min-h-screen bg-white text-[#0F172A]">
+      {/* FAQPage 構造化データ (言語ごとに生成)。AI検索・検索エンジンの引用元にする */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            inLanguage: lang,
+            mainEntity: t.faq.items.map((f) => ({
+              "@type": "Question",
+              name: f.q,
+              acceptedAnswer: { "@type": "Answer", text: f.a },
+            })),
+          }),
+        }}
+      />
       {/* ═══════════════ Header ═══════════════ */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-[#E5E7EB]">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -397,6 +413,16 @@ export function Landing({ lang }: { lang: Locale }) {
             </div>
           ))}
         </dl>
+      </div>
+      {/* エンティティ定義文: 「BondExとは」に対して検索エンジン/AI が引用する1文。全言語・全サイズで表示 */}
+      <div className="border-b border-[#E5E7EB] bg-white">
+        <p className="max-w-6xl mx-auto px-5 sm:px-6 py-4 text-[13px] md:text-[13.5px] leading-[1.8] text-[#334155]">
+          {t.hero.definition}
+          {" "}
+          <Link href={lang === "ja" ? "/about" : "/en/about"} className="underline underline-offset-4 decoration-[#CBD5E1] hover:text-[#C8102E]">
+            {t.footer.about}
+          </Link>
+        </p>
       </div>
 
       {/* ═══════════════ THE CHALLENGE ═══════════════ */}
@@ -952,6 +978,25 @@ export function Landing({ lang }: { lang: Locale }) {
               </details>
             ))}
           </div>
+
+          {/* 深掘りガイド (ja/en のみページあり。他言語は英語版へ) */}
+          <div className="mt-8 max-w-4xl">
+            <p className="text-[11px] font-semibold tracking-[0.2em] uppercase text-[#94A3B8] mb-3">{t.guides.heading}</p>
+            <ul className="flex flex-col sm:flex-row sm:flex-wrap gap-x-8 gap-y-2 text-[14px] font-medium">
+              <li>
+                <Link href={lang === "ja" ? "/guide/lead-time" : "/en/guide/lead-time"} className="inline-flex items-center gap-1.5 text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1] hover:text-[#C8102E]">
+                  {t.guides.leadTime}
+                  <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+                </Link>
+              </li>
+              <li>
+                <Link href={lang === "ja" ? "/guide/group-tours" : "/en/guide/group-tours"} className="inline-flex items-center gap-1.5 text-[#0F172A] underline underline-offset-4 decoration-[#CBD5E1] hover:text-[#C8102E]">
+                  {t.guides.groupTours}
+                  <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+                </Link>
+              </li>
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -1021,6 +1066,7 @@ export function Landing({ lang }: { lang: Locale }) {
             <Link href="/legal/terms" className="hover:text-[#C8102E]">{t.footer.terms}</Link>
             <Link href="/legal/privacy" className="hover:text-[#C8102E]">{t.footer.privacy}</Link>
             <Link href="/legal/commercial-transactions" className="hover:text-[#C8102E]">{t.footer.commercial}</Link>
+            <Link href={lang === "ja" ? "/about" : "/en/about"} className="hover:text-[#C8102E]">{t.footer.about}</Link>
           </div>
         </div>
         <div className="border-t border-[#E5E7EB]">

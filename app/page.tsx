@@ -3,7 +3,7 @@ import { Landing } from "@/components/landing/landing"
 
 // 日本語 (既定) ランディング。/ で配信。英語版は /en。
 // タイトル・説明は app/layout.tsx の SITE_TITLE / SITE_DESC と揃える。
-const SITE_TITLE = "BondEx｜旅行会社・DMC向け 訪日旅行のホテル間荷物配送手配"
+const SITE_TITLE = "BondEx（ボンデックス）｜旅行会社・DMC向け 訪日旅行のホテル間荷物配送手配"
 const SITE_DESC =
   "旅行会社・DMC・ランドオペレーター向けの荷物配送手配代行。旅程を送るだけで、ホテル間配送の集荷・送り状・追跡・月次請求まで BondEx が対応。ホテルへの伝票依頼は不要で、手ぶら観光を旅行商品に組み込めます。"
 

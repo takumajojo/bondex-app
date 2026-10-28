@@ -14,7 +14,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 const GA_MEASUREMENT_ID = 'G-M2LR1SYV92'
 
 const SITE_URL = 'https://bondex.express'
-const SITE_TITLE = 'BondEx｜旅行会社・DMC向け 訪日旅行のホテル間荷物配送手配'
+const SITE_TITLE = 'BondEx（ボンデックス）｜旅行会社・DMC向け 訪日旅行のホテル間荷物配送手配'
 const SITE_DESC =
   '旅行会社・DMC・ランドオペレーター向けの荷物配送手配代行。旅程を送るだけで、ホテル間配送の集荷・送り状・追跡・月次請求まで BondEx が対応。ホテルへの伝票依頼は不要で、手ぶら観光を旅行商品に組み込めます。'
 
@@ -30,31 +30,59 @@ const STRUCTURED_DATA = {
       '@type': 'Organization',
       '@id': `${SITE_URL}/#organization`,
       name: 'BondEx',
-      alternateName: 'ボンデックス',
+      alternateName: ['ボンデックス', 'BondEx Japan'],
+      legalName: '株式会社JOJO',
       url: SITE_URL,
       logo: `${SITE_URL}/bondex-logo.png`,
+      image: `${SITE_URL}/og-image.jpg`,
       description:
-        '旅行会社・DMC・ランドオペレーター向けに、訪日旅行の荷物を日本全国のホテル間で配送手配する取次サービス。',
+        'BondEx（ボンデックス）は、株式会社JOJO（東京・世田谷）が運営する、旅行会社・DMC・ランドオペレーター向けの訪日旅行ホテル間荷物配送の手配代行サービス。',
+      // 同名他社 (Web3 の Bondex / 福祉の株式会社Bondex / 塗料・接着機の BONDEX / ヘアケアのボンデックス) との区別を明示
+      disambiguatingDescription:
+        '訪日旅行のホテル間荷物配送を旅行会社向けに手配する日本のサービス (運営: 株式会社JOJO)。暗号資産・Web3 の Bondex (BDXN)、障がい福祉事業の株式会社Bondex、塗料・接着機の BONDEX、ヘアケア製品のボンデックスとは無関係。',
       slogan: '旅程を送るだけで、ホテル間の荷物配送まで手配完了。',
-      // 「BondEx＝配送」のエンティティを補強 (同名の塗料 Bondex 等と区別)。
+      foundingDate: '2026-08',
+      founder: { '@type': 'Person', name: '谷口 琢真', alternateName: 'Takuma Taniguchi' },
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: '野毛1-9-12',
+        addressLocality: '世田谷区',
+        addressRegion: '東京都',
+        postalCode: '158-0092',
+        addressCountry: 'JP',
+      },
+      areaServed: { '@type': 'Country', name: 'Japan' },
+      email: 'support@bondex.express',
+      // 「BondEx＝旅行会社向け荷物配送」のエンティティを補強
       knowsAbout: [
         '旅行会社向け 荷物配送手配',
         'DMC',
         'ランドオペレーター',
         'luggage forwarding Japan',
+        'hotel-to-hotel luggage forwarding',
         '荷物配送',
         'ホテル間配送',
         '手荷物配送',
         '手ぶら観光',
         '訪日旅行',
         'ラゲッジ配送',
-        '送り状発行',
         '配送追跡',
       ],
       parentOrganization: {
         '@type': 'Organization',
+        '@id': 'https://www.jojotokyo.com/#organization',
         name: '株式会社JOJO',
+        alternateName: 'JOJO Co., Ltd.',
         url: 'https://www.jojotokyo.com',
+        foundingDate: '2015-10',
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: '野毛1-9-12',
+          addressLocality: '世田谷区',
+          addressRegion: '東京都',
+          postalCode: '158-0092',
+          addressCountry: 'JP',
+        },
       },
       sameAs: ['https://www.jojotokyo.com'],
       contactPoint: {
@@ -71,6 +99,7 @@ const STRUCTURED_DATA = {
       url: SITE_URL,
       publisher: { '@id': `${SITE_URL}/#organization` },
       inLanguage: ['ja', 'en', 'es', 'fr', 'zh', 'it'],
+      about: { '@id': `${SITE_URL}/#organization` },
     },
     {
       '@type': 'Service',
