@@ -84,7 +84,7 @@ const STRUCTURED_DATA = {
           addressCountry: 'JP',
         },
       },
-      sameAs: ['https://www.jojotokyo.com'],
+      sameAs: ['https://www.jojotokyo.com', 'https://www.linkedin.com/company/bondex-express/'],
       contactPoint: {
         '@type': 'ContactPoint',
         email: 'support@bondex.express',
