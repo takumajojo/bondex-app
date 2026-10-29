@@ -466,7 +466,7 @@ function invoiceLabels(en: boolean) {
       : "平素は格別のお引き立てを賜り、誠にありがとうございます。下記の通りご請求申し上げます。",
     itemsHeading: en ? "Details · BondEx Luggage Forwarding" : "明細 ・ BondEx Luggage Forwarding",
     itemsCount: (n: number, s: number) => (en ? `${n} items / ${s} pcs` : `${n} 件 / ${s} 個`),
-    thDate: en ? "Ship date" : "発送日",
+    thDate: en ? "Pickup date" : "集荷日",
     thRef: en ? "Tour no." : "ツアー番号",
     thRoute: en ? "Route" : "区間",
     thRep: en ? "Traveler" : "代表者",

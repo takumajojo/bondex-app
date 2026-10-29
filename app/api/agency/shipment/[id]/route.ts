@@ -164,7 +164,7 @@ export async function PATCH(
     }
     if (newArr < newShip) {
       return NextResponse.json(
-        { error: en ? "Arrival must be on/after the ship date." : "到着日は発送日以降にしてください。" },
+        { error: en ? "Drop-off must be on/after the pickup date." : "お届け日は集荷日以降にしてください。" },
         { status: 400 },
       )
     }
@@ -173,7 +173,7 @@ export async function PATCH(
     const todayYmd = jstTodayYmd()
     if (newShip < todayYmd) {
       return NextResponse.json(
-        { error: en ? "The ship date can't be in the past." : "発送日に過去の日付は指定できません。" },
+        { error: en ? "The pickup date can't be in the past." : "集荷日に過去の日付は指定できません。" },
         { status: 400 },
       )
     }
