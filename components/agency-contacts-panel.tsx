@@ -19,10 +19,14 @@ export function AgencyContactsPanel({
   apiBase,
   authHeader,
   selfUserId,
+  allowPrimaryEdit,
 }: {
   apiBase: string
   authHeader?: () => Promise<Record<string, string>>
   selfUserId?: string
+  // 主メール(contact_email)を変更できるか。運営画面でのみ true を渡す
+  // (代理店セルフでは請求先を誤って変える事故を避けるため無効)。
+  allowPrimaryEdit?: boolean
 }) {
   const [data, setData] = useState<ContactsData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,6 +35,8 @@ export function AgencyContactsPanel({
   const [busy, setBusy] = useState(false)
   const [newEmail, setNewEmail] = useState("")
   const [newUser, setNewUser] = useState("")
+  const [editingPrimary, setEditingPrimary] = useState(false)
+  const [primaryInput, setPrimaryInput] = useState("")
 
   const call = useCallback(
     async (method: "GET" | "POST" | "DELETE", body?: unknown) => {
@@ -71,6 +77,18 @@ export function AgencyContactsPanel({
     setData((d) => (d ? { ...d, emails: json.emails } : d))
     setNewEmail("")
   })
+  const savePrimary = () => run(async () => {
+    const email = primaryInput.trim()
+    if (!email) return
+    const current = data?.emails.primary || ""
+    if (email.toLowerCase() === current.toLowerCase()) { setEditingPrimary(false); return }
+    // 主メールの変更は通知・請求の宛先を切り替えるため、実行前に確認する。
+    if (!window.confirm(`主メールを「${email}」に変更します。\n現在の主メール「${current || "（未設定）"}」は通知・請求の宛先から外れます。よろしいですか？`)) return
+    const json = await call("POST", { action: "set_primary", email })
+    setData((d) => (d ? { ...d, emails: json.emails } : d))
+    setEditingPrimary(false)
+    setNotice("主メールを変更しました。")
+  })
   const removeEmail = (emailId: string) => run(async () => {
     const json = await call("DELETE", { action: "remove_email", emailId })
     setData((d) => (d ? { ...d, emails: json.emails } : d))
@@ -101,8 +119,29 @@ export function AgencyContactsPanel({
         <p className="text-xs text-gray-500">主メールに加え、複数の宛先へ同じ通知を送ります。</p>
         <ul className="space-y-2">
           <li className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2">
-            <span className="text-sm text-gray-900">{data?.emails.primary || "（主メール未設定）"}</span>
-            <span className="text-[11px] text-gray-400">主メール</span>
+            {allowPrimaryEdit && editingPrimary ? (
+              <div className="flex w-full items-center gap-2">
+                <input value={primaryInput} onChange={(e) => setPrimaryInput(e.target.value)} type="email" autoFocus
+                  placeholder="in.ops@dmc.co.jp"
+                  className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                  onKeyDown={(e) => { if (e.key === "Enter") savePrimary(); if (e.key === "Escape") setEditingPrimary(false) }} />
+                <button disabled={busy || !primaryInput.trim()} onClick={savePrimary}
+                  className="rounded-md bg-gray-900 text-white text-xs px-3 py-1.5 disabled:opacity-50">保存</button>
+                <button disabled={busy} onClick={() => setEditingPrimary(false)}
+                  className="text-gray-400 hover:text-gray-700 text-xs px-2">キャンセル</button>
+              </div>
+            ) : (
+              <>
+                <span className="text-sm text-gray-900">{data?.emails.primary || "（主メール未設定）"}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-gray-400">主メール</span>
+                  {allowPrimaryEdit && (
+                    <button disabled={busy} onClick={() => { setPrimaryInput(data?.emails.primary || ""); setEditingPrimary(true) }}
+                      className="text-xs text-gray-500 hover:text-gray-900 underline disabled:opacity-50">変更</button>
+                  )}
+                </div>
+              </>
+            )}
           </li>
           {data?.emails.additional.map((e) => (
             <li key={e.id} className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2">
