@@ -13,6 +13,8 @@ import { carrierConfig } from "@/lib/carrier"
 import { resolveUnitPriceYen } from "@/lib/pricing"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
+import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@/lib/hotel-place"
+import { sagawaLeadTimeViolation, type RouteLeadTime } from "@/lib/lead-time-check"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -47,7 +49,6 @@ export const maxDuration = 60
  */
 
 const SHIPANDCO_BASE = "https://api.shipandco.com/v1"
-const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 
 const FALLBACK_PHONE = "0000000000"
 const FALLBACK_ZIP = "0000000"
@@ -84,6 +85,22 @@ function dayDiff(fromYmd: string, toYmd: string): number {
 function issuableFromYmd(shipmentDate: string, leadDays: number = MAX_LEAD_DAYS): string {
   const t = Date.parse(`${shipmentDate}T00:00:00Z`) - leadDays * MS_PER_DAY
   return new Date(t).toISOString().slice(0, 10)
+}
+
+// 佐川の最短お届け日より前の到着日 → 400 DELIVERY_BEFORE_LEAD_TIME
+function leadTimeErrorResponse(v: RouteLeadTime, shipmentDate: string, deliveryDate: string) {
+  return NextResponse.json(
+    {
+      error: `deliveryDate is before the earliest Sagawa arrival (${v.earliestArrival}, +${v.days} days)`,
+      code: "DELIVERY_BEFORE_LEAD_TIME",
+      earliestArrival: v.earliestArrival,
+      days: v.days,
+      source: v.source,
+      shipmentDate,
+      deliveryDate,
+    },
+    { status: 400 },
+  )
 }
 
 function isValidYmd(s: string): boolean {
@@ -153,118 +170,6 @@ function lastNameOnly(fullName: string): string {
 }
 
 /**
- * 47 都道府県の明示リスト. あいまい正規表現の代わりに使用.
- * 「京都府」を「京都」と誤抽出する旧 bug 防止のため.
- */
-const JP_PREFECTURES = [
-  "北海道",
-  "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
-  "岐阜県", "静岡県", "愛知県", "三重県",
-  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
-  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-  "徳島県", "香川県", "愛媛県", "高知県",
-  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
-] as const
-
-/**
- * 日本の住所文字列から 市区郡町村 と 番地以下 を抽出する.
- * Google の formatted_address (例: "〒261-8501 千葉県千葉市美浜区浜田1-7 アパホテル...")
- * を入力とし、Yamato が必要とする構造に分解.
- *
- * 対応パターン:
- *   - 政令市 + 区  : 千葉市美浜区, 大阪市北区, 京都市中京区, 福岡市博多区
- *   - 東京23区     : 港区, 渋谷区, 新宿区
- *   - 郡 + 町村    : 足柄下郡箱根町, 那須郡那須町
- *   - 単独市       : 雲仙市, 厚木市, 浦安市
- *   - 町村単独     : (rare)
- */
-export function parseJpAddressString(addr: string): {
-  zip: string
-  prefecture: string
-  cityWard: string
-  street: string
-} {
-  const original = (addr || "").trim()
-
-  // 〒XXX-XXXX を抽出 (位置を問わず)
-  const zipM = /〒\s*(\d{3}-?\d{4})/.exec(original)
-  const zip = zipM ? zipM[1].replace(/-/g, "") : ""
-
-  // 都道府県を文字列のどこからでも検索 (Google が英語/ホテル名先頭で返すケースに対応)
-  // 例: "Comic & Books, クインテッサホテル, 福岡県福岡市中央区..." でも "福岡県" を見つけられる
-  let prefecture = ""
-  let prefStart = -1
-  for (const p of JP_PREFECTURES) {
-    const idx = original.indexOf(p)
-    if (idx !== -1 && (prefStart === -1 || idx < prefStart)) {
-      prefecture = p
-      prefStart = idx
-    }
-  }
-
-  // 都道府県が見つからなかった = 日本以外 or パース不能
-  if (!prefecture) {
-    return { zip, prefecture: "", cityWard: "", street: original }
-  }
-
-  // 都道府県の直後から市区郡町村を抽出
-  let s = original.slice(prefStart + prefecture.length).trim()
-  // 先頭にあるかもしれない数字やノイズを skip しない (本来は無いはず)
-
-  // 市区郡町村を抽出 — 優先順位順に試す
-  let cityWard = ""
-  let m: RegExpExecArray | null
-
-  // ① 政令市 + 区 (千葉市美浜区, 大阪市北区, 京都市中京区, 福岡市博多区)
-  m = /^([^市区郡町村\s]+市)([^市区郡町村\s]+区)/u.exec(s)
-  if (m) {
-    cityWard = m[1] + m[2]
-    s = s.slice(m[0].length).trim()
-  }
-  // ② 郡 + 町/村 (足柄下郡箱根町)
-  if (!cityWard) {
-    m = /^([^市区郡町村\s]+郡)([^市区郡町村\s]+[町村])/u.exec(s)
-    if (m) {
-      cityWard = m[1] + m[2]
-      s = s.slice(m[0].length).trim()
-    }
-  }
-  // ③ 単独市 (雲仙市, 厚木市)
-  if (!cityWard) {
-    m = /^([^市区郡町村\s]+市)/u.exec(s)
-    if (m) {
-      cityWard = m[1]
-      s = s.slice(m[0].length).trim()
-    }
-  }
-  // ④ 単独区 (港区, 渋谷区)
-  if (!cityWard) {
-    m = /^([^市区郡町村\s]+区)/u.exec(s)
-    if (m) {
-      cityWard = m[1]
-      s = s.slice(m[0].length).trim()
-    }
-  }
-  // ⑤ 単独町/村
-  if (!cityWard) {
-    m = /^([^市区郡町村\s]+[町村])/u.exec(s)
-    if (m) {
-      cityWard = m[1]
-      s = s.slice(m[0].length).trim()
-    }
-  }
-
-  return {
-    zip,
-    prefecture,
-    cityWard,
-    street: s.trim(),
-  }
-}
-
-/**
  * 番地の正規化 — 佐川 (e飛伝) は「44番地1」形式を郵便番号と不一致 (E2-0004) で弾く。
  * Ship&co ダッシュボードで通る形は「44-1」。全角数字/ハイフンを半角に、
  * 数字に続く 丁目/番地/番/号 をハイフンに畳む。
@@ -308,12 +213,6 @@ interface YamatoAddress {
   address2: string
   address3?: string
   extra: string
-}
-
-interface AddressComponent {
-  long_name: string
-  short_name: string
-  types: string[]
 }
 
 interface CreateBody {
@@ -375,10 +274,6 @@ async function getCarrierId(token: string, carrierType: string): Promise<string 
   return match.id
 }
 
-function pickComponent(components: AddressComponent[], type: string): string {
-  return components.find((c) => c.types.includes(type))?.long_name ?? ""
-}
-
 // 依頼主 (sender/荷送人) = 旅行者(宿泊者) とし、会社名欄=発送元ホテル名 とする。
 // これは BondEx を「取次」に一貫させるため — 運送契約は 旅行者⇔実運送人 で成立し、
 // BondEx は自己の名で荷送人にならない (2026-08-03 谷口さん確定)。集荷連絡先(TEL)のみ
@@ -402,54 +297,12 @@ async function resolveYamatoAddress(
   placeId?: string,
   carrierType: string = "sagawa",
 ): Promise<YamatoAddress | null> {
-  // place_id がフロントから渡されている場合は text search をスキップして直接 details へ.
-  // (operator が autocomplete から選択したホテル — 確定済み)
-  let resolvedPlaceId = placeId
-  if (!resolvedPlaceId) {
-    // Step 1: findplacefromtext (日本語)
-    const searchUrl = new URL(`${PLACES_BASE}/findplacefromtext/json`)
-    searchUrl.searchParams.set("input", hotelName)
-    searchUrl.searchParams.set("inputtype", "textquery")
-    searchUrl.searchParams.set("fields", "place_id,name")
-    searchUrl.searchParams.set("language", "ja")
-    searchUrl.searchParams.set("region", "jp")
-    searchUrl.searchParams.set("key", apiKey)
-
-    const searchRes = await fetch(searchUrl.toString())
-    if (!searchRes.ok) return null
-    const searchData = (await searchRes.json()) as {
-      status?: string
-      candidates?: Array<{ place_id?: string; name?: string }>
-    }
-    const candidate = searchData.candidates?.[0]
-    if (!candidate?.place_id) return null
-    resolvedPlaceId = candidate.place_id
-  }
-
-  // Step 2: details (日本語) で formatted_address + address_components + phone を取得
-  const detailsUrl = new URL(`${PLACES_BASE}/details/json`)
-  detailsUrl.searchParams.set("place_id", resolvedPlaceId)
-  detailsUrl.searchParams.set(
-    "fields",
-    "name,formatted_address,address_components,international_phone_number",
-  )
-  detailsUrl.searchParams.set("language", "ja")
-  detailsUrl.searchParams.set("key", apiKey)
-
-  const detailsRes = await fetch(detailsUrl.toString())
-  if (!detailsRes.ok) return null
-  const detailsData = (await detailsRes.json()) as {
-    result?: {
-      name?: string
-      formatted_address?: string
-      address_components?: AddressComponent[]
-      international_phone_number?: string
-    }
-  }
-  const result = detailsData.result
-  const components = result?.address_components ?? []
-  const formattedAddress = result?.formatted_address ?? ""
-  if (components.length === 0 && !formattedAddress) return null
+  // Places 詳細の取得は予約入力時のリードタイム照会と共用 (lib/hotel-place)。同じ郵便番号を使うため。
+  const details = await fetchHotelPlaceDetailsJa(hotelName, apiKey, placeId)
+  if (!details) return null
+  const result = { name: details.name, international_phone_number: details.internationalPhone }
+  const components = details.components
+  const formattedAddress = details.formattedAddress
 
   // 主軸: formatted_address (例: "〒261-8501 千葉県千葉市美浜区浜田1-7") を正規表現で構造分解
   const parsed = parseJpAddressString(formattedAddress)
@@ -747,6 +600,19 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
+  // 佐川の最短お届け日 (発送日 + 佐川の配達日数) より前の到着日は弾く (lib/lead-time-check)。
+  // deferred (30日超先・後で cron issue-due が発行) もここを通す — 発行日に初めて弾かれる事故を防ぐ。
+  // 日数が不明 (郵便番号・佐川照会の失敗) なら従来どおり通す。ヤマト便は対象外。
+  const leadFrom = fromResidence ? { zip: fromResidence.zip } : { placeId: fromPlaceId }
+  const leadTo = toResidence ? { zip: toResidence.zip } : { placeId: toPlaceId }
+  const leadEndpointsKnown = Boolean((fromResidence || fromPlaceId) && (toResidence || toPlaceId))
+  if (deliveryDate && leadEndpointsKnown) {
+    const v = await sagawaLeadTimeViolation({
+      carrier: carrier.id, from: leadFrom, to: leadTo, shipmentDate, deliveryDate, context: `create ${refNumber}`,
+    })
+    if (v) return leadTimeErrorResponse(v, shipmentDate, deliveryDate)
+  }
+
   if (gap > carrier.maxLeadDays && waybillIssuanceEnabled()) {
     // リードタイム超 (ヤマト30 / 佐川50) — 今は発行できない。Ship&co を呼ばず deferred。
     const issuableFrom = issuableFromYmd(shipmentDate, carrier.maxLeadDays)
@@ -811,8 +677,8 @@ export async function POST(req: NextRequest) {
   }
 
   // 配達希望日 (deliveryDate) の配達ルール検証 (キャリア別・佐川/ヤマトとも 発送翌日〜7日)。
-  // 範囲外を Ship&co に送るとエラーになるので事前に弾く。長距離の翌日不可など、実際の
-  // 到達可否は Ship&co が発行時に検証する (その 400 はそのまま呼び出し側へ返る)。
+  // 範囲外を Ship&co に送るとエラーになるので事前に弾く。佐川の長距離 (翌日不可) は
+  // 上の最短お届け日チェック (DELIVERY_BEFORE_LEAD_TIME) で先に弾いている。
   if (deliveryDate) {
     const delivErr = deliveryDateErrorCode(deliveryDate, shipmentDate, carrier.deliveryRule)
     if (delivErr) {
@@ -934,6 +800,15 @@ export async function POST(req: NextRequest) {
       },
       { status: 400 },
     )
+  }
+
+  // place_id 無し (ホテル名のみ) の区間は上の事前チェックで郵便番号が取れないため、
+  // 住所解決で得た郵便番号でもう一度だけ最短お届け日を確認する。
+  if (deliveryDate && !leadEndpointsKnown) {
+    const v = await sagawaLeadTimeViolation({
+      carrier: carrier.id, from: { zip: fromAddr.zip }, to: { zip: toAddr.zip }, shipmentDate, deliveryDate, context: `create ${refNumber} (resolved)`,
+    })
+    if (v) return leadTimeErrorResponse(v, shipmentDate, deliveryDate)
   }
 
   const rawProductName = typeof body.productName === "string" ? body.productName.trim() : ""

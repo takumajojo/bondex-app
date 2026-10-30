@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/lib/supabase": ["scripts/test-lead-time/fakes/supabase.ts"],
+      "@/lib/shipments-db": ["scripts/test-lead-time/fakes/shipments-db.ts"],
+      "@/lib/ops-alert": ["scripts/test-lead-time/fakes/ops-alert.ts"],
+      "@/lib/rate-limit": ["scripts/test-amount/fakes/rate-limit.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}

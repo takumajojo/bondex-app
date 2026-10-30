@@ -11,6 +11,7 @@ import { amountForNewCount } from "@/lib/amount-recalc"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
 import { legLockedForAgency, isSelfServiceCutoffPassed, normalizeRepresentative } from "@/lib/agency-self-service"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
+import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
 
 export const runtime = "nodejs"
 
@@ -174,6 +175,30 @@ export async function PATCH(
     if (newShip < todayYmd) {
       return NextResponse.json(
         { error: en ? "The pickup date can't be in the past." : "集荷日に過去の日付は指定できません。" },
+        { status: 400 },
+      )
+    }
+    // 佐川の最短お届け日より前にはできない (日程を変えたときだけ判定。既存行は書き換えない)。
+    // 日数が不明なら従来どおり通す (lib/lead-time-check)。
+    const v = await sagawaLeadTimeViolation({
+      carrier: shipment.carrier ?? "sagawa",
+      from: shipment.from_residence ? { zip: shipment.from_residence.zip } : { placeId: shipment.from_place_id },
+      to: shipment.to_residence ? { zip: shipment.to_residence.zip } : { placeId: shipment.to_place_id },
+      shipmentDate: newShip,
+      deliveryDate: newArr,
+      context: `agency-shipment-patch ${id}`,
+    })
+    if (v) {
+      return NextResponse.json(
+        {
+          error: en
+            ? `The earliest Sagawa arrival for this route is ${v.earliestArrival} (+${v.days} days). Please choose that date or later.`
+            : `このルートの最短お届け日は ${v.earliestArrival}（佐川 +${v.days}日）です。それ以降の日付にしてください。`,
+          code: "DELIVERY_BEFORE_LEAD_TIME",
+          earliestArrival: v.earliestArrival,
+          days: v.days,
+          source: v.source,
+        },
         { status: 400 },
       )
     }

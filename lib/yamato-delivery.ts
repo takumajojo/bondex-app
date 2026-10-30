@@ -56,17 +56,20 @@ export const DELIVERY_TIME_SLOTS = [
 
 export type DeliveryTimeSlot = (typeof DELIVERY_TIME_SLOTS)[number]
 
-/** 発送日の翌日 (最短) 到着で、午前系スロットを選んでいるかどうか。
- *  ヤマトのシステム上は選択自体は可能だが、翌日到着では午前中の到着を
- *  確約できないことが実運用で多いため、operator UI で警告を出す判定に使う。 */
+/** ルートの最短到着日 (既定は発送翌日) に、午前系スロットを選んでいるかどうか。
+ *  キャリアのシステム上は選択自体は可能だが、最短日の到着では午前中の到着を
+ *  確約できないことが実運用で多いため、UI で警告を出す判定に使う。
+ *  minDays = 佐川の配達日数 (lib/sagawa-lead-time)。未指定/null なら従来どおり「発送翌日」で判定。 */
 export function isNextDayEarlySlotRisky(
   shipmentDate: string,
   deliveryDate: string,
   timeSlot: string,
+  minDays?: number | null,
 ): boolean {
   if (!isValidYmd(shipmentDate) || !isValidYmd(deliveryDate)) return false
   const offset = dayDiff(shipmentDate, deliveryDate)
-  return offset === YAMATO_RULES.standard.minOffsetDays && (timeSlot === "before-noon" || timeSlot === "before-ten")
+  const earliest = typeof minDays === "number" && minDays > 0 ? minDays : YAMATO_RULES.standard.minOffsetDays
+  return offset === earliest && (timeSlot === "before-noon" || timeSlot === "before-ten")
 }
 
 export type DeliveryDateErrorCode =

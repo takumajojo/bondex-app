@@ -5,10 +5,10 @@ import { PRICING, formatYen } from "@/lib/pricing"
 
 const TITLE = "Luggage Forwarding in Japan: Delivery Lead Times and Booking Cut-offs | BondEx"
 const DESC =
-  "Hotel-to-hotel luggage forwarding in Japan normally arrives the day after a morning pickup (Tokyo to Kyoto, Osaka, Nagoya, Kanazawa). Tokyo to Fukuoka or Hokkaido takes two days, Honshu to Okinawa two days or more. Cut-offs: FIT by 16:00 JST the day before pickup, groups 5 days ahead. A guide by BondEx for travel agencies and DMCs."
+  "Hotel-to-hotel luggage forwarding in Japan normally arrives the day after a morning pickup (Tokyo to Kyoto, Osaka, Nagoya, Kanazawa). Tokyo to Fukuoka, Hokkaido or Hiroshima takes two days. Okinawa ships by Sagawa Hikyaku Air and arrives the next day (varies by area). Cut-offs: FIT by 16:00 JST the day before pickup, groups 5 days ahead. A guide by BondEx for travel agencies and DMCs."
 
 const faqs = [
-  { q: "How many days does luggage forwarding take?", a: "With a morning pickup, Tokyo to Kyoto, Osaka, Nagoya, Kanazawa or Hida-Takayama, and Kyoto or Osaka to Tokyo, Nagoya or Hiroshima, normally arrive the next day. Tokyo to Fukuoka or Hokkaido takes two days; Honshu to Okinawa two days or more." },
+  { q: "How many days does luggage forwarding take?", a: "With a morning pickup, Tokyo to Kyoto, Osaka, Nagoya, Kanazawa or Hida-Takayama, and Kyoto or Osaka to Tokyo, Nagoya, Hiroshima or Fukuoka, normally arrive the next day. Tokyo to Fukuoka, Hokkaido or Hiroshima takes two days; Kyoto or Osaka to Hokkaido takes three days. Shipments to or from Okinawa go by Sagawa Hikyaku Air and arrive the next day (varies by area). Depending on the pickup area, a route within the same city can take one extra day." },
   { q: "Can luggage be delivered to the next hotel the same day?", a: "No. Hotel-to-hotel forwarding arrives the next day at the earliest. When guests travel on the pickup day, plan for arrival the following day and have guests carry an overnight bag." },
   { q: "What is the booking cut-off?", a: "Individual travelers (FIT): until 16:00 JST on the day before pickup. Groups: 5 days ahead as a rule. Later changes to piece counts, hotels or dates are accommodated wherever possible — contact us first." },
   { q: "How much does it cost?", a: `${formatYen(PRICING.regularPrice)} per item excluding tax, flat for any size or weight. No setup or monthly fee. Okinawa, remote islands and oversized items are quoted separately.` },
@@ -46,19 +46,21 @@ const jsonLd = [
 
 export default function LeadTimeGuideEn() {
   return (
-    <DocPage lang="en" eyebrow="Guide · Lead Time" title="Delivery lead times and booking cut-offs" lead={DESC} updated="2026-10-27" jsonLd={jsonLd}>
+    <DocPage lang="en" eyebrow="Guide · Lead Time" title="Delivery lead times and booking cut-offs" lead={DESC} updated="2026-10-30" jsonLd={jsonLd}>
       <h2>Typical lead times</h2>
-      <p>Based on a morning pickup and the standard delivery schedule of Sagawa Express.</p>
+      <p>Based on a morning pickup and Sagawa Express delivery-day search results (as of October 2026). Okinawa shipments go by Sagawa Hikyaku Air.</p>
       <table>
         <thead>
           <tr><th>Arrival</th><th>Route</th></tr>
         </thead>
         <tbody>
-          <tr><td>Next day</td><td>Tokyo → Nagoya, Kanazawa, Hida-Takayama, Kyoto, Osaka<br />Kyoto / Osaka → Tokyo, Nagoya, Hiroshima</td></tr>
-          <tr><td>Two days</td><td>Tokyo → Fukuoka, Hokkaido</td></tr>
-          <tr><td>Two days or more</td><td>Honshu → Okinawa</td></tr>
+          <tr><td>Next day</td><td>Tokyo → Nagoya, Kanazawa, Hida-Takayama, Kyoto, Osaka<br />Kyoto / Osaka → Tokyo, Nagoya, Hiroshima, Fukuoka</td></tr>
+          <tr><td>Two days</td><td>Tokyo → Fukuoka, Hokkaido, Hiroshima</td></tr>
+          <tr><td>Three days</td><td>Kyoto / Osaka → Hokkaido</td></tr>
+          <tr><td>Next day (Hikyaku Air)</td><td>To / from Okinawa (varies by area)</td></tr>
         </tbody>
       </table>
+      <p className="note">Depending on the pickup hotel's area, a route can take one extra day even from the same city (e.g. Ginza, Tokyo → Hakodate takes three days; other Tokyo areas → Hakodate take two). We confirm the earliest arrival for each pair of hotels when you book.</p>
       <p className="note">This is not a same-day service. When guests move cities on the pickup day, have them carry an overnight bag and collect the suitcase at the next hotel the following day.</p>
 
       <h2>Booking cut-offs</h2>

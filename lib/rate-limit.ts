@@ -52,6 +52,7 @@ const SCOPE_CLASS: Record<string, keyof typeof LIMIT_CLASS> = {
   "agency-places-search": "search",
   places: "search",
   "agency-postal": "search",
+  "lead-time": "search",
   staticmap: "search",
   // ── 重い処理 (heavy) ──
   "itinerary-parse": "heavy",
