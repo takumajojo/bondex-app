@@ -58,6 +58,9 @@ export function currentIntervalHours(row: PollRow, now: Date): number {
   if (row.status === "issued") {
     // 集荷前。発送予定日より前は照会しない（佐川に荷物データが無く exception を返すだけ）。
     if (row.shipment_date && today < row.shipment_date) return Infinity
+    // 発送予定日の当日でも、集荷は日中〜夕方のため、集荷完了見込み(JST18時)前は照会しない。
+    //  集荷前の無駄照会と、既存番号の過去429による誤「上限到達」通知を防ぐ（2026-10-27 谷口さん）。
+    if (row.shipment_date && today === row.shipment_date && jstHour(now) < 18) return Infinity
     return INTERVAL_H.collect
   }
   // 配送中（picked_up / in_transit）
