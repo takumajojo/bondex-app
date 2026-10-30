@@ -140,8 +140,8 @@ export function buildAgencyStatusEmail(
   const en = locale === "en"
   const c = copyFor(kind, data, en)
   const L = en
-    ? { booking: "Booking no.", tour: "Tour no.", guest: "Guest", pieces: "Pieces", route: "Route", ship: "Ship date", pickedUp: "Picked up", eta: "Est. arrival", track: "View delivery status", operatedBy: "Operated by JOJO Inc." }
-    : { booking: "予約番号", tour: "ツアー番号", guest: "お客様", pieces: "個数", route: "区間", ship: "発送日", pickedUp: "集荷時刻", eta: "到着予定", track: "配送状況を確認", operatedBy: "運営：株式会社JOJO" }
+    ? { booking: "Booking no.", tour: "Tour no.", guest: "Guest", pieces: "Pieces", route: "Route", ship: "Pickup date", pickedUp: "Picked up", eta: "Est. arrival", track: "View delivery status", operatedBy: "Operated by JOJO Inc." }
+    : { booking: "予約番号", tour: "ツアー番号", guest: "お客様", pieces: "個数", route: "区間", ship: "集荷日", pickedUp: "集荷時刻", eta: "到着予定", track: "配送状況を確認", operatedBy: "運営：株式会社JOJO" }
 
   // 宛名は個人名ではなく会社名(代理店名)にする。受付完了メール(agency-notify)と統一。
   const greeting = en
