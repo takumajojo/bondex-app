@@ -66,11 +66,13 @@ interface Shipment {
   from_city: string | null
   from_prefecture: string | null
   from_hotel_ja: string | null
+  from_hotel_en: string | null
   to_hotel: string
   to_residence: unknown
   to_city: string | null
   to_prefecture: string | null
   to_hotel_ja: string | null
+  to_hotel_en: string | null
   /** 送り状(紙)の郵送先・差出人 (lib/label-delivery.ts)。 */
   label_to: string | null
   label_split: boolean | null
@@ -2005,8 +2007,19 @@ function EditShipmentModal({
   const [expectedArrival, setExpectedArrival] = useState(shipment.expected_arrival || "")
   const [notes, setNotes] = useState(shipment.notes || "")
   const [driveUrl, setDriveUrl] = useState(shipment.drive_url || "")
+  // ホテルの英語名(お客様が読むバウチャー/英語代理店メールで使う表示名)。Google Places が
+  // 英語名を返さないホテル(例: JR九州ホテル ブラッサム新宿)は OTA 登録の英語名を手入力する。
+  // ホテル自体の差し替えではなく「英語の表示名」の上書きなので、佐川へ渡す情報は変わらない。
+  const [fromHotelEn, setFromHotelEn] = useState(shipment.from_hotel_en || "")
+  const [toHotelEn, setToHotelEn] = useState(shipment.to_hotel_en || "")
+  const fromIsHotel = !residenceOneLine(shipment.from_residence)
+  const toIsHotel = !residenceOneLine(shipment.to_residence)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
+
+  const hotelEnChanged =
+    fromHotelEn.trim() !== (shipment.from_hotel_en || "") ||
+    toHotelEn.trim() !== (shipment.to_hotel_en || "")
 
   const driveChanged = driveUrl.trim() !== (shipment.drive_url || "")
   const driveInvalid = Boolean(driveUrl.trim()) && !/^https:\/\/(drive|docs)\.google\.com\//.test(driveUrl.trim())
@@ -2029,6 +2042,9 @@ function EditShipmentModal({
           shipmentDate,
           expectedArrival,
           notes,
+          ...(hotelEnChanged
+            ? { fromHotelEn: fromHotelEn.trim(), toHotelEn: toHotelEn.trim() }
+            : {}),
         }),
       })
       const data = await res.json().catch(() => null)
@@ -2095,6 +2111,49 @@ function EditShipmentModal({
               className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
             />
           </div>
+          {fromIsHotel && (
+            <div className="space-y-1 col-span-2">
+              <label className="text-[11px] text-muted-foreground">
+                発送元ホテル・英語名（お客様バウチャー用）
+              </label>
+              <input
+                type="text"
+                value={fromHotelEn}
+                maxLength={120}
+                onChange={(e) => setFromHotelEn(e.target.value)}
+                placeholder={shipment.from_hotel}
+                className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                現在の表示: {shipment.from_hotel}
+              </p>
+            </div>
+          )}
+          {toIsHotel && (
+            <div className="space-y-1 col-span-2">
+              <label className="text-[11px] text-muted-foreground">
+                お届け先ホテル・英語名（お客様バウチャー用）
+              </label>
+              <input
+                type="text"
+                value={toHotelEn}
+                maxLength={120}
+                onChange={(e) => setToHotelEn(e.target.value)}
+                placeholder={shipment.to_hotel}
+                className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                現在の表示: {shipment.to_hotel}
+              </p>
+            </div>
+          )}
+          {(fromIsHotel || toIsHotel) && (
+            <p className="col-span-2 text-[10px] text-muted-foreground leading-relaxed">
+              Google に英語名が無いホテルは、OTA 登録の英語名を入力してください。お客様が読むバウチャーと
+              英語代理店向けメールの表示名に使われます（配送先ホテル自体は変わりません）。保存後は Voucher を
+              再発行すると反映されます。
+            </p>
+          )}
           <div className="space-y-1 col-span-2">
             <label className="text-[11px] text-muted-foreground">
               Drive フォルダ URL (予約単位・代理店に表示)

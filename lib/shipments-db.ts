@@ -506,6 +506,9 @@ export async function updateShipmentFields(
     status?: ShipmentStatus
     /** 予約単位の Drive フォルダ URL。update 時は同一 booking_id の全区間に反映する。 */
     drive_url?: string | null
+    /** ホテルの英語表示名(お客様バウチャー/英語代理店メール用)。NULL で未設定に戻す。 */
+    from_hotel_en?: string | null
+    to_hotel_en?: string | null
   },
 ): Promise<{ ok: boolean; error?: string }> {
   const sb = getSupabase()
@@ -521,6 +524,8 @@ export async function updateShipmentFields(
   if (patch.notes !== undefined) update.notes = patch.notes
   if (patch.status !== undefined) update.status = patch.status
   if (patch.drive_url !== undefined) update.drive_url = patch.drive_url
+  if (patch.from_hotel_en !== undefined) update.from_hotel_en = patch.from_hotel_en
+  if (patch.to_hotel_en !== undefined) update.to_hotel_en = patch.to_hotel_en
   if (Object.keys(update).length === 0) return { ok: true }
   const { error } = await sb.from("shipments").update(update).eq("id", id)
   if (error) return { ok: false, error: error.message }
