@@ -57,6 +57,18 @@ export function useAgencyLocale() {
     }
   }, [])
 
+  // 表示言語を <html lang> に反映する。ルートは lang="ja" で配信されるため、既定の英語ビューを
+  // そのまま放置すると、英語設定のブラウザが「日本語ページ」とみなして自動翻訳を提案し、
+  // "Arrival date" が "None date" に化ける等の事故が起きる。lang を実表示言語へ合わせて誤発火を防ぐ
+  // (2026-10-29。翻訳自体の抑止は /agency・/track レイアウトの notranslate で担保)。
+  useEffect(() => {
+    try {
+      document.documentElement.lang = locale
+    } catch {
+      /* SSR 等で document が無い場合は無視 */
+    }
+  }, [locale])
+
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l)
     if (typeof window !== "undefined") {
