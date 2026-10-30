@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase"
 import {
   listAgencyEmails,
   addAgencyEmail,
+  setAgencyPrimaryEmail,
   removeAgencyEmail,
   listAgencyUsers,
   inviteAgencyUser,
@@ -19,6 +20,7 @@ export const maxDuration = 30
  *
  *   GET    /api/operator/agencies/[id]/contacts            → { emails:{primary,additional[]}, users[] }
  *   POST   /api/operator/agencies/[id]/contacts            body: { action:"add_email", email, label? }
+ *                                                                { action:"set_primary", email }
  *                                                                { action:"invite_user", email }
  *   DELETE /api/operator/agencies/[id]/contacts            body: { action:"remove_email", emailId }
  *                                                                { action:"remove_user", userId }
@@ -56,6 +58,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const r = await addAgencyEmail(sb, agencyId, String(body.email || ""), { label: (body.label as string) ?? null, createdBy: "operator" })
     if (!r.ok) return NextResponse.json({ error: r.error || "追加に失敗しました" }, { status: r.duplicate ? 409 : 400 })
     return NextResponse.json({ ok: true, emails: await listAgencyEmails(sb, agencyId) })
+  }
+  if (action === "set_primary") {
+    // 主メールの変更は通知・請求の宛先を切り替える。運営専用(セルフAPIには用意しない)。
+    const r = await setAgencyPrimaryEmail(sb, agencyId, String(body.email || ""))
+    if (!r.ok) return NextResponse.json({ error: r.error || "主メールの変更に失敗しました" }, { status: 400 })
+    return NextResponse.json({ ok: true, unchanged: !!r.unchanged, emails: await listAgencyEmails(sb, agencyId) })
   }
   if (action === "invite_user") {
     const ag = await agencyInfo(sb, agencyId)
