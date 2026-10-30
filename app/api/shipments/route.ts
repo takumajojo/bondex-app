@@ -106,6 +106,8 @@ export async function PATCH(req: NextRequest) {
     pickupHotelNotified?: unknown
     guestHotelNotified?: unknown
     labelMailed?: unknown
+    fromHotelEn?: unknown
+    toHotelEn?: unknown
   }
   try {
     body = await req.json()
@@ -206,6 +208,20 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "invalid notes" }, { status: 400 })
     }
     patch.notes = body.notes.trim() || null
+  }
+  // ホテルの英語表示名(お客様バウチャー/英語代理店メール用)。Google に英語名が無いホテルを
+  // 運営が OTA 登録名で上書きするための項目。空文字は NULL=未設定に戻す(元の入力値にフォールバック)。
+  if (body.fromHotelEn !== undefined) {
+    if (typeof body.fromHotelEn !== "string" || body.fromHotelEn.length > 120) {
+      return NextResponse.json({ error: "invalid fromHotelEn" }, { status: 400 })
+    }
+    patch.from_hotel_en = body.fromHotelEn.trim() || null
+  }
+  if (body.toHotelEn !== undefined) {
+    if (typeof body.toHotelEn !== "string" || body.toHotelEn.length > 120) {
+      return NextResponse.json({ error: "invalid toHotelEn" }, { status: 400 })
+    }
+    patch.to_hotel_en = body.toHotelEn.trim() || null
   }
 
   // status のみの旧形式互換
