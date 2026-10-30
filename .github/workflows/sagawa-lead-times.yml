@@ -1,0 +1,33 @@
+name: Sagawa lead-time refresh
+
+# 佐川の配達日数 (リードタイム) の再取得 (/api/cron/sagawa-lead-times)。
+# fetched_at が30日より古い郵便番号ペアを1回最大300件・1秒間隔で佐川へ再照会して更新する。
+# 毎日回すと全 6,060 件が約20日で一巡する。日数が変わった/ページ構造が変わったら運用へ通知。
+#
+# 事前設定: Secrets に CRON_SECRET (Vercel 側と同じ値)。
+# 再試行はしない: 1回の実行が最大 ~300 秒かかり、途中失敗でも翌日の実行で続きから拾うため
+# (佐川サイトへの照会を増やさない)。二重起動は acquireCronLock で無害化済み。
+
+on:
+  schedule:
+    # 毎日 18:10 UTC = 03:10 JST (佐川サイトが空いている深夜。朝の業務アラートより前に終わる)
+    - cron: "10 18 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sagawa-lead-times:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx sagawa-lead-times refresh endpoint
+        run: |
+          response=$(curl -s -w "\n%{http_code}" --max-time 330 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://bondex.express/api/cron/sagawa-lead-times)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "$body"
+          if [ "$http_code" -ge 400 ]; then
+            echo "::error::sagawa-lead-times refresh failed"
+            exit 1
+          fi

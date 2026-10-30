@@ -690,7 +690,7 @@ const ja: LandingMessages = {
       },
       {
         q: "荷物はいつ届きますか?",
-        a: "午前中の集荷を前提に、通常は集荷の翌日に到着します（例: 東京→京都・大阪・名古屋・金沢）。東京→福岡・北海道は翌々日、本州→沖縄は翌々日以降が目安です。集荷当日の到着ではないため、当日移動の旅程では到着日にご注意ください。",
+        a: "午前中の集荷を前提に、通常は集荷の翌日に到着します（例: 東京→京都・大阪・名古屋・金沢）。東京→福岡・北海道・広島は翌々日が目安です。沖縄は飛脚航空便で翌日（地域により異なる）。集荷当日の到着ではないため、当日移動の旅程では到着日にご注意ください。",
       },
     ],
   },
@@ -1057,7 +1057,7 @@ const en: LandingMessages = {
       },
       {
         q: "When does the luggage arrive?",
-        a: "With a morning pickup, luggage normally arrives the day after pickup (for example Tokyo to Kyoto, Osaka, Nagoya or Kanazawa). Tokyo to Fukuoka or Hokkaido takes two days, and Honshu to Okinawa two days or more. It is not a same-day service, so please check the arrival date when guests travel on the pickup day.",
+        a: "With a morning pickup, luggage normally arrives the day after pickup (for example Tokyo to Kyoto, Osaka, Nagoya or Kanazawa). Tokyo to Fukuoka, Hokkaido or Hiroshima takes two days, and Okinawa is next day by Sagawa Hikyaku Air (varies by area). It is not a same-day service, so please check the arrival date when guests travel on the pickup day.",
       },
     ],
   },

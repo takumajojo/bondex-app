@@ -15,6 +15,7 @@ import { cleanResidence, endpointLabel, residenceError, RESIDENCE_FIELD_LABELS_J
 import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
+import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -229,6 +230,36 @@ export async function POST(req: NextRequest) {
     const parsed = parseLeg(raw)
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
     legs.push(parsed)
+  }
+
+  // 佐川の最短お届け日 (発送日 + 佐川の配達日数) より前の到着日は受け付けない。代理店便は佐川固定。
+  // 日数が不明なら従来どおり通す (lib/lead-time-check)。画面側でも同じ判定で止めている。
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]
+    const v = await sagawaLeadTimeViolation({
+      carrier: "sagawa",
+      from: leg.fromResidence ? { zip: leg.fromResidence.zip } : { placeId: leg.fromPlaceId },
+      to: leg.toResidence ? { zip: leg.toResidence.zip } : { placeId: leg.toPlaceId },
+      shipmentDate: leg.shipmentDate,
+      deliveryDate: leg.expectedArrival,
+      context: `agency-booking ${auth.agency.name} L${i + 1}`,
+    })
+    if (v) {
+      const en = auth.agency.locale === "en"
+      return NextResponse.json(
+        {
+          error: en
+            ? `Leg ${i + 1}: the earliest Sagawa arrival for this route is ${v.earliestArrival} (+${v.days} days). Please choose that date or later.`
+            : `区間${i + 1}: このルートの最短お届け日は ${v.earliestArrival}（佐川 +${v.days}日）です。それ以降の日付にしてください。`,
+          code: "DELIVERY_BEFORE_LEAD_TIME",
+          legIndex: i,
+          earliestArrival: v.earliestArrival,
+          days: v.days,
+          source: v.source,
+        },
+        { status: 400 },
+      )
+    }
   }
 
   // ── 団体 (Group) 対応: bookingType='group' のときは添乗員情報と

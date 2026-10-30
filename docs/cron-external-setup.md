@@ -35,3 +35,7 @@ GitHub Actions は残す（バックストップ）が、**主たるトリガー
 ## 参考: 同じ仕組みの他 cron
 `issue-due`（日次）・`monthly-invoices`（月次）も同様に叩けるが、頻度が低いので現状の
 GitHub Actions のままで問題ない。リアルタイム性が要るのは `sync-tracking` のみ。
+
+`sagawa-lead-times`（日次 03:10 JST・`.github/workflows/sagawa-lead-times.yml`）は佐川の配達日数の
+再取得。1回最大300件・1秒間隔で、全件が約20日で一巡する。数日止まっても次の実行で古い順に拾うため、
+GitHub Actions の遅延・取りこぼしは問題にならない。

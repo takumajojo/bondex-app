@@ -13,7 +13,7 @@ BondEx（ボンデックス）は、株式会社JOJO（東京・世田谷）が�
 
 ## Key facts
 - Price: ¥4,980 per item excluding tax, flat for any size or weight; no setup or monthly fee; 10% off from 50 items/month; first-time trial ¥3,980 per item for the first 2 items per company
-- Lead time: next-day arrival with a morning pickup (Tokyo→Kyoto/Osaka/Nagoya/Kanazawa); Tokyo→Fukuoka/Hokkaido 2 days; Honshu→Okinawa 2 days or more; not a same-day service
+- Lead time (Sagawa delivery-days data, Oct 2026): next-day arrival with a morning pickup (Tokyo→Kyoto/Osaka/Nagoya/Kanazawa; Kyoto/Osaka→Tokyo/Nagoya/Hiroshima/Fukuoka); Tokyo→Fukuoka/Hokkaido/Hiroshima 2 days; Kyoto/Osaka→Hokkaido 3 days; to/from Okinawa next day by Sagawa Hikyaku Air (varies by area); some pickup areas add 1 day; not a same-day service
 - Cut-offs: FIT by 16:00 JST the day before pickup; groups 5 days ahead as a rule; last-minute changes handled wherever possible
 - Coverage: up to ¥300,000 per item under the carrier's terms (suitcase shells and wheels excluded)
 - Languages: Japanese, English, Spanish, French, Chinese, Italian (website); multilingual vouchers

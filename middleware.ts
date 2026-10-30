@@ -53,6 +53,7 @@ const PUBLIC_EXACT = new Set<string>([
   "/api/operator/auth", // ログイン処理
   "/api/operator/logout",
   "/api/whatsapp/webhook", // WhatsApp 自動応答 Webhook (verify token + 署名で自己認証)
+  "/api/lead-time", // 佐川の最短お届け日照会 (代理店JWT か operator セッションをルート内で検証)
   "/api/contact", // LPの問い合わせ
   "/api/howto", // 公開ガイドPDF
   "/api/email", // レガシー(プロト用)

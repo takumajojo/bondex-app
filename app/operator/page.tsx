@@ -51,6 +51,7 @@ import { ResidenceFields } from "@/components/residence-fields"
 import { PRICING } from "@/lib/pricing"
 import { toKatakanaReading } from "@/lib/romaji-kana"
 import { todayYmdJst } from "@/lib/business-days"
+import { leadEndpointId, leadKey, useSagawaLeadTimes, type LeadTimeResult } from "@/lib/use-sagawa-lead-time"
 
 const FLAT_RATE_YEN = PRICING.regularPrice // 単価は lib/pricing.ts 一元管理 (実課金と一致)
 
@@ -197,6 +198,12 @@ const messages = {
     tourNumberPlaceholder: "e.g. JPT2607-045 — for your dashboard search & invoice, not shown to guest",
     missingFieldsTitle: "Please fill in these fields to continue:",
     deliveryOutOfRange: "Outside the carrier's deliverable window — pick a date in the range below.",
+    leadEarliest: (date: string, days: number) => `Earliest arrival ${date} (Sagawa +${days} day${days === 1 ? "" : "s"})`,
+    leadEarliestAir: (date: string, days: number) =>
+      `Earliest arrival ${date} (Sagawa Hikyaku Air, +${days} day${days === 1 ? "" : "s"}; may vary by area)`,
+    leadBefore: (date: string, days: number) => `before the earliest Sagawa arrival ${date} (+${days} day${days === 1 ? "" : "s"})`,
+    leadChecking: "Checking Sagawa delivery days…",
+    leadUnknown: "Couldn't confirm the delivery days for this route — any date from the day after shipping is accepted.",
     setShipDateFirst: "Set the drop-off date first to enable arrival-date selection.",
     yamatoDateRange:
       "The carrier allows delivery a few days after drop-off.",
@@ -374,6 +381,11 @@ const messages = {
     tourNumberPlaceholder: "例: JPT2607-045 — ダッシュボード検索・請求書用。お客様向けバウチャーには表示されません",
     missingFieldsTitle: "以下の項目を入力してください:",
     deliveryOutOfRange: "配送業者の配達指定可能期間外です — 下のレンジ内から選んでください。",
+    leadEarliest: (date: string, days: number) => `最短お届け日 ${date}（佐川 +${days}日）`,
+    leadEarliestAir: (date: string, days: number) => `最短お届け日 ${date}（佐川 飛脚航空便 +${days}日・地域により異なる）`,
+    leadBefore: (date: string, days: number) => `佐川の最短お届け日 ${date}（+${days}日）より前です`,
+    leadChecking: "佐川の配達日数を確認しています…",
+    leadUnknown: "このルートの配達日数を確認できませんでした（発送翌日以降で受け付けます）。",
     setShipDateFirst: "発送日を先に入力すると、到着日が選べるようになります。",
     yamatoDateRange:
       "配達日は発送日の翌日以降で指定できます（配送業者の規定によります）。",
@@ -1905,6 +1917,28 @@ function ReviewView({
   onContinue: () => void
 }) {
   const { guest, shipments } = itinerary
+  const carrierId = itinerary.carrier ?? "sagawa"
+
+  // 佐川の最短お届け日 (発送日 + 佐川の配達日数)。ヤマト便は対象外 (このデータは佐川専用)。
+  const leadKeyOfShipment = (s: EditableShipment) =>
+    carrierId === "yamato"
+      ? null
+      : leadKey(
+          leadEndpointId(s.from.placeId, s.from.residence ? s.from.residence.zip : undefined),
+          leadEndpointId(s.to.placeId, s.to.residence ? s.to.residence.zip : undefined),
+          s.shipmentDate,
+        )
+  const leadCache = useSagawaLeadTimes(shipments.map(leadKeyOfShipment))
+  const leadFor = (s: EditableShipment): LeadTimeResult | undefined => {
+    const k = leadKeyOfShipment(s)
+    return k ? leadCache[k] : undefined
+  }
+  // 到着日が空の区間だけ最短お届け日を初期値にする (入っている値は書き換えない)。
+  // onUpdateShipment は現在の itinerary を基準にマージするため、1回の描画で1区間ずつ埋める。
+  useEffect(() => {
+    const i = shipments.findIndex((s) => !s.expectedArrival && !!leadFor(s)?.earliestArrival)
+    if (i >= 0) onUpdateShipment(i, { expectedArrival: leadFor(shipments[i])!.earliestArrival! })
+  })
 
   // バリデーション — 何が足りないかを具体的に表示する
   const missing: string[] = []
@@ -1942,6 +1976,11 @@ function ReviewView({
       !isValidDeliveryDate(s.expectedArrival, s.shipmentDate, "standard")
     ) {
       missing.push(`${legPrefix}${t.arrivalDateLabel} — ${t.yamatoDateRange}`)
+    }
+    // 佐川の最短お届け日より前は不可。日数が不明なら従来どおり通す。
+    const lead = leadFor(s)
+    if (lead?.days != null && lead.earliestArrival && s.expectedArrival && s.expectedArrival < lead.earliestArrival) {
+      missing.push(`${legPrefix}${t.arrivalDateLabel} — ${t.leadBefore(lead.earliestArrival, lead.days)}`)
     }
   })
   const canContinue = missing.length === 0
@@ -2086,6 +2125,7 @@ function ReviewView({
                 index={i}
                 shipment={s}
                 carrier={itinerary.carrier ?? "sagawa"}
+                lead={leadFor(s)}
                 canRemove={shipments.length > 1}
                 onUpdate={onUpdateShipment}
                 onRemove={onRemoveLeg}
@@ -2146,6 +2186,7 @@ function ShipmentRow({
   index,
   shipment,
   carrier,
+  lead,
   canRemove,
   onUpdate,
   onRemove,
@@ -2155,6 +2196,8 @@ function ShipmentRow({
   index: number
   shipment: EditableShipment
   carrier: string
+  /** 佐川の最短お届け日 (ヤマト便・未照会は undefined) */
+  lead?: LeadTimeResult
   canRemove: boolean
   onUpdate: (index: number, patch: Partial<EditableShipment>) => void
   onRemove: (index: number) => void
@@ -2175,7 +2218,9 @@ function ShipmentRow({
   const nextDayRisk =
     !!shipment.shipmentDate &&
     !!shipment.expectedArrival &&
-    isNextDayEarlySlotRisky(shipment.shipmentDate, shipment.expectedArrival, deliveryTime)
+    isNextDayEarlySlotRisky(shipment.shipmentDate, shipment.expectedArrival, deliveryTime, lead?.days)
+  const beforeLeadTime =
+    lead?.days != null && !!lead.earliestArrival && !!shipment.expectedArrival && shipment.expectedArrival < lead.earliestArrival
   // 配達時間帯は選択キャリアの区分に追従 (佐川と大和で体系が異なる)
   const slots = carrierConfig(carrier).timeSlots
   return (
@@ -2382,6 +2427,18 @@ function ShipmentRow({
           </p>
         ) : (
           <p className="text-[11px] text-muted-foreground">{t.setShipDateFirst}</p>
+        )}
+        {lead && (
+          <p
+            className={`text-[11px] ${beforeLeadTime ? "text-red-600 font-medium" : "text-foreground"}`}
+            role={beforeLeadTime ? "alert" : undefined}
+          >
+            {lead.loading
+              ? t.leadChecking
+              : lead.days != null && lead.earliestArrival
+                ? `${beforeLeadTime ? "⚠ " : "🚚 "}${(lead.air ? t.leadEarliestAir : t.leadEarliest)(lead.earliestArrival, lead.days)}`
+                : t.leadUnknown}
+          </p>
         )}
         <div className="space-y-1 max-w-xs">
           <label className="text-[11px] text-muted-foreground font-medium">{t.deliveryTimeLabel}</label>

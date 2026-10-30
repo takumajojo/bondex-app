@@ -20,6 +20,7 @@ import {
 } from "@/lib/label-delivery"
 import { useAgencyLocale, AgencyLocaleToggle } from "@/lib/agency-i18n"
 import { isNextDayEarlySlotRisky } from "@/lib/yamato-delivery"
+import { leadEndpointId, leadKey, useSagawaLeadTimes, type LeadTimeResult } from "@/lib/use-sagawa-lead-time"
 import { PRICING } from "@/lib/pricing"
 import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
 import { EMPTY_RESIDENCE, residenceError, type ResidenceAddress } from "@/lib/residence"
@@ -43,6 +44,8 @@ type Leg = {
   toResidence: ResidenceAddress
   shipmentDate: string
   expectedArrival: string
+  /** 到着日が自動入力のまま (代理店が触っていない) か。true の間だけ最短お届け日に合わせて自動補正する。 */
+  arrivalAuto?: boolean
   fromCheckIn: string
   originCheckIn: string
   toCheckOut: string
@@ -295,6 +298,13 @@ const messages = {
     valTitle: "Please fix the following before continuing:",
     errPastDate: (n: number) => `Leg ${n}: the pickup date is in the past — please check the year.`,
     errArrivalBeforeShip: (n: number) => `Leg ${n}: the drop-off date is before the pickup date.`,
+    errArrivalBeforeLeadTime: (n: number, date: string, days: number) =>
+      `Leg ${n}: the earliest drop-off date for this route is ${date} (Sagawa +${days} day${days === 1 ? "" : "s"}). Please choose that date or later.`,
+    leadEarliest: (date: string, days: number) => `Earliest drop-off ${date} (Sagawa +${days} day${days === 1 ? "" : "s"})`,
+    leadEarliestAir: (date: string, days: number) =>
+      `Earliest drop-off ${date} (Sagawa Hikyaku Air, +${days} day${days === 1 ? "" : "s"}; may vary by area)`,
+    leadChecking: "Checking Sagawa delivery days…",
+    leadUnknown: "Couldn't confirm the delivery days for this route — any date from the day after pickup is accepted.",
     errMissingHotel: (n: number) => `Leg ${n}: both the origin and destination hotel are required.`,
     errHotelNotSelected: (n: number, side: string) =>
       `Leg ${n}: please pick the ${side} hotel from the suggestions (a typed name alone can't be issued).`,
@@ -569,6 +579,12 @@ const messages = {
     valTitle: "発行前に次の点をご確認ください:",
     errPastDate: (n: number) => `区間${n}: 集荷日が過去の日付です。年をご確認ください。`,
     errArrivalBeforeShip: (n: number) => `区間${n}: お届け日が集荷日より前になっています。`,
+    errArrivalBeforeLeadTime: (n: number, date: string, days: number) =>
+      `区間${n}: このルートの最短お届け日は ${date}（佐川 +${days}日）です。それ以降の日付にしてください。`,
+    leadEarliest: (date: string, days: number) => `最短お届け日 ${date}（佐川 +${days}日）`,
+    leadEarliestAir: (date: string, days: number) => `最短お届け日 ${date}（佐川 飛脚航空便 +${days}日・地域により異なる）`,
+    leadChecking: "佐川の配達日数を確認しています…",
+    leadUnknown: "このルートの配達日数を確認できませんでした（集荷翌日以降で受け付けます）。",
     errMissingHotel: (n: number) => `区間${n}: 発送元・発送先ホテルの両方が必要です。`,
     errHotelNotSelected: (n: number, side: string) =>
       `区間${n}: ${side}ホテルは検索候補から選択してください（名前の手入力のみでは送り状を発行できません）。`,
@@ -768,6 +784,39 @@ function ResidenceFields({
   )
 }
 
+/** 照会キー (発送元|お届け先|発送日)。ホテル=place_id / 個人宅=7桁の郵便番号。欠けていれば null。 */
+function leadKeyOf(leg: Leg): string | null {
+  return leadKey(
+    leadEndpointId(leg.fromPlaceId, leg.fromKind === "residence" ? leg.fromResidence.zip : undefined),
+    leadEndpointId(leg.toPlaceId, leg.toKind === "residence" ? leg.toResidence.zip : undefined),
+    leg.shipmentDate,
+  )
+}
+
+/** 到着日の下に出す「最短お届け日」の注記。 */
+function LeadTimeNote({
+  lead,
+  t,
+}: {
+  lead: LeadTimeResult | undefined
+  t: {
+    leadChecking: string
+    leadUnknown: string
+    leadEarliest: (date: string, days: number) => string
+    leadEarliestAir: (date: string, days: number) => string
+  }
+}) {
+  if (!lead) return null
+  if (lead.loading) return <p className="mt-1 text-[11px] text-[#64748b]">{t.leadChecking}</p>
+  if (lead.days == null || !lead.earliestArrival)
+    return <p className="mt-1 text-[11px] text-[#64748b] leading-relaxed">{t.leadUnknown}</p>
+  return (
+    <p className="mt-1 text-[12px] font-medium text-[#0F172A]" data-testid="lead-earliest">
+      {(lead.air ? t.leadEarliestAir : t.leadEarliest)(lead.earliestArrival, lead.days)}
+    </p>
+  )
+}
+
 /** 発送元/お届け先の入力（ホテル検索 ⇄ 個人宅トグル）。 */
 function EndpointField({
   side,
@@ -871,6 +920,7 @@ function validateLegs(
   m: {
     errPastDate: (n: number) => string
     errArrivalBeforeShip: (n: number) => string
+    errArrivalBeforeLeadTime: (n: number, date: string, days: number) => string
     errMissingHotel: (n: number) => string
     errHotelNotSelected: (n: number, side: string) => string
     errMissingCheckIn: (n: number) => string
@@ -880,6 +930,7 @@ function validateLegs(
     sideTo: string
     errItemOther: (n: number) => string
   },
+  leadFor: (leg: Leg) => LeadTimeResult | undefined = () => undefined,
 ): string[] {
   const today = todayYmd()
   const errs: string[] = []
@@ -911,6 +962,12 @@ function validateLegs(
     if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
     if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
       errs.push(m.errArrivalBeforeShip(n))
+    // 佐川の最短お届け日より前は不可 (代理店便は佐川固定)。日数が不明なら従来どおり通す。
+    else {
+      const lead = leadFor(leg)
+      if (lead?.days != null && lead.earliestArrival && leg.expectedArrival && leg.expectedArrival < lead.earliestArrival)
+        errs.push(m.errArrivalBeforeLeadTime(n, lead.earliestArrival, lead.days))
+    }
   })
   return errs
 }
@@ -1235,6 +1292,39 @@ export default function AgencyNewBookingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ホテル検索 (Google Places) を代理店ルートに Bearer 付きで叩かせる
+  const placesAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const sb = getBrowserSupabase()
+    const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }, [])
+
+  // 佐川の最短お届け日 (発送日 + 佐川の配達日数)。発送元・お届け先・発送日が揃った区間ごとに照会し、
+  // 結果はキー (発送元|お届け先|発送日) 単位で保持する。行きと帰りは別キー (方向で日数が違うため)。
+  const leadCache = useSagawaLeadTimes(useMemo(() => legs.map(leadKeyOf), [legs]), placesAuthHeaders)
+  const leadFor = useCallback((leg: Leg): LeadTimeResult | undefined => {
+    const k = leadKeyOf(leg)
+    return k ? leadCache[k] : undefined
+  }, [leadCache])
+  // 到着日が空、または自動入力のまま (代理店が触っていない) の区間は最短お届け日を初期値にする。
+  // 代理店が自分で入れた到着日は書き換えない (最短日より前なら入力エラーで知らせる)。
+  useEffect(() => {
+    setLegs((prev) => {
+      let changed = false
+      const next = prev.map((leg) => {
+        const k = leadKeyOf(leg)
+        const lead = k ? leadCache[k] : undefined
+        if (!lead?.earliestArrival) return leg
+        const auto = !leg.expectedArrival || leg.arrivalAuto
+        if (!auto || leg.expectedArrival === lead.earliestArrival) return leg
+        if (leg.expectedArrival && leg.expectedArrival > lead.earliestArrival) return leg
+        changed = true
+        return { ...leg, expectedArrival: lead.earliestArrival, arrivalAuto: true }
+      })
+      return changed ? next : prev
+    })
+  }, [leadCache])
+
   // AI 読み込み後の「不足している情報」チェックリスト。入力が埋まるとリアルタイムで消える。
   // (validateLegs の項目 + 代表者名 + 団体の必須項目)
   // 投函期限の選択可能範囲。
@@ -1269,7 +1359,7 @@ export default function AgencyNewBookingPage() {
 
 
   const missingAfterParse = useMemo(() => {
-    const list = validateLegs(legs, t)
+    const list = validateLegs(legs, t, leadFor)
     if (!representative.trim()) list.unshift(t.missingRep)
     if (bookingType === "group") {
       if (!leaderName.trim()) list.push(t.missingLeader)
@@ -1337,6 +1427,8 @@ export default function AgencyNewBookingPage() {
             delta !== null && DATE_RE_LOCAL.test(leg.expectedArrival)
               ? addDaysYmd(leg.expectedArrival, delta)
               : addDaysYmd(value, 1)
+          // 初回の自動入力 (発送翌日) は仮置き。佐川の最短お届け日が分かったらそちらへ補正する。
+          if (!(delta !== null && DATE_RE_LOCAL.test(leg.expectedArrival))) patch.arrivalAuto = true
           patch.fromCheckIn =
             delta !== null && DATE_RE_LOCAL.test(leg.fromCheckIn)
               ? addDaysYmd(leg.fromCheckIn, delta)
@@ -1361,12 +1453,6 @@ export default function AgencyNewBookingPage() {
   const addLeg = () => setLegs((prev) => [...prev, emptyLeg()])
   const removeLeg = (i: number) => setLegs((prev) => prev.filter((_, idx) => idx !== i))
 
-  // ホテル検索 (Google Places) を代理店ルートに Bearer 付きで叩かせる
-  const placesAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const sb = getBrowserSupabase()
-    const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
-    return token ? { Authorization: `Bearer ${token}` } : {}
-  }, [])
 
   // フロー図の出し分け: 入力中の最短発送日が1ヶ月以内なら「すぐ発行」版を表示。
   // 日付未入力なら1ヶ月ルールを説明する待機版をデフォルト表示。
@@ -1464,6 +1550,7 @@ export default function AgencyNewBookingPage() {
           toResidence: { ...EMPTY_RESIDENCE },
           shipmentDate: ymd(s.shipmentDate),
           expectedArrival: ymd(s.expectedArrival) || ymd(s.shipmentDate),
+          arrivalAuto: !ymd(s.expectedArrival),
           // お届け先ホテルのチェックイン日(お客様の到着日)/チェックアウト日:
           // 旅程表に記載があれば転記、なければ発送日を自動で入れる(谷口さん要望)。
           fromCheckIn: ymd(s.to?.checkIn) || ymd(s.shipmentDate),
@@ -1628,7 +1715,7 @@ export default function AgencyNewBookingPage() {
     setError("")
     setDupMatches([])
     // 入力検証 (過去日・到着<発送・ホテル未入力) — 誤りは確定前に必ず止める
-    const errs = validateLegs(legs, t)
+    const errs = validateLegs(legs, t, leadFor)
     // 団体の追加検証: 添乗員名と荷物リスト
     if (bookingType === "group") {
       if (!leaderName.trim()) errs.push(t.grpLeaderRequired)
@@ -2457,7 +2544,8 @@ export default function AgencyNewBookingPage() {
                 <Field label={t.expectedArrival} htmlFor={`ea${i}`} required>
                   <input id={`ea${i}`} type="date" className={inputCls} value={leg.expectedArrival}
                     min={leg.shipmentDate || undefined}
-                    onChange={(e) => updateLeg(i, { expectedArrival: e.target.value })} required />
+                    onChange={(e) => updateLeg(i, { expectedArrival: e.target.value, arrivalAuto: false })} required />
+                  <LeadTimeNote lead={leadFor(leg)} t={t} />
                 </Field>
                 {/* 品目 (送り状の品名に反映)。既定スーツケース。その他は自由記述。 */}
                 <Field label={t.itemLabel} htmlFor={`it${i}`}>
@@ -2529,7 +2617,7 @@ export default function AgencyNewBookingPage() {
                     <p className="text-[11px] text-[#64748b] leading-relaxed">{t.pickupTimeHint}</p>
                   </div>
                 ) : null}
-                {isNextDayEarlySlotRisky(leg.shipmentDate, leg.expectedArrival, leg.deliveryTime) && (
+                {isNextDayEarlySlotRisky(leg.shipmentDate, leg.expectedArrival, leg.deliveryTime, leadFor(leg)?.days) && (
                   <div className="mt-1.5 rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
                     <p className="text-[12px] text-amber-900 font-medium flex items-start gap-1.5 leading-relaxed">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" strokeWidth={2} />
