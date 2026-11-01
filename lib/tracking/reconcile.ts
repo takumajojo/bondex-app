@@ -12,7 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { getTrackingProvider } from "@/lib/tracking"
 import type { TrackingProvider } from "@/lib/tracking/types"
-import { legProgressStatus } from "@/lib/tracking/poll-policy"
+import { legProgressStatus, TRACKING_MAX_QUERIES } from "@/lib/tracking/poll-policy"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { statusDataFromRow, sendAgencyStatusEmail } from "@/lib/agency-status-notify"
 import { endpointLabel } from "@/lib/residence"
@@ -97,10 +97,17 @@ export async function reconcileTrackingNow(
       const prev = prevByNumber.get(tr.number) ?? { number: tr.number }
       // 回数は cron と同じ tracking_detail.queryCount を共有する (即時照会も1回=1消費)。
       const queryCount = ((prev.queryCount as number | undefined) ?? 0) + 1
-      // 429 = 追跡番号あたり15回上限。最後の正常ステータス(prev)を残し、上限フラグを立てる(別一覧・手動)。
+      // 429 は2種: (a) 番号あたり15回上限(TRACKING_LIMIT_EXCEEDED)=恒久除外、
+      // (b) 一般レート制限=一時的。(b)を恒久上限と誤判定しないよう区別する(cron と同方針)。
       if (tr.rateLimited) {
-        legLimitReached = true
-        return { ...prev, number: tr.number, queryCount, limitReached: true, lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED", checkedAt }
+        const prevCount = (prev.queryCount as number | undefined) ?? 0
+        const limitExceeded = tr.errorCode === "TRACKING_LIMIT_EXCEEDED" || prevCount >= TRACKING_MAX_QUERIES
+        if (limitExceeded) {
+          legLimitReached = true
+          return { ...prev, number: tr.number, queryCount, limitReached: true, lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED", checkedAt }
+        }
+        // 一時的なレート制限 → 恒久除外しない。回数も消費扱いにしない(prev維持)。
+        return { ...prev, number: tr.number, lastError: tr.errorCode ?? "RATE_LIMITED" }
       }
       if (tr.noData) return { ...prev, number: tr.number, queryCount, checkedAt }
       anySuccess = true

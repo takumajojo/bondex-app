@@ -175,8 +175,11 @@ async function fetchTracking(
         } catch {
           /* 本文が JSON でなくても 429 の事実は変わらない */
         }
-        console.error(`[sync-tracking] Ship&co 429 rate limit for ${carrier}/${trackingNumber}`)
-        return { data: null, rateLimited: true, errorCode: errorCode ?? "TRACKING_LIMIT_EXCEEDED" }
+        console.error(`[sync-tracking] Ship&co 429 rate limit for ${carrier}/${trackingNumber} (code: ${errorCode ?? "unknown"})`)
+        // errorCode は既定で TRACKING_LIMIT_EXCEEDED に畳まず、そのまま返す。
+        // 429 には (a) 番号あたり15回上限=TRACKING_LIMIT_EXCEEDED(恒久) と (b) 一般レート制限(一時的) の
+        // 2種がある。呼び出し側(cron/reconcile)が両者を区別し、(b)で番号を恒久除外しないようにする。
+        return { data: null, rateLimited: true, errorCode }
       }
       console.error(
         `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${carrier}/${trackingNumber}`,
@@ -210,7 +213,7 @@ export const shipandcoTrackingProvider: TrackingProvider = {
         number: trackingNumber,
         noData: true,
         rateLimited: true,
-        errorCode: errorCode ?? "TRACKING_LIMIT_EXCEEDED",
+        errorCode,
         status: null,
         exception: null,
       }

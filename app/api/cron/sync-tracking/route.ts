@@ -12,7 +12,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
 import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
-import { shouldQueryLeg, numberHasBudget, legProgressStatus, type NumberMeta } from "@/lib/tracking/poll-policy"
+import { shouldQueryLeg, numberHasBudget, legProgressStatus, TRACKING_MAX_QUERIES, type NumberMeta } from "@/lib/tracking/poll-policy"
 
 export const runtime = "nodejs"
 // Hobby プランでも Fluid Compute 有効なら 300s (5分) まで許可される
@@ -278,17 +278,27 @@ export async function GET(req: NextRequest) {
         if (!tr) return prev // 今回照会しなかった番号 → 前回を維持
         const queryCount = ((prev.queryCount as number | undefined) ?? 0) + 1
 
-        // 429 = 追跡番号あたり15回上限。最後に取れた正常ステータス(prev)を残して上書きしない。
+        // 429 は2種: (a) 番号あたり15回上限(TRACKING_LIMIT_EXCEEDED)=恒久除外、
+        // (b) 一般レート制限=一時的(少し待てば回復)。(b)を恒久上限と誤判定して番号を永久に
+        // 自動照会から外さないよう区別する。恒久と見なすのは errorCode が上限超過、または
+        // 既に局所の照会回数が上限(15)に達している場合のみ。
         if (tr.rateLimited) {
-          legLimitReached = true
-          return {
-            ...prev,
-            number: num,
-            queryCount,
-            limitReached: true,
-            lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED",
-            checkedAt,
+          const prevCount = (prev.queryCount as number | undefined) ?? 0
+          const limitExceeded = tr.errorCode === "TRACKING_LIMIT_EXCEEDED" || prevCount >= TRACKING_MAX_QUERIES
+          if (limitExceeded) {
+            legLimitReached = true
+            return {
+              ...prev,
+              number: num,
+              queryCount,
+              limitReached: true,
+              lastError: tr.errorCode ?? "TRACKING_LIMIT_EXCEEDED",
+              checkedAt,
+            }
           }
+          // 一時的なレート制限 → 恒久除外しない。回数も消費扱いにせず(prev維持)、
+          // checkedAt も進めない(= 次回 cron で再照会される)。lastError だけ残す。
+          return { ...prev, number: num, lastError: tr.errorCode ?? "RATE_LIMITED" }
         }
         // データ未取得 → 前回の正常ステータスは保持し、照会時刻と回数だけ更新。
         if (tr.noData) {
