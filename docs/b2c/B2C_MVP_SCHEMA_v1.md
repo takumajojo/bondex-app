@@ -1,6 +1,6 @@
-# B2C MVP の表の設計案 v1.1（承認待ち）
+# B2C MVP の表の設計案 v1.2（承認待ち）
 
-作成: 2026-11-03。v1.1（同日）: ChatGPT の監査（`docs/b2c/reviews/ChatGPT_B2C_Final_Design_v1.4_20261103.txt`）を受けて、ホテルの事前確認・料金とホテルの控え・二重課金の防止の 3層・事件の記録の種類を追加（監査報告書 16.17）。前提の決定は `docs/b2c/B2C_PLATFORM_AUDIT_v1.md` の 16章（16.7〜16.13）。
+作成: 2026-11-03。v1.2（同日）: 決済の方式を未確定に戻し、ホテルに再確認の列を追加（`docs/b2c/B2C_PHASE1A_BETA_PLAN.md`）。v1.1（同日）: ChatGPT の監査（`docs/b2c/reviews/ChatGPT_B2C_Final_Design_v1.4_20261103.txt`）を受けて、ホテルの事前確認・料金とホテルの控え・二重課金の防止の 3層・事件の記録の種類を追加（監査報告書 16.17）。前提の決定は `docs/b2c/B2C_PLATFORM_AUDIT_v1.md` の 16章（16.7〜16.13）。
 **本番のデータベースには何も適用しない。** 承認後に `sql/060_b2c_mvp.sql` として書き、試験の環境だけで動かす。
 
 ## 1. 考え方
@@ -40,6 +40,7 @@ Google のホテル（`place_id`）ごとに 1行。
 | `name` / `address` / `postal_code` | 確認した時点の表記 |
 | `status` | `verified`（フロントに人がいて荷物を預かれる）/ `unknown`（未確認）/ `unsupported`（受けない） |
 | `checked_by` / `checked_at` / `check_note` | 確認した担当者・時刻・根拠（公式サイト・電話など） |
+| `last_verified_at` / `verified_until` | 最後に確認した日時と、再確認が必要になる日（将来の再確認のため。Phase 1A は期限を設けず null） |
 
 - 初期値: B2B で実際に集荷・配達したホテル（2026-11-03 時点で 29件）を、運営が目で見て `verified` にする。
 - 初めてのホテルは `unknown` で作り、予約は「ホテル確認中」で受ける（下の `b2c_orders.status`）。
@@ -61,7 +62,9 @@ Google のホテル（`place_id`）ごとに 1行。
 | `stripe_customer_id` | 予約ごとのゲストの顧客（B2B の代理店の顧客と共有しない） |
 | `created_at` / `updated_at` |  |
 
-### `b2c_payments`（カードの枠と請求。P-06・P-03・Q01）
+### `b2c_payments`（請求。P-06・P-03）
+
+**決済の方式は未確定**（`docs/b2c/B2C_PHASE1A_BETA_PLAN.md` の 1。提案は A: SetupIntent → 集荷後に PaymentIntent）。A の場合、`kind` は `charge`（集荷後の請求）/ `extra`（個数の追加）で、`hold` と `pending_hold`・`hold_due_at`・`hold_expires_at` は使わない。カードの登録（SetupIntent の ID・PaymentMethod の ID・同意の版）は `b2c_orders` に持つ。以下は B を採った場合も含めた案。
 
 区間ごとに 1行以上（追加の個数は別の行）。
 

@@ -7,6 +7,7 @@ import { quoteB2c, b2cRouteClass, B2C_MAX_PIECES } from "@/lib/b2c/pricing"
 import { judgeB2cBookability, b2cCutoffAt, type B2cBookabilityInput } from "@/lib/b2c/bookability"
 import { changeDeadlineAt } from "@/lib/change-deadline"
 import { b2cChangeBlockedReason } from "@/lib/b2c/change-gate"
+import { judgeB2cHotels, hotelCheckDueAt, earliestPickupWithUnknownHotel } from "@/lib/b2c/hotel-gate"
 
 let passed = 0
 function t(name: string, fn: () => void) {
@@ -158,6 +159,33 @@ t("30個以上は集荷の 7日前を切ったら、取消以外の変更は不�
   assert.equal(b2cChangeBlockedReason("dates", { pickupDate: "2026-11-17", pieces: 30 }, NOW), "group_large_lock")
   assert.equal(b2cChangeBlockedReason("dates", { pickupDate: "2026-11-18", pieces: 30 }, NOW), null)
   assert.equal(b2cChangeBlockedReason("dates", { pickupDate: "2026-11-17", pieces: 29 }, NOW), null)
+})
+
+console.log("ホテルの事前確認（未確認のホテルの受付）")
+// NOW = 2026-11-10（火）10:00 JST
+t("確認済みのホテルどうしは、通常の締切まで即時に確定（確認の期限なし）", () => {
+  const r = judgeB2cHotels({ now: NOW, pickupDate: "2026-11-11", origin: "verified", dest: "verified" })
+  assert.deepEqual(r.errors, [])
+  assert.equal(r.hotelCheckDueAt, null)
+})
+t("受けないホテルは不可", () => {
+  assert.ok(judgeB2cHotels({ now: NOW, pickupDate: "2026-11-20", origin: "verified", dest: "unsupported" }).errors.includes("hotel_unsupported"))
+})
+t("確認の期限は翌営業日 17:00（金曜の予約は月曜、祝日は飛ばす）", () => {
+  assert.equal(hotelCheckDueAt(NOW), "2026-11-11T08:00:00.000Z")
+  assert.equal(hotelCheckDueAt(new Date("2026-11-13T01:00:00Z")), "2026-11-16T08:00:00.000Z") // 金→月
+  assert.equal(hotelCheckDueAt(new Date("2026-11-20T01:00:00Z")), "2026-11-24T08:00:00.000Z") // 金→(月 11/23 祝)→火
+})
+t("未確認のホテルは、確認の期限が集荷の 2営業日前 17:00 までに収まる日だけ（前日 16:50 の予約は最初から不可）", () => {
+  // 火 10:00 の予約: 確認の期限 = 水 17:00。集荷 金(11/13) の 2営業日前 = 水 → 可。集荷 木(11/12) → 不可
+  assert.deepEqual(judgeB2cHotels({ now: NOW, pickupDate: "2026-11-13", origin: "unknown", dest: "verified" }).errors, [])
+  assert.ok(judgeB2cHotels({ now: NOW, pickupDate: "2026-11-12", origin: "verified", dest: "unknown" }).errors.includes("hotel_check_window_too_short"))
+  // 集荷前日 16:50 の予約（確認済みなら通常の締切内）
+  const eve = new Date("2026-11-12T07:50:00Z") // 木 16:50 JST、集荷 金 11/13
+  assert.deepEqual(judgeB2cHotels({ now: eve, pickupDate: "2026-11-13", origin: "verified", dest: "verified" }).errors, [])
+  assert.ok(judgeB2cHotels({ now: eve, pickupDate: "2026-11-13", origin: "unknown", dest: "verified" }).errors.includes("hotel_check_window_too_short"))
+  assert.equal(earliestPickupWithUnknownHotel(NOW), "2026-11-13")
+  assert.equal(earliestPickupWithUnknownHotel(eve), "2026-11-17") // 確認の期限 金 17:00 → 集荷 火(2営業日前=金)
 })
 
 console.log(`\n${passed} passed`)
