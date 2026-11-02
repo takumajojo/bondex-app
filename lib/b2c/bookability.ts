@@ -21,10 +21,11 @@ import { earliestArrivalYmd } from "@/lib/sagawa-lead-time"
 export const B2C_CUTOFF_DAYS_BEFORE = 1
 export const B2C_CUTOFF_HOUR_JST = 17
 /**
- * 何日先の集荷まで受けるか。仮置き 30日のまま（日数は未確定・16.9 の M03）。
- * Biz-Logi は前日にまとめて送るので上限の理由にはならない。残る制約は Stripe の与信の期限（P-06）だけ。
+ * 何日先の集荷まで受けるか（M03 確定 2026-11-02: 180日）。
+ * Biz-Logi は前日にまとめて送るので上限の理由にはならない。Stripe の与信の期限（30日）を超える予約は、
+ * 予約時にカード登録だけ行い、集荷の 7日前に与信を取る（P-06 の提案）。
  */
-export const B2C_MAX_DAYS_AHEAD = 30
+export const B2C_MAX_DAYS_AHEAD = 180
 /**
  * 佐川の日数が取れなかった時の安全側の日数（M04 確定 2026-11-02）。
  * 本番の表の最大は 3日（2026-11-02 の読み取り）。

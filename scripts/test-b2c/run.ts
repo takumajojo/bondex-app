@@ -86,15 +86,11 @@ t("JST の日付で判定する（UTC では前日でも JST で当日なら不�
   const r = judgeB2cBookability(base({ now: new Date("2026-11-13T23:30:00Z") }))
   assert.ok(r.errors.includes("pickup_in_past_or_today"))
 })
-t("30日を超える先の集荷は不可", () => {
-  const r = judgeB2cBookability(
-    base({ pickupDate: "2026-12-11", origin: { checkIn: "2026-12-10", checkOut: "2026-12-11" }, dest: { checkIn: "2026-12-12", checkOut: "2026-12-13" }, deliveryDate: "2026-12-12" }),
-  )
-  assert.ok(r.errors.includes("too_far_ahead"))
-  const ok = judgeB2cBookability(
-    base({ pickupDate: "2026-12-10", origin: { checkIn: "2026-12-09", checkOut: "2026-12-10" }, dest: { checkIn: "2026-12-11", checkOut: "2026-12-12" }, deliveryDate: "2026-12-11" }),
-  )
-  assert.ok(!ok.errors.includes("too_far_ahead"))
+t("180日を超える先の集荷は不可（2026-11-10 から数えて 181日目は不可・180日目は可）", () => {
+  const far = (pickup: string, dest: string, out: string) =>
+    judgeB2cBookability(base({ pickupDate: pickup, origin: { checkIn: pickup, checkOut: pickup }, dest: { checkIn: dest, checkOut: out }, deliveryDate: dest }))
+  assert.ok(far("2027-05-10", "2027-05-11", "2027-05-12").errors.includes("too_far_ahead"))
+  assert.deepEqual(far("2027-05-09", "2027-05-10", "2027-05-11").errors, [])
 })
 t("集荷日は集荷元の滞在期間内", () => {
   const r = judgeB2cBookability(base({ pickupDate: "2026-11-15", deliveryDate: "2026-11-16" }))
