@@ -120,7 +120,10 @@ export function planB2cConfirmation(input: {
   pickupDate: string
   origin: B2cHotelStatus
   dest: B2cHotelStatus
-  /** 直前予約の至急の対応の担当者がいる日か（運営が日ごとに設定） */
+  /**
+   * 直前予約を受けられる日か。呼び出し側で「b2cLateBookingEnabled()（佐川の確認まで OFF）かつ
+   * その集荷日に至急の対応の担当者がいる（b2c_ops_days.late_duty_staff）」を渡す。
+   */
   lateDutyStaffed: boolean
 }): B2cConfirmationPlan {
   const gate = judgeB2cHotels(input)

@@ -79,18 +79,27 @@ export async function POST(req: NextRequest) {
       : emailOk
         ? `${autoLabel} — ${email}`.slice(0, 60)
         : autoLabel
-  const { error } = await sb.from("operator_passkeys").insert({
+  const row: Record<string, unknown> = {
     credential_id: cred.id,
     public_key: encodePublicKey(cred.publicKey),
     counter: cred.counter,
     transports: cred.transports ?? null,
     label,
-  })
+  }
+  // メールのワンタイムコードで本人を確かめた登録だけ、運営者 ID (メールアドレス) を結びつける。
+  // B2C の手作業はこの ID のあるパスキーでしか行えない (docs/b2c/B2C_MVP_SCHEMA_v1.md 7章)。
+  // operator_email の列は sql/061 で足す。列がまだ無い DB では、従来どおりの行だけを保存する。
+  let { error } = await sb
+    .from("operator_passkeys")
+    .insert(emailOk ? { ...row, operator_email: email.toLowerCase() } : row)
+  if (error && emailOk && /operator_email/.test(error.message) && /does not exist|column/i.test(error.message)) {
+    ;({ error } = await sb.from("operator_passkeys").insert(row))
+  }
   if (error) {
     return NextResponse.json({ error: `保存に失敗しました: ${error.message}` }, { status: 500 })
   }
 
-  const token = await issueOperatorSession()
+  const token = await issueOperatorSession(cred.id)
   const res = NextResponse.json({ ok: true })
   if (token) {
     res.cookies.set({

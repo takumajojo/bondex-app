@@ -216,7 +216,7 @@ create table if not exists public.b2c_stripe_events (
 create table if not exists public.b2c_order_events (
   id               bigint generated always as identity primary key,
   order_id         uuid not null references public.b2c_orders(id),
-  shipment_id      uuid,
+  shipment_id      uuid references public.shipments(id),
   event            text not null,
   actor_type       text not null check (actor_type in ('guest', 'operator', 'system', 'stripe')),
   operator_email   text,
@@ -277,6 +277,113 @@ exception when duplicate_object then null; end $$;
 alter table public.operator_passkeys add column if not exists operator_email text;
 
 -- ---------------------------------------------------------------------------
+-- 通知の送信待ち（outbox）。確定などの DB の変更と同じトランザクションで積み、送信は後段の処理が再試行つきで行う。
+-- ---------------------------------------------------------------------------
+create table if not exists public.b2c_outbox (
+  id               bigint generated always as identity primary key,
+  order_id         uuid not null references public.b2c_orders(id),
+  kind             text not null,  -- booking_confirmed / awaiting_hotel / cancelled / reminder_eve / reminder_day / recovery_link など
+  channel          text not null check (channel in ('email', 'whatsapp')),
+  dedupe_key       text not null unique,  -- 同じ通知を二度送らない（例: confirmed:<order_id>:email）
+  status           text not null default 'pending' check (status in ('pending', 'sent', 'failed', 'cancelled')),
+  attempts         int not null default 0,
+  next_attempt_at  timestamptz not null default now(),
+  last_error       text,
+  sent_at          timestamptz,
+  created_at       timestamptz not null default now()
+);
+create index if not exists b2c_outbox_due on public.b2c_outbox(status, next_attempt_at);
+
+-- ---------------------------------------------------------------------------
+-- 受付の上限（集荷日ごと）を DB で保証する（Phase 1A 計画 5）。
+-- 受付の枠を使う状態（card_pending 以降・取消以外）に入る時に、その集荷日の b2c_ops_days の行をロックして数える。
+-- 同時に 2件が最後の 1枠を取りに来ても、片方は例外になる。
+-- ---------------------------------------------------------------------------
+create or replace function public.b2c_orders_capacity() returns trigger language plpgsql as $$
+declare
+  d          public.b2c_ops_days%rowtype;
+  n_orders   int;
+  n_pieces   int;
+  counted    text[] := array['card_pending', 'awaiting_hotel_confirmation', 'confirmed', 'completed'];
+begin
+  if not (new.status = any(counted)) then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.status = any(counted) and old.pickup_date = new.pickup_date and old.pieces >= new.pieces then
+    return new;  -- 既に枠を使っている（個数を増やさない）
+  end if;
+  insert into public.b2c_ops_days(date) values (new.pickup_date) on conflict (date) do nothing;
+  select * into d from public.b2c_ops_days where date = new.pickup_date for update;
+  if d.closed then
+    raise exception 'b2c_capacity: pickup date % is closed', new.pickup_date using errcode = 'P0001';
+  end if;
+  select count(*), coalesce(sum(pieces), 0) into n_orders, n_pieces
+    from public.b2c_orders
+   where pickup_date = new.pickup_date and status = any(counted) and id <> new.id;
+  if n_orders + 1 > d.max_new_bookings or n_pieces + new.pieces > d.max_pieces then
+    raise exception 'b2c_capacity: limit reached for %', new.pickup_date using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+drop trigger if exists b2c_orders_capacity on public.b2c_orders;
+create trigger b2c_orders_capacity before insert or update of status, pickup_date, pieces on public.b2c_orders
+  for each row execute function public.b2c_orders_capacity();
+
+-- ---------------------------------------------------------------------------
+-- 予約の確定と shipments の行の作成を 1つのトランザクションで行う（どちらかが失敗すれば両方とも無かったことになる）。
+-- 確定の条件（カード登録・ホテルの条件・取消されていない・期限内）を満たさなければ何もしない（false）。
+-- 通知は b2c_outbox に積むだけで、送信はトランザクションの外で行う。
+-- ---------------------------------------------------------------------------
+create or replace function public.b2c_confirm_order(p_order_id uuid) returns boolean language plpgsql as $$
+declare
+  o         public.b2c_orders%rowtype;
+  hotels_ok boolean;
+begin
+  select * into o from public.b2c_orders where id = p_order_id for update;
+  if not found then return false; end if;
+  if o.status not in ('card_pending', 'awaiting_hotel_confirmation') or o.cancelled_at is not null then return false; end if;
+  if o.card_status <> 'registered' or o.consented_at is null then return false; end if;
+  if o.confirmation_due_at is not null and now() > o.confirmation_due_at then return false; end if;
+
+  if o.confirmation_mode = 'awaiting_hotel_acceptance' then
+    select count(*) = 2 into hotels_ok from public.b2c_hotel_acceptances
+     where order_id = o.id and status = 'accepted';
+  else
+    select count(*) = 2 into hotels_ok from public.b2c_facilities
+     where place_id in (o.origin_place_id, o.dest_place_id) and status = 'verified';
+  end if;
+  if not hotels_ok then
+    update public.b2c_orders set status = 'awaiting_hotel_confirmation' where id = o.id and status = 'card_pending';
+    return false;
+  end if;
+
+  update public.b2c_orders set status = 'confirmed', confirmed_at = now() where id = o.id;
+
+  insert into public.shipments (
+    booking_id, leg_index, agency, representative, traveler_count, shipment_date, expected_arrival,
+    change_deadline_at, from_hotel, from_place_id, origin_check_in, to_hotel, to_place_id, from_check_in, to_check_out,
+    recipient, suitcase_count, amount_yen, status, carrier, guest_language, pickup_time,
+    channel, b2c_order_id, route_class, unit_net_yen, price_rule_version
+  ) values (
+    'B2C-' || o.order_number, 0, 'BondEx Direct', o.guest_name, 1, o.pickup_date, o.delivery_date,
+    ((o.pickup_date - 1)::text || 'T08:00:00Z')::timestamptz,
+    o.origin_snapshot->>'name', o.origin_place_id, (o.origin_snapshot->>'check_in')::date,
+    o.dest_snapshot->>'name', o.dest_place_id, (o.dest_snapshot->>'check_in')::date, (o.dest_snapshot->>'check_out')::date,
+    o.guest_name, o.pieces, o.subtotal_net_yen, 'issued', 'sagawa', 'en', '11',
+    'b2c', o.id, o.route_class, o.unit_net_yen, o.price_rule_version
+  );
+
+  insert into public.b2c_order_events(order_id, event, actor_type, before_state, after_state)
+  values (o.id, 'booking_confirmed', 'system', jsonb_build_object('status', o.status), jsonb_build_object('status', 'confirmed'));
+
+  insert into public.b2c_outbox(order_id, kind, channel, dedupe_key) values
+    (o.id, 'booking_confirmed', 'email',    'booking_confirmed:' || o.id || ':email'),
+    (o.id, 'booking_confirmed', 'whatsapp', 'booking_confirmed:' || o.id || ':whatsapp')
+  on conflict (dedupe_key) do nothing;
+  return true;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- RLS（匿名からの許可は付けない）
 -- ---------------------------------------------------------------------------
 alter table public.b2c_entry_links       enable row level security;
@@ -288,6 +395,7 @@ alter table public.b2c_refunds           enable row level security;
 alter table public.b2c_stripe_events     enable row level security;
 alter table public.b2c_order_events      enable row level security;
 alter table public.b2c_ops_days          enable row level security;
+alter table public.b2c_outbox            enable row level security;
 
 create index if not exists b2c_orders_status_due on public.b2c_orders(status, confirmation_due_at);
 create index if not exists b2c_orders_pickup on public.b2c_orders(pickup_date);

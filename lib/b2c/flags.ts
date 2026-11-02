@@ -28,3 +28,12 @@ export function b2cChargeLive(): boolean {
 export function b2cPickupAutomationEnabled(): boolean {
   return on("B2C_PICKUP_AUTOMATION_ENABLED")
 }
+
+/**
+ * 直前予約（通常のホテル連絡の期限を過ぎた予約）の受付。既定は OFF。
+ * 佐川が「新規の集荷の依頼を前日 18:30 まで受ける」ことを確認できるまで ON にしない（16.21）。
+ * ON でも、その集荷日に至急の対応の担当者がいなければ受けない（lib/b2c/hotel-gate.ts の lateDutyStaffed）。
+ */
+export function b2cLateBookingEnabled(): boolean {
+  return on("B2C_LATE_BOOKING_ENABLED")
+}
