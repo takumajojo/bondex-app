@@ -21,7 +21,7 @@ export interface BizLogiConfig {
   baseUrl: string
   customerId: string
   loginPassword: string
-  /** 送り状コード (A501/A401/L02/D03)。発行依頼で使う。 */
+  /** 送り状コード (仕様書 5.1: A501/A401/L02/D03。JOJO は SGシステム指定の N01)。発行依頼で使う。 */
   okuriCode?: string
   /** true のときだけ発行依頼 (課金・集荷依頼の実送信) を許可する。 */
   live: boolean
@@ -203,7 +203,12 @@ export class BizLogiClient {
   async retryPrint(shippingNumbers: string[]): Promise<RetryPrintResult> {
     const xml = buildXml([
       "retryPrintRequest",
-      [this.auth(), ["shippingNumberList", shippingNumbers.map((n): XmlElement => ["shippingNumber", n])]],
+      [
+        this.auth(),
+        // 省略すると佐川側は非表示扱い。初回発行と同じく表示にそろえる。
+        ["backLayerFlg", 1],
+        ["shippingNumberList", shippingNumbers.map((n): XmlElement => ["shippingNumber", n])],
+      ],
     ])
     const root = parseXml(await this.post("retryprint", xml))
     const resultCode = childText(root, "resultCode")

@@ -275,6 +275,16 @@ async function main() {
     const he = await throws(() => new BizLogiClient(CONFIG, m5.impl).checkShipping([detail], TODAY), BizLogiTransportError)
     check("HTTP 503 は TransportError", (he as BizLogiTransportError | null)?.status === 503)
 
+    // 導入チェックシート: 下敷画像表示フラグは 1 を既定に (省略すると佐川側は非表示扱い)
+    check("下敷画像: 既定で backLayerFlg=1 を outputLevel の直後に送る", /<outputLevel>000<\/outputLevel>\s*<backLayerFlg>1<\/backLayerFlg>/.test(m1.calls[0]?.body ?? ""))
+    const noLayer = buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: false, backLayerFlg: 0, details: [detail] }, TODAY)
+    check("下敷画像: 明示すれば 0 も送れる", noLayer.includes("<backLayerFlg>0</backLayerFlg>"))
+    const n01 = buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: true, okuriCode: "N01", details: [detail] }, TODAY)
+    check("送り状コード N01 をそのまま送る", n01.includes("<okuriCode>N01</okuriCode>"))
+    const m8 = mockFetch(() => ({ body: `<retryPrintResponse><resultCode>S0-0001</resultCode><printRequestId>2084-1</printRequestId></retryPrintResponse>` }))
+    const rp = await new BizLogiClient(CONFIG, m8.impl).retryPrint(["175653596241"])
+    check("再発行: /retryprint に backLayerFlg=1 を付けて送る", m8.calls[0]?.url.endsWith("/retryprint") && /<\/customerAuth>\s*<backLayerFlg>1<\/backLayerFlg>\s*<shippingNumberList>/.test(m8.calls[0]?.body ?? "") && rp.printRequestId === "2084-1")
+
     const m6 = mockFetch((url) =>
       url.endsWith("/checkaddress")
         ? {

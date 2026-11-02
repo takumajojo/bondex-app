@@ -89,10 +89,12 @@ export interface ShippingRequestOptions {
   loginPassword: string
   /** false=確認機能 (エラー精査のみ) / true=発行依頼 (問合番号が採番され課金対象)。 */
   issue: boolean
-  /** 送り状コード (A501/A401/L02/D03)。発行依頼では必須。 */
+  /** 送り状コード (仕様書 5.1: A501/A401/L02/D03。JOJO は SGシステム指定の N01)。発行依頼では必須。 */
   okuriCode?: string
   /** 出力レベル: "000"=エラー＆ワーニング精査 (既定) / "900"=エラーのみ。 */
   outputLevel?: "000" | "900"
+  /** 下敷画像表示フラグ: 1=表示 (既定・導入チェックシートの指定) / 0=非表示。省略すると佐川側は非表示扱い。 */
+  backLayerFlg?: 0 | 1
   details: ShippingDetail[]
 }
 
@@ -333,6 +335,7 @@ export function buildShippingRequestXml(o: ShippingRequestOptions, today: string
       ["printOutFlg", o.issue ? 1 : 0],
       ["okuriCode", o.okuriCode],
       ["outputLevel", o.outputLevel ?? "000"],
+      ["backLayerFlg", o.backLayerFlg ?? 1],
       ["printDataList", o.details.map(detailElement)],
     ],
   ])
