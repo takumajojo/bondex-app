@@ -1,16 +1,30 @@
 /**
- * B2C の安全スイッチ（MVP・T0）。docs/b2c/B2C_PLATFORM_AUDIT_v1.md 16.4。
+ * B2C の安全スイッチ（Phase 1A）。docs/b2c/B2C_MVP_SCHEMA_v1.md 8章。
  *
- * どちらも既定は OFF。値が "true" のときだけ ON（タイプミスや未設定は OFF に倒す）。
- * OFF の間、B2C の予約 API・画面は閉じ、既存 B2B の動きは今と同じ。
+ * どれも値が "true" のときだけ ON（タイプミスや未設定は OFF に倒す）。どれも B2B を止めない。
+ * 新規受付・既存予約の閲覧と取消・請求の実行・自動の集荷確認を別々に止められる。
  */
 
-/** B2C の予約の受付（予約画面・予約 API・カード登録）。 */
-export function b2cEnabled(): boolean {
-  return process.env.B2C_ENABLED === "true"
+function on(name: string): boolean {
+  return process.env[name] === "true"
 }
 
-/** 集荷確認後の実課金（売上の確定）。OFF の間は課金の予定を記録するだけ。 */
+/** 新しい予約の受付（入口・予約・カード登録）。OFF でも既存の予約の閲覧・取消・確定の処理は動く。 */
+export function b2cBookingEnabled(): boolean {
+  return on("B2C_BOOKING_ENABLED")
+}
+
+/** 既存の予約の確認ページ（My Booking）と取消。緊急時だけ OFF にする。 */
+export function b2cMyBookingEnabled(): boolean {
+  return on("B2C_MY_BOOKING_ENABLED")
+}
+
+/** 集荷確認後の実際の請求。OFF の間は請求を予定のまま残し、ON に戻した時に照合してから 1回ずつ処理する。 */
 export function b2cChargeLive(): boolean {
-  return process.env.B2C_CHARGE_LIVE === "true"
+  return on("B2C_CHARGE_LIVE")
+}
+
+/** 追跡による自動の集荷確認。Phase 1A は OFF（運営の手作業だけ）。 */
+export function b2cPickupAutomationEnabled(): boolean {
+  return on("B2C_PICKUP_AUTOMATION_ENABLED")
 }

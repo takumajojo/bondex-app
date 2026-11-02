@@ -6,6 +6,7 @@ import { getShipment } from "@/lib/shipments-db"
 import { sendMail } from "@/lib/mailer"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { grossOf } from "@/lib/tax"
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 
 export const runtime = "nodejs"
 
@@ -45,6 +46,10 @@ export async function POST(req: NextRequest) {
 
   const shipment = await getShipment(id)
   if (!shipment) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
+  // B2C の区間は B2B の清算 (決済リンク・月次請求) に入れない。B2C の追加の請求は b2c_payments で行う。
+  if (isB2cShipmentRow(shipment)) {
+    return NextResponse.json({ error: "B2C の区間は B2C の請求で清算します。" }, { status: 409 })
+  }
   if (!shipment.is_addition) {
     return NextResponse.json({ error: "この区間は追加 (is_addition) ではありません。" }, { status: 400 })
   }
