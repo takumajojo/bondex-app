@@ -7,7 +7,7 @@ import { quoteB2c, b2cRouteClass, B2C_MAX_PIECES } from "@/lib/b2c/pricing"
 import { judgeB2cBookability, b2cCutoffAt, type B2cBookabilityInput } from "@/lib/b2c/bookability"
 import { changeDeadlineAt } from "@/lib/change-deadline"
 import { b2cChangeBlockedReason } from "@/lib/b2c/change-gate"
-import { judgeB2cHotels, hotelCheckDueAt, earliestPickupWithUnknownHotel } from "@/lib/b2c/hotel-gate"
+import { judgeB2cHotels, hotelCheckDueAt, earliestPickupWithUnknownHotel, planB2cConfirmation } from "@/lib/b2c/hotel-gate"
 
 let passed = 0
 function t(name: string, fn: () => void) {
@@ -186,6 +186,37 @@ t("未確認のホテルは、確認の期限が集荷の 2営業日前 17:00 �
   assert.ok(judgeB2cHotels({ now: eve, pickupDate: "2026-11-13", origin: "unknown", dest: "verified" }).errors.includes("hotel_check_window_too_short"))
   assert.equal(earliestPickupWithUnknownHotel(NOW), "2026-11-13")
   assert.equal(earliestPickupWithUnknownHotel(eve), "2026-11-17") // 確認の期限 金 17:00 → 集荷 火(2営業日前=金)
+})
+
+console.log("予約の確定の条件（直前予約は受入確認待ち）")
+const plan = (now: Date, pickupDate: string, o: "verified" | "unknown", d: "verified" | "unknown", staffed = true) =>
+  planB2cConfirmation({ now, pickupDate, origin: o, dest: d, lateDutyStaffed: staffed })
+t("確認済みどうしで通常の連絡の期限より前は即時に確定", () => {
+  const r = plan(NOW, "2026-11-13", "verified", "verified") // 2営業日前 = 水 11/11 17:00 > 火 10:00
+  assert.equal(r.mode, "instant")
+  assert.equal(r.confirmationDueAt, null)
+  assert.deepEqual(r.errors, [])
+})
+t("通常の連絡の期限を過ぎた予約は、確認済みのホテルでも受入確認待ち（期限は前日 19:00）", () => {
+  const r = plan(NOW, "2026-11-12", "verified", "verified") // 2営業日前 = 火 11/10 17:00、今は火 10:00 → まだ前
+  assert.equal(r.mode, "instant")
+  const late = plan(new Date("2026-11-10T08:30:00Z"), "2026-11-12", "verified", "verified") // 火 17:30
+  assert.equal(late.mode, "awaiting_hotel_acceptance")
+  assert.equal(late.confirmationDueAt, "2026-11-11T10:00:00.000Z") // 水 19:00 JST
+  assert.deepEqual(late.errors, [])
+  const eve = plan(new Date("2026-11-12T07:50:00Z"), "2026-11-13", "verified", "verified") // 前日 16:50
+  assert.equal(eve.mode, "awaiting_hotel_acceptance")
+  assert.equal(eve.confirmationDueAt, "2026-11-12T10:00:00.000Z")
+})
+t("至急の担当者がいない日は直前予約を受けない", () => {
+  const r = plan(new Date("2026-11-12T07:50:00Z"), "2026-11-13", "verified", "verified", false)
+  assert.ok(r.errors.includes("late_booking_unstaffed"))
+})
+t("未確認のホテルは施設の確認待ち（直前の日付は従来どおり選べない）", () => {
+  const r = plan(NOW, "2026-11-13", "unknown", "verified")
+  assert.equal(r.mode, "awaiting_hotel_verification")
+  assert.equal(r.confirmationDueAt, "2026-11-11T08:00:00.000Z")
+  assert.ok(plan(new Date("2026-11-12T07:50:00Z"), "2026-11-13", "unknown", "verified").errors.includes("hotel_check_window_too_short"))
 })
 
 console.log(`\n${passed} passed`)

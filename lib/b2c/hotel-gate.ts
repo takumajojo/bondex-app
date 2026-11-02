@@ -68,3 +68,54 @@ export function earliestPickupWithUnknownHotel(now: Date): string {
   }
   throw new Error("earliestPickupWithUnknownHotel: not found within 60 days")
 }
+
+/**
+ * 直前予約（ホテルへの通常の連絡の期限＝集荷の 2営業日前 17:00 JST を過ぎた予約）の受入確認の期限。
+ * 集荷の前日 19:00 JST。佐川への集荷依頼の締め（前日 20:00。docs/sagawa マスター 78）に、
+ * 確認が取れた予約を個別に送る時間（19:00〜20:00）を残す。
+ */
+export const LATE_ACCEPTANCE_DUE_HOUR_JST = 19
+
+export function lateAcceptanceDueAt(pickupDate: string): string {
+  const d = new Date(`${pickupDate}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return `${toYmd(d)}T${String(LATE_ACCEPTANCE_DUE_HOUR_JST - 9).padStart(2, "0")}:00:00.000Z`
+}
+
+/**
+ * 予約をいつ確定できるか（16.19）。
+ * - `instant`: 両ホテルとも施設として確認済みで、通常の連絡の期限より前。予約の時点で確定する
+ *   （その予約の受入の連絡は、B2B と同じく通常の期限までに運営が行う）。
+ * - `awaiting_hotel_verification`: 未確認のホテルを含む。施設の確認（翌営業日 17:00 まで）の後に確定。
+ * - `awaiting_hotel_acceptance`: 直前予約。集荷元・配送先それぞれの受入の確認がそろってから確定。
+ *   期限は集荷の前日 19:00。期限までにそろわない・断られた時は取消（請求しない）。
+ * 直前予約は、その日に至急の対応の担当者がいる時だけ受ける（いなければ `late_booking_unstaffed`）。
+ */
+export type B2cConfirmationMode = "instant" | "awaiting_hotel_verification" | "awaiting_hotel_acceptance"
+
+export interface B2cConfirmationPlan {
+  errors: Array<B2cHotelGateError | "late_booking_unstaffed">
+  mode: B2cConfirmationMode
+  /** 確定の条件がそろわなければ取消になる時刻（instant は null） */
+  confirmationDueAt: string | null
+}
+
+export function planB2cConfirmation(input: {
+  now: Date
+  pickupDate: string
+  origin: B2cHotelStatus
+  dest: B2cHotelStatus
+  /** 直前予約の至急の対応の担当者がいる日か（運営が日ごとに設定） */
+  lateDutyStaffed: boolean
+}): B2cConfirmationPlan {
+  const gate = judgeB2cHotels(input)
+  const errors: B2cConfirmationPlan["errors"] = [...gate.errors]
+  if (gate.hotelCheckDueAt) {
+    return { errors, mode: "awaiting_hotel_verification", confirmationDueAt: gate.hotelCheckDueAt }
+  }
+  const latest = hotelCheckLatestAt(input.pickupDate)
+  const isLate = !latest || input.now.toISOString() > latest
+  if (!isLate) return { errors, mode: "instant", confirmationDueAt: null }
+  if (!input.lateDutyStaffed) errors.push("late_booking_unstaffed")
+  return { errors, mode: "awaiting_hotel_acceptance", confirmationDueAt: lateAcceptanceDueAt(input.pickupDate) }
+}

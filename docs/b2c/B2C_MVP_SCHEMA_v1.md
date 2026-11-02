@@ -1,123 +1,219 @@
-# B2C MVP の表の設計案 v1.2（承認待ち）
+# B2C MVP の表の設計案 v1.3（承認待ち）
 
-作成: 2026-11-03。v1.2（同日）: 決済の方式を未確定に戻し、ホテルに再確認の列を追加（`docs/b2c/B2C_PHASE1A_BETA_PLAN.md`）。v1.1（同日）: ChatGPT の監査（`docs/b2c/reviews/ChatGPT_B2C_Final_Design_v1.4_20261103.txt`）を受けて、ホテルの事前確認・料金とホテルの控え・二重課金の防止の 3層・事件の記録の種類を追加（監査報告書 16.17）。前提の決定は `docs/b2c/B2C_PLATFORM_AUDIT_v1.md` の 16章（16.7〜16.13）。
-**本番のデータベースには何も適用しない。** 承認後に `sql/060_b2c_mvp.sql` として書き、試験の環境だけで動かす。
+作成: 2026-11-03。v1.3（同日）: Codex の監査（`docs/b2c/reviews/Codex_B2C_Phase1A_review_20261103.md`）の 7点と、たくまさんの直前予約の方針（監査報告書 16.19）を反映。決済は方式 A（カード登録→集荷後に請求）を前提に書き直した（方式の最終承認は `docs/b2c/B2C_PHASE1A_BETA_PLAN.md` の 7）。
+**本番のデータベースには何も適用しない。** 承認後に `sql/061_b2c_mvp.sql` として書き、試験の環境だけで動かす。
+
+用語: この文書では「枠」という言葉を使わない。カードについては「カード登録」「請求」、配送については「集荷依頼」と書く。
 
 ## 1. 考え方
 
-- **配送の区間は、B2B と同じ `shipments` に 1区間 1行で載せる。** ホテルへの連絡（H02）、佐川シート、追跡、運営の一覧は B2B のものがそのまま動く。
-- B2C の区間には `shipments.channel = 'b2c'` と `b2c_order_id` を付ける。代理店名は `BondEx Direct`（`lib/channel-guard.ts` の判定と同じ）。
-- **お金と個人の連絡先は B2C 専用の表に置く。** B2B の課金の列（`charged_at` など）は B2C では使わない。B2C の課金は `b2c_payments` が正本。
-- B2B の課金の 4か所（`app/api/shipments/route.ts`、`app/api/cron/sync-tracking/route.ts`、`lib/tracking/reconcile.ts`、`app/api/operator/charge-retry/route.ts`）には、`channel='b2c'` を B2B の課金に入れない振り分けを入れる（13.6）。B2B の行の動きは変わらない。
+- **配送の区間は、B2B と同じ `shipments` に載せる。** ただし作るのは「予約が確定した時」だけ（4章）。確定前の予約は `shipments` に現れない。
+- B2C の区間には `shipments.channel = 'b2c'` と `b2c_order_id` を付ける。代理店名は `BondEx Direct`。
+- **お金・連絡先・ホテルの確認は B2C 専用の表に置く。** B2B の課金の列（`charged_at` など）は B2C の行では使わない（DB の制約で禁止。2章）。
+- Phase 1A は **1予約 1区間**（`b2c_orders` 1行 ↔ `shipments` 1行）。
 
 ## 2. 既存の表への追加（`shipments`）
 
 | 列 | 型 | 既定 | 内容 |
 |---|---|---|---|
-| `channel` | text | `'b2b'` | `'b2b'` / `'b2c'`。既存の行はすべて `'b2b'` になる |
-| `b2c_order_id` | uuid null | null | B2C の予約への参照 |
+| `channel` | text not null | `'b2b'` | `'b2b'` / `'b2c'`。CHECK で 2値に限る。既存の行はすべて `'b2b'` |
+| `b2c_order_id` | uuid null | null | `b2c_orders(id)` への外部キー。UNIQUE（1予約 1区間） |
+| `route_class` / `unit_net_yen` / `price_rule_version` | text / int / text | null | 予約の成立時の料金の控え（B2C の行だけ） |
 
-注: B2B の `change_deadline_at` は「発送日の 2営業日前 18:00」で自動計算される（`lib/change-deadline.ts`）。B2C は「前日 17:00」なので、B2C の締切は `b2c_orders` 側の判定（`lib/b2c/bookability.ts`）を正とし、`shipments.change_deadline_at` は B2C の値で上書きして保存する。
+制約: `channel='b2c'` ⇔ `b2c_order_id is not null`。`channel='b2c'` の行は `charged_at`・`stripe_payment_intent_id`・`stripe_checkout_url` が null（B2B の課金の経路に入れない）。
+注: 変更の締切（`change_deadline_at`）は 16.15 で B2B・B2C とも前日 17:00 に統一済み。
 
 ## 3. 新しい表
 
-### `b2c_entry_links`（紹介元の入口。Q08）
+### `b2c_entry_links`（入口）
+
+紹介元のコードと、URL に使う秘密の値を分ける。
 
 | 列 | 内容 |
 |---|---|
-| `code` | `HNK001` など。UNIQUE。URL は `/book/HNK001` |
+| `id` | uuid |
+| `referrer_code` | `HNK001`（紹介元のコード。予約に記録する。URL には出さない） |
 | `referrer_name` | 阪急交通社 |
-| `status` | `active` / `disabled`（運営が止める） |
-| `created_at` |  |
+| `token_hash` | URL `/book/<token>` の token（推測できない 22文字以上）のハッシュ。UNIQUE |
+| `status` | `active` / `disabled`。API でも毎回確かめる（画面だけで判定しない） |
+| `created_at` / `disabled_at` |  |
 
-### `b2c_facilities`（ホテルの事前確認。16.17）
-
-Google のホテル（`place_id`）ごとに 1行。
+### `b2c_facilities`（ホテルの施設としての確認）
 
 | 列 | 内容 |
 |---|---|
 | `place_id` | PRIMARY KEY |
 | `name` / `address` / `postal_code` | 確認した時点の表記 |
-| `status` | `verified`（フロントに人がいて荷物を預かれる）/ `unknown`（未確認）/ `unsupported`（受けない） |
-| `checked_by` / `checked_at` / `check_note` | 確認した担当者・時刻・根拠（公式サイト・電話など） |
-| `last_verified_at` / `verified_until` | 最後に確認した日時と、再確認が必要になる日（将来の再確認のため。Phase 1A は期限を設けず null） |
+| `status` | `verified` / `unknown` / `unsupported` |
+| `checked_by` / `checked_at` / `check_note` | 確認した担当者（7章の運営の識別）・時刻・根拠 |
+| `last_verified_at` / `verified_until` | 再確認のため。Phase 1A は `verified_until` を null（期限なし） |
 
-- 初期値: B2B で実際に集荷・配達したホテル（2026-11-03 時点で 29件）を、運営が目で見て `verified` にする。
-- 初めてのホテルは `unknown` で作り、予約は「ホテル確認中」で受ける（下の `b2c_orders.status`）。
-- `unknown` を自動で `verified` にしない。
+**施設の確認（verified）は、その施設に対応の実績・能力があることだけを示す。個々の予約を受けられるかの確認とは別**（`b2c_hotel_acceptances`）。
 
-### `b2c_orders`（ゲストの予約 1件。Q03・16.12）
+### `b2c_orders`（ゲストの予約 1件）
 
 | 列 | 内容 |
 |---|---|
 | `id` | uuid |
-| `order_number` | **数字の予約番号**（Biz-Logi の管理番号に入れる。マスター 28） |
-| `entry_code` | 来た入口のコード（`HNK001`）。**作成後は変えない** |
-| `guest_name` / `guest_email` / `guest_whatsapp` | 3つとも必須。WhatsApp は国際形式（E.164）で保存 |
-| `language` | 公開時は `en` / `ja`。後で `fr` / `es` / `pt` を足す（16.17） |
-| `access_token_hash` | 確認ページの秘密のリンクのハッシュ（リンクそのものは保存しない） |
-| `status` | `draft`（入力中）→ `awaiting_hotel_confirmation`（枠は確保済み・ホテル確認中）→ `confirmed` → `completed` / `cancelled`。配送の状態は `shipments.status`、お金の状態は `b2c_payments.status` に分けて持つ |
-| `hotel_check_due_at` | ホテル確認の期限（予約から 1営業日。ただし集荷の前日 17:00 を超えない）。過ぎても未確認なら取消して枠を外す |
-| `consent_version` / `consented_at` | 規約・課金の同意の版と時刻 |
-| `stripe_customer_id` | 予約ごとのゲストの顧客（B2B の代理店の顧客と共有しない） |
+| `order_number` | 数字の予約番号。UNIQUE。シーケンスで採番（Biz-Logi の管理番号に入る） |
+| `entry_link_id` / `referrer_code` | 来た入口と紹介元。**作成後は変えない**（トリガーで更新を禁止） |
+| `guest_name` / `guest_email` / `guest_whatsapp` | 3つとも必須。WhatsApp は E.164 で保存し、CHECK で形式を確かめる |
+| `language` | `ja` / `en`（Phase 1A） |
+| `origin_place_id` / `dest_place_id` | 両ホテル。異なること（CHECK） |
+| `pickup_date` / `delivery_date` / 両ホテルのチェックイン・アウト・名前・住所・郵便番号 | 予約の成立時の控え |
+| `pieces` | 1〜Phase 1A の上限（10。Phase 1A 計画の 5）。CHECK |
+| `total_gross_yen` | サーバーで計算した税込の総額。CHECK > 0 |
+| `status` | 4章の状態。CHECK |
+| `confirmation_mode` | `instant` / `awaiting_hotel_verification` / `awaiting_hotel_acceptance`（`lib/b2c/hotel-gate.ts` の `planB2cConfirmation`） |
+| `confirmation_due_at` | この時刻までに確定の条件がそろわなければ取消（instant は null） |
+| `card_status` | `none` / `registering` / `registered` / `failed` |
+| `stripe_customer_id` / `stripe_setup_intent_id` / `stripe_payment_method_id` | カード登録の結果。setup_intent は UNIQUE |
+| `card_3ds_result` | 本人認証の**結果**（`authenticated` / `attempted` / `not_required` / `unknown`）。認証を要求したかどうかとは分けて記録する |
+| `consent_version` / `consented_at` | 規約と「集荷の確認の後に請求する」ことへの同意の版と時刻 |
+| `access_token_hash` | My Booking の秘密のリンクのハッシュ。UNIQUE |
+| `replaced_by` | 変更で作り直した新しい予約（6章） |
+| `cancelled_at` / `cancel_reason` / `cancelled_by` |  |
 | `created_at` / `updated_at` |  |
 
-### `b2c_payments`（請求。P-06・P-03）
+### `b2c_hotel_acceptances`（予約ごとのホテルの受入の確認）
 
-**決済の方式は未確定**（`docs/b2c/B2C_PHASE1A_BETA_PLAN.md` の 1。提案は A: SetupIntent → 集荷後に PaymentIntent）。A の場合、`kind` は `charge`（集荷後の請求）/ `extra`（個数の追加）で、`hold` と `pending_hold`・`hold_due_at`・`hold_expires_at` は使わない。カードの登録（SetupIntent の ID・PaymentMethod の ID・同意の版）は `b2c_orders` に持つ。以下は B を採った場合も含めた案。
-
-区間ごとに 1行以上（追加の個数は別の行）。
+1予約につき `origin`（集荷元: 荷物を預かって佐川に渡せるか）と `dest`（配送先: 受け取れるか）の 2行。UNIQUE(`order_id`, `side`)。
 
 | 列 | 内容 |
 |---|---|
-| `order_id` / `shipment_id` |  |
-| `kind` | `hold`（予約時・7日前の与信）/ `extra`（個数の追加・変更で増えた分） |
-| `idempotency_key` | UNIQUE。Stripe の重複防止キーと同じ値（`b2c_<shipment>_<kind>_<連番>`）。同じ請求を二度作れない |
-| `stripe_payment_intent_id` | UNIQUE |
-| `amount_authorized_yen` / `amount_captured_yen` | 確保した額 / 確定した額（税込） |
-| `status` | `pending_hold`（31日以上先で、まだ枠を取っていない）→ `held` → `captured` / `released` / `failed` |
-| `hold_due_at` | 枠を取る予定の時刻（集荷の 7日前） |
-| `hold_expires_at` | 枠の期限（30日。Amex は 7日） |
-| `failure_message` / `attempts` |  |
+| `order_id` / `side` | `origin` / `dest` |
+| `status` | `pending` / `accepted` / `refused` / `no_answer` |
+| `method` / `contact_note` | 電話・メールなど、応対者の名前 |
+| `decided_by` / `decided_at` | 運営の識別（7章） |
 
-### `b2c_order_events`（記録。追記のみ。Q09）
+通常の予約（`instant`）でも、通常の連絡の期限（集荷の 2営業日前）までに両方の受入を記録する。B2B の既定（配送先だけに連絡）と違い、**B2C は集荷元にも必ず連絡する**。期限内の連絡で断られた場合も、取消・旅行者への通知・請求なし（6章）。
 
-予約・変更・取消・枠の確保の結果・手作業の集荷確認・返金を 1行ずつ残す。手作業のものは `staff_name` と `reason` を必須にする（データベースの制約で）。
-
-種類: `booking_created` / `hotel_verified` / `hotel_rejected` / `booking_confirmed` / `hold_succeeded` / `hold_failed` / `reminder_sent` / `pickup_confirmed` / `charge_started` / `charge_succeeded` / `charge_failed` / `shipment_delayed` / `changed` / `cancelled` / `refunded` / `manual_override`。`pickup_confirmed` と `charge_*` は別の行（集荷の確認と請求を混同しない）。
-
-### `b2c_order_snapshots` は作らず、`shipments` の B2C の行に控えを持つ
-
-予約が成立した時点の **料金**（区間の種類・単価・個数・税抜・税・税込）と **ホテル**（両方の名前・住所・郵便番号・チェックイン/アウト・宿泊者名）を、B2C の区間の行に保存し、後から料金やホテルの情報が変わっても過去の予約を変えない。料金は `b2c_payments` ではなく区間の行に持つ（`unit_net_yen`・`route_class`・`price_rule_version` の 3列を `shipments` に足す。B2B の行は null）。
-
-### `b2c_closed_dates`（受付を止める日。H07）
+### `b2c_charges`（請求。方式 A）
 
 | 列 | 内容 |
 |---|---|
-| `date` | 止める集荷日（例: 12/31）。PRIMARY KEY |
-| `reason` / `created_by` |  |
+| `id` | uuid |
+| `order_id` | 外部キー |
+| `kind` | `base`（予約の基本料金）/ `extra`（集荷の現場で増えた個数など） |
+| `charge_key` | **請求そのものの識別**。`base` は `base:<order_id>`、`extra` は運営が作る追加の請求の ID。**UNIQUE**。再試行しても変わらない |
+| `amount_yen` | 税込。CHECK > 0 |
+| `status` | `scheduled`（集荷の確認の後、30分の取り消しの猶予の間）/ `ready` / `processing` / `requires_action`（本人認証などで旅行者の操作待ち）/ `succeeded` / `failed` / `cancelled` / `refunded` / `partially_refunded` |
+| `scheduled_at` | 請求の予定時刻（集荷の確認から 30分後） |
+| `stripe_payment_intent_id` | UNIQUE。**1つの請求に PaymentIntent は 1つ**。再試行は同じ PaymentIntent を使う（5章） |
+| `attempts` / `last_error_code` / `last_error_message` |  |
+| `recovery_link_sent_at` | 回収のリンクを送った時刻 |
+| `succeeded_at` |  |
 
-B2B はこの表を見ない。
+制約: `kind='base'` は 1予約に 1行だけ（部分一意の索引）。
 
-## 4. 二重課金の防止（3層）
+### `b2c_refunds`（返金）
 
-| 層 | 内容 |
+| 列 | 内容 |
 |---|---|
-| データベース | `b2c_payments.idempotency_key` と `stripe_payment_intent_id` が UNIQUE。B2C の区間は B2B の課金の列（`charged_at` 等）を使わない |
-| Stripe | 同じ `idempotency_key` を Stripe の重複防止キーに使う |
-| アプリ | B2B の課金の 4か所で `channel='b2c'` を通さない（`lib/channel-guard.ts`）。売上の確定は `held` の行だけを条件付きの更新で `captured` にする |
+| `charge_id` | 外部キー |
+| `amount_yen` | CHECK > 0。合計が請求額を超えない（作成時に請求の行を `FOR UPDATE` で固定してサーバーで確かめる） |
+| `reason` / `requested_by` | 運営の識別（7章） |
+| `refund_key` | UNIQUE。Stripe の重複防止キーにも使う |
+| `stripe_refund_id` | UNIQUE |
+| `status` | `requested` / `succeeded` / `failed` |
 
-B2B の回帰試験: 既存の B2B の課金のテストに加え、「B2C の区間が B2B の課金に入らない」を 4か所それぞれで確かめる。
+### `b2c_stripe_events`（Webhook の受信の記録）
 
-## 5. 安全のための約束
+| 列 | 内容 |
+|---|---|
+| `event_id` | PRIMARY KEY（同じ通知の再送を 1回だけ処理する） |
+| `type` / `object_id` / `received_at` / `processed_at` / `result` |  |
 
-- すべての新しい表は RLS を有効にし、匿名からの許可は付けない（サーバーだけが触る）。
-- 予約・確認ページの API は `B2C_ENABLED` が `true` の時だけ動く。実際の請求は `B2C_CHARGE_LIVE` が `true` の時だけ。追跡による自動の集荷確認は `B2C_PICKUP_AUTOMATION_ENABLED` が `true` の時だけ（OFF の間は運営の手作業の確認だけ）。既定はすべて OFF。B2B は止まらない。
-- 金額はサーバーで計算し、画面から送られた金額は信用しない。確認ページのリンクには回数の制限をかける。個人情報はログに出さない。
-- 月 3,000件を想定し、`b2c_orders(status)`・`b2c_payments(status, hold_due_at)`・`shipments(channel, shipment_date)` に索引を付ける。
-- 確認ページのリンクは推測できない値で、メールアドレスや予約番号だけでは開けない。
+### `b2c_order_events`（記録。追記のみ）
 
-## 6. 決めていないこと（実装中に出たら確認する）
+予約・確認・登録・確定・取消・集荷の確認・請求・返金・手作業の上書きを 1行ずつ。手作業の行は、運営の識別（7章）と `reason` を必須（CHECK）。`pickup_confirmed` と `charge_*` は別の行。
 
-- 区間をまたぐ予約の取消: 1区間だけの取消を許すか（今の案: 許す。その区間の枠だけ外す）。
-- 予約から何日たった `draft` を消すか（今の案: 24時間）。
+### `b2c_ops_days`（日ごとの運営の設定）
+
+| 列 | 内容 |
+|---|---|
+| `date` | PRIMARY KEY（集荷日） |
+| `closed` | true なら B2C の受付を止める（例: 12/31）。B2B は見ない |
+| `late_duty_staff` | 直前予約の至急の対応の担当者。null の日は直前予約を受けない |
+| `max_new_bookings` / `max_pieces` | その集荷日の受付の上限（Phase 1A 計画の 5） |
+
+## 4. 予約の状態と、確定・配送の手配の時点
+
+`b2c_orders.status`:
+
+```
+draft → card_pending → (カード登録の成功) ─┬─ 確定の条件がそろっている → confirmed → completed
+                                          └─ そろっていない → awaiting_confirmation → confirmed / cancelled
+cancelled は終点。どの状態からも（集荷依頼の前なら）取消できるが、cancelled から戻らない
+```
+
+- **確定の条件** = カード登録の成功 **かつ** 両ホテルの条件（`instant` は両施設が verified、`awaiting_hotel_verification` は両施設が verified になった、`awaiting_hotel_acceptance` は両方の受入が accepted）**かつ** 取消されていない **かつ** `confirmation_due_at` の前。
+- **確定の処理は 1つの関数だけ**が行う。条件付きの更新（`where status in ('card_pending','awaiting_confirmation') and cancelled_at is null`）で 1回だけ成功させる。成功した時に限って、`shipments` の行の作成・確定のメール・WhatsApp・ホテル連絡の予定を行う（送信は再試行つきの後段の処理）。
+- **取消は終点。** 取消の後に届いたカード登録の成功の通知では、予約を戻さない（上の更新が 0件で終わる）。登録されたカードは Stripe から外す。
+- **期限切れ**: `confirmation_due_at` を過ぎても確定していない予約は、定期の処理で `cancelled`（理由 `confirmation_timeout`）にし、旅行者に通知する。請求は発生しない（請求は集荷の確認の後にしか作らない）。
+- **集荷依頼**: `confirmed` の予約だけを、集荷の前日 17:00 以降に佐川へ送る（B2B と同じ運用）。直前予約は、受入の確認が取れ次第、前日 19:00〜20:00 に個別に送る。
+- **Webhook**: 署名を確かめる。`b2c_stripe_events.event_id` で重複を捨てる。順序が逆に届いても、通知の中身では判定せず、Stripe から最新の状態を取り直して判定する。
+
+## 5. 請求と二重請求の防止
+
+- **請求そのものを一意にする。** `b2c_charges.charge_key` が UNIQUE で、`base` は 1予約に 1行。再試行で新しい行・新しいキーを作らない。
+- **1つの請求に PaymentIntent は 1つ。** 最初の試行の前に PaymentIntent を作って ID を行に保存し、それから確定（confirm）する。Stripe の重複防止キーは `charge_key` と同じ値。
+- **再試行の前に必ず照合する。** 行に PaymentIntent の ID があれば、Stripe から取り直して状態を見る。`succeeded` なら DB を成功に直すだけで、二度目の請求はしない（Stripe で成功し、DB の記録に失敗した場合の復旧）。`requires_payment_method` なら同じ PaymentIntent で再試行、`requires_action` なら旅行者に回収のリンクを送る。
+- Stripe の重複防止キーは 24時間以上たつと消えることがあるので、**長期の重複の防止は DB の UNIQUE と上の照合で行う**。
+- 請求の開始は条件付きの更新（`ready → processing`）で 1つの処理だけが取る。運営の手作業と定期の処理が同時に動いても 1回になる。
+- **集荷の確認の 30分の取り消しの猶予**: 集荷の確認で `b2c_charges` を `scheduled`（`scheduled_at` = 30分後）で作る。猶予の間の取り消しは `scheduled → cancelled`。請求の処理は `scheduled_at` を過ぎた `scheduled` の行だけを `ready` にする（条件付きの更新なので競合しない）。
+- B2B の課金の 4か所は `channel='b2c'` を通さない（`lib/channel-guard.ts`）。加えて 2章の DB の制約で、B2C の行に B2B の課金の列が入らない。
+
+## 6. 取消・変更・返金
+
+| 場面 | 手順（Phase 1A は運営の手作業を含む） | 記録 |
+|---|---|---|
+| 旅行者の取消（前日 17:00 まで） | My Booking から。`cancelled` にする。集荷依頼の前なので佐川には何もしない。ホテルに連絡済みなら取消を連絡（運営の要対応に出す）。請求は発生しない | `b2c_order_events`、`b2c_hotel_acceptances` に取消の連絡 |
+| ホテルが受けられない（通常の連絡で断られた・直前予約で断られた・期限までに回答なし） | 取消し、旅行者にメールと WhatsApp で通知。請求しない | 同上（理由 `hotel_refused` / `confirmation_timeout`） |
+| 締切の後の取消 | 運営が受け、世田谷営業所へメール（返信で完了。マスター 174〜178）。集荷されていなければ請求しない | 同上＋佐川の返信の有無 |
+| 変更（日付・ホテル・個数） | Phase 1A は運営が対応。**元の予約を取り消し、新しい予約を作る**（料金・同意・ホテルの確認・受入をやり直す）。旅行者には新しい予約の確認ページで同意し直してもらう | 元の予約の `replaced_by` に新しい予約 |
+| 集荷の現場で個数が増えた | 運営が `extra` の請求を作る（佐川の受託の個数を根拠に記録）。規約の同意の範囲で請求し、失敗したら回収のリンク | `b2c_charges`（kind=extra） |
+| 返金 | 運営が額と理由を入れる。`b2c_refunds` に記録し、Stripe の返金 ID と結果を保存。合計が請求額を超えない | `b2c_refunds`、`b2c_order_events` |
+
+## 7. B2B との分離と運営の権限
+
+**既存のコードで確認したこと（2026-11-03・このブランチ）**:
+
+| 経路 | 現状 | B2C への影響と対策 |
+|---|---|---|
+| 代理店の API（`app/api/agency/**`） | 代理店名で絞っている（`app/api/agency/shipment/[id]/route.ts:53`、`app/api/agency/label/route.ts:46`、`app/api/agency/shipment/[id]/hotel-change/route.ts:84`。予約の作成は自社名に固定 `app/api/agency/booking/route.ts:332`） | `BondEx Direct` という名前の代理店を作れないようにする（`agencies.name` に CHECK）。これで代理店から B2C の行は見えない・変えられない |
+| 運営の API（`app/api/operator/**`、`app/api/shipments`） | `middleware.ts` で `/api/*` は既定で運営の認証が必須（公開ルートは許可リスト） | 運営は B2C も見える（意図どおり）。CSV（`app/api/operator/report/route.ts`）には `channel` の列を足す |
+| **公開の追跡**（`app/api/track/[bookingId]/route.ts`） | **認証なし**で予約番号（`BDX-XXXXXX`）から区間・ホテル・日付・姓を返す | B2C の行は返さない（`channel='b2c'` を除外）。B2C の旅行者は My Booking の秘密のリンクで見る。B2B の動きは変えない |
+| **WhatsApp の自動応答**（`lib/whatsapp-tracking.ts`） | 予約番号・追跡番号で区間を引いて返す | 同じく B2C の行を除外 |
+| B2B の課金の 4か所 | 監査報告書 13.6 | `channel='b2c'` を通さない＋2章の DB の制約 |
+
+試験: 上の各経路について「B2C の行が見えない・変えられない」を自動の試験にする（Phase 1A 計画の A12）。
+
+**運営の識別**: 今の運営のセッション（`lib/operator-session.ts` の `issueOperatorSession`）は「v1.有効期限」だけを署名しており、**誰が操作したかを持たない**。パスキー（`sql/031_operator_passkeys.sql`）は端末ごとに `credential_id` と `label` を持つ。
+→ Phase 1A では、パスキーで入った時のセッションに **端末の credential_id** を載せる。B2C の手作業（集荷の確認と取り消し・返金・ホテルの確認と受入・追加の請求）は、パスキーのセッションでだけ実行できる（パスワード・サーバー間の Bearer では不可）。記録には `credential_id`・端末名・入力した担当者名を残す。端末は担当者ごとに登録する運用にする。個人のアカウントのログインは Phase 1B。
+
+**Supabase の注意**: サーバーの特権キーは RLS を通らない。新しい表に RLS を付けても、守りの本体は API の権限の確認（上の表の対策）。
+
+## 8. 安全スイッチ
+
+| スイッチ | OFF の時 |
+|---|---|
+| `B2C_BOOKING_ENABLED` | 新しい予約の受付（入口・予約・カード登録）を止める。既存の予約の閲覧・取消・確定の処理は動く |
+| `B2C_MY_BOOKING_ENABLED` | 既存の予約の確認ページを止める（緊急時だけ。通常は ON） |
+| `B2C_CHARGE_LIVE` | 請求を実行しない。`scheduled`/`ready` の請求はそのまま残し、ON に戻した時に 5章の照合を経て 1回ずつ処理する |
+| `B2C_PICKUP_AUTOMATION_ENABLED` | 追跡による自動の集荷確認をしない（Phase 1A は OFF。運営の手作業だけ） |
+
+既定はすべて OFF（`B2C_MY_BOOKING_ENABLED` は公開時に ON）。どれも B2B を止めない。今の `lib/b2c/flags.ts`（`B2C_ENABLED`・`B2C_CHARGE_LIVE`）は、実装時にこの 4つに分ける。
+
+## 9. その他の安全
+
+- 金額はサーバーで計算し、画面から送られた金額は使わない。
+- 入口・予約・My Booking の API には回数の制限（`lib/rate-limit.ts`）。
+- 個人情報（名前・メール・電話）はログに出さない。
+- 新しい表はすべて RLS を有効にし、匿名からの許可は付けない。
+- 索引: `b2c_orders(status, confirmation_due_at)`、`b2c_charges(status, scheduled_at)`、`shipments(channel, shipment_date)`。
+
+## 10. 決めていないこと（実装中に確認する）
+
+- 荷物の重さの上限と、受け付けない品物の一覧（佐川の規則に合わせる。佐川の資料で確認する）。
+- `draft` を消すまでの時間（案: 24時間）。
