@@ -397,6 +397,12 @@ alter table public.b2c_order_events      enable row level security;
 alter table public.b2c_ops_days          enable row level security;
 alter table public.b2c_outbox            enable row level security;
 
+-- 関数はサーバー（service_role）だけが呼ぶ。PostgREST の RPC から匿名・ログイン利用者が呼べないようにする。
+revoke execute on function public.b2c_confirm_order(uuid) from public;
+do $$ begin
+  execute 'revoke execute on function public.b2c_confirm_order(uuid) from anon, authenticated';
+exception when undefined_object then null; end $$;
+
 create index if not exists b2c_orders_status_due on public.b2c_orders(status, confirmation_due_at);
 create index if not exists b2c_orders_pickup on public.b2c_orders(pickup_date);
 
