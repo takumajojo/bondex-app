@@ -4,7 +4,7 @@
  *   実行: npx tsx --tsconfig scripts/test-b2c/tsconfig.json scripts/test-b2c/charge-guard.ts
  */
 import assert from "node:assert/strict"
-import { resetTables } from "@/lib/supabase"
+import { resetTables } from "../test-lead-time/fakes/supabase"
 
 async function main() {
   process.env.STRIPE_CHARGE_LIVE = "true"
