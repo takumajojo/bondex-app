@@ -20,7 +20,7 @@ export type B2cRouteClass = "standard" | "okinawa"
 /**
  * 区間の種類。
  * - 沖縄県内どうし → standard（2026-10-30 確定）
- * - 片方だけ沖縄 → okinawa。「沖縄から本土」の向きも 13,000円かは未確認（16.9 の確認事項）
+ * - 片方だけ沖縄 → okinawa。沖縄から本土の向きも 13,000円（M01 確定 2026-11-02）
  * - 離島は県単位の通常料金（別料金なし・2026-10-30 確定）
  */
 export function b2cRouteClass(originZip: string, destZip: string): B2cRouteClass {
@@ -39,8 +39,8 @@ export interface B2cQuote {
   totalGrossYen: number
 }
 
-/** 1予約の最大個数。設計書 U22 の推奨値（5個）を仮置き。未確定（16.9 の確認事項）。 */
-export const B2C_MAX_PIECES = 5
+/** 1予約の最大個数（M02 確定 2026-11-02: 団体でなくても 50個まで）。 */
+export const B2C_MAX_PIECES = 50
 
 export function quoteB2c(originZip: string, destZip: string, pieces: number): B2cQuote {
   if (!Number.isInteger(pieces) || pieces < 1 || pieces > B2C_MAX_PIECES) {

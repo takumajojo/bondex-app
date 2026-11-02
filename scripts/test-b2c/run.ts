@@ -26,7 +26,8 @@ t("標準: 1個 4,980円（税抜）→ 税込 5,478円", () => {
   assert.equal(q.taxYen, 498)
   assert.equal(q.totalGrossYen, 5478)
 })
-t("本土→沖縄: 1個 13,000円（税抜）", () => {
+t("本土→沖縄・沖縄→本土: 1個 13,000円（税抜）", () => {
+  assert.equal(b2cRouteClass(NAHA, TOKYO), "okinawa")
   const q = quoteB2c(TOKYO, NAHA, 2)
   assert.equal(q.routeClass, "okinawa")
   assert.equal(q.subtotalNetYen, 26000)
@@ -39,6 +40,8 @@ t("沖縄県内どうし（本島→石垣を含む）は標準", () => {
 t("個数の範囲外・郵便番号の不正は例外", () => {
   assert.throws(() => quoteB2c(TOKYO, KYOTO, 0))
   assert.throws(() => quoteB2c(TOKYO, KYOTO, B2C_MAX_PIECES + 1))
+  assert.equal(B2C_MAX_PIECES, 50)
+  assert.equal(quoteB2c(TOKYO, KYOTO, 50).subtotalNetYen, 249000)
   assert.throws(() => quoteB2c(TOKYO, KYOTO, 1.5))
   assert.throws(() => quoteB2c("123", KYOTO, 1))
 })
