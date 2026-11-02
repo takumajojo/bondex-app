@@ -17,6 +17,7 @@ create table if not exists public.b2c_entry_links (
   id             uuid primary key default gen_random_uuid(),
   referrer_code  text not null check (referrer_code ~ '^[A-Z0-9]{3,16}$'),
   referrer_name  text not null,
+  referrer_name_en text,
   token_hash     text not null unique,
   status         text not null default 'active' check (status in ('active', 'disabled')),
   created_at     timestamptz not null default now(),

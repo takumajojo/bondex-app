@@ -1232,3 +1232,15 @@ R01〜R08（紹介料）と D10（ShipAll）は MVP では決めなくてよい�
 - **結果**: `sql/061_b2c_mvp.sql` はエラーなく適用でき、2回流しても通る。検証 52項目すべて合格（`scripts/test-b2c/db/verify_061.sql`、拒否はすべて意図した制約・トリガーによることを確認）。同時に最後の 1枠を取りに行く試験も、片方だけが成立（`scripts/test-b2c/db/concurrency-local.sh`）。
 - **B2B の非回帰**: 従来の書き方の shipments・agencies・operator_passkeys の追加・更新が通る（DB）。既存の試験は test-amount 10/10・test-lead-time 28/28・tracking-poll-selftest 合格。test-tracking は 4/8 だが、origin/main でも同じ 4件が失敗する既存の問題（試験用の偽の Supabase に `.is()` が無い）で、今回の変更によるものではない。
 - 修正: 確定の関数を匿名・ログイン利用者から呼べないよう `revoke execute` を追加。
+
+### 16.23 Stage 2（予約画面）の実装（2026-11-03）
+
+根拠: たくまさんの承認（2026-11-03「Stage 2への着手を承認」）。
+
+- **画面**: `app/book/[token]/page.tsx`（限定公開・検索エンジンに載せない。`app/robots.ts` に `/book/` を追加）、`components/b2c/booking-form.tsx`（スマホ優先の 1列・日本語/英語の切替・下に合計と次へのボタンを固定）。流れは「集荷元のホテルと宿泊日 → 配送先のホテルと宿泊日 → 個数 → 選べる集荷日とお届け日（最短を初期値） → 料金（税込の総額） → 連絡先（名前・メール・WhatsApp） → 同意 → 予約の下書きを保存」。カード登録は Stage 3。
+- **サーバーでの計算と再検証**: `lib/b2c/booking-service.ts`。ホテルは Google の place_id から郵便番号・住所を取り直し、施設の確認の状態・佐川の日数・締切・宿泊日の整合・ホテルの受付の可否（`lib/b2c/hotel-gate.ts`）・受付の上限・料金を計算する。画面から送られた金額は使わない。選べない日付は 422。
+- **API**: `app/api/b2c/{entry,places,quote,orders}`。入口の秘密の token を毎回 DB で確かめる（無効は 404）。新規受付のスイッチが OFF なら 503。回数の制限（`lib/rate-limit.ts` に b2c の区分を追加）。`middleware.ts` の公開の一覧に `/api/b2c/` を追加（各ルートが自分で認証）。受けないホテル（unsupported）は検索の候補から外す。
+- **未確認のホテル**: 画面に「BondEx が未確認のホテルです。予約の確定の前に、ホテルに確認します」と、日付の欄に「まだ確定していません：◯日◯時までに確認。受けられない場合は無料で取り消し」を表示。施設の状態はサーバーの見積の結果を優先して表示。
+- **入口の英語名**: `b2c_entry_links.referrer_name_en` を追加（英語の画面で「For Hankyu Travel travelers」）。
+- **既存の追跡の試験の 4件の失敗の原因**: `lib/tracking/poll-policy.ts` の夜間のガード（JST 21:00〜翌 8:00 は照会しない）により、夜間に試験を実行すると定時の照会がされず失敗していた（コードの不具合ではない）。試験の中の「今」を JST の昼に固定し、偽の Supabase に `.is()` を足して 8/8 合格（`scripts/test-tracking/run.ts`・`fakes/supabase.ts`）。B2C は Phase 1A で自動の集荷確認を使わず（`B2C_PICKUP_AUTOMATION_ENABLED` OFF）、B2C の請求は B2B の課金の入口で止まる（16.20）ので、この試験の結果は B2C に影響しない。
+- **開発の環境**: ローカルの Supabase（REST を含む）＋ `.env.local`（ローカルの Supabase のキーと Google の検索のキーだけ。本番の Supabase・Stripe・メール・WhatsApp のキーは無い）。DB は `scripts/test-b2c/db/seed-dev.sh` でダミーのデータで作る。
