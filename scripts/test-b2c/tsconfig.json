@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/lib/supabase": ["scripts/test-lead-time/fakes/supabase.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}
