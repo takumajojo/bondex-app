@@ -1229,6 +1229,6 @@ R01〜R08（紹介料）と D10（ShipAll）は MVP では決めなくてよい�
 
 - **試験の環境**: Supabase のブランチは「Pro 以上でのみ利用可」で作れなかった（費用は発生していない）。たくまさんの指示で、Mac の上のローカルの Supabase（Supabase CLI 3.0.0＋Colima、PostgreSQL 17.11）で検証。DB のコンテナだけを起動し、外部への通信の部品（認証・API・メール・Edge Functions）は起動していない。本番のデータはコピーしていない（ダミーのデータだけ）。
 - **土台**: 本番の shipments・agencies・operator_passkeys の列と制約を、本番の定義の読み取りだけで写した（`scripts/test-b2c/db/000_base_from_prod.sql`。本番の土台の表は Supabase の migration の外で作られているため）。
-- **結果**: `sql/061_b2c_mvp.sql` はエラーなく適用でき、2回流しても通る。検証 53項目すべて合格（`scripts/test-b2c/db/verify_061.sql`、拒否はすべて意図した制約・トリガーによることを確認）。同時に最後の 1枠を取りに行く試験も、片方だけが成立（`scripts/test-b2c/db/concurrency-local.sh`）。
+- **結果**: `sql/061_b2c_mvp.sql` はエラーなく適用でき、2回流しても通る。検証 52項目すべて合格（`scripts/test-b2c/db/verify_061.sql`、拒否はすべて意図した制約・トリガーによることを確認）。同時に最後の 1枠を取りに行く試験も、片方だけが成立（`scripts/test-b2c/db/concurrency-local.sh`）。
 - **B2B の非回帰**: 従来の書き方の shipments・agencies・operator_passkeys の追加・更新が通る（DB）。既存の試験は test-amount 10/10・test-lead-time 28/28・tracking-poll-selftest 合格。test-tracking は 4/8 だが、origin/main でも同じ 4件が失敗する既存の問題（試験用の偽の Supabase に `.is()` が無い）で、今回の変更によるものではない。
 - 修正: 確定の関数を匿名・ログイン利用者から呼べないよう `revoke execute` を追加。
