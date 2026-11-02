@@ -5,6 +5,7 @@
 import assert from "node:assert/strict"
 import { quoteB2c, b2cRouteClass, B2C_MAX_PIECES } from "@/lib/b2c/pricing"
 import { judgeB2cBookability, b2cCutoffAt, type B2cBookabilityInput } from "@/lib/b2c/bookability"
+import { changeDeadlineAt } from "@/lib/change-deadline"
 
 let passed = 0
 function t(name: string, fn: () => void) {
@@ -126,6 +127,16 @@ t("滞在の日付の前後が逆なら不可", () => {
 })
 t("存在しない日付は invalid_date だけを返す", () => {
   assert.deepEqual(judgeB2cBookability(base({ pickupDate: "2026-02-30" })).errors, ["invalid_date"])
+})
+
+console.log("B2B と共通の変更締切")
+t("B2B の変更締切も発送の前日 17:00 JST（B2C の締切と同じ・月末・年末をまたいでも前日）", () => {
+  for (const d of ["2026-11-14", "2027-01-01", "2026-03-01"]) {
+    assert.equal(changeDeadlineAt(d), b2cCutoffAt(d).toISOString())
+  }
+  assert.equal(changeDeadlineAt("2027-01-01"), "2026-12-31T08:00:00.000Z")
+  assert.equal(changeDeadlineAt(""), null)
+  assert.equal(changeDeadlineAt("bad"), null)
 })
 
 console.log(`\n${passed} passed`)

@@ -32,7 +32,7 @@ export interface ShipmentRecord {
   group_name: string | null
   shipment_date: string  // YYYY-MM-DD
   expected_arrival: string | null
-  /** 変更受付締切 = 発送日の2営業日前 18:00 JST (lib/change-deadline.ts が発送日から算出・保存)。 */
+  /** 変更受付締切 = 発送日の前日 17:00 JST (lib/change-deadline.ts が発送日から算出・保存)。 */
   change_deadline_at: string | null
   from_hotel: string
   from_city: string | null
