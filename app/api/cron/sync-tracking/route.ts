@@ -5,7 +5,7 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 import { mailerConfigured } from "@/lib/mailer"
 import { listPickupMisses, markPickupAlerted, listDeliveryOverdue, markDeliveryOverdueAlerted } from "@/lib/shipments-db"
 import type { ShipmentStatus } from "@/lib/shipments-db"
-import { chargeShipmentIfDue } from "@/lib/charge"
+import { chargeShipmentIfDue, sweepUnchargedCardShipments } from "@/lib/charge"
 import { getTrackingProvider } from "@/lib/tracking"
 import { statusDataFromRow, sendAgencyStatusEmail, type StatusRow } from "@/lib/agency-status-notify"
 import { notifyBondEx } from "@/lib/notify"
@@ -107,7 +107,9 @@ export async function GET(req: NextRequest) {
   // 追跡照会（Ship&co）も未達アラート（集荷漏れ/配達遅延）も行わず即終了し、
   // 429 エラーの蓄積と誤アラートを抑制する。復旧したら lib/tracking-pause.ts で解除。
   if (TRACKING_SYNC_PAUSED) {
-    return NextResponse.json({ ok: true, paused: true, note: "追跡同期は一時停止中（佐川の追跡停止・外部要因）" })
+    // 追跡を止めていても、手動で集荷/配達にした区間の課金漏れは拾う (課金の安全網は止めない)。
+    const chargeSweep = await sweepUnchargedCardShipments()
+    return NextResponse.json({ ok: true, paused: true, note: "追跡同期は一時停止中（佐川の追跡停止・外部要因）", chargeSweep })
   }
 
   // 二重起動ロック (GitHub Actions の誤判定リトライ対策・2026-08-31 監査対応)。
@@ -711,7 +713,12 @@ export async function GET(req: NextRequest) {
       console.error("[sync-tracking] delivery-overdue check failed:", err instanceof Error ? err.message : err)
     }
 
+    // 課金漏れの安全網: 集荷済み以降・未課金のカード区間をすべて課金し直す (冪等)。
+    //  ステータス前進フックで課金されなかった区間 (手入力の問い合わせ番号・一時エラー等) をここで必ず拾う。
+    const chargeSweep = await sweepUnchargedCardShipments()
+
     return NextResponse.json({
+      chargeSweep,
       overdueAlertsSent,
       deliveryResent,
       pickupAlertsSent,

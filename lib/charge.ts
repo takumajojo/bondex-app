@@ -12,6 +12,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { buildChargeInvoice } from "@/lib/invoice-build"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { grossOf } from "@/lib/tax"
+import { resolveUnitPriceYen } from "@/lib/pricing"
 
 /**
  * 集荷完了時のカード課金 (海外/法人=Stripe 1件ごと課金モデル)。
@@ -67,27 +68,23 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       return { charged: false, skipped: true, reason: "addition_settled_separately" }
     }
 
-    // amount_yen は税抜小計 (個数 × 単価)。実際の課金額は下で代理店の国内/海外区分に応じて決める。
-    const netYen = shipment.amount_yen ?? 0
-    if (!Number.isFinite(netYen) || netYen <= 0) {
-      return { charged: false, skipped: true, reason: "no_amount" }
-    }
-
     const sb = getSupabase()
     if (!sb) return { charged: false, skipped: true, reason: "db_unset" }
 
     // 代理店の決済情報を引く
     const { data: agency } = await sb
       .from("agencies")
-      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt, locale, is_domestic")
+      .select("id, name, contact_email, payment_method, card_on_file, stripe_customer_id, billing_exempt, locale, is_domestic, unit_price_yen")
       .eq("name", shipment.agency)
       .maybeSingle()
 
-    if (!agency) return { charged: false, skipped: true, reason: "agency_not_found" }
-
-    // 実際に課金する額。国内・海外を問わず消費税を上乗せ (税込)。
-    // 海外の旅行会社向けでも国内配送の手配は輸出免税にならず 10% 課税 (2026-10-05 税理士確認)。
-    const amountYen = grossOf(netYen)
+    if (!agency) {
+      // 代理店名がマスタと食い違う = 誰に課金すべきか不明。黙って終わらせず必ず人に知らせる。
+      const msg = `代理店「${shipment.agency ?? "—"}」が代理店マスタに見つからないため課金できません (集荷完了済)`
+      await recordShipmentChargeError(shipmentId, msg)
+      await notifyChargeFailure(shipment.booking_id, shipment.leg_index, shipment.agency ?? "—", 0, msg, null)
+      return { charged: false, error: msg }
+    }
 
     // テスト代理店 (billing_exempt) は、どんなに配送手配しても一切課金しない (谷口さん指示)。
     // カード登録は可能だが、集荷完了しても課金処理をスキップする。
@@ -99,6 +96,39 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
     if (agency.payment_method !== "card") {
       return { charged: false, skipped: true, reason: "not_card_agency" }
     }
+
+    // amount_yen は税抜小計 (個数 × 単価)。
+    // 未確定 (0) のまま集荷された区間 = 送り状を Ship&co で発行せず問い合わせ番号を手入力した区間など。
+    // 以前はここで黙ってスキップしており、カード代理店の課金漏れ事故になった (BDX-8K8Z2V-L1, 2026-10-31)。
+    // → 集荷済みなら「個数 × 代理店単価」でこの場で確定させて課金する。個数も無ければ必ずアラート。
+    let netYen = Number(shipment.amount_yen) || 0
+    if (netYen <= 0) {
+      const count = Math.floor(Number(shipment.suitcase_count) || 0)
+      if (count <= 0) {
+        const msg = "金額・個数が未確定のため課金できません (集荷完了済)。個数を確定して再試行してください"
+        await recordShipmentChargeError(shipmentId, msg)
+        await notifyChargeFailure(shipment.booking_id, shipment.leg_index, agency.name, 0, msg, null)
+        return { charged: false, error: msg }
+      }
+      netYen = count * resolveUnitPriceYen(agency.unit_price_yen as number | null)
+      // 未確定 (0/NULL) のときだけ書く。並走で他経路が先に確定していたら上書きしない。
+      const { error: amtErr } = await sb
+        .from("shipments")
+        .update({ amount_yen: netYen })
+        .eq("id", shipmentId)
+        .or("amount_yen.is.null,amount_yen.lte.0")
+      if (amtErr) {
+        const msg = `請求額の確定に失敗したため課金を中止しました: ${amtErr.message}`
+        await recordShipmentChargeError(shipmentId, msg)
+        await notifyChargeFailure(shipment.booking_id, shipment.leg_index, agency.name, 0, msg, null)
+        return { charged: false, error: msg }
+      }
+      shipment.amount_yen = netYen
+    }
+
+    // 実際に課金する額。国内・海外を問わず消費税を上乗せ (税込)。
+    // 海外の旅行会社向けでも国内配送の手配は輸出免税にならず 10% 課税 (2026-10-05 税理士確認)。
+    const amountYen = grossOf(netYen)
 
     if (!agency.card_on_file || !agency.stripe_customer_id) {
       const msg = "カード未登録のため課金できません (集荷完了済)"
@@ -341,4 +371,86 @@ async function notifyChargeFailure(
     agencyEmail: null,
   })
   void agencyEmail
+}
+
+/**
+ * 課金漏れの安全網 (2026-11-02 谷口さん指示「カード登録で課金していないのは事故。絶対にないように」)。
+ *
+ * 課金は本来「集荷 or 配送中/配達完了にステータスが進んだ瞬間」のフックで行うが、
+ * フックは一度きりなので、その瞬間に何らかの理由で課金されなかった区間は二度と拾われなかった。
+ * この関数は追跡同期 cron (30分おき) の最後に毎回走り、次の条件の区間をすべて課金し直す:
+ *   - status が picked_up / in_transit / delivered (集荷ライン以降)
+ *   - charged_at が無い (未課金) かつ charge_error が無い (失敗は既にアラート済み・手動再試行に任せる)
+ *   - 追加区間でない (Checkout リンクで別清算)・キャンセルされていない
+ *   - 代理店がカード払い かつ テスト代理店 (billing_exempt) でない
+ * chargeShipmentIfDue は冪等 (charged_at ガード + Stripe idempotencyKey) なので二重課金しない。
+ * 実課金は STRIPE_CHARGE_LIVE=true のときだけ (それ以外は即 return)。
+ */
+export interface ChargeSweepResult {
+  checked: number
+  charged: Array<{ legRef: string; amountYen: number }>
+  failed: Array<{ legRef: string; error: string }>
+  skipped: Array<{ legRef: string; reason: string }>
+}
+
+export async function sweepUnchargedCardShipments(limit = 50): Promise<ChargeSweepResult> {
+  const out: ChargeSweepResult = { checked: 0, charged: [], failed: [], skipped: [] }
+  if (process.env.STRIPE_CHARGE_LIVE !== "true" || !process.env.STRIPE_SECRET_KEY) return out
+  const sb = getSupabase()
+  if (!sb) return out
+  try {
+    const { data: agencies, error: agErr } = await sb
+      .from("agencies")
+      .select("name")
+      .eq("payment_method", "card")
+      .or("billing_exempt.is.null,billing_exempt.eq.false")
+    if (agErr) throw new Error(agErr.message)
+    const names = (agencies ?? []).map((a) => String(a.name))
+    if (names.length === 0) return out
+
+    const { data: rows, error } = await sb
+      .from("shipments")
+      .select("id, booking_id, leg_index")
+      .in("status", ["picked_up", "in_transit", "delivered"])
+      .in("agency", names)
+      .is("charged_at", null)
+      .is("charge_error", null)
+      .is("cancelled_at", null)
+      .or("is_addition.is.null,is_addition.eq.false")
+      .order("shipment_date", { ascending: true })
+      .limit(limit)
+    if (error) throw new Error(error.message)
+
+    for (const r of rows ?? []) {
+      const legRef = `${r.booking_id}-L${(r.leg_index as number) + 1}`
+      out.checked++
+      const res = await chargeShipmentIfDue(r.id as string)
+      if (res.charged) out.charged.push({ legRef, amountYen: res.amountYen ?? 0 })
+      else if (res.error) out.failed.push({ legRef, error: res.error })
+      else out.skipped.push({ legRef, reason: res.reason ?? "unknown" })
+    }
+
+    // 対象なのに課金も失敗記録もされずに素通りした区間 = 想定外。必ず人に知らせる。
+    const silent = out.skipped.filter((s) => s.reason !== "already_charged")
+    if (silent.length > 0) {
+      await sendOpsAlert({
+        subject: `【要確認】集荷済み・未課金のカード区間が ${silent.length} 件あります`,
+        lines: [
+          "集荷済み(以降)のカード払い区間で、課金も失敗記録もされなかったものがあります。",
+          ...silent.map((s) => `- ${s.legRef}: ${s.reason}`),
+          "ダッシュボード: https://bondex.express/operator/dashboard",
+        ],
+        agencyEmail: null,
+      }).catch(() => {})
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[charge] sweepUnchargedCardShipments failed:", msg)
+    await sendOpsAlert({
+      subject: "【要確認】未課金区間の自動チェックに失敗しました",
+      lines: [`理由: ${msg}`, "集荷済み・未課金のカード区間が残っていないか、ダッシュボードの「未課金」で確認してください。"],
+      agencyEmail: null,
+    }).catch(() => {})
+  }
+  return out
 }
