@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { rateLimit } from "@/lib/rate-limit"
 import {
   deliveryDateErrorCode,
@@ -689,6 +690,11 @@ export async function POST(req: NextRequest) {
           },
           { status: 409 },
         )
+      }
+
+      // B2C の区間（代理店名 BondEx Direct）は佐川の Biz-Logi で集荷する（送り状は佐川が持参）。Ship&co では発行しない（有料の二重手配を防ぐ）。
+      if (existing && isB2cShipmentRow(existing as { agency?: string })) {
+        return NextResponse.json({ error: "B2C の区間は Ship&co で発行しません（佐川の集荷依頼で手配します）。", b2c: true }, { status: 409 })
       }
 
       if (existing?.status === "issued" && existing.label_url) {

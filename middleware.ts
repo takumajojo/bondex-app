@@ -38,6 +38,7 @@ const PUBLIC_PREFIXES = [
   "/api/cron/",
   "/api/demo/",
   "/api/g/", // 添乗員向け共有ビュー (期限付きトークンで自己認証・読み取り専用)
+  "/api/b2c/", // B2C の旅行者の予約 (入口の秘密の token・予約の秘密のリンクを各ルートで検証。docs/b2c/B2C_MVP_SCHEMA_v1.md)
 ]
 const PUBLIC_EXACT = new Set<string>([
   // パスキー認証 API (登録はパスワード・ログインは生体認証で自己ゲート)

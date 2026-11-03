@@ -1,0 +1,113 @@
+BondEx BtoC 最終設計 v1.4｜実装準備 完全指示
+
+目的：阪急交通社へ、海外エージェントから旅行者本人に案内できるBtoC予約URLを最短・安全に公開する。既存のB2C_DESIGN.md、B2C_PLATFORM_AUDIT_v1.md、B2C_PARTNER_CHANNEL_PROPOSAL_v1.md、B2C_MVP_SCHEMA_v1.md、~/JOJO/state/bondex.md、現行B2Bコードを基準にv1.4へ統合する。ShipAll固有機能、紹介料、ホテル還元、精算、OTA/APIはMVPから除外する。
+
+1.  対象施設
+    有人フロントが常設され、スタッフが荷物を受領・一時保管し、佐川等へ確実に引き渡せる宿泊施設同士のみ対象。Airbnb、民泊、個人宅、無人ホテル、セルフチェックインのみ、フロントなし、荷物預かり不可、配送業者との受け渡し不可はNG。単に「ホテル」であるだけで可としない。ホテルマスターは将来
+    verified / unknown /
+    unsupported、荷物預かり可否、集荷対応、受領対応、フロント時間、最終確認日を持てる構造にする。unknownを自動的に利用可能としない。
+
+2.  料金
+    標準1個4,980円（税抜）。沖縄行き13,000円。沖縄県内4,980円。離島専用料金は現時点で作らない。旅行者には税込総額を表示。予約時にunit_price、quantity、subtotal、tax、total、price_ruleをsnapshot保存し、後日の料金変更で既存予約を変えない。
+
+3.  決済
+    予約時は課金しない。Stripeでカード登録、利用可能性確認、必要な本人認証、将来のoff-session課金への同意を取得。実際に佐川の集荷を確認した後に課金する。SetupIntent＋集荷後PaymentIntentを基本候補として検証。現設計の7日前holdは必要性を再検証し、不要なら削除。状態は
+    payment_method_pending → payment_method_ready → charge_pending →
+    charged。失敗時は payment_failed → 再試行 → Email/WhatsApp →
+    安全な支払リンク → 運営アラート。
+
+4.  二重課金防止
+    shipments.channel=‘b2c’、b2c_order_id、b2c_paymentsをB2C金銭の正本とする。B2Cを既存B2B課金経路から構造的に除外。DB制約＋Stripe
+    idempotency
+    key＋アプリガードで同一shipmentを二重課金不能にする。B2B非回帰テスト必須。
+
+5.  状態管理 Booking / Shipping / Paymentを分離。Bookingはdraft /
+    pending_review / confirmed /
+    cancelled。Shippingは既存shipments.status。Paymentはpayment_method_pending
+    / payment_method_ready / charge_pending / charged / payment_failed /
+    refunded / cancelled。
+
+6.  配送基盤
+    B2C専用配送システムは作らず、shipmentsをB2B/B2C共通基盤にする。ホテル連絡、佐川集荷、エントリーシート、追跡、配送状態、遅延監視、運営画面、通知を最大限再利用。
+
+7.  UX スマホ最優先。集荷元ホテル → 配送先ホテル → 宿泊日程 →
+    配送可能日/最短到着日 → 荷物数 → 料金 → 連絡先＋カード登録 →
+    完了。自由選択後に「配送できません」と返さず、既存の郵便番号別配送日数からEarliest
+    deliveryを自動算出し、可能な日だけ選択可能にする。
+
+8.  宿泊日・ホテル整合
+    集荷日は集荷元滞在期間内。到着は配送先滞在と整合。配送先チェックアウト後到着、締切超過、同日配送不可区間等は選択不能。予約成立時に両ホテル名、住所、郵便番号、宿泊者名、チェックイン/アウト等をsnapshot保存。
+
+9.  言語・連絡 MVPはEnglish /
+    Japanese。氏名・Email必須。WhatsAppは強く推奨を基本案として再検証。電話番号はE.164。
+
+10. 預け忘れ防止
+    集荷前日と当日にEmail、WhatsApp登録者にはWhatsAppでも通知。予定時間を過ぎても集荷確認できなければ運営アラート。通知はrecipient×event×order/shipmentで重複防止。
+
+11. 集荷確認→課金 正式なpickup
+    confirmationを既存コード・佐川実データから定義。API遅延、重複、誤検知、手動処理を考慮。手動確認はログイン運営者、理由、操作者、時刻、event
+    log必須。pickup_confirmedとchargedは別イベント。
+
+12. My Booking アカウント登録不要。推測不能なsecret token
+    URLで、予約番号、ホテル、集荷/到着予定、個数、料金、予約/配送/決済状態、追跡、キャンセル可能時の操作、サポートを表示。予約番号＋メールだけではアクセス不可。
+
+13. 紹介URL 阪急交通社流入をsecure slugで識別。entry source / referrer /
+    campaignを将来拡張可能にし、紹介元は予約成立時に固定。紹介料機能は作らない。
+
+14. Feature Flag / Event
+    B2C_ENABLED、B2C_CHARGE_LIVEを維持し、B2C_PICKUP_AUTOMATION_ENABLEDも検討。B2Bを止めずB2Cだけ停止可能にする。booking_created、booking_confirmed、payment_method_registered、reminder_sent、pickup_confirmed、charge_started/succeeded/failed、shipment_delayed、cancelled、refund、manual_override等を追記型event
+    logに保存。
+
+15. Human-error-proof / Security
+    間違った値を選べない、二重処理できない、異常なら止まる設計を優先。RLS、anonymous
+    direct DB禁止、server-side access、token hash、rate
+    limit、CSRF、Stripe
+    webhook署名、PII非ログ化、client価格不信頼、idempotency、audit
+    logを確認。
+
+16. 仮受付 ホテル未確認・配送日数不明をconfirmedにしない。pending_review
+    / awaiting_hotel_confirmationを検討。旅行者にはRequest received /
+    Confirming with hotel / Booking
+    confirmed等で表示し、仮受付で集荷確約しない。
+
+17. 締切 基本は集荷前日17:00。ただしcustomer booking cutoff、hotel
+    confirmation deadline、carrier request deadline、change/cancellation
+    deadlineを分離し、既存16:00表記等との不一致を解消。処理不能日程は選択させない。
+
+18. 運営・監視
+    既存operatorを再利用し、B2C/B2B、ホテル、日程、ホテル確認、shipment、pickup、payment、通知、要対応を一目で確認。決済失敗、未集荷、ホテル未確認、遅延は要対応キューへ。予約作成失敗、SetupIntent失敗、pickup後未課金、charge_failed、reminder未送信、shipment未作成、tracking停滞、webhook/cron失敗を監視。
+
+19. E2E
+    正常系：東京→大阪、複数個、沖縄、英日、阪急URL、予約時無課金、集荷後1回課金、My
+    Booking、通知。
+    ホテル系：verified/unknown/unsupported、無人、セルフチェックイン、預かり不可、事前受領不可。
+    日付系：Earliest
+    delivery、不能日、締切後、チェックアウト後、配送日数不明、closed
+    date。
+    決済系：SetupIntent失敗、3DS、PaymentIntent成功/失敗、pickup/webhook重複、cron/手動競合、B2B課金混入防止。
+    配送系：預け忘れ、未集荷、追跡遅延、手動pickup、遅延、完了。
+    Security：token推測、rate
+    limit、CSRF、署名不正、金額改ざん、PII、anonymous DB。 Feature
+    Flag：B2Cのみ停止、課金OFF、pickup automation OFF、B2B無影響。
+    画面だけでなくDB、Stripe test mode、event
+    log、shipment、通知、課金回数まで検証。
+
+20. 規模と将来 月3,000件以上を前提に全件cronを避け、index、batch、retry
+    queue、API/Stripe/佐川rate
+    limitを考慮。ただしMVPで過剰な分散システムは作らない。B2C公開を佐川API完成まで待たせず、将来の一括集荷・追跡自動紐付けの接続点だけ設計する。
+
+21. 最終成果物 B2C_DESIGN
+    v1.4、最終schema、Booking/Shipping/Payment状態遷移、予約→カード→shipment→集荷→課金→完了sequence、DB
+    migration案、API一覧、Stripe設計、bookability/Earliest
+    delivery仕様、ホテル受付可否仕様、notification matrix、event
+    log、feature flags、operator要対応キュー、E2E
+    matrix、B2B非回帰テスト、依存順実装タスク、MVP公開までの再見積もり、Phase
+    2一覧を提出。既存コード再利用は根拠ファイルパスを示す。
+
+22. 実装開始条件
+    二重課金防止が設計/DB/testの3層で担保、B2B非回帰テスト定義、ホテル受付不可条件明文化、Earliest
+    delivery確定、pickup confirmation正本定義、payment
+    failure回収導線定義、B2Cのみ停止可能、E2E
+    matrix完成。この条件を満たしたら将来要件を理由に設計を延々と続けず、MVP実装へ進むための最終承認事項だけを提示する。
+
+禁止：承認前に本番DB、Stripe本番、本番環境を変更しない。既存B2B挙動を勝手に変更しない。ShipAll要件をMVPへ戻さない。未確定事項を勝手に確定扱いしない。
