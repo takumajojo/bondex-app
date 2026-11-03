@@ -55,7 +55,9 @@ function jstHour(now: Date): number {
  */
 export function currentIntervalHours(row: PollRow, now: Date): number {
   const today = jstYmd(now)
-  if (row.status === "issued") {
+  // 集荷前。Biz-Logi で依頼した区間は status が requested/pending のまま集荷前日以前から問合番号を持つため
+  // (2026-11-03)、issued と同じく集荷前として扱う。配送中の間隔で照会すると Ship&co の15回枠を集荷前に消費する。
+  if (row.status === "issued" || row.status === "requested" || row.status === "pending") {
     // 集荷前。発送予定日より前は照会しない（佐川に荷物データが無く exception を返すだけ）。
     if (row.shipment_date && today < row.shipment_date) return Infinity
     return INTERVAL_H.collect
