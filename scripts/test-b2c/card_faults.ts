@@ -73,6 +73,11 @@ async function main() {
   const place = async (q: string) => (await post("/api/b2c/places", { token: TOK, query: q, lang: "en" })).data.candidates[0].placeId as string
   TOKYO = await place("Keio Plaza Hotel Tokyo")
   KYOTO = await place("Hotel Granvia Kyoto")
+  for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
+    sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
+  }
+  // 受付の上限（既定 1日 5件）に他の試験の順番で左右されないよう、この試験で使う日の枠を自分で用意する（ローカルの DB だけ）
+  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
   const stamp = Date.now()
 
   console.log("D1 Stripe に届かない（通信の失敗）→ 失敗を返し、やり直しで 1つだけ作る")
