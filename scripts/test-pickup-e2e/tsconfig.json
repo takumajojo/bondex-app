@@ -3,9 +3,18 @@
   "compilerOptions": {
     "baseUrl": "../..",
     "paths": {
-      "@/lib/supabase": ["scripts/test-pickup-e2e/fakes/supabase.ts"],
-      "@/lib/ops-alert": ["scripts/test-pickup-e2e/fakes/ops-alert.ts"],
-      "@/*": ["./*"]
+      "@/lib/supabase": [
+        "scripts/test-pickup-e2e/fakes/supabase.ts"
+      ],
+      "@/lib/ops-alert": [
+        "scripts/test-pickup-e2e/fakes/ops-alert.ts"
+      ],
+      "@/*": [
+        "./*"
+      ],
+      "@/lib/charge": [
+        "scripts/test-pickup-e2e/fakes/charge.ts"
+      ]
     }
   }
 }

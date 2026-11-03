@@ -9,6 +9,8 @@ import { NextRequest } from "next/server"
 import { db, hooks, initSchema } from "./fakes/supabase"
 import { sentAlerts } from "./fakes/ops-alert"
 
+process.env.MAIL_TEST_CAPTURE = "1" // メールは送らず捕捉する
+process.env.TRACKING_SYNC_PAUSED = "false"
 // ── 環境変数: 模擬の接続先だけ (実在しないホスト・外部通信は下の fetch で全部止める)
 Object.assign(process.env, {
   BIZLOGI_BASE_URL: "https://mock-bizlogi.invalid/api",
@@ -330,6 +332,58 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(r1.alerted, 1)
     assert.equal(r2.alerted, 0)
     assert.equal((await reqs(leg))[0].state, "sending", "自動で解放しない")
+  })
+
+  console.log("5b. 保存失敗からの復旧後: 正しい区間・状態の正常化・二重防止・追跡/通知/課金の継続")
+  await test("アラートの番号で復旧した区間が、そのまま追跡 → 集荷検知 → 代理店通知 → 課金処理まで進む", async () => {
+    const leg = await newLeg({ booking_id: "BDX-RECOVER", agency: "T" })
+    const other = await newLeg({ booking_id: "BDX-OTHER", agency: "T" })
+    let failed = false
+    hooks.beforeRpc = (name, p) => {
+      if (name === "transition_pickup_request" && p.p_to_state === "accepted" && !failed) { failed = true; throw new Error("模擬: DB 保存失敗") }
+    }
+    const a0 = sentAlerts.length
+    const { send } = await previewAndSend(leg)
+    hooks.beforeRpc = null
+    assert.equal(send!.body.outcome, "unknown")
+    // 1) アラートから番号と区間・記録IDを取り出せる
+    const alert = sentAlerts.slice(a0).find((a) => /結果不明/.test(a.subject))!
+    const text = alert.lines.join("\n")
+    const num = /問合番号 (\d{12})/.exec(text)?.[1]
+    const recordId = /記録ID: ([0-9a-f-]{36})/.exec(text)?.[1]
+    assert.ok(num, "アラートに問合番号")
+    assert.ok(alert.subject.includes("BDX-RECOVER-L1"), "アラートに区間番号")
+    assert.equal(recordId, (await reqs(leg))[0].id, "アラートの記録IDはその区間の記録")
+    // 2) その記録に番号を付けて受付済みにする (区間は記録に紐付いているので取り違えない)
+    const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: recordId, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: num, note: "結果不明アラートの番号で記録" })
+    assert.equal(ok.status, 200)
+    assert.deepEqual((await ship(leg)).tracking_numbers, [num])
+    assert.equal((await ship(other)).tracking_numbers, null, "別の区間には入らない")
+    assert.equal((await reqs(leg))[0].state, "accepted")
+    // 3) 二重送信の防止は維持 (ボタン・Excel とも)
+    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })).status, 409)
+    assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })).body.alreadyRecorded, true)
+    assert.ok(!(await todo()).attention.some((x: { shipmentId: string }) => x.shipmentId === leg), "要確認から消える")
+    // 4) 追跡 (即時照会の実処理) → 集荷検知 → 代理店へ集荷メール → 課金処理へ
+    const { reconcileTrackingNow } = await import("../../lib/tracking/reconcile")
+    const { chargeCalls } = await import("./fakes/charge")
+    const g = globalThis as unknown as { __capturedMails?: Array<{ subject?: string; to?: unknown }> }
+    g.__capturedMails = []
+    const provider = { name: "mock", async fetchOne(_c: string, n: string) { return { number: n, noData: false, status: "picked_up" as const, exception: null, collectedAt: "2026-11-05T02:00:00Z" } } }
+    const r = await reconcileTrackingNow(sb as never, leg, provider as never)
+    const s2 = await ship(leg)
+    assert.equal(s2.status, "picked_up", r.note)
+    assert.ok(s2.picked_up_at)
+    assert.ok((g.__capturedMails ?? []).some((m) => /集荷/.test(String(m.subject))), "代理店へ集荷メール")
+    assert.ok(chargeCalls.includes(leg), "集荷確認後に課金処理が呼ばれる")
+    // 5) 配達完了まで進む・完了メールは1通
+    g.__capturedMails = []
+    const done = { name: "mock", async fetchOne(_c: string, n: string) { return { number: n, noData: false, status: "delivered" as const, exception: null, deliveredAt: "2026-11-06T05:00:00Z" } } }
+    await reconcileTrackingNow(sb as never, leg, done as never)
+    assert.equal((await ship(leg)).status, "delivered")
+    assert.equal((g.__capturedMails ?? []).length, 1)
+    // 集荷依頼の記録は受付済みのまま (配送状態とは独立)
+    assert.equal((await reqs(leg))[0].state, "accepted")
   })
 
   console.log("6. 依頼後の変更 (ホテル・日時・個数)")
