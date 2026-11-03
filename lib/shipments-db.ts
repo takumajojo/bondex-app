@@ -179,6 +179,20 @@ export async function saveShipment(
   }
   if (!sb) return { ok: false, error: "Supabase not configured" }
   if (!input.booking_id) return { ok: false, error: "booking_id required" }
+  const row = buildShipmentUpsertRow(input)
+  // booking_id + leg_index で同一区間を update (再発行対応)
+  const { error } = await sb
+    .from("shipments")
+    .upsert(row, { onConflict: "booking_id,leg_index", ignoreDuplicates: false })
+  if (error) {
+    console.error("[shipments-db] saveShipment failed", error.message)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
+}
+
+/** saveShipment が upsert する行。DB に触れない純粋関数 (回帰テスト用に分離)。 */
+export function buildShipmentUpsertRow(input: Partial<ShipmentInsert>): Record<string, unknown> {
   // 必須フィールドのデフォルト
   const row = {
     booking_id: input.booking_id,
@@ -210,8 +224,6 @@ export async function saveShipment(
     suitcase_count: input.suitcase_count ?? 1,
     item_type: input.item_type ?? null,
     amount_yen: input.amount_yen ?? 0,
-    tracking_numbers: input.tracking_numbers ?? null,
-    label_url: input.label_url ?? null,
     issuable_from: input.issuable_from ?? null,
     ship_ref_number: input.ship_ref_number ?? null,
     status: input.status ?? "issued",
@@ -219,7 +231,6 @@ export async function saveShipment(
     notes: input.notes ?? null,
     note_target: input.note_target ?? null,
     is_addition: input.is_addition ?? false,
-    drive_url: input.drive_url ?? null,
     delivery_time: input.delivery_time ?? null,
     pickup_time: input.pickup_time ?? null,
     carrier: input.carrier ?? "sagawa",
@@ -243,15 +254,13 @@ export async function saveShipment(
   if (input.label_sender !== undefined) row.label_sender = input.label_sender
   if (input.label_sender_info !== undefined) row.label_sender_info = input.label_sender_info
   if (input.label_mail_due !== undefined) row.label_mail_due = input.label_mail_due
-  // booking_id + leg_index で同一区間を update (再発行対応)
-  const { error } = await sb
-    .from("shipments")
-    .upsert(row, { onConflict: "booking_id,leg_index", ignoreDuplicates: false })
-  if (error) {
-    console.error("[shipments-db] saveShipment failed", error.message)
-    return { ok: false, error: error.message }
-  }
-  return { ok: true }
+  // 問合番号・送り状URL・Drive URL も「渡された時だけ」(2026-11-03 監査)。
+  // 発行の押し直しや状態だけの再保存 (伝票なし保存・失敗の記録) が、手入力の問合番号や
+  // 発行済みの送り状を null で消していた。新規行はカラム既定値 (null) になる。
+  if (input.tracking_numbers !== undefined) row.tracking_numbers = input.tracking_numbers
+  if (input.label_url !== undefined) row.label_url = input.label_url
+  if (input.drive_url !== undefined) row.drive_url = input.drive_url
+  return row
 }
 
 /**

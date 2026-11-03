@@ -15,6 +15,8 @@ import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
 import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@/lib/hotel-place"
 import { sagawaLeadTimeViolation, type RouteLeadTime } from "@/lib/lead-time-check"
+import { legTrackingNumbers, reissueBlocked } from "@/lib/shipment-reissue"
+import { normalizeBanchi, stripKyotoRouteName } from "@/lib/jp-address"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -145,19 +147,6 @@ function capName(input: string, maxWidth = 28): string {
   return clean || cut.trim()
 }
 
-/**
- * 京都の「通り名」アドレス対策 (佐川 E2-0004: 郵便番号と住所が一致しない)。
- * 例 "木屋町通三条上る上大阪町509" のように町名の前に通り名(○○通△△上る/下る/
- * 東入/西入)が付くと、佐川は zip↔町名 の照合に失敗する。京都府のときだけ通り名
- * prefix を除去し「町名+番地」だけ残す ("上大阪町509")。zip=町名 で照合が通る。
- */
-function stripKyotoRouteName(street: string, prefecture: string): string {
-  if (prefecture !== "京都府") return street
-  const m = street.match(/^.*(?:[上下][ルる]|[東西]入[ルる]?)(.+)$/u)
-  const rest = m?.[1]?.trim()
-  return rest && /[町丁]/.test(rest) ? rest : street // 町名らしき文字が残る時だけ採用
-}
-
 // 苗字のみ抽出 ("Mr. Jack Costanzo" → "Costanzo")。
 // 品名欄の文字数節約用. 入力が日本語名 / 1単語の場合はそのまま返す.
 function lastNameOnly(fullName: string): string {
@@ -167,29 +156,6 @@ function lastNameOnly(fullName: string): string {
   const noTitle = trimmed.replace(/^(Mr\.?|Mrs\.?|Ms\.?|Dr\.?|Prof\.?)\s+/i, "")
   const parts = noTitle.split(/\s+/).filter(Boolean)
   return parts[parts.length - 1] || trimmed
-}
-
-/**
- * 番地の正規化 — 佐川 (e飛伝) は「44番地1」形式を郵便番号と不一致 (E2-0004) で弾く。
- * Ship&co ダッシュボードで通る形は「44-1」。全角数字/ハイフンを半角に、
- * 数字に続く 丁目/番地/番/号 をハイフンに畳む。
- *
- * 数字が前置する場合のみ変換するため、町名に含まれる「一番町」等 (数字なしの番) は
- * 壊さない。ヤマト経路では使わない (過去実績のあるマッピングを維持するため)。
- * 例: 東九条上殿田町44番地1 → 東九条上殿田町44-1 / 西浅草3丁目17番1号 → 西浅草3-17-1
- */
-export function normalizeBanchi(s: string): string {
-  return (s || "")
-    .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)) // 全角数字→半角
-    .replace(/[−－–—ー]/g, "-") // 全角ハイフン類→半角
-    .replace(/(\d+)丁目/g, "$1-") // 3丁目 → 3-
-    .replace(/(\d+)番地(\d+)号?/g, "$1-$2") // 44番地1 / 44番地1号 → 44-1
-    .replace(/(\d+)番(\d+)号?/g, "$1-$2") // 17番1号 → 17-1
-    .replace(/(\d+)番地/g, "$1") // 44番地 → 44
-    .replace(/(\d+)号/g, "$1") // 1号 → 1
-    .replace(/-{2,}/g, "-") // 連続ハイフンを1つに
-    .replace(/-$/, "") // 末尾ハイフン除去
-    .trim()
 }
 
 // Yamato (Ship&co) 構造 — Ship&co の field マッピング:
@@ -729,6 +695,16 @@ export async function POST(req: NextRequest) {
           alreadyIssued: true,
           label: existing.label_url,
           trackingNumbers: existing.tracking_numbers ?? [],
+          savedToDb: true,
+        })
+      }
+      // 送り状 URL は無いが、問合番号が入っている / 集荷済み以降の区間は手配済み。
+      // 押し直しで上書き保存すると手入力の問合番号や進んだステータスを巻き戻すため、保存せずに返す。
+      if (reissueBlocked(existing)) {
+        return NextResponse.json({
+          status: "not_needed",
+          alreadyArranged: true,
+          trackingNumbers: legTrackingNumbers(existing ?? {}),
           savedToDb: true,
         })
       }
