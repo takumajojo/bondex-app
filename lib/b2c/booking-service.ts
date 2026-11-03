@@ -13,6 +13,7 @@ import { quoteB2c, B2C_MAX_PIECES, type B2cQuote } from "./pricing"
 import { judgeB2cBookability, jstYmd, B2C_FALLBACK_TRANSIT_DAYS, type B2cBookabilityError } from "./bookability"
 import { planB2cConfirmation, type B2cHotelStatus, type B2cConfirmationMode } from "./hotel-gate"
 import { b2cLateBookingEnabled } from "./flags"
+import { b2cAccessToken, b2cAccessTokenSecretConfigured } from "./access-token"
 
 /** Phase 1A の 1予約の個数の上限（Beta。全体の設計は 50個）。DB の CHECK と同じ値。 */
 export const B2C_BETA_MAX_PIECES = 10
@@ -89,6 +90,32 @@ async function placeDetails(placeId: string): Promise<Omit<B2cHotel, "status"> |
   const hotel = { placeId, name: d.name ?? "", address: d.formattedAddress, postalCode: zip, prefecture: pref }
   hotelCache.set(placeId, { at: Date.now(), hotel })
   return hotel
+}
+
+/**
+ * 英語のホテル名と住所（英語の旅行者への通知・My Booking 用）。予約の下書きの時に 1回だけ取って控えに残す。
+ * 取れなければ空（表示は日本語の名前に戻す）。B2B の lib/hotel-place.ts（日本語）は変えない。
+ */
+const hotelEnCache = new Map<string, { at: number; name: string; address: string }>()
+async function placeNamesEn(placeId: string): Promise<{ name: string; address: string }> {
+  const hit = hotelEnCache.get(placeId)
+  if (hit && Date.now() - hit.at < HOTEL_CACHE_MS) return hit
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) return { name: "", address: "" }
+  try {
+    const u = new URL("https://maps.googleapis.com/maps/api/place/details/json")
+    u.searchParams.set("place_id", placeId)
+    u.searchParams.set("fields", "name,formatted_address")
+    u.searchParams.set("language", "en")
+    u.searchParams.set("key", apiKey)
+    const r = await fetch(u.toString(), { signal: AbortSignal.timeout(8000) })
+    const j = (await r.json()) as { result?: { name?: string; formatted_address?: string } }
+    const v = { at: Date.now(), name: j.result?.name ?? "", address: j.result?.formatted_address ?? "" }
+    hotelEnCache.set(placeId, v)
+    return v
+  } catch {
+    return { name: "", address: "" }
+  }
 }
 
 export async function facilityStatuses(placeIds: string[]): Promise<Map<string, B2cHotelStatus>> {
@@ -378,12 +405,20 @@ export async function createB2cDraftOrder(entry: B2cEntry, q: B2cQuoteInput, gue
       .upsert({ place_id: h.placeId, name: h.name, address: h.address, postal_code: h.postalCode, status: "unknown" }, { onConflict: "place_id", ignoreDuplicates: true })
   }
 
-  const accessToken = crypto.randomBytes(24).toString("base64url")
+  if (!b2cAccessTokenSecretConfigured()) return { ok: false, errors: ["server_error"] }
+  // 予約の ID をここで決め、秘密の token をそこから作る（後の通知にも My Booking のリンクを入れるため。lib/b2c/access-token.ts）
+  const orderId = crypto.randomUUID()
+  const accessToken = b2cAccessToken(orderId)
   const p = quote.price
-  const snap = (h: B2cHotel, stay: B2cStayInput) => ({ name: h.name, address: h.address, postal_code: h.postalCode, prefecture: h.prefecture, check_in: stay.checkIn, check_out: stay.checkOut })
+  const [oEn, dEn] = await Promise.all([placeNamesEn(quote.origin.placeId), placeNamesEn(quote.dest.placeId)])
+  const snap = (h: B2cHotel, stay: B2cStayInput, en: { name: string; address: string }) => ({
+    name: h.name, address: h.address, name_en: en.name || null, address_en: en.address || null,
+    postal_code: h.postalCode, prefecture: h.prefecture, check_in: stay.checkIn, check_out: stay.checkOut,
+  })
   const { data, error } = await sb
     .from("b2c_orders")
     .insert({
+      id: orderId,
       entry_link_id: entry.id,
       referrer_code: entry.referrerCode,
       guest_name: (guest.name ?? "").trim(),
@@ -392,8 +427,8 @@ export async function createB2cDraftOrder(entry: B2cEntry, q: B2cQuoteInput, gue
       language: guest.language === "ja" ? "ja" : "en",
       origin_place_id: quote.origin.placeId,
       dest_place_id: quote.dest.placeId,
-      origin_snapshot: snap(quote.origin, q.origin),
-      dest_snapshot: snap(quote.dest, q.dest),
+      origin_snapshot: snap(quote.origin, q.origin, oEn),
+      dest_snapshot: snap(quote.dest, q.dest, dEn),
       pickup_date: quote.selected.pickupDate,
       delivery_date: quote.selected.deliveryDate,
       pieces: p.pieces,

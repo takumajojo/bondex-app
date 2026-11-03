@@ -98,9 +98,10 @@ export async function launch({ port = 9333, mobile = true, lang = "ja-JP" } = {}
     }
     throw new Error(`timeout waiting for: ${expr.slice(0, 120)}`)
   }
-  async function navigate(url) {
+  async function navigate(url, { hydrate = true } = {}) {
     await send("Page.navigate", { url }, page)
     await waitFor("document.readyState === 'complete'")
+    if (!hydrate) return sleep(800) // ボタンの無いページ（フロント向けの案内など）
     // 画面の部品が動き始める（hydration）まで待つ
     await waitFor("[...document.querySelectorAll('button')].some(b => Object.keys(b).some(k => k.startsWith('__react')))", { timeout: 30000 })
   }

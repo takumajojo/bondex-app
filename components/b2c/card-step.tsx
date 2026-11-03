@@ -46,6 +46,7 @@ const T = {
     checking: "Confirming with the card company… Please keep this page open.",
     checkingSlow: "This is taking longer than usual. Your card registration is saved even if the connection drops. We will update this page automatically.",
     secure: "Your card number goes directly to Stripe, our payment provider. BondEx does not store it.",
+    brands: "Accepted cards: Visa, Mastercard, JCB, American Express, Diners Club, Discover. UnionPay is not accepted.",
     confirmedTitle: "Your booking is confirmed",
     confirmedBody: "Leave your bags at the front desk by 11:00 on the pickup day. We will send the details by email and WhatsApp.",
     awaitingTitle: "Card registered — booking not yet confirmed",
@@ -56,6 +57,7 @@ const T = {
     cancelledBody: "The time for card registration ran out, so the request was cancelled. Nothing has been charged. Please book again.",
     cardOnFile: (b: string, l: string) => `Card: ${b.toUpperCase()} •••• ${l}`,
     again: "Start a new booking",
+    myBooking: "View your booking (save this link)",
     errors: {
       card_consent_required: "Please tick the box to continue.",
       quote_changed: "The price has changed. Please book again.",
@@ -85,6 +87,7 @@ const T = {
     checking: "カード会社に確認しています…このページを開いたままお待ちください。",
     checkingSlow: "確認に時間がかかっています。通信が切れても登録は保存されます。このページは自動で更新されます。",
     secure: "カードの番号は決済会社の Stripe に直接送られます。BondEx は保存しません。",
+    brands: "使えるカード: Visa・Mastercard・JCB・American Express・Diners Club・Discover。銀聯（UnionPay）は使えません。",
     confirmedTitle: "予約が確定しました",
     confirmedBody: "集荷日の 11:00 までにホテルのフロントへお預けください。詳しくはメールと WhatsApp でお送りします。",
     awaitingTitle: "カードを登録しました（予約はまだ確定していません）",
@@ -95,6 +98,7 @@ const T = {
     cancelledBody: "カード登録の時間が過ぎたため、受付を取り消しました。請求はされていません。お手数ですが、もう一度ご予約ください。",
     cardOnFile: (b: string, l: string) => `カード：${b.toUpperCase()} •••• ${l}`,
     again: "最初から予約する",
+    myBooking: "予約の確認ページを開く（このリンクを保存してください）",
     errors: {
       card_consent_required: "チェックを入れてください。",
       quote_changed: "料金が変わりました。もう一度ご予約ください。",
@@ -284,9 +288,14 @@ export function B2cCardStep({ token, lang, order, onRestart }: { token: string; 
             <div className="flex justify-between"><dt>{lang === "ja" ? "合計（税込・集荷の後に請求）" : "Total (tax incl., charged after pickup)"}</dt><dd className="font-semibold tabular-nums">{yen(view.totalGrossYen)}</dd></div>
             {view.card ? <div className="text-muted-foreground">{t.cardOnFile(view.card.brand, view.card.last4)}</div> : null}
           </dl>
-        ) : (
+        ) : null}
+        {cancelled ? (
           <Button type="button" variant="outline" className="h-12 w-full" onClick={onRestart}>{t.again}</Button>
-        )}
+        ) : confirmed || awaiting ? (
+          <a className="block rounded-xl border px-3 py-3 text-center text-sm font-medium underline-offset-2 hover:underline" href={`/my/${order.accessToken}${lang === "ja" ? "?lang=ja" : ""}`} data-my-booking-link>
+            {t.myBooking}
+          </a>
+        ) : null}
       </section>
     )
   }
@@ -300,6 +309,8 @@ export function B2cCardStep({ token, lang, order, onRestart }: { token: string; 
         <p className="font-semibold">{t.noCharge}</p>
         <p className="mt-1">{t.whenCharged(yen(order.totalGrossYen))}</p>
       </div>
+
+      <p className="text-sm font-medium" data-card-brands>{t.brands}</p>
 
       {checking && intent ? (
         <p className="rounded-lg bg-muted p-3 text-sm" aria-live="polite">{slow ? t.checkingSlow : t.checking}</p>

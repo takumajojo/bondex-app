@@ -25,5 +25,8 @@ echo "== sql/061_b2c_mvp.sql"
 "${PSQL[@]}" < sql/061_b2c_mvp.sql
 echo "== sql/061 again (must be re-runnable)"
 "${PSQL[@]}" < sql/061_b2c_mvp.sql
+echo "== sql/062_b2c_stage4.sql (2回・再実行できること)"
+"${PSQL[@]}" < sql/062_b2c_stage4.sql
+"${PSQL[@]}" < sql/062_b2c_stage4.sql
 echo "== verify"
 "${PSQL[@]}" < scripts/test-b2c/db/verify_061.sql

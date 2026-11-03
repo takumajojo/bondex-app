@@ -448,17 +448,12 @@ export async function expireStaleCardPending(stripe: Stripe, now: Date = new Dat
         continue
       }
     }
-    const { data: upd } = await sb
-      .from("b2c_orders")
-      .update({ status: "cancelled", cancelled_at: now.toISOString(), cancel_reason: "card_timeout", cancelled_by: "system" })
-      .eq("id", id)
-      .eq("status", "card_pending")
-      .neq("card_status", "registered")
-      .select("id")
-    if (upd && upd.length === 1) {
-      await addEvent(id, "cancelled_card_timeout", "system", { status: "card_pending" }, { status: "cancelled" })
-      expired++
-    }
+    // 取消・記録・旅行者への通知を DB の 1つのトランザクションで（sql/062 b2c_cancel_order）。直前に進んだ予約は取り消さない。
+    const { data: out, error: cancelErr } = await sb.rpc("b2c_cancel_order", {
+      p_order_id: id, p_reason: "card_timeout", p_actor_type: "system", p_expect_status: "card_pending",
+    })
+    if (cancelErr) console.error("[b2c/card] expire: cancel failed", cancelErr.code)
+    if (out === "cancelled") expired++
   }
   return { expired, finalized }
 }

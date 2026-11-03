@@ -62,7 +62,9 @@ const resultText = (b) => b.evaluate(`document.querySelector('[data-b2c-result]'
 const alertText = (b) => b.evaluate(`[...document.querySelectorAll('[role=alert]')].map(e => e.textContent).join(' / ')`)
 const stripeErrorText = async (b) => {
   const sid = await b.frameSession("elements-inner-payment")
-  return b.evaluate(`[...document.querySelectorAll('.p-FieldError, [role=alert]')].map(e => e.textContent).join(' / ')`, sid)
+  // Stripe の部品がエラーの文を出すまで最大 5秒待つ（早く読みすぎると空になる）
+  const expr = `[...document.querySelectorAll('.p-FieldError, [role=alert]')].map(e => e.textContent).join(' / ')`
+  return (await b.waitFor(expr, { timeout: 5000, sessionId: sid }).catch(() => "")) || ""
 }
 
 const scenarios = {

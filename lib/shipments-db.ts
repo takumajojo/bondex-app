@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase"
+import { B2C_AGENCY_NAME } from "@/lib/b2c/b2b-guard"
 import type { ResidenceAddress } from "@/lib/residence"
 import { changeDeadlineAt } from "./change-deadline"
 import { LABEL_MAIL_ENABLED } from "./label-delivery"
@@ -346,6 +347,9 @@ export async function listHotelContactDue(todayYmd: string): Promise<HotelContac
   }
   const out: HotelContactDueRow[] = []
   for (const r of (data ?? []) as Record<string, unknown>[]) {
+    // B2C の区間はホテルの確認を B2C の流れ（b2c_hotel_acceptances・施設の確認）で行うので、B2B のホテル連絡の催促に出さない。
+    // channel の列が無い DB（B2C の表の適用前）でも動くよう、代理店名で判定する（lib/b2c/b2b-guard.ts）。
+    if (r.agency === B2C_AGENCY_NAME) continue
     if (!hotelContactApplies(r.status as string)) continue
     const target = (r.note_target as string) || "to"
     const applies = applicableRoutes(

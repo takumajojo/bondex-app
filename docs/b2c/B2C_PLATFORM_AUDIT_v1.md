@@ -1261,3 +1261,18 @@ R01〜R08（紹介料）と D10（ShipAll）は MVP では決めなくてよい�
 - **試験**（すべてローカルの開発サーバー＋ローカルの Supabase＋Stripe のテストモード）: 通しの試験 53（`scripts/test-b2c/card_e2e.py`）、カードの種類・拒否の理由・操作の事故の網羅 86（`card_matrix.py`）、Stripe の障害の注入 17（`card_faults.ts`）、DB の停止 7（`card_dbdown.py`）、画面（画面なしの Chrome で本物の Stripe の入力欄と 3D セキュア）（`scripts/test-b2c/ui/card_ui.mjs`）、単体 33、予約の API 18、B2B の回帰（金額 10・配送日数 28・追跡 8・課金の入口・運営のセッション）。
 - **試験で見つけて直した不具合**: (1) DB の障害を「予約が無い」と返し、二重の予約を招きうる (2) 予約の無い通知を Stripe が再送し続ける (3) 3D セキュアの後に画面が Stripe の部品の返事を受け取れないと結果が出ない（確認の最中からサーバーに照合する） (4) 画面の照合が開発時に一度も動かない（表示中の印の戻し忘れ） (5) 英語の画面で Cookie の案内が日本語でボタンを覆う。
 - **未解決（判断が要る）**: 中国の銀聯（UnionPay）は Stripe で登録不可。登録は通るが後の請求で失敗しうるカード（不正の疑い・Radar で止まる・請求だけ拒否）は登録の時点で見分けられない（Stage 5 で未収の扱い）。カードの入力欄に Stripe の Link（情報の保存）が出る（消すには Stripe の管理画面の設定で、B2B にも影響）。放置の片付けの定期の実行は Stage 4。`b2c_confirm_order` が shipments の guest_language を 'en' 固定で入れている（日本語の旅行者の通知の言語。Stage 4 で直す・DB の関数の変更が要る）。
+
+### 16.25 Stage 4（通知・My Booking・取消・定期の処理）の実装（2026-11-04）
+
+根拠: たくまさんの承認（2026-11-04「Stage 4への着手を承認」）。仕様は正式な Phase 1A 設計（B2C_PHASE1A_BETA_PLAN v2.1・B2C_MVP_SCHEMA v1.3）を優先。判断: UnionPay 非対応は許容（画面で使えるブランドを明示）、集荷後の決済失敗は Stage 5（未収管理・再認証・支払リンク・運営アラート）、Stripe Link は現状維持（管理画面の設定は変えない）。
+
+- **DB（`sql/062_b2c_stage4.sql`・ローカルの試験環境だけに適用）**: `b2c_confirm_order` の shipments の `guest_language` を予約の言語（ja/en）に（061 は 'en' 固定）。awaiting に移った時だけ確認待ちの通知を積む。`b2c_cancel_order`（予約の取消・集荷前の shipments の行の取消・記録・未送信の通知の取消・取消の通知を 1つのトランザクション。`p_expect_status` で直前に進んだ予約は取り消さない）。`b2c_outbox` に sending・送った文面の控え（rendered）・送信手段。
+- **通知**（`lib/b2c/notify.ts`・`notify-templates.ts`・文面の一覧と WhatsApp のテンプレートの案は `docs/b2c/B2C_NOTIFICATION_TEMPLATES.md`）: 予約確定・確認待ち・取消（理由別）・前日（18:00〜）と当日（8:00〜11:00）のリマインド。pending→sending の条件付きの更新で 1つの処理だけが送る。送る直前に予約の今の状態を確かめる。失敗は 2・5・15・60・180分の間隔で 6回まで、最後は failed＋運営に通知。DB とアプリの時計のずれを 1分まで許容（試験で 0.1秒のずれで作った直後の通知を取りこぼすことを確認したため）。外に送るのは `B2C_NOTIFY_LIVE=true`、WhatsApp は加えて `B2C_WHATSAPP_LIVE=true`。
+- **My Booking**（`app/my/[token]`・`lib/b2c/my-booking.ts`）: 秘密の token は予約の ID から HMAC で作る（`lib/b2c/access-token.ts`・`B2C_ACCESS_TOKEN_SECRET`）ので、後の通知にもリンクを入れられる。予約・配送・決済の状態を別々に表示。確認待ちは「確定していない・預けないで」。取消は前日 17:00 まで（`app/api/b2c/my/cancel`・カードは Customer から外す・運営に通知）。検索エンジンに載せず、リンク元に URL を渡さない（noindex・no-referrer・robots に `/my/`）。
+- **フロント向けの案内**（`app/my/[token]/frontdesk`・バウチャーの代わり）: 佐川が送り状を持参（マスター 14）するので、日本語でホテルのスタッフへの依頼と受付番号・個数・集荷日・お届け先。確定前は「預からないで」。
+- **英語のホテル名**: 予約の下書きの時に Google から英語の名前と住所を取り、控え（`name_en`・`address_en`）に残す。英語の通知・My Booking はそれを使い、佐川・ホテル向け（shipments・フロント向けの案内）は日本語のまま。
+- **ホテル確認の結果の入力**（`app/api/b2c/ops/hotel`・`lib/b2c/hotel-ops.ts`）: 個人のパスキー（v2）だけ。施設の確認済み → 確認待ちの予約を確定、受けられない → 取消と通知。直前予約の受入（両方了承で確定、断り・無回答で取消）。理由（note）は必須で記録。
+- **定期の処理**（`app/api/b2c/cron/tick`・`CRON_SECRET`・`B2C_SCHEDULER_ENABLED`）: 30分放置の取消・確認の期限切れの取消・リマインドの積み込み・通知の送信。`cron_locks` で二重起動を止める。本番で数分おきに呼ぶ仕組みは未作成（公開前・別の承認）。
+- **B2B との分離**（監査で確認）: 自動で外部に送る・有料の処理が B2C の行に動く経路は無し（代理店名の照合で宛先なし・Ship&co の自動発行は既定 OFF・課金は既にガード）。追加の対策: 運営の手動の Ship&co の発行（`app/api/shipandco/create`）で B2C の行を 409、B2B のホテル連絡の催促（`listHotelContactDue`）から B2C を除外。どちらも `channel` の列ではなく代理店名で判定（本番の DB に 061 を適用する前に B2B のコードが壊れないため）。残る影響（運営向けのみ）: 集荷漏れ・配達遅延の運営アラート、今日の作業の一覧、CSV（`channel` の列は未追加）、運営の編集が b2c_orders に戻らない。
+- **ページの「見つからない」**: root の `app/loading.tsx` のため、Next は存在しない予約のページを 200 で「見つかりません」の画面として返す（`/book/` も同じ・既存のサイト全体の仕様）。noindex なので害は小さい。
+- **試験**: Stage 4 の通し 63（`scripts/test-b2c/notify_e2e.ts`）、Stage 3 の通し 53・網羅 86・障害 17・DB 停止 7・画面 28、単体 33、予約の API 18、DB の検証（061＋062 の再実行）と同時の予約、B2B の回帰（金額 10・配送日数 28・追跡 8・課金の入口・運営のセッション）。

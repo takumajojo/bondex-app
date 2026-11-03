@@ -70,7 +70,8 @@ function localeFromPath(): string {
   if (typeof window === "undefined") return "ja"
   const seg = window.location.pathname.split("/")[1]
   // B2C の旅行者の予約画面（/book/<token>）は URL の ?lang= が言語（既定は英語。components/b2c/booking-form.tsx）
-  if (seg === "book") return new URLSearchParams(window.location.search).get("lang") === "ja" ? "ja" : "en"
+  // My Booking（/my/<token>）も同じ（日本語の旅行者への通知のリンクは ?lang=ja つき）
+  if (seg === "book" || seg === "my") return new URLSearchParams(window.location.search).get("lang") === "ja" ? "ja" : "en"
   return ["en", "es", "fr", "zh", "it"].includes(seg) ? seg : "ja"
 }
 
