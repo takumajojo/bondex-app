@@ -78,6 +78,11 @@ def wait_rest():
 
 pl = lambda q: post("/api/b2c/places", {"token": T, "query": q, "lang": "en"})[1]["candidates"][0]["placeId"]
 tk, ky = pl("Keio Plaza Hotel Tokyo"), pl("Hotel Granvia Kyoto")
+# この試験で使うホテル（確認済み）と受付の枠を自分で用意する（他の試験の順番に左右されない。ローカルの DB だけ）
+for pid, name in ((tk, "Keio Plaza Hotel Tokyo"), (ky, "Hotel Granvia Kyoto")):
+    sql(f"insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('{pid}', '{name}', 'verified', 'e2e@example.invalid', now()) "
+        f"on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()")
+sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
 c, r, _ = post("/api/b2c/orders", {"token": T, "originPlaceId": tk, "destPlaceId": ky, "origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"},
                                    "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-15"}, "pieces": 1, "pickupDate": "2026-11-10", "deliveryDate": "2026-11-12",
                                    "name": "DB Down", "email": "db@example.invalid", "whatsapp": "+81 90 1111 2222", "language": "en", "consent": True})
