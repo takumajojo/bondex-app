@@ -7,14 +7,10 @@ import { sendMail } from "@/lib/mailer"
 import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { grossOf } from "@/lib/tax"
-import { PRICING } from "@/lib/pricing"
+import { resolveUnitPriceYen } from "@/lib/pricing"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
-
-// 税抜単価。発行時(shipandco/create)と同一の一元管理値を使い、経路で単価がズレないようにする
-// (旧: 5000 ハードコード → 発行時 4980 と不一致で、個数修正すると単価が変わっていた。2026-09-16 統一)。
-const PRICE_PER = PRICING.regularPrice
 
 type ReasonCode = "mismatch" | "not_collected" | "customer_change" | "other"
 const REASON_LABEL_JA: Record<ReasonCode, string> = {
@@ -37,7 +33,7 @@ const REASON_LABEL_EN: Record<ReasonCode, string> = {
  * 集荷時の「受付個数 ≠ 実個数」を、理由を必須にして修正する運用専用フロー。
  * middleware で operator 認証必須。
  *   - newCount === 0（または reasonCode="not_collected"）→ 区間キャンセル（status=cancelled・請求なし）
- *   - newCount >= 1 → suitcase_count を更新し、未課金なら amount_yen を 個数×¥5,000 に再計算
+ *   - newCount >= 1 → suitcase_count を更新し、未課金なら amount_yen を 個数×代理店単価 に再計算
  *     （課金済みは金額を触らず、通知で「差額返金が必要」と明示）
  * 変更は count_change_log に追記し、依頼元ランオペへメール＋社内Slackへ通知する。
  */
@@ -80,6 +76,22 @@ export async function POST(req: NextRequest) {
   const shipment = await getShipment(id)
   if (!shipment) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
 
+  // 代理店の契約単価・連絡先をまとめて取得。単価は発行時 (shipandco/create) と同じ resolveUnitPriceYen で
+  // 解決し、個数是正でも代理店別単価が効くようにする (旧: 4,980 固定で、契約単価を設定した代理店の是正後
+  // 金額がズレていた)。単価が引けないまま既定単価で上書きすると代理店別単価を壊すので、
+  // 取得失敗時は中断する (lib/amount-recalc.ts と同方針)。
+  const { data: ag, error: agErr } = await sb
+    .from("agencies")
+    .select("contact_email, locale, unit_price_yen")
+    .eq("name", shipment.agency)
+    .maybeSingle()
+  if (agErr) {
+    return NextResponse.json({ error: `代理店情報の取得に失敗しました: ${agErr.message}` }, { status: 500 })
+  }
+  const agencyEmail: string | null = ag?.contact_email ?? null
+  const english = ag?.locale === "en"
+  const unitPriceYen = resolveUnitPriceYen(ag?.unit_price_yen as number | null | undefined)
+
   const oldCount = shipment.suitcase_count
   const oldAmount = shipment.amount_yen ?? 0
   const wasCharged = !!shipment.charged_at
@@ -90,7 +102,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 新しい請求額: 課金済みは据え置き（差額返金は運用で対応）。未課金はキャンセル=0 / それ以外=個数×単価。
-  const newAmount = wasCharged ? oldAmount : cancel ? 0 : newCount * PRICE_PER
+  const newAmount = wasCharged ? oldAmount : cancel ? 0 : newCount * unitPriceYen
 
   const logEntry = {
     at: new Date().toISOString(),
@@ -122,15 +134,6 @@ export async function POST(req: NextRequest) {
   const { error: upErr } = await sb.from("shipments").update(update).eq("id", id)
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
 
-  // 依頼元ランオペの連絡先
-  const { data: ag } = await sb
-    .from("agencies")
-    .select("contact_email, locale")
-    .eq("name", shipment.agency)
-    .maybeSingle()
-  const agencyEmail: string | null = ag?.contact_email ?? null
-  const english = ag?.locale === "en"
-
   const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
   const route = `${shipment.from_hotel} → ${shipment.to_hotel}`
   const yen = (n: number) => `¥${grossOf(n).toLocaleString()}（税込）`
@@ -149,7 +152,7 @@ export async function POST(req: NextRequest) {
       `受付 ${oldCount}個 → 実際 ${newCount}個 に修正いたしました。`,
     )
     if (wasCharged) {
-      const diff = oldAmount - newCount * PRICE_PER
+      const diff = oldAmount - newCount * unitPriceYen
       jaLines.push(
         `ご請求は ${yen(oldAmount)} で処理済みのため、差額 ${yen(Math.abs(diff))} を${diff >= 0 ? "返金" : "追加請求"}いたします。`,
       )
@@ -187,7 +190,7 @@ export async function POST(req: NextRequest) {
         `Corrected: ${oldCount} → ${newCount} item(s).`,
       )
       if (wasCharged) {
-        const diff = oldAmount - newCount * PRICE_PER
+        const diff = oldAmount - newCount * unitPriceYen
         enLines.push(
           `Your charge of ${yen(oldAmount)} was already processed, so we will ${diff >= 0 ? "refund" : "additionally charge"} the difference of ${yen(Math.abs(diff))}.`,
         )
@@ -215,7 +218,7 @@ export async function POST(req: NextRequest) {
       `理由: ${REASON_LABEL_JA[reasonCode]}`,
       reasonNote ? `補足: ${reasonNote}` : "",
       wasCharged
-        ? `⚠️ 課金済み ${yen(oldAmount)} → ${cancel ? "全額" : yen(Math.abs(oldAmount - newCount * PRICE_PER))}返金が必要（Stripe）`
+        ? `⚠️ 課金済み ${yen(oldAmount)} → ${cancel ? "全額" : yen(Math.abs(oldAmount - newCount * unitPriceYen))}返金が必要（Stripe）`
         : `請求: ${yen(oldAmount)} → ${yen(newAmount)}`,
       agencyEmail ? `ランオペ通知: ${mailSent ? "送信済" : "未送信（要確認）"}` : "ランオペのメール未登録",
     ],
