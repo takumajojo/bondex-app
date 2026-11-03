@@ -107,10 +107,10 @@ export async function previewBizLogiPickup(
   const warnings = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
     .filter((c) => c.severity === "warning")
     .map((c) => `${c.code} ${c.message}`)
-  // 18:00 以降も送信はできる (正式な締めは 20:00)。結果不明時に確認が間に合わない恐れだけを知らせる。
+  // 19:00 (送信目標) 以降も送信はできる (正式な締めは 20:00)。結果不明時に確認が間に合わない恐れだけを知らせる。
   if (pastRecommendedTime(row.shipment_date, now)) {
     warnings.unshift(
-      "社内の推奨完了時刻 (集荷前日 18:00) を過ぎています。送信はできますが、結果不明になった場合は締め (20:00) までに世田谷営業所へ確認できないことがあります (その場合は再依頼せず SOP に従う)",
+      "社内の送信目標 (集荷前日 19:00) を過ぎています。送信はできますが、結果不明になった場合は締め (20:00) までに世田谷営業所へ確認できないことがあります (その場合は再依頼せず SOP に従う)",
     )
   }
   return { ok: true, fingerprint: detailFingerprint(detail), detail, warnings, cutoffAt: pickupRequestCutoff(row.shipment_date)?.toISOString() ?? null }

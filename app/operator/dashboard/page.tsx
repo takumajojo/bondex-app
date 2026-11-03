@@ -37,7 +37,7 @@ import { labelMailStatus, labelMailApplies, todayJst, type LabelMailUrgency } fr
 import TodayTodo from "@/components/operator/TodayTodo"
 import { LABEL_MAIL_ENABLED } from "@/lib/label-delivery"
 import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
-import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
+import { changeDeadlineAt, formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { hotelDisplay } from "@/lib/hotel-name"
 import { endpointLabel, residenceOneLine } from "@/lib/residence"
 
@@ -1635,16 +1635,17 @@ export default function DashboardPage() {
                           )
                         })()}
                       </td>
-                      {/* 変更締切 (発送日の2営業日前 18:00 JST・48h切ったら警告色) */}
+                      {/* 変更締切 (集荷前日 18:30 JST・集荷日から計算・48h切ったら警告色) */}
                       <td className="p-3 align-top">
                         {(() => {
-                          const over = isChangeDeadlinePassed(it.change_deadline_at)
-                          const near = isChangeDeadlineNear(it.change_deadline_at)
+                          const deadline = changeDeadlineAt(it.shipment_date) ?? it.change_deadline_at
+                          const over = isChangeDeadlinePassed(deadline)
+                          const near = isChangeDeadlineNear(deadline)
                           return (
                             <span
                               className={`text-[11px] whitespace-nowrap ${over ? "text-red-700 font-semibold" : near ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}
                             >
-                              {formatChangeDeadlineJst(it.change_deadline_at)}
+                              {formatChangeDeadlineJst(deadline)}
                             </span>
                           )
                         })()}

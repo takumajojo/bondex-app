@@ -30,7 +30,7 @@ export async function initSchema(repo: string) {
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)
 
 class Query {
-  private op: "select" | "update" = "select"
+  private op: "select" | "update" | "insert" = "select"
   private cols = "*"
   private where: string[] = []
   private params: unknown[] = []
@@ -45,12 +45,17 @@ class Query {
     return `$${this.params.length}`
   }
   select(cols = "*") {
-    if (this.op === "update") this.returning = true
+    if (this.op === "update" || this.op === "insert") this.returning = true
     this.cols = cols
     return this
   }
   update(p: Row) {
     this.op = "update"
+    this.payload = p
+    return this
+  }
+  insert(p: Row) {
+    this.op = "insert"
     this.payload = p
     return this
   }
@@ -90,6 +95,13 @@ class Query {
   private async exec() {
     const w = this.where.length ? ` where ${this.where.join(" and ")}` : ""
     try {
+      if (this.op === "insert") {
+        const entries = Object.entries(this.payload ?? {})
+        const cols = entries.map(([k]) => k).join(", ")
+        const vals = entries.map(([, v]) => `${this.p(jsonCol(v) ? JSON.stringify(v) : v)}${jsonCol(v) ? "::jsonb" : ""}`).join(", ")
+        const r = await db.query(`insert into ${this.table} (${cols}) values (${vals})${this.returning ? ` returning ${this.cols}` : ""}`, this.params)
+        return { data: this.returning ? (this.single ? r.rows[0] : r.rows) : null, error: null }
+      }
       if (this.op === "update") {
         const sets = Object.entries(this.payload ?? {}).map(([k, v]) => `${k} = ${this.p(jsonCol(v) ? JSON.stringify(v) : v)}${jsonCol(v) ? "::jsonb" : ""}`)
         const sql = `update ${this.table} set ${sets.join(", ")}${w}${this.returning ? ` returning ${this.cols}` : ""}`

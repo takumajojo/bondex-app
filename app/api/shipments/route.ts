@@ -18,6 +18,7 @@ import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { notifyBondEx } from "@/lib/notify"
 import { alertSagawaCancel, alertSagawaChange } from "@/lib/sagawa-alert"
 import { pushToAgency } from "@/lib/agency-push"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -229,7 +230,9 @@ export async function PATCH(req: NextRequest) {
     Object.keys(patch).length === 1 && patch.status
       ? await updateShipmentStatus(id, patch.status)
       : await updateShipmentFields(id, patch)
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 })
+  if (!r.ok) {
+    return isPickupLockError(r.error) ? NextResponse.json(operatorLockBody(r.error), { status: 409 }) : NextResponse.json({ error: r.error }, { status: 500 })
+  }
 
   // 集荷依頼後(佐川手配済み)の日程/個数変更は、佐川キャンセル＋再採番が必要なため運用へ通知。
   if (patch.shipment_date !== undefined || patch.suitcase_count !== undefined) {

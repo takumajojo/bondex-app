@@ -13,8 +13,8 @@ import { supabasePickupStore, liveRequestByShipment, PickupStoreError, isPickupT
 import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/state"
 import { cleanOverrides } from "@/lib/pickup-request/leg-input"
 import { bizlogiEligibility } from "@/lib/pickup-request/eligibility"
+import { applyChangeWithEffects } from "@/lib/pickup-request/apply-effects"
 import {
-  applyPickupChange,
   createPickupChange,
   hotelChangeFields,
   listPickupChanges,
@@ -124,9 +124,11 @@ export async function POST(req: NextRequest) {
       if (!changeId) return NextResponse.json({ error: "changeId required" }, { status: 400 })
       if (!actor) return NextResponse.json({ error: "担当者名を入力してください" }, { status: 400 })
       if (action === "change_apply") {
-        const r = await applyPickupChange(changeId, actor)
+        // 反映 (DB 関数) と付随処理 (請求額・締切・代理店への変更メール)
+        const r = await applyChangeWithEffects(changeId, actor)
         return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
       }
+
       const step = body.step as ChangeStep
       if (!["contact", "approve", "reject", "withdraw"].includes(step)) return NextResponse.json({ error: "step が不正です" }, { status: 400 })
       const policy = body.numberPolicy === "kept" || body.numberPolicy === "changed" ? body.numberPolicy : null

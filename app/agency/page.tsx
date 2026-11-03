@@ -32,10 +32,10 @@ import { WHATSAPP_URL } from "@/lib/contact-links"
 import { openRosterPrintWindow } from "@/lib/roster-print"
 import type { GroupViewPayload } from "@/lib/group-view"
 import {
-  legLockedForAgency,
+  agencyChangeMode,
   agencyHotelChangeLock,
   isSelfServiceCutoffPassed,
-  PICKUP_REQUESTED_HOTEL_MESSAGE,
+  CHANGE_REQUEST_NOTICE,
 } from "@/lib/agency-self-service"
 
 interface Shipment {
@@ -137,7 +137,7 @@ const messages = {
     ncName: "Guest (representative) name",
     ncNote: "Applies to every leg of this booking and to the voucher. The number of travelers stays the same.",
     lockCutoff:
-      "Changes are accepted until 17:00 (JST) on the day before shipment. Please contact BondEx from “Contact” and we'll take care of it.",
+      "Changes are accepted until 18:30 JST on the day before pickup. After that, they are sent as a change request to BondEx.",
     hotelChangeDone: "Hotel changed. BondEx has been notified.",
     lockGroupLarge:
       "Large group bookings (30+ pieces) can't be changed here within a week of shipment. Please contact BondEx from “Contact” and we'll take care of it.",
@@ -149,8 +149,8 @@ const messages = {
     lockedBody:
       "This leg has already been arranged with the courier, so it can't be changed here. Please contact BondEx via the Contact button — we'll handle it for you.",
     lockedClose: "Close",
-    lockPickupRequested: PICKUP_REQUESTED_HOTEL_MESSAGE.en,
-    hotelNeedsSupport: " (contact support)",
+    requestNotice: CHANGE_REQUEST_NOTICE.en,
+    asRequest: " (request)",
     dcTitle: "Change dates",
     dcShip: "Pickup date",
     dcArrive: "Drop-off date",
@@ -270,7 +270,7 @@ const messages = {
     ncName: "代表者（お客様）のお名前",
     ncNote: "この予約の全区間とバウチャーに反映されます。人数は変わりません。",
     lockCutoff:
-      "変更は配送前日の 17:00 までの受付です。締切を過ぎた分は「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
+      "変更は集荷前日の18:30（日本時間）までの受付です。締切を過ぎた分は変更申請として BondEx が確認のうえ対応いたします。",
     hotelChangeDone: "ホテルを変更しました。BondEx にも通知済みです。",
     lockGroupLarge:
       "団体（30個以上）のご予約は、発送1週間以内の変更ができません。お手数ですが「お問い合わせ」から BondEx までご連絡ください。こちらで対応いたします。",
@@ -282,8 +282,8 @@ const messages = {
     lockedBody:
       "配送業者への手配が済んでいるため、こちらから変更できません。お手数ですが「お問い合わせ」ボタンから BondEx にご連絡ください。こちらで対応いたします。",
     lockedClose: "閉じる",
-    lockPickupRequested: PICKUP_REQUESTED_HOTEL_MESSAGE.ja,
-    hotelNeedsSupport: "（サポートへ連絡）",
+    requestNotice: CHANGE_REQUEST_NOTICE.ja,
+    asRequest: "（申請）",
     dcTitle: "日程を変更",
     dcShip: "集荷日",
     dcArrive: "お届け日",
@@ -386,6 +386,8 @@ export default function AgencyDashboard() {
     shipment: Shipment
     action: "dates" | "count" | "name" | "cancel" | "locked"
     lockedMessage?: string
+    /** 直接変更ではなく変更申請になる (集荷依頼済み・締切後) */
+    asRequest?: boolean
   } | null>(null)
   const [actNote, setActNote] = useState("")
   // ホテル変更 (お届け先=guest / 発送元=pickup)。未発行・締切内のみ・専用モーダル。
@@ -399,7 +401,7 @@ export default function AgencyDashboard() {
   const [sessionExpired, setSessionExpired] = useState(false)
 
   const patchShipment = useCallback(
-    async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
+    async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string; message?: string }> => {
       try {
         const sb = getBrowserSupabase()
         const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
@@ -412,13 +414,14 @@ export default function AgencyDashboard() {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify(body),
         })
-        const d = (await res.json().catch(() => ({}))) as { error?: string }
+        const d = (await res.json().catch(() => ({}))) as { error?: string; message?: string; requested?: boolean }
         if (res.status === 401) {
           setSessionExpired(true)
           return { ok: false, error: messages[locale].sessionExpired }
         }
-        if (!res.ok) return { ok: false, error: d.error }
-        return { ok: true }
+        if (!res.ok) return { ok: false, error: d.message || d.error }
+        // 202 = 変更申請として受け付けた (集荷依頼済み・締切後)。案内文をそのまま出す
+        return { ok: true, message: d.requested ? d.message : undefined }
       } catch {
         return { ok: false, error: "network" }
       }
@@ -428,7 +431,7 @@ export default function AgencyDashboard() {
 
   // ホテル変更の適用: POST /api/agency/shipment/[id]/hotel-change (未発行・締切内のみ)。
   const changeHotel = useCallback(
-    async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
+    async (id: string, body: Record<string, unknown>): Promise<{ ok: boolean; error?: string; message?: string }> => {
       try {
         const sb = getBrowserSupabase()
         const token = sb ? (await sb.auth.getSession()).data.session?.access_token : undefined
@@ -441,13 +444,13 @@ export default function AgencyDashboard() {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify(body),
         })
-        const d = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
+        const d = (await res.json().catch(() => ({}))) as { error?: string; message?: string; requested?: boolean }
         if (res.status === 401) {
           setSessionExpired(true)
           return { ok: false, error: messages[locale].sessionExpired }
         }
         if (!res.ok) return { ok: false, error: d.message || d.error }
-        return { ok: true }
+        return { ok: true, message: d.requested ? d.message : undefined }
       } catch {
         return { ok: false, error: "network" }
       }
@@ -1199,31 +1202,19 @@ export default function AgencyDashboard() {
                               setDupTarget(it)
                               return
                             }
-                            // ホテル変更は佐川へ集荷依頼済みでもロック (API と同じ agencyHotelChangeLock)
-                            if (v === "hotel-guest" || v === "hotel-pickup") {
-                              const hotelLock = agencyHotelChangeLock(it)
-                              if (hotelLock) {
-                                setActionTarget({
-                                  shipment: it,
-                                  action: "locked",
-                                  lockedMessage: hotelLock === "pickup_requested" ? t.lockPickupRequested : undefined,
-                                })
-                                return
-                              }
-                            }
-                            // ロック: 送り状が実在 / 追跡番号あり / 集荷済み以降 (lib/agency-self-service.ts)
-                            const editable = !legLockedForAgency(it)
-                            if (!editable) {
+                            // 直接変更・変更申請・不可 の判定は API と同じ (lib/agency-self-service.ts)。
+                            // 佐川へ集荷依頼済み・締切 (集荷前日 18:30) 後は、変更申請として受け付ける。
+                            const mode = agencyChangeMode(it)
+                            if (mode === "locked") {
                               setActionTarget({ shipment: it, action: "locked" })
                               return
                             }
-                            // 日程・個数・代表者名は配送前日 17:00 まで (完了画面・受付メールの案内どおり)
-                            if ((v === "dates" || v === "count" || v === "name") && isSelfServiceCutoffPassed(it.shipment_date)) {
-                              setActionTarget({ shipment: it, action: "locked", lockedMessage: t.lockCutoff })
-                              return
-                            }
-                            // リードタイムゲート (団体30個以上=発送7日以内は全変更不可 / 個数=14日前まで)。
-                            // 取消(cancel)は対象外。
+                            let asRequest =
+                              mode === "request" ||
+                              ((v === "dates" || v === "count" || v === "name" || v === "hotel-guest" || v === "hotel-pickup") &&
+                                isSelfServiceCutoffPassed(it.shipment_date))
+                            // リードタイムゲート (団体30個以上=発送7日以内は全変更不可)。個数の2週間前の締切を過ぎた分は
+                            // 変更申請として受け付ける (API と同じ)。取消(cancel)は対象外。
                             if (v === "dates" || v === "count" || v === "hotel-guest" || v === "hotel-pickup") {
                               const kind = v === "dates" ? "dates" : v === "count" ? "count" : "hotel"
                               const blocked = changeBlockedReason(kind, {
@@ -1231,7 +1222,8 @@ export default function AgencyDashboard() {
                                 suitcaseCount: it.suitcase_count,
                                 shipmentDate: it.shipment_date,
                               })
-                              if (blocked) {
+                              if (blocked === "count_lead") asRequest = true
+                              else if (blocked) {
                                 setActionTarget({
                                   shipment: it,
                                   action: "locked",
@@ -1243,6 +1235,7 @@ export default function AgencyDashboard() {
                             if (v === "hotel-guest" || v === "hotel-pickup") {
                               const side = v === "hotel-guest" ? "guest" : "pickup"
                               setHotelChangeTarget({
+                                asRequest,
                                 shipmentId: it.id,
                                 side,
                                 legLabel: `${it.booking_id}-L${it.leg_index + 1}`,
@@ -1255,7 +1248,7 @@ export default function AgencyDashboard() {
                               })
                               return
                             }
-                            setActionTarget({ shipment: it, action: v })
+                            setActionTarget({ shipment: it, action: v, asRequest })
                           }}
                           className="mt-2 h-8 w-40 max-w-full rounded-lg border border-border bg-white px-2 text-xs text-muted-foreground hover:border-foreground/40"
                         >
@@ -1268,11 +1261,11 @@ export default function AgencyDashboard() {
                               <option value="name">{t.actName}</option>
                               <option value="hotel-guest">
                                 {t.actHotelGuest}
-                                {agencyHotelChangeLock(it) === "pickup_requested" ? t.hotelNeedsSupport : ""}
+                                {agencyHotelChangeLock(it) === "request" ? t.asRequest : ""}
                               </option>
                               <option value="hotel-pickup">
                                 {t.actHotelPickup}
-                                {agencyHotelChangeLock(it) === "pickup_requested" ? t.hotelNeedsSupport : ""}
+                                {agencyHotelChangeLock(it) === "request" ? t.asRequest : ""}
                               </option>
                               <option value="cancel">{t.actCancel}</option>
                             </>
@@ -1394,9 +1387,9 @@ export default function AgencyDashboard() {
           locale={locale}
           onClose={() => setHotelChangeTarget(null)}
           onApply={(body) => changeHotel(hotelChangeTarget.shipmentId, body)}
-          onDone={() => {
+          onDone={(msg) => {
             setHotelChangeTarget(null)
-            setActNote(t.hotelChangeDone)
+            setActNote(msg || t.hotelChangeDone)
             void load()
           }}
         />
@@ -1495,9 +1488,9 @@ function AgencyActionModal({
   onDone,
 }: {
   t: (typeof messages)[keyof typeof messages]
-  target: { shipment: Shipment; action: "dates" | "count" | "name" | "cancel" | "locked"; lockedMessage?: string }
+  target: { shipment: Shipment; action: "dates" | "count" | "name" | "cancel" | "locked"; lockedMessage?: string; asRequest?: boolean }
   onClose: () => void
-  onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+  onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; message?: string }>
   onDone: (msg: string) => void
 }) {
   const { shipment: s, action } = target
@@ -1555,7 +1548,7 @@ function AgencyActionModal({
             : { suitcaseCount: count }
     const r = await onApply(body)
     if (r.ok) {
-      onDone(action === "cancel" ? t.actCancelDone : t.actDone)
+      onDone(r.message ?? (action === "cancel" ? t.actCancelDone : t.actDone))
     } else {
       setErr(r.error || t.actFailed)
       setBusy(false)
@@ -1590,6 +1583,11 @@ function AgencyActionModal({
           </button>
         </div>
 
+        {target.asRequest && action !== "locked" && (
+          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="request-notice">
+            {t.requestNotice}
+          </p>
+        )}
         {action === "locked" ? (
           <>
             <p className="text-sm text-foreground leading-relaxed">{target.lockedMessage ?? t.lockedBody}</p>

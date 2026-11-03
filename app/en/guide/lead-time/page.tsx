@@ -5,12 +5,12 @@ import { PRICING, formatYen } from "@/lib/pricing"
 
 const TITLE = "Luggage Forwarding in Japan: Delivery Lead Times and Booking Cut-offs | BondEx"
 const DESC =
-  "Hotel-to-hotel luggage forwarding in Japan normally arrives the day after a morning pickup (Tokyo to Kyoto, Osaka, Nagoya, Kanazawa). Tokyo to Fukuoka, Hokkaido or Hiroshima takes two days. Okinawa ships by Sagawa Hikyaku Air and arrives the next day (varies by area). Cut-offs: FIT by 16:00 JST the day before pickup, groups 5 days ahead. A guide by BondEx for travel agencies and DMCs."
+  "Hotel-to-hotel luggage forwarding in Japan normally arrives the day after a morning pickup (Tokyo to Kyoto, Osaka, Nagoya, Kanazawa). Tokyo to Fukuoka, Hokkaido or Hiroshima takes two days. Okinawa ships by Sagawa Hikyaku Air and arrives the next day (varies by area). Cut-offs: FIT by 18:30 JST the day before pickup, groups 5 days ahead. A guide by BondEx for travel agencies and DMCs."
 
 const faqs = [
   { q: "How many days does luggage forwarding take?", a: "With a morning pickup, Tokyo to Kyoto, Osaka, Nagoya, Kanazawa or Hida-Takayama, and Kyoto or Osaka to Tokyo, Nagoya, Hiroshima or Fukuoka, normally arrive the next day. Tokyo to Fukuoka, Hokkaido or Hiroshima takes two days; Kyoto or Osaka to Hokkaido takes three days. Shipments to or from Okinawa go by Sagawa Hikyaku Air and arrive the next day (varies by area). Depending on the pickup area, a route within the same city can take one extra day." },
   { q: "Can luggage be delivered to the next hotel the same day?", a: "No. Hotel-to-hotel forwarding arrives the next day at the earliest. When guests travel on the pickup day, plan for arrival the following day and have guests carry an overnight bag." },
-  { q: "What is the booking cut-off?", a: "Individual travelers (FIT): until 16:00 JST on the day before pickup. Groups: 5 days ahead as a rule. Later changes to piece counts, hotels or dates are accommodated wherever possible — contact us first." },
+  { q: "What is the booking cut-off?", a: "Individual travelers (FIT): until 18:30 JST on the day before pickup. Groups: 5 days ahead as a rule. Later changes to piece counts, hotels or dates are accommodated wherever possible — contact us first." },
   { q: "How much does it cost?", a: `${formatYen(PRICING.regularPrice)} per item excluding tax, flat for any size or weight. No setup or monthly fee. Okinawa, remote islands and oversized items are quoted separately.` },
   { q: "What if luggage is damaged or lost?", a: "Coverage follows the carrier's terms of carriage: up to ¥300,000 per item. Damage to suitcase shells and wheels is excluded." },
 ]
@@ -31,7 +31,7 @@ const jsonLd = [
     description: DESC,
     inLanguage: "en",
     datePublished: "2026-10-27",
-    dateModified: "2026-10-27",
+    dateModified: "2026-11-04",
     author: { "@id": "https://bondex.express/#organization" },
     publisher: { "@id": "https://bondex.express/#organization" },
     mainEntityOfPage: "https://bondex.express/en/guide/lead-time",
@@ -46,7 +46,7 @@ const jsonLd = [
 
 export default function LeadTimeGuideEn() {
   return (
-    <DocPage lang="en" eyebrow="Guide · Lead Time" title="Delivery lead times and booking cut-offs" lead={DESC} updated="2026-10-30" jsonLd={jsonLd}>
+    <DocPage lang="en" eyebrow="Guide · Lead Time" title="Delivery lead times and booking cut-offs" lead={DESC} updated="2026-11-04" jsonLd={jsonLd}>
       <h2>Typical lead times</h2>
       <p>Based on a morning pickup and Sagawa Express delivery-day search results (as of October 2026). Okinawa shipments go by Sagawa Hikyaku Air.</p>
       <table>
@@ -69,7 +69,7 @@ export default function LeadTimeGuideEn() {
           <tr><th>Type</th><th>Cut-off</th><th>Notes</th></tr>
         </thead>
         <tbody>
-          <tr><td>Individual travelers (FIT)</td><td>16:00 JST, the day before pickup</td><td>From a single booking</td></tr>
+          <tr><td>Individual travelers (FIT)</td><td>18:30 JST, the day before pickup</td><td>From a single booking</td></tr>
           <tr><td>Groups (10+ guests)</td><td>5 days ahead, as a rule</td><td>Tell us early about piece-count, hotel or date changes. Last-minute changes are handled wherever possible</td></tr>
         </tbody>
       </table>

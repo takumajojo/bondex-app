@@ -5,12 +5,14 @@
  * 従来の「requested / pending のみ変更可」のままだと全予約がロックされてしまうため、
  * ロック条件を「送り状 (Ship&co ラベル) が実在する / 追跡番号が入っている / 集荷済み以降」に改める。
  *
- * 締切: 代理店へは「修正は配送前日の 17:00 まで」と案内している (予約完了画面・受付メール)。
- * BondEx はその後に佐川へ集荷情報を渡すため、日程・個数・代表者名の変更はこの時刻で締める。
- * (ホテル変更はホテルへの連絡が要るので、従来どおり change_deadline_at = 発送2営業日前 18:00。)
+ * 締切: 集荷前日 18:30 (JST) (2026-11-04 谷口さん決定・lib/pickup-cutoff.ts)。ホテル変更も同じ時刻。
+ * 締切を過ぎた変更と、佐川へ集荷依頼済みの区間の変更は、直接変えずに変更申請として受け付ける
+ * (sql/064 の shipment_change_requests・佐川の確認後に反映)。
  *
  * サーバ (API) とクライアント (ポータル) の両方から使う純粋関数のみ。
  */
+
+import { isPastPickupCutoff, pickupCutoffAt } from "./pickup-cutoff"
 
 const EDITABLE_STATUSES = new Set(["requested", "pending", "issued"])
 
@@ -31,44 +33,58 @@ export function legLockedForAgency(s: LockInput): boolean {
 }
 
 /**
- * 代理店のホテル変更の可否。日程・個数・代表者名・取消より厳しく、佐川へ集荷依頼済み
- * (pickup_requested_at あり・手動 Excel / Biz-Logi とも) の区間も受けない (2026-11-04 谷口さん)。
- * 集荷先・届け先の変更は世田谷営業所への連絡と佐川の回答が要るため、BondEx が受付後の変更として扱う。
- * 日程・個数などは従来どおり締切まで受け、運営へ佐川連絡のアラートを出す (lib/sagawa-alert)。
- *   "pickup_requested" … 集荷手配済み (専用の案内を出す)
- *   "locked"           … 集荷済み以降・送り状あり・番号あり (従来の手配済み)
+ * 代理店のホテル変更の扱い (画面と API で同じ判定)。2026-11-04 段階C:
+ *   "locked"  … 集荷済み以降・送り状あり・集荷依頼の記録の無い番号あり (従来の手配済み。BondEx へ連絡)
+ *   "request" … 佐川へ集荷依頼済み、または締切 (集荷前日 18:30) 後 → 直接は変えず変更申請として受け付ける
+ *   null      … 直接変更できる
  */
-export type AgencyHotelChangeLock = "pickup_requested" | "locked" | null
+export type AgencyHotelChangeLock = "request" | "locked" | null
 
-export function agencyHotelChangeLock(s: LockInput): AgencyHotelChangeLock {
+export function agencyHotelChangeLock(s: LockInput & { shipment_date?: string | null }, now: Date = new Date()): AgencyHotelChangeLock {
   if (!EDITABLE_STATUSES.has(s.status || "")) return "locked"
-  if (s.pickup_requested_at) return "pickup_requested"
-  return legLockedForAgency(s) ? "locked" : null
+  if (s.pickup_requested_at) return "request"
+  if (legLockedForAgency(s)) return "locked"
+  if (isPastPickupCutoff(s.shipment_date, now)) return "request"
+  return null
 }
 
-export const PICKUP_REQUESTED_HOTEL_MESSAGE = {
-  ja: "集荷手配済みのため、ホテル変更をご希望の場合はBondExサポートへご連絡ください。",
-  en: "Pickup has already been arranged with the courier. To change the hotel, please contact BondEx support.",
+/**
+ * 代理店の変更 (日程・個数・代表者名・取消・ホテル) の扱い。画面の表示用 (API は DB の集荷依頼の記録で同じ判定をする)。
+ *   "locked"  … 集荷済み以降・送り状あり・集荷依頼の記録の無い番号あり (BondEx へ連絡)
+ *   "request" … 佐川へ集荷依頼済み → 変更申請 (取消も申請)
+ *   "direct"  … 直接変更 (ただし締切 (集荷前日 18:30) 後の日程・個数・代表者名・ホテルは申請になる)
+ */
+export function agencyChangeMode(s: LockInput): "locked" | "request" | "direct" {
+  if (!EDITABLE_STATUSES.has(s.status || "")) return "locked"
+  if (s.label_url) return "locked"
+  if (s.pickup_requested_at) return "request"
+  if ((s.tracking_numbers?.length ?? 0) > 0) return "locked"
+  return "direct"
+}
+
+/** 変更申請として受け付けたときの案内 (代理店向け・画面と API で共通)。 */
+export const CHANGE_REQUEST_ACCEPTED_MESSAGE = {
+  ja: "変更申請として受け付けました。佐川への確認が取れた後に予約へ反映し、ご連絡します。それまでは現在の手配内容のままです。",
+  en: "We've received your change request. We'll update the booking and let you know once the courier confirms. Until then, the current arrangement stays in place.",
 } as const
 
-/** 修正締切 (配送前日 17:00 JST) を ISO(UTC) で返す。17:00 JST = 08:00Z。 */
+/** 締切後・依頼済みの区間で変更するときの事前の案内 (画面)。 */
+export const CHANGE_REQUEST_NOTICE = {
+  ja: "集荷前日18:30を過ぎているか、佐川へ集荷手配済みのため、変更は申請として受け付けます。BondEx が確認した後に反映されます。",
+  en: "It's past 18:30 JST the day before pickup, or pickup is already arranged, so this will be sent as a change request. It takes effect after BondEx confirms it.",
+} as const
+
+/** 修正締切 = 集荷前日 18:30 JST (lib/pickup-cutoff.ts・2026-11-04 谷口さん決定)。ISO(UTC) で返す。 */
 export function selfServiceCutoffAt(shipmentDate: string | null | undefined): string | null {
-  const ymd = (shipmentDate || "").trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
-  const t = Date.parse(`${ymd}T00:00:00Z`)
-  if (Number.isNaN(t)) return null
-  const prev = new Date(t - 86_400_000)
-  return `${prev.toISOString().slice(0, 10)}T08:00:00.000Z`
+  return pickupCutoffAt(shipmentDate)
 }
 
-/** 修正締切 (配送前日 17:00 JST) を過ぎているか。発送日不明なら false (既存ゲートに委ねる)。 */
+/** 修正締切 (集荷前日 18:30 JST) を過ぎているか (18:30:00 以降)。発送日不明なら false (既存ゲートに委ねる)。 */
 export function isSelfServiceCutoffPassed(
   shipmentDate: string | null | undefined,
   now: Date = new Date(),
 ): boolean {
-  const at = selfServiceCutoffAt(shipmentDate)
-  if (!at) return false
-  return now.getTime() > Date.parse(at)
+  return isPastPickupCutoff(shipmentDate, now)
 }
 
 /** 代表者名の正規化と検証。空・長すぎ (80文字超) は null。 */

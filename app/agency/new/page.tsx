@@ -25,6 +25,7 @@ import { PRICING } from "@/lib/pricing"
 import { DEFAULT_CARRIER, carrierConfig, slotLabel } from "@/lib/carrier"
 import { EMPTY_RESIDENCE, residenceError, type ResidenceAddress } from "@/lib/residence"
 import { ITEM_TYPES, type ItemTypeKey } from "@/lib/item-types"
+import { earliestBookableShipDate, isPastPickupCutoff } from "@/lib/pickup-cutoff"
 
 /** 発送元/お届け先の種別。hotel=Google Places 検索 / residence=個人宅の手入力。 */
 type EndpointKind = "hotel" | "residence"
@@ -297,6 +298,8 @@ const messages = {
     confirmIssuing: "Issuing…",
     valTitle: "Please fix the following before continuing:",
     errPastDate: (n: number) => `Leg ${n}: the pickup date is in the past — please check the year.`,
+    errPastCutoff: (n: number, earliest: string) =>
+      `Leg ${n}: bookings close at 18:30 JST on the day before pickup. The earliest pickup date is ${earliest}. For urgent requests, please contact BondEx.`,
     errArrivalBeforeShip: (n: number) => `Leg ${n}: the drop-off date is before the pickup date.`,
     errArrivalBeforeLeadTime: (n: number, date: string, days: number) =>
       `Leg ${n}: the earliest drop-off date for this route is ${date} (Sagawa +${days} day${days === 1 ? "" : "s"}). Please choose that date or later.`,
@@ -353,14 +356,14 @@ const messages = {
     doneHeroBody: "That's all you need to do. No shipping labels — the courier brings and attaches them at pickup. A copy is also kept in the shared Google Drive.",
     doneHeroBadge: "No shipping labels needed",
     doneNextHeading: "What happens next",
-    doneStep1Title: "Changes: by 17:00 the day before shipping",
-    doneStep1Body: "Dates, piece counts and hotels can be changed from the portal or via Contact until 17:00 on the day before each shipment.",
+    doneStep1Title: "Changes: by 18:30 JST the day before pickup",
+    doneStep1Body: "Dates, piece counts and hotels can be changed from the portal until 18:30 JST on the day before each pickup. After that, changes are sent as a request and BondEx confirms them.",
     doneStep2Title: "Pickup: from 11:00 on the shipping day",
     doneStep2Body: "The courier comes to the hotel with the shipping labels and collects the luggage.",
     doneStep3Title: "One line to tell your guest",
     doneStep3Quote: "On the day, the courier will come to the hotel with the shipping labels. Just leave your luggage at the reception by check-out.",
     doneLeg: (n: number) => `Leg ${n}`,
-    doneDeadlineBy: "by 17:00",
+    doneDeadlineBy: "by 18:30",
     donePickupFrom: "from 11:00",
     doneReadyHeading: "Your documents are ready",
     doneReadyBody:
@@ -578,6 +581,8 @@ const messages = {
     confirmIssuing: "発行中…",
     valTitle: "発行前に次の点をご確認ください:",
     errPastDate: (n: number) => `区間${n}: 集荷日が過去の日付です。年をご確認ください。`,
+    errPastCutoff: (n: number, earliest: string) =>
+      `区間${n}: 受付は集荷前日の18:30（日本時間）までです。最短の集荷日は ${earliest} です。お急ぎの場合は BondEx へご相談ください。`,
     errArrivalBeforeShip: (n: number) => `区間${n}: お届け日が集荷日より前になっています。`,
     errArrivalBeforeLeadTime: (n: number, date: string, days: number) =>
       `区間${n}: このルートの最短お届け日は ${date}（佐川 +${days}日）です。それ以降の日付にしてください。`,
@@ -634,14 +639,14 @@ const messages = {
     doneHeroBody: "お客様（添乗員様）にはこのバウチャーをお渡しいただくだけで結構です。送り状のご用意は不要です（集荷員が持参・貼付します）。共有ドライブにも保管しています。",
     doneHeroBadge: "送り状のご用意は不要",
     doneNextHeading: "この後の流れ",
-    doneStep1Title: "修正は配送前日の17時まで",
-    doneStep1Body: "日程・個数・ホテルの変更は、各区間の配送前日17:00までポータルまたはお問い合わせから承ります。",
+    doneStep1Title: "修正は集荷前日の18:30まで",
+    doneStep1Body: "日程・個数・ホテルの変更は、各区間の集荷前日18:30（日本時間）までポータルから承ります。それ以降は変更申請として BondEx が確認のうえ対応します。",
     doneStep2Title: "集荷は当日の11時以降",
     doneStep2Body: "集荷員が送り状を持ってホテルへ伺い、お荷物を集荷します。",
     doneStep3Title: "お客様へのひと言",
     doneStep3Quote: "当日になりましたら、集荷員が伝票を持って集荷に伺います。チェックアウトまでにフロントへお荷物をお預けください。",
     doneLeg: (n: number) => `区間${n}`,
-    doneDeadlineBy: "17:00まで",
+    doneDeadlineBy: "18:30まで",
     donePickupFrom: "11:00以降",
     doneReadyHeading: "書類の準備ができました",
     doneReadyBody:
@@ -919,6 +924,7 @@ function validateLegs(
   legs: Leg[],
   m: {
     errPastDate: (n: number) => string
+    errPastCutoff: (n: number, earliest: string) => string
     errArrivalBeforeShip: (n: number) => string
     errArrivalBeforeLeadTime: (n: number, date: string, days: number) => string
     errMissingHotel: (n: number) => string
@@ -960,6 +966,8 @@ function validateLegs(
     if (leg.toKind !== "residence" && !leg.fromCheckIn) errs.push(m.errMissingCheckIn(n))
     if (leg.itemType === "other" && !leg.itemOther.trim()) errs.push(m.errItemOther(n))
     if (leg.shipmentDate && leg.shipmentDate < today) errs.push(m.errPastDate(n))
+    // 受付の締切 = 集荷前日 18:30 JST (予約 API も同じ判定で止める・lib/pickup-cutoff.ts)
+    else if (leg.shipmentDate && isPastPickupCutoff(leg.shipmentDate)) errs.push(m.errPastCutoff(n, earliestBookableShipDate()))
     if (leg.shipmentDate && leg.expectedArrival && leg.expectedArrival < leg.shipmentDate)
       errs.push(m.errArrivalBeforeShip(n))
     // 佐川の最短お届け日より前は不可 (代理店便は佐川固定)。日数が不明なら従来どおり通す。
@@ -1848,7 +1856,7 @@ export default function AgencyNewBookingPage() {
             </div>
           </div>
 
-          {/* この後の流れ: 前日17時まで修正 / 当日11時以降に集荷 / お客様へのひと言 */}
+          {/* この後の流れ: 前日18:30まで修正 / 当日11時以降に集荷 / お客様へのひと言 */}
           <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6">
             <p className="text-[13px] font-bold tracking-wide text-[#0F172A] mb-4">{t.doneNextHeading}</p>
             <div className="grid sm:grid-cols-3 gap-3">
@@ -2538,7 +2546,7 @@ export default function AgencyNewBookingPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label={t.shipmentDate} htmlFor={`sd${i}`} required>
                   <input id={`sd${i}`} type="date" className={inputCls} value={leg.shipmentDate}
-                    min={todayYmd()}
+                    min={earliestBookableShipDate()}
                     onChange={(e) => onShipDateChange(i, e.target.value)} required />
                 </Field>
                 <Field label={t.expectedArrival} htmlFor={`ea${i}`} required>

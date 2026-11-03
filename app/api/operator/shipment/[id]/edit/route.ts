@@ -10,6 +10,7 @@ import { reconcileTrackingNow } from "@/lib/tracking/reconcile"
 import { loadPickupShipment, recordManualFromTrackingNumber } from "@/lib/pickup-request/service"
 import { supabasePickupStore, liveRequestByShipment, isPickupTableMissing } from "@/lib/pickup-request/store"
 import { alertTrackingNumberChanged } from "@/lib/sagawa-alert"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -146,7 +147,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .from("shipments")
       .update({ agency })
       .eq("booking_id", shipment.booking_id)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) return isPickupLockError(upErr.message) ? NextResponse.json(operatorLockBody(upErr.message), { status: 409 }) : NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`代理店: ${oldAgency || "—"} → ${agency}（全区間）`)
   }
   let trackingSyncNote: string | null = null
@@ -155,7 +156,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .from("shipments")
       .update({ tracking_numbers: tracking, tracking_detail: null })
       .eq("id", shipmentId)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) return isPickupLockError(upErr.message) ? NextResponse.json(operatorLockBody(upErr.message), { status: 409 }) : NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`配送番号: [${oldTracking.join(", ") || "—"}] → [${(tracking ?? []).join(", ") || "—"}]`)
 
     // 番号を入れ替えたら「時間毎の cron を待たず」に即照会し、集荷済み/配達完了なら
@@ -197,7 +198,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .from("shipments")
       .update(patch)
       .eq("booking_id", shipment.booking_id)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) return isPickupLockError(upErr.message) ? NextResponse.json(operatorLockBody(upErr.message), { status: 409 }) : NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`代表者: ${oldRepresentative || "—"} → ${representative}（全区間${syncRecipient ? "・受取人名も同じに" : ""}）`)
     // Drive のバウチャーも差し替える (失敗しても画面からの再発行で最新が出るので握り潰す)。
     try {

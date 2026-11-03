@@ -68,9 +68,8 @@ export function isLive(state: string): boolean {
  * サーバの送信処理だけが行い、ここには含めない。
  *   confirm_accepted : 佐川側で受付済みと確認した (問合番号を入力)
  *   confirm_none     : 佐川側に依頼は無いと確認した (この記録を無効にする)
- *   start_change     : 世田谷営業所へ変更・取消を連絡した (反映確認の返信待ち)
- *   change_done      : 佐川から変更の反映確認の返信を受けた (依頼は有効なまま)
- *   cancel_done      : 佐川から取消の反映確認の返信を受けた
+ *   start_change / change_done / cancel_done : 旧操作。2026-11-04 段階C で「変更申請」(sql/064) に置き換えた。
+ *     依頼記録だけを動かすと区間の情報 (取消など) と食い違うため、resolvePickupRequest は受け付けない。
  */
 export type ResolveAction = "confirm_accepted" | "confirm_none" | "start_change" | "change_done" | "cancel_done"
 

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
-import { isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
-import { agencyHotelChangeLock, PICKUP_REQUESTED_HOTEL_MESSAGE } from "@/lib/agency-self-service"
+import { agencyHotelChangeLock, CHANGE_REQUEST_ACCEPTED_MESSAGE } from "@/lib/agency-self-service"
+import { isPickupLockError, liveRequestFor, submitAgencyChange } from "@/lib/pickup-request/agency-change"
+import { hotelChangeFields, verifyChangeHotel } from "@/lib/pickup-request/change"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
 import { alertSagawaChange } from "@/lib/sagawa-alert"
@@ -20,8 +21,8 @@ export const maxDuration = 20
  * 運営版(app/api/operator/shipment/[id]/hotel-change)より厳しいゲート:
  *   自社の予約のみ      … agency 名一致 (不一致は 404)
  *   未発行のみ          … status ∈ {requested, pending}。発行済み以降は 409 LOCKED → BondExへ連絡。
- *   集荷依頼前のみ      … 佐川へ集荷依頼済み (pickup_requested_at) は 409 PICKUP_REQUESTED → BondExサポートへ連絡。
- *   締切超過は不可       … now > change_deadline_at は 409 DEADLINE_PASSED → BondExへ連絡 (override は運営のみ)。
+ *   変更申請            … 佐川へ集荷依頼済み、または締切 (集荷前日 18:30 JST) の後は、直接変えずに変更申請として
+ *                         受け付ける (202・2026-11-04 段階C)。正式な情報は佐川・BondEx の確認後に反映する。
  *   place_id 必須        … Google Places から取得 (手入力のみでは保存不可)。
  * 更新+履歴は RPC apply_hotel_change を p_require_unissued=true で呼ぶ
  * (事前チェックと RPC の間に cron が発行する競合を行ロック下で原子的に遮断)。
@@ -87,21 +88,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "not found" }, { status: 404 })
   }
 
-  // ロックゲート (佐川へ集荷依頼済み / 送り状が実在 / 追跡番号あり / 集荷済み以降は BondEx へ連絡)。
+  // ロックゲート (送り状が実在 / 追跡番号あり / 集荷済み以降は BondEx へ連絡)。集荷依頼済み・締切後は変更申請。
   // 2026-09-24〜 依頼直後から "issued" (手配済) になるため status だけでは判定しない。
-  // 判定はポータルの表示と同じ関数 (agencyHotelChangeLock) を使う。
-  const lock = agencyHotelChangeLock({
-    status: ship.status as string,
-    tracking_numbers: ship.tracking_numbers as string[] | null,
-    label_url: (ship as { label_url?: string | null }).label_url ?? null,
-    pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null,
-  })
-  if (lock === "pickup_requested") {
-    return NextResponse.json(
-      { error: "PICKUP_REQUESTED", message: en ? PICKUP_REQUESTED_HOTEL_MESSAGE.en : PICKUP_REQUESTED_HOTEL_MESSAGE.ja },
-      { status: 409 },
-    )
+  // 判定はポータルの表示と同じ関数 (agencyHotelChangeLock) を使い、送信中の依頼 (印がまだ無い) も DB の記録で見る。
+  let live: Awaited<ReturnType<typeof liveRequestFor>> = null
+  try {
+    live = await liveRequestFor(sb, shipmentId)
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }
+  const lock = live && ["requested", "pending", "issued"].includes(ship.status as string) && !(ship as { label_url?: string | null }).label_url
+    ? "request"
+    : agencyHotelChangeLock({
+        status: ship.status as string,
+        tracking_numbers: ship.tracking_numbers as string[] | null,
+        label_url: (ship as { label_url?: string | null }).label_url ?? null,
+        pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null,
+        shipment_date: ship.shipment_date as string | null,
+      })
   if (lock === "locked") {
     return NextResponse.json(
       {
@@ -132,16 +136,38 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     )
   }
 
-  // 締切ゲート (代理店は override 不可・運営のみ理由入力で可)
-  if (isChangeDeadlinePassed(ship.change_deadline_at as string | null)) {
+  // 変更申請 (集荷依頼済み・締切後)。place_id は Google で確かめ、都道府県・市区は Google の値を使う。
+  if (lock === "request") {
+    const { kind, fields } = hotelChangeFields({ side, newHotel, newHotelJa, newPlaceId, newCity, newPrefecture })
+    const pre = side === "guest" ? "to" : "from"
+    const v = await verifyChangeHotel(newPlaceId, process.env.GOOGLE_MAPS_API_KEY)
+    if (!v.ok) {
+      return NextResponse.json(
+        { error: "PLACE_UNVERIFIED", message: en ? "We couldn't confirm the selected hotel. Please search and select it again." : v.reason },
+        { status: v.status },
+      )
+    }
+    if (v.prefecture) fields[`${pre}_prefecture`] = v.prefecture
+    if (v.city) fields[`${pre}_city`] = v.city
+    const r = await submitAgencyChange({
+      shipmentId, kind, fields, reason: "代理店からのホテル変更",
+      agencyName: auth.agency.name,
+      actor: auth.agency.contact_email ? `${auth.agency.name} <${auth.agency.contact_email}>` : auth.agency.name,
+      en,
+    })
+    if (!r.ok) return NextResponse.json({ error: r.code, message: r.message }, { status: r.status })
+    const legRefReq = `${ship.booking_id}-L${(ship.leg_index as number) + 1}`
+    const sideLabelReq = side === "guest" ? "お届け先" : "発送元"
+    await notifyBondEx({
+      kind: "change",
+      title: `${legRefReq}（${ship.agency}）${sideLabelReq}ホテルの変更申請（${live ? "佐川へ集荷依頼済み・世田谷へ連絡が必要" : "締切後・承認が必要"}）`,
+      lines: [`${sideLabelReq}: ${(side === "guest" ? ship.to_hotel_ja || ship.to_hotel : ship.from_hotel_ja || ship.from_hotel) as string} → ${newHotelJa}`],
+      link: `/operator/bookings/${ship.booking_id}`,
+      linkLabel: "申請を確認する",
+    })
     return NextResponse.json(
-      {
-        error: "DEADLINE_PASSED",
-        message: en
-          ? "The change deadline has passed, so it can't be changed here. Please contact BondEx."
-          : "変更締切を過ぎているため、こちらから変更できません。BondEx までご連絡ください。",
-      },
-      { status: 409 },
+      { ok: true, pending: true, requested: true, message: en ? CHANGE_REQUEST_ACCEPTED_MESSAGE.en : CHANGE_REQUEST_ACCEPTED_MESSAGE.ja },
+      { status: 202 },
     )
   }
 
@@ -168,6 +194,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   })
   if (rpcErr) {
     const msg = rpcErr.message || ""
+    // 確認の後に佐川へ集荷依頼が入った (DB のトリガーが止めた) → もう一度操作すれば変更申請になる
+    if (isPickupLockError(msg)) {
+      return NextResponse.json(
+        {
+          error: "PICKUP_REQUESTED",
+          message: en
+            ? "Pickup was just arranged with the courier. Please try again — it will be sent as a change request."
+            : "直前に佐川へ集荷を手配しました。もう一度操作すると、変更申請として受け付けます。",
+        },
+        { status: 409 },
+      )
+    }
     // 発行競合 (RPC の行ロック下で捕捉) は LOCKED として案内
     if (msg.includes("unissued_required") || msg.includes("physical_gate")) {
       return NextResponse.json(

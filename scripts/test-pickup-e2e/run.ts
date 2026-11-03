@@ -741,25 +741,28 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     return { status: res.status, body: (await res.json()) as Record<string, unknown> }
   }
   const hotelBody = { side: "guest", newHotel: "Test Hotel Osaka", newHotelJa: "テストホテル大阪", newPlaceId: "p-to2", newPrefecture: "大阪府" }
-  const PICKUP_MSG = "集荷手配済みのため、ホテル変更をご希望の場合はBondExサポートへご連絡ください。"
-  await test("代理店: 佐川へ依頼済み (Excel・番号なし) → ホテル変更は 409・案内文・ホテルはそのまま", async () => {
+  const REQ_MSG = /変更申請として受け付けました/
+  await test("代理店: 佐川へ依頼済み (Excel・番号なし) のホテル変更 → 変更申請 (202)・ホテルはそのまま", async () => {
     const leg = await newLeg()
     await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })
     const r = await agencyHotel(leg, hotelBody)
-    assert.equal(r.status, 409, JSON.stringify(r.body))
-    assert.equal(r.body.error, "PICKUP_REQUESTED")
-    assert.equal(r.body.message, PICKUP_MSG)
+    assert.equal(r.status, 202, JSON.stringify(r.body))
+    assert.match(String(r.body.message), REQ_MSG)
     assert.equal((await ship(leg)).to_hotel, "Test Hotel Kyoto")
+    const c = (await changes(leg))[0]
+    assert.equal(c.kind, "hotel_guest")
+    assert.equal(c.needs_sagawa, true)
+    assert.equal(c.requested_by, "agency")
+    assert.equal(c.fields.to_prefecture, "大阪府", "都道府県は Google の値")
   })
-  await test("代理店: Biz-Logi で受付済み (番号あり) → 同じ案内で 409", async () => {
+  await test("代理店: Biz-Logi で受付済み (番号あり) も同じく変更申請", async () => {
     const leg = await newLeg()
     await previewAndSend(leg)
     const r = await agencyHotel(leg, hotelBody)
-    assert.equal(r.status, 409)
-    assert.equal(r.body.message, PICKUP_MSG)
+    assert.equal(r.status, 202, JSON.stringify(r.body))
     assert.equal((await ship(leg)).to_hotel, "Test Hotel Kyoto")
   })
-  await test("代理店: 未依頼の区間は従来どおり変更できる・集荷済みは従来の手配済み・締切超過は従来の締切", async () => {
+  await test("代理店: 未依頼・締切前は直接変更・集荷済みは従来の手配済み", async () => {
     const free = await newLeg()
     const ok = await agencyHotel(free, hotelBody)
     assert.equal(ok.status, 200, JSON.stringify(ok.body))
@@ -768,14 +771,9 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const p = await agencyHotel(picked, hotelBody)
     assert.equal(p.status, 409)
     assert.equal(p.body.error, "LOCKED", "集荷済み以降は従来の文言")
-    const late = await newLeg({ change_deadline_at: new Date(Date.now() - 3600_000).toISOString() })
-    const d = await agencyHotel(late, hotelBody)
-    assert.equal(d.status, 409)
-    assert.equal(d.body.error, "DEADLINE_PASSED", "締切の判定は維持")
   })
-  await test("ポータルの表示判定 (agencyHotelChangeLock) が API の結果と一致し、日程・個数のロックは従来どおり", async () => {
-    const { agencyHotelChangeLock, legLockedForAgency, PICKUP_REQUESTED_HOTEL_MESSAGE } = await import("../../lib/agency-self-service")
-    assert.equal(PICKUP_REQUESTED_HOTEL_MESSAGE.ja, PICKUP_MSG)
+  await test("ポータルの表示判定 (agencyHotelChangeLock・agencyChangeMode) が API の結果と一致", async () => {
+    const { agencyHotelChangeLock, agencyChangeMode } = await import("../../lib/agency-self-service")
     const cases: Array<[string, Record<string, unknown>]> = [
       ["excel", {}],
       ["bizlogi", {}],
@@ -789,10 +787,10 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
       const row = await ship(leg)
       const ui = agencyHotelChangeLock(row)
       const api = await agencyHotel(leg, hotelBody)
-      const expected = ui === "pickup_requested" ? "PICKUP_REQUESTED" : ui === "locked" ? "LOCKED" : null
-      assert.equal(api.status === 409 ? api.body.error : null, expected, `${kind}: 表示=${ui} API=${api.status} ${JSON.stringify(api.body)}`)
-      // 日程・個数・代表者名・取消は依頼済みでもロックしない (締切まで受け、運営へ佐川連絡のアラート)
-      if (kind === "excel") assert.equal(legLockedForAgency(row), false)
+      const apiKind = api.status === 202 ? "request" : api.status === 409 && api.body.error === "LOCKED" ? "locked" : api.status === 200 ? null : `?${api.status}`
+      assert.equal(apiKind, ui, `${kind}: 表示=${ui} API=${api.status} ${JSON.stringify(api.body)}`)
+      const mode = agencyChangeMode(row)
+      assert.equal(mode, kind === "excel" || kind === "bizlogi" ? "request" : kind === "picked" ? "locked" : "direct", kind)
     }
   })
 
@@ -954,6 +952,226 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     await db.query(`update shipment_change_requests set status='approved', decided_by='op' where id=$1`, [row.id])
     assert.equal((await db.query(`select stage from shipment_change_requests where id=$1`, [row.id])).rows[0].stage, "applied")
   })
+
+  console.log("14. 段階C: 18:30 締切・代理店の変更申請・Operator の直接編集の案内")
+  // 時計を動かす (経過時間はそのまま・指定の時刻から)。DB の now() は実時間のまま。
+  const RealDate = Date
+  let clockOffset = 0
+  class ClockDate extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) super(RealDate.now() + clockOffset)
+      else super(...(args as [string]))
+    }
+    static now() {
+      return RealDate.now() + clockOffset
+    }
+  }
+  globalThis.Date = ClockDate as unknown as DateConstructor
+  const setJst = (ymd: string, hm: string) => {
+    clockOffset = RealDate.parse(`${ymd}T${hm}+09:00`) - RealDate.now()
+  }
+  const resetClock = () => {
+    clockOffset = 0
+  }
+  const dayBefore = (ymd: string) => new RealDate(RealDate.parse(`${ymd}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  const agencyPatch = async (id: string, body: Record<string, unknown>) => {
+    const { AGENCY_TEST_TOKEN } = await import("./fakes/supabase")
+    const route = await import("../../app/api/agency/shipment/[id]/route")
+    ip++
+    const req = new NextRequest(`http://localhost/api/agency/shipment/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${AGENCY_TEST_TOKEN}`, "x-forwarded-for": `10.7.${Math.floor(ip / 250)}.${ip % 250}` },
+      body: JSON.stringify(body),
+    })
+    const res = await route.PATCH(req, { params: Promise.resolve({ id }) })
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> }
+  }
+  const D = jst(3)
+  await test("締切の関数: 集荷前日 18:29:59 は前・18:30:00 と 18:31 は後 (JST)", async () => {
+    const { isPastPickupCutoff, pickupCutoffAt, earliestBookableShipDate } = await import("../../lib/pickup-cutoff")
+    const prev = dayBefore(D)
+    assert.equal(pickupCutoffAt(D), new RealDate(`${prev}T18:30:00+09:00`).toISOString())
+    assert.equal(isPastPickupCutoff(D, new RealDate(`${prev}T18:29:59.999+09:00`)), false)
+    assert.equal(isPastPickupCutoff(D, new RealDate(`${prev}T18:30:00+09:00`)), true)
+    assert.equal(isPastPickupCutoff(D, new RealDate(`${prev}T18:31:00+09:00`)), true)
+    assert.equal(earliestBookableShipDate(new RealDate(`${prev}T18:29:00+09:00`)), D, "18:29 なら翌日の集荷を予約できる")
+    assert.notEqual(earliestBookableShipDate(new RealDate(`${prev}T18:30:00+09:00`)), D, "18:30 以降は翌々日から")
+    // サーバは UTC で動く: 18:30 JST = 09:30Z
+    assert.ok(pickupCutoffAt(D)!.endsWith("T09:30:00.000Z"))
+  })
+  await test("代理店の直接変更 (代表者名): 18:29 は直接・18:30 と 18:31 は変更申請 (依頼前・BondEx の承認)", async () => {
+    const prev = dayBefore(D)
+    const results: Record<string, number> = {}
+    for (const hm of ["18:29:00", "18:30:00", "18:31:00"]) {
+      const leg = await newLeg({ shipment_date: D })
+      setJst(prev, hm)
+      const r = await agencyPatch(leg, { representative: `NAME ${hm}` })
+      resetClock()
+      results[hm] = r.status
+      const s2 = await ship(leg)
+      if (hm === "18:29:00") {
+        assert.equal(r.status, 200, JSON.stringify(r.body))
+        assert.equal(s2.representative, `NAME ${hm}`)
+      } else {
+        assert.equal(r.status, 202, `${hm}: ${JSON.stringify(r.body)}`)
+        assert.equal(s2.representative, "TEST GUEST", "申請中は元のまま")
+        const c = (await changes(leg))[0]
+        assert.equal(c.kind, "representative")
+        assert.equal(c.needs_sagawa, false, "依頼前は佐川への連絡なし (BondEx の承認)")
+      }
+    }
+    assert.deepEqual(results, { "18:29:00": 200, "18:30:00": 202, "18:31:00": 202 })
+  })
+  await test("代理店のホテル変更: 18:29 は直接・18:31 は変更申請", async () => {
+    const prev = dayBefore(D)
+    const a = await newLeg({ shipment_date: D })
+    setJst(prev, "18:29:00")
+    const r1 = await agencyHotel(a, hotelBody)
+    const b = await newLeg({ shipment_date: D })
+    setJst(prev, "18:31:00")
+    const r2 = await agencyHotel(b, hotelBody)
+    resetClock()
+    assert.equal(r1.status, 200, JSON.stringify(r1.body))
+    assert.equal((await ship(a)).to_hotel, "Test Hotel Osaka")
+    assert.equal(r2.status, 202, JSON.stringify(r2.body))
+    assert.equal((await ship(b)).to_hotel, "Test Hotel Kyoto")
+  })
+  await test("予約 API: 集荷日の前日 18:31 は受け付けない (案内と最短の集荷日)・18:29 は締切で止めない", async () => {
+    const booking = await import("../../app/api/agency/booking/route")
+    const { AGENCY_TEST_TOKEN } = await import("./fakes/supabase")
+    const body = { representative: "TEST GUEST", legs: [{ shipmentDate: D, expectedArrival: jst(4), fromHotel: "Test Hotel Tokyo", fromPlaceId: "p-from", toHotel: "Test Hotel Kyoto", toPlaceId: "p-to", suitcaseCount: 1 }] }
+    const post = async () => {
+      ip++
+      const req = new NextRequest("http://localhost/api/agency/booking", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${AGENCY_TEST_TOKEN}`, "x-forwarded-for": `10.6.${Math.floor(ip / 250)}.${ip % 250}` },
+        body: JSON.stringify(body),
+      })
+      const res = await booking.POST(req)
+      return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> }
+    }
+    const prev = dayBefore(D)
+    setJst(prev, "18:31:00")
+    const late = await post()
+    setJst(prev, "18:30:00")
+    const at = await post()
+    setJst(prev, "18:29:00")
+    let early: { status: number; body: Record<string, unknown> } | null = null
+    try { early = await post() } catch { early = { status: -1, body: {} } }
+    resetClock()
+    assert.equal(late.status, 400)
+    assert.equal(late.body.code, "PAST_PICKUP_CUTOFF")
+    assert.match(String(late.body.error), /18:30/)
+    assert.equal(at.body.code, "PAST_PICKUP_CUTOFF", "18:30 ちょうども締切後")
+    assert.notEqual(early!.body.code, "PAST_PICKUP_CUTOFF", JSON.stringify(early!.body))
+  })
+  await test("依頼後の代理店の変更 (日程・個数・取消): すべて変更申請・区間はそのまま・佐川への連絡が要る", async () => {
+    const leg = await newLeg()
+    await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })
+    const before = await ship(leg)
+    const r1 = await agencyPatch(leg, { suitcaseCount: 4 })
+    assert.equal(r1.status, 202, JSON.stringify(r1.body))
+    assert.equal((await changes(leg))[0].kind, "count")
+    assert.equal((await changes(leg))[0].needs_sagawa, true)
+    const dup = await agencyPatch(leg, { cancel: true })
+    assert.equal(dup.status, 409, "処理中の申請があれば重ねて受けない")
+    assert.match(String(dup.body.message), /処理中の変更申請/)
+    // 1件目を取り下げてから取消を申請
+    await call("POST", "/api/operator/pickup-request", { action: "change_step", changeId: (await changes(leg))[0].id, step: "withdraw", actor: "谷口" })
+    const r2 = await agencyPatch(leg, { cancel: true })
+    assert.equal(r2.status, 202, JSON.stringify(r2.body))
+    const s2 = await ship(leg)
+    assert.equal(s2.status, before.status, "取消の申請だけでは取消にしない")
+    assert.equal(s2.suitcase_count, before.suitcase_count)
+    assert.equal((await reqs(leg))[0].state, "accepted")
+  })
+  await test("個数の2週間前の締切 (依頼前・18:30 前) は変更申請として受け付ける (これまでは BondEx へ連絡)", async () => {
+    const leg = await newLeg({ shipment_date: jst(5) })
+    const r = await agencyPatch(leg, { suitcaseCount: 3 })
+    assert.equal(r.status, 202, JSON.stringify(r.body))
+    assert.equal((await changes(leg))[0].needs_sagawa, false)
+    assert.equal((await ship(leg)).suitcase_count, 2)
+  })
+  await test("依頼前の申請 (締切後) は運営の承認画面で承認 → 反映。依頼済みの申請はそこでは承認できない", async () => {
+    const decide = await import("../../app/api/operator/change-requests/[id]/route")
+    const post = async (id: string, b: Record<string, unknown>) => {
+      const req = new NextRequest(`http://localhost/api/operator/change-requests/${id}`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.5.5.5" }, body: JSON.stringify(b) })
+      const res = await decide.POST(req, { params: Promise.resolve({ id }) })
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> }
+    }
+    const pre = await newLeg({ shipment_date: jst(5) })
+    await agencyPatch(pre, { suitcaseCount: 3 })
+    const cPre = (await changes(pre))[0]
+    const ok = await post(cPre.id, { action: "approve", note: "OK" })
+    assert.equal(ok.status, 200, JSON.stringify(ok.body))
+    assert.equal((await ship(pre)).suitcase_count, 3)
+    assert.equal((await changes(pre))[0].state, "applied")
+    const req = await newLeg()
+    await call("POST", "/api/operator/sagawa-pickup", { shipmentId: req, actor: "谷口" })
+    await agencyPatch(req, { suitcaseCount: 4 })
+    const ng = await post((await changes(req))[0].id, { action: "approve" })
+    assert.equal(ng.status, 409)
+    assert.equal(ng.body.code, "NEEDS_SAGAWA")
+    assert.equal((await ship(req)).suitcase_count, 2)
+  })
+  await test("Operator の直接編集: 依頼済みは訂正・ダッシュボード・個数調整・ホテル変更すべて 409 と変更申請への案内", async () => {
+    const leg = await newLeg()
+    await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })
+    const correct = await import("../../app/api/operator/shipment/[id]/correct/route")
+    const dash = await import("../../app/api/shipments/route")
+    const adjust = await import("../../app/api/operator/adjust-count/route")
+    const hotel = await import("../../app/api/operator/shipment/[id]/hotel-change/route")
+    const mk = (url: string, method: string, b: unknown) => new NextRequest(`http://localhost${url}`, { method, headers: { "content-type": "application/json", "x-forwarded-for": `10.4.${ip++ % 250}.1` }, body: JSON.stringify(b) })
+    const outs = [
+      await correct.POST(mk(`/api/operator/shipment/${leg}/correct`, "POST", { shipmentDate: jst(6), expectedArrival: jst(7), reason: "x" }), { params: Promise.resolve({ id: leg }) }),
+      await dash.PATCH(mk("/api/shipments", "PATCH", { id: leg, shipmentDate: jst(6) })),
+      await adjust.POST(mk("/api/operator/adjust-count", "POST", { id: leg, newCount: 5, reasonCode: "customer_change" })),
+      await hotel.POST(mk(`/api/operator/shipment/${leg}/hotel-change`, "POST", { side: "guest", newHotel: "Test Hotel Osaka", newHotelJa: "テストホテル大阪", newPlaceId: "p-to2", reason: "x" }), { params: Promise.resolve({ id: leg }) }),
+    ]
+    const labels = ["訂正", "ダッシュボード", "個数調整", "ホテル変更"]
+    for (let i = 0; i < outs.length; i++) {
+      const b = (await outs[i].json()) as Record<string, unknown>
+      assert.equal(outs[i].status, 409, `${labels[i]}: ${outs[i].status} ${JSON.stringify(b)}`)
+      assert.equal(b.code, "PICKUP_REQUEST_LIVE", labels[i])
+      assert.match(String(b.error), /変更申請/, labels[i])
+    }
+    const s2 = await ship(leg)
+    assert.equal(s2.suitcase_count, 2)
+    assert.equal(s2.to_hotel, "Test Hotel Kyoto")
+  })
+  await test("Operator は依頼の確保の前なら 18:30 以降も直接編集できる (訂正)", async () => {
+    const leg = await newLeg({ shipment_date: D })
+    const correct = await import("../../app/api/operator/shipment/[id]/correct/route")
+    setJst(dayBefore(D), "18:45:00")
+    const res = await correct.POST(new NextRequest(`http://localhost/api/operator/shipment/${leg}/correct`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.3.3.3" }, body: JSON.stringify({ representative: "OPS FIXED", reason: "x" }) }), { params: Promise.resolve({ id: leg }) })
+    resetClock()
+    assert.equal(res.status, 200, JSON.stringify(await res.json()))
+    assert.equal((await ship(leg)).representative, "OPS FIXED")
+  })
+  await test("旧来の「取消完了」等の操作は受け付けず、変更申請へ案内 (区間の取消と食い違わない)", async () => {
+    const leg = await newLeg()
+    await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })
+    const rid = (await reqs(leg))[0].id
+    for (const a of ["start_change", "change_done", "cancel_done"]) {
+      const r = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: a, actor: "谷口", note: "x" })
+      assert.equal(r.status, 409, a)
+      assert.match(String(r.body.error), /変更申請/, a)
+    }
+    assert.equal((await reqs(leg))[0].state, "accepted")
+    assert.equal((await ship(leg)).status, "requested")
+  })
+  await test("日程の申請を反映すると、締切 (change_deadline_at) も新しい集荷日の前日 18:30 に", async () => {
+    const leg = await newLeg()
+    await previewAndSend(leg)
+    const c = await call("POST", "/api/operator/pickup-request", { action: "change_create", shipmentId: leg, kind: "dates", fields: { shipment_date: jst(7), expected_arrival: jst(8) }, reason: "r", actor: "谷口" })
+    const id = String(c.body.changeId)
+    await call("POST", "/api/operator/pickup-request", { action: "change_step", changeId: id, step: "contact", note: "連絡", actor: "谷口" })
+    await call("POST", "/api/operator/pickup-request", { action: "change_step", changeId: id, step: "approve", note: "可", numberPolicy: "kept", actor: "谷口" })
+    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "change_apply", changeId: id, actor: "谷口" })).status, 200)
+    const s2 = await ship(leg)
+    assert.equal(new RealDate(s2.change_deadline_at).toISOString(), new RealDate(`${dayBefore(jst(7))}T18:30:00+09:00`).toISOString())
+  })
+  globalThis.Date = RealDate
 
   console.log("9. 大量予約・同時実行 (PGlite・参考値)")
   await test("3,000区間を手動依頼として記録 → TODO の読み込み・100件同時確保 (50区間×2)", async () => {

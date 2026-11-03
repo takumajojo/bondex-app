@@ -17,6 +17,7 @@ import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@
 import { sagawaLeadTimeViolation, type RouteLeadTime } from "@/lib/lead-time-check"
 import { legTrackingNumbers, reissueBlocked } from "@/lib/shipment-reissue"
 import { normalizeBanchi, stripKyotoRouteName } from "@/lib/jp-address"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -616,6 +617,7 @@ export async function POST(req: NextRequest) {
       note_target: resolvedNoteTarget,
       is_addition: isAddition,
     })
+    if (!savedDeferred.ok && isPickupLockError(savedDeferred.error)) return NextResponse.json(operatorLockBody(savedDeferred.error), { status: 409 })
     if (!savedDeferred.ok) {
       // pending 行が保存されないと 1ヶ月前の自動発行が走らない=手荷物が発行漏れになる。即アラート。
       await sendOpsAlert({
@@ -839,6 +841,7 @@ export async function POST(req: NextRequest) {
   // 追跡番号は集荷後に佐川から届いたものを運用画面で入力する。
   if (!waybillIssuanceEnabled()) {
     const savedNotNeeded = await saveShipment({ ...baseRecord, status: "issued" })
+    if (!savedNotNeeded.ok && isPickupLockError(savedNotNeeded.error)) return NextResponse.json(operatorLockBody(savedNotNeeded.error), { status: 409 })
     if (!savedNotNeeded.ok) {
       return NextResponse.json(
         { error: "Failed to save shipment", code: "SAVE_FAILED", detail: savedNotNeeded.error },
@@ -978,6 +981,7 @@ export async function POST(req: NextRequest) {
       tracking_numbers: d.delivery?.tracking_numbers ?? null,
       label_url: d.delivery?.label ?? null,
     })
+    if (!saved.ok && isPickupLockError(saved.error)) return NextResponse.json(operatorLockBody(saved.error), { status: 409 })
     if (!saved.ok) {
       console.error(
         `[shipandco/create] Yamato issued but DB save FAILED for ${baseRecord.booking_id}-L${legIndex}: ${saved.error}`,

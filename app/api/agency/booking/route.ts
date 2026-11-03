@@ -16,6 +16,7 @@ import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
+import { earliestBookableShipDate, isPastPickupCutoff, PICKUP_CUTOFF_TEXT } from "@/lib/pickup-cutoff"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -230,6 +231,24 @@ export async function POST(req: NextRequest) {
     const parsed = parseLeg(raw)
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
     legs.push(parsed)
+  }
+
+  // 受付の締切 = 集荷前日 18:30 (JST) (lib/pickup-cutoff.ts・2026-11-04 谷口さん決定)。過ぎた集荷日の新規予約は
+  // 通常の受付では受けない (19:00 に佐川へ集荷依頼するため)。急ぎは BondEx が個別に対応する。画面側も同じ判定。
+  for (let i = 0; i < legs.length; i++) {
+    if (isPastPickupCutoff(legs[i].shipmentDate)) {
+      const earliest = earliestBookableShipDate()
+      return NextResponse.json(
+        {
+          error: en
+            ? `Leg ${i + 1}: bookings for pickup on ${legs[i].shipmentDate} closed at ${PICKUP_CUTOFF_TEXT.en}. The earliest pickup date is ${earliest}. For urgent requests, please contact BondEx.`
+            : `区間${i + 1}: 集荷日 ${legs[i].shipmentDate} の受付は${PICKUP_CUTOFF_TEXT.ja}で締め切りました。最短の集荷日は ${earliest} です。お急ぎの場合は BondEx へご相談ください。`,
+          code: "PAST_PICKUP_CUTOFF",
+          earliestShipDate: earliest,
+        },
+        { status: 400 },
+      )
+    }
   }
 
   // 佐川の最短お届け日 (発送日 + 佐川の配達日数) より前の到着日は受け付けない。代理店便は佐川固定。

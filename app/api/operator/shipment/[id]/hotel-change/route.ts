@@ -4,7 +4,8 @@ import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { alertSagawaChange } from "@/lib/sagawa-alert"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
-import { isChangeDeadlinePassed } from "@/lib/change-deadline"
+import { changeDeadlineAt, isChangeDeadlinePassed } from "@/lib/change-deadline"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -91,7 +92,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   // ポリシーゲート (締切超過は理由必須で override 可)
-  const overDeadline = isChangeDeadlinePassed(ship.change_deadline_at as string | null)
+  // 締切は集荷日から計算する (集荷前日 18:30 JST)。保存値は日程の変更で古くなることがあるため。
+  const overDeadline = isChangeDeadlinePassed(changeDeadlineAt(ship.shipment_date as string | null) ?? (ship.change_deadline_at as string | null))
   if (overDeadline && !reason) {
     return NextResponse.json(
       { error: "over_deadline_reason_required", message: "変更締切を過ぎています。変更理由の入力が必須です。" },
@@ -123,6 +125,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (rpcErr) {
     // RPC 側ゲート (物理/理由必須) が発火した場合もここに来る。
     const msg = rpcErr.message || "変更に失敗しました"
+    // 佐川へ集荷依頼済みの区間 (DB のトリガーが止めた) → 変更申請へ誘導
+    if (isPickupLockError(msg)) return NextResponse.json(operatorLockBody(msg), { status: 409 })
     const status = /physical_gate/.test(msg) ? 409 : /over_deadline_reason_required/.test(msg) ? 400 : 500
     return NextResponse.json({ error: "rpc_failed", message: msg }, { status })
   }

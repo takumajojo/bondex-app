@@ -380,8 +380,7 @@ export default function PickupRequestPanel({
 
       {live && live.state === "accepted" && (
         <div className="flex flex-wrap items-center gap-2">
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="世田谷へ連絡した内容（必須）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
-          <B k="start_change" label="世田谷へ変更・取消を連絡した" cls={secondary} onClick={() => resolve("start_change", "変更・取消の連絡中として記録しました。佐川の返信を受けたら完了を記録してください")} />
+          <span className="text-[11px] text-muted-foreground">変更・取消は下の「変更申請」から登録します（区間の情報は佐川の回答の後に反映）。</span>
           {live.channel === "manual" && !live.shipping_number && (
             <B k="confirm_none" label="依頼済みの記録を取り消す（押し間違い）" cls={secondary} onClick={() => resolve("confirm_none", "記録を取り消しました")} />
           )}
@@ -389,14 +388,7 @@ export default function PickupRequestPanel({
       )}
 
       {live && live.state === "change_pending" && (
-        <div className="space-y-1.5">
-          <p className="text-[11px] text-blue-800">メールを送っただけでは完了にしません。佐川から反映確認の返信を受けたら記録してください。</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="佐川からの返信の内容（必須）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
-            <B k="change_done" label="変更が反映された" cls={primary} onClick={() => resolve("change_done", "変更の反映を記録しました")} />
-            <B k="cancel_done" label="取消が反映された" cls={secondary} onClick={() => resolve("cancel_done", "取消の反映を記録しました")} />
-          </div>
-        </div>
+        <p className="text-[11px] text-blue-800">世田谷へ変更・取消を連絡中です。佐川から回答を受けたら、下の「変更申請」に記録してください。</p>
       )}
 
       {live && (live.state === "accepted" || live.state === "change_pending") && (
@@ -474,7 +466,12 @@ function AfterAcceptChange({
 }) {
   const open = changes.find((c) => ["requested", "contacted", "approved"].includes(c.state))
   const [show, setShow] = useState(false)
-  const [side, setSide] = useState<"guest" | "pickup" | "none">("guest")
+  // 申請の種類: ホテル (到着先 / 発送元)・問い合わせ番号の振り直し・日程・個数・代表者名・取消・個別再手配
+  const [side, setSide] = useState<"guest" | "pickup" | "none" | "dates" | "count" | "representative" | "cancel" | "rearrange">("guest")
+  const [shipDate, setShipDate] = useState("")
+  const [arrDate, setArrDate] = useState("")
+  const [pieces, setPieces] = useState("")
+  const [repName, setRepName] = useState("")
   const [hotel, setHotel] = useState("")
   const [hotelJa, setHotelJa] = useState("")
   const [placeId, setPlaceId] = useState("")
@@ -496,10 +493,9 @@ function AfterAcceptChange({
   const input = "rounded border border-border px-2 py-1 text-[12px]"
   return (
     <div className="space-y-1.5 rounded-lg border border-slate-200 bg-white p-2.5">
-      <p className="font-medium">受付後の変更（ホテル・問い合わせ番号）</p>
+      <p className="font-medium">受付後の変更申請（ホテル・日程・個数・代表者名・取消・番号）</p>
       <p className="text-[11px] text-muted-foreground">
-        受付後は API で変更できません。世田谷営業所へ連絡し、佐川の回答（承認）を記録してから BondEx に反映します。回答前は区間のホテル情報は変わりません。
-        日付・個数・取消は上の「世田谷へ変更・取消を連絡した」を使ってください。
+        受付後は API で変更できず、区間の情報も直接は変えられません（DB が止めます）。変更申請を登録 → 世田谷営業所へ連絡 → 佐川の回答（承認／不可）を記録 → 承認なら BondEx に反映、の順です。回答の前は区間の情報は変わりません。
       </p>
       {open ? (
         <div className="space-y-1.5">
@@ -549,16 +545,36 @@ function AfterAcceptChange({
       ) : liveState === "accepted" ? (
         <div>
           <button onClick={() => setShow((v) => !v)} className="text-[11px] text-blue-600 hover:underline">
-            変更希望を登録する {show ? "▲" : "▼"}
+            変更申請を登録する（ホテル・日程・個数・代表者名・取消） {show ? "▲" : "▼"}
           </button>
           {show && (
             <div className="mt-1 space-y-1">
               <select value={side} onChange={(e) => setSide(e.target.value as typeof side)} className={input}>
                 <option value="guest">到着先ホテルを変える</option>
                 <option value="pickup">発送元（集荷先）ホテルを変える</option>
+                <option value="dates">日程（集荷日・お届け日）を変える</option>
+                <option value="count">個数を変える</option>
+                <option value="representative">代表者名を変える</option>
+                <option value="cancel">取り消す（佐川の取消確認の後に区間を取消）</option>
+                <option value="rearrange">個別に再手配する（今の依頼を取消・手動で依頼し直し）</option>
                 <option value="none">ホテルは変えない（問い合わせ番号の振り直しだけ）</option>
               </select>
-              {side !== "none" && (
+              {side === "dates" && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  集荷日 <input type="date" value={shipDate} onChange={(e) => setShipDate(e.target.value)} className={input} />
+                  お届け日 <input type="date" value={arrDate} onChange={(e) => setArrDate(e.target.value)} className={input} />
+                </div>
+              )}
+              {(side === "count" || side === "rearrange") && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  新しい個数 <input type="number" min={1} max={99} value={pieces} onChange={(e) => setPieces(e.target.value)} className={`${input} w-20`} />
+                  {Number(pieces) >= 20 && <span className="text-amber-700">20個以上：世田谷へ事前に確認してください（Biz-Logi では再送しません）</span>}
+                </div>
+              )}
+              {side === "representative" && (
+                <input value={repName} onChange={(e) => setRepName(e.target.value)} placeholder="新しい代表者名" className={`${input} w-56`} />
+              )}
+              {(side === "guest" || side === "pickup") && (
                 <div className="space-y-1">
                   {/* place_id・市区・都道府県は候補の選択からだけ入る (手入力不可)。名前は選択後に直せる */}
                   <HotelPlacePicker
@@ -585,27 +601,48 @@ function AfterAcceptChange({
               )}
               <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="変更の理由（必須）" className={`${input} w-72`} />
               <button
-                disabled={!!busy || (side !== "none" && (!placeId || !hotel.trim()))}
+                disabled={
+                  !!busy ||
+                  ((side === "guest" || side === "pickup") && (!placeId || !hotel.trim())) ||
+                  (side === "dates" && !shipDate && !arrDate) ||
+                  ((side === "count" || side === "rearrange") && !pieces) ||
+                  (side === "representative" && !repName.trim())
+                }
                 className={`${btn} bg-blue-600 text-white`}
                 onClick={() =>
                   run(
                     "change_create",
-                    {
-                      action: "change_create",
-                      shipmentId,
-                      side: side === "none" ? null : side,
-                      newHotel: hotel,
-                      newHotelJa: hotelJa,
-                      newPlaceId: placeId,
-                      newPrefecture: pref,
-                      newCity: city,
-                      reason,
-                    },
+                    side === "guest" || side === "pickup" || side === "none"
+                      ? {
+                          action: "change_create",
+                          shipmentId,
+                          side: side === "none" ? null : side,
+                          newHotel: hotel,
+                          newHotelJa: hotelJa,
+                          newPlaceId: placeId,
+                          newPrefecture: pref,
+                          newCity: city,
+                          reason,
+                        }
+                      : {
+                          action: "change_create",
+                          shipmentId,
+                          kind: side,
+                          fields:
+                            side === "dates"
+                              ? { ...(shipDate ? { shipment_date: shipDate } : {}), ...(arrDate ? { expected_arrival: arrDate } : {}) }
+                              : side === "count" || side === "rearrange"
+                                ? { suitcase_count: Number(pieces) }
+                                : side === "representative"
+                                  ? { representative: repName.trim() }
+                                  : {},
+                          reason,
+                        },
                     "変更希望を登録しました。世田谷へ連絡したら記録してください（区間の情報はまだ変わりません）",
                   )
                 }
               >
-                変更希望を登録
+                変更申請を登録
               </button>
             </div>
           )}

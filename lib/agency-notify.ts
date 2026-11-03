@@ -93,8 +93,8 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
   const fee = feeEstimate(input)
   const schedule = legs.map((l) =>
     ja
-      ? `区間${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  ・個数: ${l.suitcaseCount != null ? `${l.suitcaseCount}個` : "—"}\n  ・修正の締切: ${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 17:00 まで\n  ・集荷: ${fmtDate(l.shipmentDate, "ja")} 11:00 以降（集荷員が送り状を持参）\n  ・お届け予定: ${fmtDate(l.expectedArrival, "ja")}`
-      : `Leg ${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  - Pieces: ${l.suitcaseCount != null ? l.suitcaseCount : "—"}\n  - Changes accepted until: ${fmtDate(ymdMinus1(l.shipmentDate), "en")}, 17:00\n  - Pickup: ${fmtDate(l.shipmentDate, "en")}, from 11:00 (the courier brings the shipping labels)\n  - Expected delivery: ${fmtDate(l.expectedArrival, "en")}`,
+      ? `区間${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  ・個数: ${l.suitcaseCount != null ? `${l.suitcaseCount}個` : "—"}\n  ・修正の締切: ${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 18:30 まで\n  ・集荷: ${fmtDate(l.shipmentDate, "ja")} 11:00 以降（集荷員が送り状を持参）\n  ・お届け予定: ${fmtDate(l.expectedArrival, "ja")}`
+      : `Leg ${l.legIndex + 1}: ${l.fromHotel} → ${l.toHotel}\n  - Pieces: ${l.suitcaseCount != null ? l.suitcaseCount : "—"}\n  - Changes accepted until: ${fmtDate(ymdMinus1(l.shipmentDate), "en")}, 18:30 JST\n  - Pickup: ${fmtDate(l.shipmentDate, "en")}, from 11:00 (the courier brings the shipping labels)\n  - Expected delivery: ${fmtDate(l.expectedArrival, "en")}`,
   )
   if (ja) {
     return {
@@ -118,12 +118,12 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
               `消費税(10%)：${yen(fee.tax)}　合計（税込）：${yen(fee.gross)}`,
             ]
           : []),
-        `※上記は概算です。ご請求金額は集荷完了時に確定します（集荷までは個数の変更が可能ですので、変更がある場合は各区間の配送前日 17:00 までにお知らせください）。`,
+        `※上記は概算です。ご請求金額は集荷完了時に確定します（集荷までは個数の変更が可能ですので、変更がある場合は各区間の集荷前日 18:30 までにお知らせください）。`,
         ``,
         `■ お客様へのひと言`,
         `「当日になりましたら、集荷員が伝票を持って集荷に伺います。チェックアウトまでにフロントへお荷物をお預けください。」とお伝えください。`,
         ``,
-        `日程・個数・ホテルの変更は、各区間の配送前日 17:00 まで代理店ポータルまたはお問い合わせから承ります。`,
+        `日程・個数・ホテルの変更は、各区間の集荷前日 18:30（日本時間）まで代理店ポータルから承ります。それ以降は変更申請として BondEx が確認のうえ対応します。`,
       ],
     }
   }
@@ -148,12 +148,12 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
             `Japanese consumption tax (JCT 10%): ${yen(fee.tax)}　Total (incl. tax): ${yen(fee.gross)}`,
           ]
         : []),
-      `This is an estimate; the final amount is confirmed at pickup (you can still change the piece count until 17:00 the day before each shipment).`,
+      `This is an estimate; the final amount is confirmed at pickup (you can still change the piece count until 18:30 JST the day before each pickup).`,
       ``,
       `■ One line to tell your guest`,
       `"On the day, the courier will come to the hotel with the shipping labels. Please leave your luggage at the reception by check-out."`,
       ``,
-      `Dates, piece counts and hotels can be changed from the portal or via Contact until 17:00 on the day before each shipment.`,
+      `Dates, piece counts and hotels can be changed from the portal until 18:30 JST on the day before each pickup. After that, changes are sent as a request and BondEx confirms them.`,
     ],
   }
 }
@@ -244,13 +244,13 @@ function legCardHtml(l: { legIndex: number; shipmentDate: string; expectedArriva
   const items: [string, string][] = ja
     ? [
         ["個数", l.suitcaseCount != null ? `${l.suitcaseCount}個` : "—"],
-        ["修正の締切", `${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 17:00 まで`],
+        ["修正の締切", `${fmtDate(ymdMinus1(l.shipmentDate), "ja")} 18:30 まで`],
         ["集荷", `${fmtDate(l.shipmentDate, "ja")} 11:00 以降（集荷員が送り状を持参）`],
         ["お届け予定", fmtDate(l.expectedArrival, "ja")],
       ]
     : [
         ["Pieces", l.suitcaseCount != null ? String(l.suitcaseCount) : "—"],
-        ["Changes until", `${fmtDate(ymdMinus1(l.shipmentDate), "en")}, 17:00`],
+        ["Changes until", `${fmtDate(ymdMinus1(l.shipmentDate), "en")}, 18:30 JST`],
         ["Pickup", `${fmtDate(l.shipmentDate, "en")}, from 11:00 (courier brings labels)`],
         ["Delivery", fmtDate(l.expectedArrival, "en")],
       ]

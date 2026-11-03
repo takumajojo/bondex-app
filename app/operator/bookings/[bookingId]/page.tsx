@@ -30,7 +30,7 @@ import type { ResidenceAddress } from "@/lib/residence"
 import HotelContactEditor from "@/components/operator/HotelContactEditor"
 import HotelChangeModal, { type HotelChangeTarget } from "@/components/operator/HotelChangeModal"
 import CorrectionModal, { type CorrectionTarget } from "@/components/operator/CorrectionModal"
-import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
+import { changeDeadlineAt, formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
 import { hotelDisplay } from "@/lib/hotel-name"
 import { residenceOneLine } from "@/lib/residence"
 
@@ -690,18 +690,21 @@ export default function OperatorBookingDetailPage() {
 
               {/* 変更受付: 締切表示 + ホテル変更ボタン (物理ゲートで無効化) */}
               {(() => {
-                const gated =
-                  ((r.tracking_numbers?.length ?? 0) > 0) ||
-                  ["picked_up", "in_transit", "delivered"].includes(r.status)
-                const over = isChangeDeadlinePassed(r.change_deadline_at)
-                const near = isChangeDeadlineNear(r.change_deadline_at)
+                const shipped = ["picked_up", "in_transit", "delivered"].includes(r.status)
+                // 佐川へ集荷依頼済み (集荷前) は、佐川に渡す内容を DB が直接変えさせない (sql/064)。変更申請へ誘導する。
+                const requested = !!r.pickup_requested_at && !shipped && r.status !== "cancelled"
+                const gated = shipped || requested || (r.tracking_numbers?.length ?? 0) > 0
+                // 締切は集荷日から計算する (集荷前日 18:30 JST)
+                const deadline = changeDeadlineAt(r.shipment_date) ?? r.change_deadline_at
+                const over = isChangeDeadlinePassed(deadline)
+                const near = isChangeDeadlineNear(deadline)
                 return (
                   <div className="rounded-xl border border-border bg-slate-50 p-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span
                         className={`text-xs ${over ? "text-red-700 font-semibold" : near ? "text-amber-700 font-semibold" : "text-foreground"}`}
                       >
-                        変更締切: {formatChangeDeadlineJst(r.change_deadline_at)}
+                        変更締切: {formatChangeDeadlineJst(deadline)}
                         {over && <span className="ml-1">（締切超過）</span>}
                         {!over && near && <span className="ml-1">（残り48時間以内）</span>}
                       </span>
@@ -728,11 +731,15 @@ export default function OperatorBookingDetailPage() {
                         </button>
                       </div>
                     </div>
-                    {gated && (
+                    {requested ? (
+                      <p className="mt-1 text-[10px] text-blue-800">
+                        佐川へ集荷依頼済みのため、日程・個数・ホテル・代表者名・取消は直接変更できません。下の「佐川への集荷依頼」の変更申請から登録し、世田谷への連絡と佐川の回答を記録してから反映してください。
+                      </p>
+                    ) : gated ? (
                       <p className="mt-1 text-[10px] text-red-600">
                         集荷済み、または追跡番号が入っているため変更できません。
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 )
               })()}

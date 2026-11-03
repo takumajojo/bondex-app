@@ -9,7 +9,14 @@ import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
 import { amountForNewCount } from "@/lib/amount-recalc"
 import { jstTodayYmd } from "@/lib/yamato-delivery"
-import { legLockedForAgency, isSelfServiceCutoffPassed, normalizeRepresentative } from "@/lib/agency-self-service"
+import {
+  legLockedForAgency,
+  isSelfServiceCutoffPassed,
+  normalizeRepresentative,
+  CHANGE_REQUEST_ACCEPTED_MESSAGE,
+} from "@/lib/agency-self-service"
+import { isPickupLockError, liveRequestFor, submitAgencyChange } from "@/lib/pickup-request/agency-change"
+import type { ChangeKind } from "@/lib/pickup-request/change"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
 import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
 
@@ -23,9 +30,11 @@ export const runtime = "nodejs"
  *  - 自社の予約のみ (agency 名一致)
  *  - ロック判定は lib/agency-self-service.ts (送り状が実在 / 追跡番号あり / 集荷済み以降 = 不可)。
  *    2026-09-24 の運用変更で依頼直後から "issued" (手配済) になるため、status だけでは判定しない。
- *  - 日程・個数・代表者名は「配送前日 17:00 (JST)」まで即時反映 (完了画面・受付メールの案内どおり)。
- *  - 締切 (配送前日17:00) を過ぎた変更は即時反映せず「承認制」で受理する (谷口さん決定 2026-09-29):
- *    shipment_change_requests に pending で積み、BondEx が承認するまで反映しない。
+ *  - 日程・個数・代表者名は「集荷前日 18:30 (JST)」まで即時反映 (lib/pickup-cutoff.ts・2026-11-04 谷口さん決定)。
+ *  - 次の変更は直接変えずに「変更申請」で受け付ける (2026-11-04 段階C・sql/064 の shipment_change_requests):
+ *      佐川へ集荷依頼済みの区間 (取消も申請) … 世田谷へ連絡 → 佐川の回答 → 反映
+ *      締切 (集荷前日 18:30) の後 … Operator が確認して承認 → 反映
+ *    申請中は現在の手配内容のまま。1回の操作で変えられるのは1種類 (日程・個数・代表者名・取消のどれか)。
  *  - 代表者名は予約単位 → 全区間に反映。受取人名が旧代表者名と同じなら揃える。
  *  - 団体 (booking_type='group') の個数変更は不可 (荷物リストと不整合になるため。
  *    団体ダッシュボードでリストを編集する)。
@@ -53,7 +62,19 @@ export async function PATCH(
   if (!shipment || shipment.agency !== auth.agency.name) {
     return NextResponse.json({ error: "not found" }, { status: 404 })
   }
-  if (legLockedForAgency(shipment)) {
+  const sbLive = getSupabase()
+  if (!sbLive) return NextResponse.json({ error: "Supabase unavailable" }, { status: 500 })
+  // 佐川へ集荷依頼済み (有効な依頼あり) の区間は、番号があっても変更申請として受け付ける。
+  let live: Awaited<ReturnType<typeof liveRequestFor>> = null
+  try {
+    live = await liveRequestFor(sbLive, id)
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+  }
+  const lockedForAgency = live
+    ? !["requested", "pending", "issued"].includes(shipment.status || "") || !!shipment.label_url
+    : legLockedForAgency(shipment)
+  if (lockedForAgency) {
     return NextResponse.json(
       {
         error: en
@@ -81,10 +102,43 @@ export async function PATCH(
   }
 
   const legRef = `${shipment.booking_id}-L${shipment.leg_index + 1}`
-  const sb = getSupabase()
-  if (!sb) return NextResponse.json({ error: "Supabase unavailable" }, { status: 500 })
+  const sb = sbLive
+  const actorLabel = auth.agency.contact_email ? `${auth.agency.name} <${auth.agency.contact_email}>` : auth.agency.name
+
+  // 変更申請として受け付けたときの共通処理 (運営へ通知し、202 を返す)
+  const requestAccepted = async (kinds: string[], changes: string[], why: "requested" | "cutoff") => {
+    await notifyBondEx({
+      kind: "change",
+      title: `${legRef}（${shipment.agency}）変更申請（${why === "requested" ? "佐川へ集荷依頼済み・世田谷へ連絡が必要" : "締切後・承認が必要"}）`,
+      lines: [`区間: ${shipment.from_hotel} → ${shipment.to_hotel}`, ...changes, `申請の種類: ${kinds.join("・")}`],
+      link: `/operator/bookings/${shipment.booking_id}`,
+      linkLabel: "申請を確認する",
+    })
+    return NextResponse.json(
+      { ok: true, pending: true, requested: true, message: en ? CHANGE_REQUEST_ACCEPTED_MESSAGE.en : CHANGE_REQUEST_ACCEPTED_MESSAGE.ja },
+      { status: 202 },
+    )
+  }
+  const lockRace = () =>
+    NextResponse.json(
+      {
+        error: "PICKUP_REQUESTED",
+        message: en
+          ? "Pickup was just arranged with the courier. Please try again — it will be sent as a change request."
+          : "直前に佐川へ集荷を手配しました。もう一度操作すると、変更申請として受け付けます。",
+      },
+      { status: 409 },
+    )
 
   // ── 取り消し
+  if (body.cancel === true && live) {
+    const r = await submitAgencyChange({
+      shipmentId: id, kind: "cancel", fields: {}, reason: "代理店からの取消の申請",
+      agencyName: auth.agency.name, actor: actorLabel, en,
+    })
+    if (!r.ok) return NextResponse.json({ error: r.code, message: r.message }, { status: r.status })
+    return requestAccepted(["取消"], [`取消の申請（発送日: ${shipment.shipment_date}）`], "requested")
+  }
   if (body.cancel === true) {
     // 条件付き更新 (2026-08-31 監査対応): 事前チェックと更新の間に cron 自動発行が
     // 走ると「発行直後の区間をキャンセルで上書き = 実ラベル (課金済み) だけが生き残る」。
@@ -104,7 +158,7 @@ export async function PATCH(
       .in("status", editableStatuses)
       .is("label_url", null)
       .select("id")
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
     if ((upd ?? []).length === 0) {
       return NextResponse.json(
         { error: "LOCKED", message: "配送業者への手配が済んでいるため、取り消しは BondEx へご連絡ください。" },
@@ -128,8 +182,9 @@ export async function PATCH(
   }
 
   // ── 日程 / 個数 / 代表者名の変更。
-  //    締切 (配送前日 17:00 JST) を過ぎたら即時反映せず承認制へ回す (下で判定)。
+  //    締切 (集荷前日 18:30 JST) の後、または集荷依頼済みなら、即時反映せず変更申請へ回す (下で判定)。
   const overCutoff = isSelfServiceCutoffPassed(shipment.shipment_date)
+  let countNeedsRequest = false
   const patch: Record<string, unknown> = {}
   const changes: string[] = []
   const bookingPatch: Record<string, unknown> = {}
@@ -220,17 +275,9 @@ export async function PATCH(
     }
     const countGate = changeBlockedReason("count", gateInput)
     if (countGate === "group_large_lock") return groupLockResp()
-    if (countGate === "count_lead") {
-      return NextResponse.json(
-        {
-          error: "COUNT_LEAD",
-          message: en
-            ? "Piece-count changes must be made at least 2 weeks before shipment. Please contact BondEx."
-            : "個数の変更は発送の2週間前までにお願いします。締切を過ぎた分は BondEx までご連絡ください。",
-        },
-        { status: 409 },
-      )
-    }
+    // 発送の2週間以内の個数変更は、これまで BondEx への連絡としていた。2026-11-04 からは変更申請として受け付け、
+    // BondEx (依頼済みなら佐川) の確認後に反映する。
+    if (countGate === "count_lead") countNeedsRequest = true
     const n = Math.floor(Number(body.suitcaseCount))
     if (!Number.isFinite(n) || n < 1 || n > 50) {
       return NextResponse.json(
@@ -262,47 +309,40 @@ export async function PATCH(
     return NextResponse.json({ error: "no fields" }, { status: 400 })
   }
 
-  // ── 締切超過は承認制 (谷口さん決定 2026-09-29)。配送前日17:00 の締切を過ぎた変更は
-  //    即時反映せず shipment_change_requests に pending で積む。BondEx が承認するまで受理しない。
-  if (overCutoff) {
-    const fields: Record<string, unknown> = { ...patch, ...bookingPatch }
-    const before: Record<string, unknown> = {}
-    const shipAny = shipment as unknown as Record<string, unknown>
-    for (const k of Object.keys(fields)) before[k] = shipAny[k]
-    const { error: crErr } = await sb.from("shipment_change_requests").insert({
-      shipment_id: id,
-      booking_id: shipment.booking_id,
-      leg_index: shipment.leg_index,
-      requested_by: "agency",
-      requester: auth.agency.name,
-      agency: auth.agency.name,
-      fields,
-      before,
-      over_deadline: true,
-      status: "pending",
-    })
-    if (crErr) return NextResponse.json({ error: crErr.message }, { status: 500 })
-    await notifyBondEx({
-      kind: "change",
-      title: `${legRef}（${shipment.agency}）締切後の変更申請（承認待ち）`,
-      lines: [
-        `区間: ${shipment.from_hotel} → ${shipment.to_hotel}`,
-        ...changes,
-        `⚠️ 配送前日17:00の締切を過ぎているため、BondEx の承認が必要です`,
-      ],
-      link: `/operator/bookings/${shipment.booking_id}`,
-      linkLabel: "承認する",
-    })
-    return NextResponse.json(
-      {
-        ok: true,
-        pending: true,
-        message: en
-          ? "Your change is past the cutoff, so it needs BondEx approval. We'll confirm and apply it shortly."
-          : "配送前日17:00の締切を過ぎているため、BondEx の承認後に反映されます。追ってご連絡します。",
-      },
-      { status: 202 },
-    )
+  // ── 変更申請 (集荷依頼済み・締切後)。1回の操作で1種類。
+  const kinds: Array<{ kind: ChangeKind; label: string; fields: Record<string, unknown> }> = []
+  if (patch.shipment_date !== undefined) kinds.push({ kind: "dates", label: "日程", fields: { shipment_date: patch.shipment_date, expected_arrival: patch.expected_arrival } })
+  if (patch.suitcase_count !== undefined) kinds.push({ kind: "count", label: "個数", fields: { suitcase_count: patch.suitcase_count } })
+  if (bookingPatch.representative !== undefined) kinds.push({ kind: "representative", label: "代表者名", fields: { ...bookingPatch } })
+  if (live || overCutoff || countNeedsRequest) {
+    if (kinds.length !== 1) {
+      return NextResponse.json(
+        { error: en ? "Please send one change at a time (dates, pieces or name)." : "変更申請は1回に1種類（日程・個数・代表者名のどれか）でお願いします。" },
+        { status: 400 },
+      )
+    }
+    const k = kinds[0]
+    // 代表者名は予約単位。依頼済み・締切後の区間は申請、それ以外の区間は今までどおり直接変える。
+    const legs =
+      k.kind === "representative"
+        ? (((await sb.from("shipments").select("id, shipment_date, status, label_url").eq("booking_id", shipment.booking_id)).data ?? []) as Array<{ id: string; shipment_date: string; status: string; label_url: string | null }>)
+            .filter((l) => ["requested", "pending", "issued"].includes(l.status) && !l.label_url)
+        : [{ id, shipment_date: shipment.shipment_date, status: shipment.status, label_url: shipment.label_url ?? null }]
+    const direct: string[] = []
+    for (const l of legs) {
+      const lLive = l.id === id ? live : await liveRequestFor(sb, l.id)
+      if (lLive || isSelfServiceCutoffPassed(l.shipment_date) || (countNeedsRequest && l.id === id)) {
+        const r = await submitAgencyChange({ shipmentId: l.id, kind: k.kind, fields: k.fields, reason: `代理店からの${k.label}の変更`, agencyName: auth.agency.name, actor: actorLabel, en })
+        if (!r.ok) return NextResponse.json({ error: r.code, message: r.message }, { status: r.status })
+      } else {
+        direct.push(l.id)
+      }
+    }
+    if (direct.length) {
+      const { error } = await sb.from("shipments").update(bookingPatch).in("id", direct).in("status", editableStatuses).is("label_url", null)
+      if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return requestAccepted([k.label], changes, live ? "requested" : "cutoff")
   }
 
   // ── 締切内: 即時反映。集荷と同時刻の変更が「佐川へ渡した情報と DB の食い違い」を生まないよう条件付き。
@@ -323,7 +363,7 @@ export async function PATCH(
       .in("status", editableStatuses)
       .is("label_url", null)
       .select("id")
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
     if ((upd2 ?? []).length === 0) {
       return NextResponse.json(
         { error: "LOCKED", message: "配送業者への手配が済んでいるため、変更は BondEx へご連絡ください。" },
@@ -339,7 +379,7 @@ export async function PATCH(
       .eq("booking_id", shipment.booking_id)
       .in("status", editableStatuses)
       .is("label_url", null)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
     // Drive のバウチャーも差し替え (best-effort)。ポータルの DL は都度生成なので常に最新。
     try {
       await resyncBookingToDrive(sb, shipment.booking_id)

@@ -8,6 +8,7 @@ import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { grossOf } from "@/lib/tax"
 import { PRICING } from "@/lib/pricing"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error: upErr } = await sb.from("shipments").update(update).eq("id", id)
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+  if (upErr) return isPickupLockError(upErr.message) ? NextResponse.json(operatorLockBody(upErr.message), { status: 409 }) : NextResponse.json({ error: upErr.message }, { status: 500 })
 
   // 依頼元ランオペの連絡先
   const { data: ag } = await sb

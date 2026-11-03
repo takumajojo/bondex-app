@@ -298,9 +298,9 @@ async function main() {
     const none = await resolvePickupRequest(id, "confirm_none", { actor: "谷口" }, store)
     check("Biz-Logi で受付済みの依頼は「依頼なし」にできない", !none.ok)
     const ch = await resolvePickupRequest(id, "start_change", { actor: "谷口", note: "世田谷へ取消メール" }, store)
-    check("取消の連絡 → change_pending", ch.ok && store.rows[0].state === "change_pending")
+    check("依頼記録だけを動かす旧操作 (連絡) は受け付けない (変更申請へ)", !ch.ok && /変更申請/.test(ch.reason) && store.rows[0].state === "accepted")
     const cd = await resolvePickupRequest(id, "cancel_done", { actor: "谷口", note: "反映確認の返信あり" }, store)
-    check("佐川の返信を記録 → cancelled", cd.ok && store.rows[0].state === "cancelled")
+    check("旧操作 (取消完了) も受け付けない (区間の取消と食い違うため)", !cd.ok && store.rows[0].state === "accepted")
   }
   {
     const store = new MemoryStore()
@@ -387,12 +387,9 @@ async function main() {
     const store = new MemoryStore()
     await store.claim({ shipmentId: "ship-1", channel: "manual", environment: null, manageNumber: null, pieceCount: 2, pickupDate: "2026-11-07", actor: "谷口", owner: "m", note: null, snapshot: pickupSnapshot(ROW) })
     const id = store.rows[0].id
-    check("世田谷への連絡はメモ必須 (メールを送っただけで完了にしない)", !(await resolvePickupRequest(id, "start_change", { actor: "谷口" }, store)).ok)
-    await resolvePickupRequest(id, "start_change", { actor: "谷口", note: "到着ホテル変更をメール" }, store)
-    check("反映の記録は返信内容が必須", !(await resolvePickupRequest(id, "change_done", { actor: "谷口", current: ROW }, store)).ok)
-    const changedRow = { ...ROW, to_place_id: "pz", to_hotel: "Hotel Z" }
-    const done = await resolvePickupRequest(id, "change_done", { actor: "谷口", note: "反映済みと返信あり", current: changedRow }, store)
-    check("変更の反映を記録 → accepted・依頼内容を新しい内容に更新 (以後は変更扱いにしない)", done.ok && store.rows[0].state === "accepted" && snapshotChanges(store.rows[0].request_snapshot, changedRow).length === 0)
+    const st = await resolvePickupRequest(id, "start_change", { actor: "谷口", note: "到着ホテル変更をメール" }, store)
+    const cd2 = await resolvePickupRequest(id, "change_done", { actor: "谷口", note: "反映済み", current: ROW }, store)
+    check("旧操作 (連絡・反映) は受け付けず、依頼記録は受付済みのまま", !st.ok && !cd2.ok && store.rows[0].state === "accepted")
   }
 
   console.log("9. 問合番号はあるが記録なし (P1-1)")
@@ -472,11 +469,11 @@ async function main() {
   }
 
   console.log("13. 締め時刻と社内推奨時刻 (P1-5)")
-  check("11/7 集荷: 11/6 17:59 は推奨時刻前", !pastRecommendedTime("2026-11-07", new Date("2026-11-06T08:59:00Z")))
-  check("11/6 18:00 以降は推奨時刻を過ぎた (警告のみ)", pastRecommendedTime("2026-11-07", new Date("2026-11-06T09:00:00Z")))
+  check("11/7 集荷: 11/6 18:59 は送信目標の前", !pastRecommendedTime("2026-11-07", new Date("2026-11-06T09:59:00Z")))
+  check("11/6 19:00 以降は送信目標を過ぎた (警告のみ)", pastRecommendedTime("2026-11-07", new Date("2026-11-06T10:00:00Z")))
   {
     const late = await previewBizLogiPickup(ROW, input, { client: makeClient(async () => okResponse()).client, now: () => new Date("2026-11-06T10:30:00Z") })
-    check("18:00〜20:00 の送信は拒否せず、警告だけ付ける", late.ok && late.warnings[0]?.includes("18:00"))
+    check("19:00〜20:00 の送信は拒否せず、警告だけ付ける", late.ok && late.warnings[0]?.includes("19:00"))
     const store = new MemoryStore()
     const { client, calls } = makeClient(async () => okResponse())
     const fp2 = late.ok ? late.fingerprint : ""

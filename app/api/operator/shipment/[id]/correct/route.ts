@@ -6,6 +6,7 @@ import { alertSagawaChange } from "@/lib/sagawa-alert"
 import { changeDeadlineAt, isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { notifyBondEx } from "@/lib/notify"
 import { amountForNewCount } from "@/lib/amount-recalc"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 import {
   normalizeCorrection,
   snapshotBefore,
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       }
     }
     const { error: upErr } = await sb.from("shipments").update(legPatch).eq("id", shipmentId)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) return isPickupLockError(upErr.message) ? NextResponse.json(operatorLockBody(upErr.message), { status: 409 }) : NextResponse.json({ error: upErr.message }, { status: 500 })
   }
 
   // ── 代理店反映 (全区間・請求突合のため booking 単位)
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .from("shipments")
       .update({ agency: newAgency })
       .eq("booking_id", shipment.booking_id)
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+    if (upErr) return isPickupLockError(upErr.message) ? NextResponse.json(operatorLockBody(upErr.message), { status: 409 }) : NextResponse.json({ error: upErr.message }, { status: 500 })
     changes.push(`代理店: ${shipment.agency || "—"} → ${newAgency}（全区間）`)
   }
 

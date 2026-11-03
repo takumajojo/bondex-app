@@ -212,6 +212,8 @@ export async function createPickupChange(i: {
   source: "agency" | "operator"
   requester: string
   actor: string
+  /** true なら理由をコード (open_change_exists 等) のまま返す (代理店向けの文言は呼び出し側で作る) */
+  rawReason?: boolean
 }): Promise<{ ok: true; changeId: string } | { ok: false; reason: string }> {
   const { data, error } = await sb().rpc("create_shipment_change", {
     p_shipment_id: i.shipmentId,
@@ -224,7 +226,9 @@ export async function createPickupChange(i: {
   })
   if (error) throw new Error(`変更申請を登録できません: ${error.message}`)
   const row = (Array.isArray(data) ? data[0] : data) as { ok?: boolean; change_id?: string; reason?: string } | null
-  return row?.ok && row.change_id ? { ok: true, changeId: row.change_id } : { ok: false, reason: changeReasonJa(row?.reason ?? "unknown") }
+  if (row?.ok && row.change_id) return { ok: true, changeId: row.change_id }
+  const code = row?.reason ?? "unknown"
+  return { ok: false, reason: i.rawReason ? code : changeReasonJa(code) }
 }
 
 export async function stepPickupChange(i: {

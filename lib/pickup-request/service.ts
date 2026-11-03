@@ -124,6 +124,9 @@ export async function recordManualFromTrackingNumber(
   }
 }
 
+/** 変更申請に置き換えた旧操作 (依頼記録だけを動かし、区間の取消などと食い違うため使わない)。 */
+const OBSOLETE_ACTIONS = new Set<ResolveAction>(["start_change", "change_done", "cancel_done"])
+
 /** 佐川の返信の記録が必要な操作 (メールを送っただけでは完了にしない)。 */
 const NOTE_REQUIRED: Partial<Record<ResolveAction, string>> = {
   start_change: "世田谷営業所へ連絡した内容を入力してください",
@@ -145,6 +148,11 @@ export async function resolvePickupRequest(
   store: PickupStore,
   now: () => Date = () => new Date(),
 ): Promise<{ ok: true; state: string } | { ok: false; reason: string }> {
+  // 世田谷への変更・取消の連絡と佐川の回答は「変更申請」(shipment_change_requests・sql/064) で記録する
+  // (2026-11-04 段階C)。依頼記録だけを動かす旧操作は、区間の情報 (取消など) と食い違うため受け付けない。
+  if (OBSOLETE_ACTIONS.has(action)) {
+    return { ok: false, reason: "変更・取消は『変更申請』から登録してください (世田谷への連絡・佐川の回答・反映を記録し、区間の情報と一緒に更新します)" }
+  }
   const t = RESOLVE_TRANSITIONS[action]
   if (!t) return { ok: false, reason: "不明な操作です" }
   const required = NOTE_REQUIRED[action]

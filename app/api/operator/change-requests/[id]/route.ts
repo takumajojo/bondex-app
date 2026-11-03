@@ -7,6 +7,9 @@ import { changeDeadlineAt } from "@/lib/change-deadline"
 import { notifyBondEx } from "@/lib/notify"
 import { amountForNewCount } from "@/lib/amount-recalc"
 import { postCorrectionAction, postCorrectionLabel } from "@/lib/shipment-change"
+import { stepPickupChange } from "@/lib/pickup-request/change"
+import { applyChangeWithEffects } from "@/lib/pickup-request/apply-effects"
+import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -66,6 +69,36 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const nowIso = new Date().toISOString()
   const legRef = `${cr.booking_id}-L${(cr.leg_index ?? 0) + 1}`
 
+  // 段階C 以降の申請 (種類つき・sql/064)。佐川への連絡が要る申請は集荷依頼のパネルで連絡・回答・反映を記録する。
+  // 依頼前の申請 (締切後など) は、ここでの承認 = DB 関数で承認 → 反映 (付随処理つき)。
+  const kind = String(cr.kind ?? "fields")
+  if (kind !== "fields" && kind !== "correction") {
+    if (cr.needs_sagawa) {
+      return NextResponse.json(
+        {
+          error: "佐川へ集荷依頼済みの区間の申請です。予約詳細の「佐川への集荷依頼」で、世田谷への連絡と佐川の回答を記録してから反映してください。",
+          code: "NEEDS_SAGAWA",
+        },
+        { status: 409 },
+      )
+    }
+    const st = await stepPickupChange({ changeId: reqId, step: action === "approve" ? "approve" : "reject", actor: "operator", note: note ?? (action === "approve" ? "運営が承認" : "運営が不可と判断") })
+    if (!st.ok) return NextResponse.json({ error: st.reason }, { status: 409 })
+    if (action === "reject") {
+      await notifyBondEx({
+        kind: "change",
+        title: `${legRef} 変更申請を却下（${cr.agency || "—"}）`,
+        lines: [note ? `理由: ${note}` : "理由未記入", "代理店へ却下の連絡をしてください。"],
+        link: `/operator/bookings/${cr.booking_id}`,
+        linkLabel: "予約詳細で確認",
+      }).catch(() => {})
+      return NextResponse.json({ ok: true, status: "rejected" })
+    }
+    const ap = await applyChangeWithEffects(reqId, "operator")
+    if (!ap.ok) return NextResponse.json({ error: ap.reason, code: "APPLY_FAILED" }, { status: 409 })
+    return NextResponse.json({ ok: true, status: "approved" })
+  }
+
   // ── 却下
   if (action === "reject") {
     const { error } = await sb
@@ -73,7 +106,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .update({ status: "rejected", decided_by: "operator", decided_at: nowIso, decision_note: note })
       .eq("id", reqId)
       .eq("status", "pending")
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return isPickupLockError(error.message) ? NextResponse.json(operatorLockBody(error.message), { status: 409 }) : NextResponse.json({ error: error.message }, { status: 500 })
     await notifyBondEx({
       kind: "change",
       title: `${legRef} 変更申請を却下（${cr.agency || "—"}）`,
@@ -115,7 +148,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .eq("id", cr.shipment_id)
       .in("status", ["requested", "pending"])
       .select("id")
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return isPickupLockError(error.message) ? NextResponse.json(operatorLockBody(error.message), { status: 409 }) : NextResponse.json({ error: error.message }, { status: 500 })
     if ((upd ?? []).length === 0) {
       return NextResponse.json(
         {
@@ -138,7 +171,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       )
     }
     const { error } = await sb.from("shipments").update({ agency: newAgency }).eq("booking_id", cr.booking_id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return isPickupLockError(error.message) ? NextResponse.json(operatorLockBody(error.message), { status: 409 }) : NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   const { error: markErr } = await sb

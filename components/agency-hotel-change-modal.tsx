@@ -10,7 +10,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2, Search, X, AlertTriangle, ArrowRight } from "lucide-react"
 import { getBrowserSupabase } from "@/lib/supabase-browser"
-import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
+import { changeDeadlineAt, formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
+import { CHANGE_REQUEST_NOTICE } from "@/lib/agency-self-service"
 
 type Side = "guest" | "pickup"
 
@@ -23,6 +24,8 @@ export interface AgencyHotelChangeTarget {
   shipmentDate: string
   expectedArrival: string | null
   changeDeadlineAt: string | null
+  /** 集荷依頼済み・締切 (集荷前日 18:30) 後 → 直接は変えず変更申請として送る */
+  asRequest?: boolean
 }
 
 interface Candidate {
@@ -113,14 +116,17 @@ export default function AgencyHotelChangeModal({
   target: AgencyHotelChangeTarget
   locale: "ja" | "en"
   onClose: () => void
-  onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+  onApply: (body: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; message?: string }>
   onDone: (msg: string) => void
 }) {
   const t = STR[locale]
   const title = target.side === "guest" ? t.titleGuest : t.titlePickup
   const searchLabel = target.side === "guest" ? t.searchLabelGuest : t.searchLabelPickup
-  const overDeadline = isChangeDeadlinePassed(target.changeDeadlineAt)
-  const near = isChangeDeadlineNear(target.changeDeadlineAt)
+  // 締切は集荷日から計算する (集荷前日 18:30 JST・保存値は日程変更で古くなることがあるため)。
+  // 締切後・集荷依頼済みは変更申請として送るので、ロック表示にはしない。
+  const deadlineAt = changeDeadlineAt(target.shipmentDate) ?? target.changeDeadlineAt
+  const overDeadline = !target.asRequest && isChangeDeadlinePassed(deadlineAt)
+  const near = isChangeDeadlineNear(deadlineAt)
 
   const [q, setQ] = useState("")
   const [cands, setCands] = useState<Candidate[]>([])
@@ -207,7 +213,7 @@ export default function AgencyHotelChangeModal({
       newPrefecture: newPrefecture.trim() || null,
     })
     if (r.ok) {
-      onDone(title)
+      onDone(r.message ?? title)
     } else {
       setError(r.error || t.failed)
       setSubmitting(false)
@@ -238,7 +244,7 @@ export default function AgencyHotelChangeModal({
           // 締切超過 → ロック表示 (代理店は override 不可)
           <div className="px-4 py-4 space-y-4">
             <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
-              {t.deadline}: <span className="font-semibold">{formatChangeDeadlineJst(target.changeDeadlineAt)}</span>
+              {t.deadline}: <span className="font-semibold">{formatChangeDeadlineJst(deadlineAt)}</span>
               <span className="font-bold">{t.over}</span>
             </div>
             <p className="text-sm text-foreground leading-relaxed">{t.lockedBody}</p>
@@ -254,13 +260,18 @@ export default function AgencyHotelChangeModal({
         ) : (
           <>
             <div className="px-4 py-3 space-y-3">
+              {target.asRequest && (
+                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="request-notice">
+                  {locale === "en" ? CHANGE_REQUEST_NOTICE.en : CHANGE_REQUEST_NOTICE.ja}
+                </p>
+              )}
               {/* 変更締切 */}
               <div
                 className={`rounded-lg border px-3 py-2 text-xs ${
                   near ? "border-amber-300 bg-amber-50 text-amber-800" : "border-border bg-slate-50 text-foreground"
                 }`}
               >
-                {t.deadline}: <span className="font-semibold">{formatChangeDeadlineJst(target.changeDeadlineAt)}</span>
+                {t.deadline}: <span className="font-semibold">{formatChangeDeadlineJst(deadlineAt)}</span>
                 {near && <span className="ml-1 font-bold">{t.near}</span>}
               </div>
 
