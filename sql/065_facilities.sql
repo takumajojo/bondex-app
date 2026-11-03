@@ -13,7 +13,7 @@
 --  - 自動の判定 (バッチ・予約時の一次判定) は、運営が確認していない施設の unknown → rejected (確度 high) だけ。
 --    運営が確認した施設は自動で変えない (確認待ちの印を付けるだけ)。
 --  - B2C の既存の条件 (両ホテルが確認済みでないと確定しない) は、b2c_facility_status() で同じ意味を返す。
---    B2C ブランチの b2c_facilities は、統合時にこの台帳へ置き換える (docs/patches/b2c-shared-facilities.patch)。
+--    B2C ブランチの b2c_facilities は、統合時にこの台帳へ置き換える (手順は MyClaudecode/docs/bizlogi-stage-ab-report-20261104.md 6章)。
 
 create table if not exists public.facility_settings (
   id                      boolean primary key default true check (id),
