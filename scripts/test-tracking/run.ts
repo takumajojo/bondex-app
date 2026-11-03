@@ -7,6 +7,26 @@ process.env.TRACKING_SYNC_PAUSED = "false" // 停止スイッチは env が優�
 process.env.CRON_SECRET = "test-secret"
 process.env.SHIPANDCO_API_KEY = "x"
 
+// 照会方針 (lib/tracking/poll-policy) は夜間 (JST 21時〜翌8時) に照会しない。試験の結果が実行時刻に
+// 左右されないよう、時計を日中 (JST 12:00 台) にずらして動かす (経過時間はそのまま進む)。本番のロジックは変えない。
+{
+  const RealDate = Date
+  const start = RealDate.now()
+  const startJst = new RealDate(start + 9 * 3600_000)
+  const noonJst = RealDate.UTC(startJst.getUTCFullYear(), startJst.getUTCMonth(), startJst.getUTCDate(), 12) - 9 * 3600_000
+  const offset = noonJst - start
+  class ShiftedDate extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) super(RealDate.now() + offset)
+      else super(...(args as [string | number]))
+    }
+    static now() {
+      return RealDate.now() + offset
+    }
+  }
+  globalThis.Date = ShiftedDate as unknown as DateConstructor
+}
+
 import assert from "node:assert/strict"
 import { NextRequest } from "next/server"
 import { S, reset, called } from "./fakes/state"
