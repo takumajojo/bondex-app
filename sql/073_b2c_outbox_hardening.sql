@@ -1,5 +1,5 @@
 -- =============================================================================
--- 063_b2c_outbox_hardening.sql — B2C の通知の送信待ち（b2c_outbox）の滞留・再試行・重複・期限切れの対策（Stage 4 の追加）
+-- 073_b2c_outbox_hardening.sql — B2C の通知の送信待ち（b2c_outbox）の滞留・再試行・重複・期限切れの対策（Stage 4 の追加）
 --
 -- 何を直すか（docs/b2c/B2C_NOTIFICATION_TEMPLATES.md 4章）:
 --   1. 古い順だけで取らない: 重要度（priority）→ 送信の期限（expires_at）が近い順 → 予定の時刻の順に取る。

@@ -2,7 +2,7 @@
 # B2C と Biz-Logi の統合の DB 試験 (ローカルの PostgreSQL の試験専用データベースだけ。本番・Supabase には接続しない)。
 #   実行: bash scripts/test-integ/db-integration.sh   (Supabase CLI のローカル DB コンテナ supabase_db_supa-local を使う)
 # 確かめること:
-#   A. 本番移行の順番 (067 → 069 → 068 → 061 → 062 → 071 → [アプリ] → 072 → 070) と二重適用
+#   A. 本番移行の順番 (067 → 069 → 068 → 061 → 062 → 073 → 071 → [アプリ] → 072 → 070) と二重適用
 #   B. 拡張段階 (ロック無効・記録の停止) で古いアプリの操作が通り、集荷依頼の記録は DB が止める
 #   C. 072 の後: ロック・二重依頼の防止・停止スイッチ
 #   D. 締切 18:30 (DB の pickup_cutoff_at・b2c_confirm_order の判定と保存値)
@@ -28,7 +28,7 @@ fresh() {
         alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;" >/dev/null
   apply scripts/test-b2c/db/000_base_from_prod.sql sql/043_shipment_change_requests.sql sql/033_hotel_change_schema.sql sql/063_fix_hotel_change_tracking_column.sql
 }
-EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/071_b2c_cutoff_1830.sql)
+EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql)
 lock_state() { q -c "select tgenabled from pg_trigger where tgrelid='public.shipments'::regclass and tgname='shipments_pickup_lock'"; }
 leg() { # booking_id 集荷日のオフセット(日) → id
   q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient)
@@ -51,9 +51,10 @@ b2c_seed() {
 
 echo "A. 本番移行の順番と二重適用"
 fresh
-apply "${EXPAND[@]}" && eq "拡張段階の SQL (067→069→068→061→062→071) を適用できる" ok ok
+apply "${EXPAND[@]}" && eq "拡張段階の SQL (067→069→068→061→062→073→071) を適用できる" ok ok
 apply "${EXPAND[@]}" && eq "拡張段階の SQL を2回流しても失敗しない" ok ok
 eq "068 はロックを無効で作る" D "$(lock_state)"
+eq "B2C の確定・取消は 071 の版 (18:30・集荷依頼済みの扱い)" "t|t" "$(q -c "select (prosrc like '%pickup_cutoff_at%') from pg_proc where proname='b2c_confirm_order'")|$(q -c "select (prosrc like '%pickup_requested%') from pg_proc where proname='b2c_cancel_order'")"
 eq "067 は集荷依頼の記録を停止で作る" "true|false" "$(q -c "select claims_paused||'|'||lock_enabled from pickup_request_settings")"
 q < "$R/scripts/test-b2c/db/verify_061.sql" > /tmp/integ_v061.txt 2>&1; eq "B2C の検証 (verify_061) が通る" 0 "$?"
 

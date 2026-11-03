@@ -59,12 +59,12 @@
 2. メールの送信の設定（`SMTP_*` または `RESEND_API_KEY`）が本番にあることを確かめ、試しの宛先に 1通ずつ送って表示を確かめる。
 3. `B2C_SITE_URL`（My Booking のリンクの先）と `B2C_ACCESS_TOKEN_SECRET`（32文字以上。変えると過去のリンクが使えなくなる）を本番に入れる。
 4. 定期の処理（`POST /api/b2c/cron/tick`・`CRON_SECRET`）を数分おきに呼ぶ仕組みを作り、`B2C_SCHEDULER_ENABLED=true` にする（既存の B2B の定期の処理と同じく GitHub Actions を想定。本番への反映は別の承認）。
-5. 本番の DB に `sql/063_b2c_outbox_hardening.sql` を当てる（`sql/062` の後。別の承認）。
+5. 本番の DB に `sql/073_b2c_outbox_hardening.sql` を当てる（`sql/062` の後。別の承認）。
 6. メールの送信手段は **Resend を推奨**（冪等キーが効き、結果が分からない時に自動で安全に再送できる）。SMTP だけの時は、結果が分からない通知は自動で再送せず運営の照合になる。
 
 ## 4. 送信待ちの滞留・再試行・重複・期限切れの方針（2026-11-04）
 
-実装: `sql/063_b2c_outbox_hardening.sql`（取る順・期限・止まった送信の片付け・滞留の状況）、`lib/b2c/notify.ts`（送信）、`lib/b2c/outbox-ops.ts` と `POST /api/b2c/ops/outbox`（運営の照合）。試験: `scripts/test-b2c/outbox_e2e.ts`。
+実装: `sql/073_b2c_outbox_hardening.sql`（取る順・期限・止まった送信の片付け・滞留の状況）、`lib/b2c/notify.ts`（送信）、`lib/b2c/outbox-ops.ts` と `POST /api/b2c/ops/outbox`（運営の照合）。試験: `scripts/test-b2c/outbox_e2e.ts`。
 
 ### 4.1 取る順（古い通知が溜まってもリマインドを遅らせない）
 - 重要度 → 期限の近い順 → 予定の時刻の順。重要度: 当日のリマインド 10、前日のリマインド 20、取消・予約確定 30、確認待ち 40。
