@@ -4,7 +4,7 @@ import { resolveAgencyFromRequest } from "@/lib/agency-auth"
 import { getSupabase } from "@/lib/supabase"
 import { isChangeDeadlinePassed } from "@/lib/change-deadline"
 import { changeBlockedReason } from "@/lib/agency-change-gate"
-import { legLockedForAgency } from "@/lib/agency-self-service"
+import { agencyHotelChangeLock, PICKUP_REQUESTED_HOTEL_MESSAGE } from "@/lib/agency-self-service"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
 import { alertSagawaChange } from "@/lib/sagawa-alert"
@@ -20,6 +20,7 @@ export const maxDuration = 20
  * 運営版(app/api/operator/shipment/[id]/hotel-change)より厳しいゲート:
  *   自社の予約のみ      … agency 名一致 (不一致は 404)
  *   未発行のみ          … status ∈ {requested, pending}。発行済み以降は 409 LOCKED → BondExへ連絡。
+ *   集荷依頼前のみ      … 佐川へ集荷依頼済み (pickup_requested_at) は 409 PICKUP_REQUESTED → BondExサポートへ連絡。
  *   締切超過は不可       … now > change_deadline_at は 409 DEADLINE_PASSED → BondExへ連絡 (override は運営のみ)。
  *   place_id 必須        … Google Places から取得 (手入力のみでは保存不可)。
  * 更新+履歴は RPC apply_hotel_change を p_require_unissued=true で呼ぶ
@@ -86,9 +87,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "not found" }, { status: 404 })
   }
 
-  // ロックゲート (送り状が実在 / 追跡番号あり / 集荷済み以降は BondEx へ連絡)。
+  // ロックゲート (佐川へ集荷依頼済み / 送り状が実在 / 追跡番号あり / 集荷済み以降は BondEx へ連絡)。
   // 2026-09-24〜 依頼直後から "issued" (手配済) になるため status だけでは判定しない。
-  if (legLockedForAgency({ status: ship.status as string, tracking_numbers: ship.tracking_numbers as string[] | null, label_url: (ship as { label_url?: string | null }).label_url ?? null, pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null })) {
+  // 判定はポータルの表示と同じ関数 (agencyHotelChangeLock) を使う。
+  const lock = agencyHotelChangeLock({
+    status: ship.status as string,
+    tracking_numbers: ship.tracking_numbers as string[] | null,
+    label_url: (ship as { label_url?: string | null }).label_url ?? null,
+    pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null,
+  })
+  if (lock === "pickup_requested") {
+    return NextResponse.json(
+      { error: "PICKUP_REQUESTED", message: en ? PICKUP_REQUESTED_HOTEL_MESSAGE.en : PICKUP_REQUESTED_HOTEL_MESSAGE.ja },
+      { status: 409 },
+    )
+  }
+  if (lock === "locked") {
     return NextResponse.json(
       {
         error: "LOCKED",
@@ -187,9 +201,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // 変更を代理店へメール通知し、最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
   await sendBookingUpdateEmail(ship.booking_id as string, [`${sideLabel}ホテル: ${oldHotelJa || oldHotel} → ${newHotelJa}`])
 
-  // 佐川へ集荷依頼済み (手動 Excel で依頼済み・問合番号はまだ無い) の区間のホテル変更は、佐川の依頼が古いホテルの
-  // まま残るため運用へ必ず知らせる。運営側のホテル変更 (operator/shipment/[id]/hotel-change) と同じ扱い
-  // (2026-11-03 監査 P1-3: 代理店側にだけ欠けていた)。問合番号がある区間は上のロックで変更できない。
+  // 佐川へ集荷依頼済みの区間は上のロック (PICKUP_REQUESTED) で変更できない (2026-11-04〜)。ロックの確認から
+  // 更新までの間に運営が依頼済みを記録した場合に備え、運用への通知は残す (2026-11-03 監査 P1-3)。
   await alertSagawaChange({
     shipment: {
       pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null,

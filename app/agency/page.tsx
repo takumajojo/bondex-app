@@ -31,7 +31,12 @@ import { AgencyContactFab } from "@/components/agency-contact-fab"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { openRosterPrintWindow } from "@/lib/roster-print"
 import type { GroupViewPayload } from "@/lib/group-view"
-import { legLockedForAgency, isSelfServiceCutoffPassed } from "@/lib/agency-self-service"
+import {
+  legLockedForAgency,
+  agencyHotelChangeLock,
+  isSelfServiceCutoffPassed,
+  PICKUP_REQUESTED_HOTEL_MESSAGE,
+} from "@/lib/agency-self-service"
 
 interface Shipment {
   id: string
@@ -56,6 +61,8 @@ interface Shipment {
   amount_yen: number
   tracking_numbers: string[] | null
   label_url: string | null
+  /** 運営が佐川へ集荷依頼済みと記録した時刻。ホテル変更の可否に使う (API と同じ判定)。 */
+  pickup_requested_at?: string | null
   status: string
   carrier: string | null
   charged_at: string | null
@@ -142,6 +149,8 @@ const messages = {
     lockedBody:
       "This leg has already been arranged with the courier, so it can't be changed here. Please contact BondEx via the Contact button — we'll handle it for you.",
     lockedClose: "Close",
+    lockPickupRequested: PICKUP_REQUESTED_HOTEL_MESSAGE.en,
+    hotelNeedsSupport: " (contact support)",
     dcTitle: "Change dates",
     dcShip: "Pickup date",
     dcArrive: "Drop-off date",
@@ -273,6 +282,8 @@ const messages = {
     lockedBody:
       "配送業者への手配が済んでいるため、こちらから変更できません。お手数ですが「お問い合わせ」ボタンから BondEx にご連絡ください。こちらで対応いたします。",
     lockedClose: "閉じる",
+    lockPickupRequested: PICKUP_REQUESTED_HOTEL_MESSAGE.ja,
+    hotelNeedsSupport: "（サポートへ連絡）",
     dcTitle: "日程を変更",
     dcShip: "集荷日",
     dcArrive: "お届け日",
@@ -1188,6 +1199,18 @@ export default function AgencyDashboard() {
                               setDupTarget(it)
                               return
                             }
+                            // ホテル変更は佐川へ集荷依頼済みでもロック (API と同じ agencyHotelChangeLock)
+                            if (v === "hotel-guest" || v === "hotel-pickup") {
+                              const hotelLock = agencyHotelChangeLock(it)
+                              if (hotelLock) {
+                                setActionTarget({
+                                  shipment: it,
+                                  action: "locked",
+                                  lockedMessage: hotelLock === "pickup_requested" ? t.lockPickupRequested : undefined,
+                                })
+                                return
+                              }
+                            }
                             // ロック: 送り状が実在 / 追跡番号あり / 集荷済み以降 (lib/agency-self-service.ts)
                             const editable = !legLockedForAgency(it)
                             if (!editable) {
@@ -1243,8 +1266,14 @@ export default function AgencyDashboard() {
                               <option value="dates">{t.actDates}</option>
                               {it.booking_type !== "group" && <option value="count">{t.actCount}</option>}
                               <option value="name">{t.actName}</option>
-                              <option value="hotel-guest">{t.actHotelGuest}</option>
-                              <option value="hotel-pickup">{t.actHotelPickup}</option>
+                              <option value="hotel-guest">
+                                {t.actHotelGuest}
+                                {agencyHotelChangeLock(it) === "pickup_requested" ? t.hotelNeedsSupport : ""}
+                              </option>
+                              <option value="hotel-pickup">
+                                {t.actHotelPickup}
+                                {agencyHotelChangeLock(it) === "pickup_requested" ? t.hotelNeedsSupport : ""}
+                              </option>
                               <option value="cancel">{t.actCancel}</option>
                             </>
                           )}

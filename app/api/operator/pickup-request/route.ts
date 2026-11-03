@@ -13,7 +13,7 @@ import { supabasePickupStore, liveRequestByShipment, PickupStoreError, isPickupT
 import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/state"
 import { cleanOverrides } from "@/lib/pickup-request/leg-input"
 import { bizlogiEligibility } from "@/lib/pickup-request/eligibility"
-import { applyPickupChange, createPickupChange, listPickupChanges, stepPickupChange, type ChangeStep } from "@/lib/pickup-request/change"
+import { applyPickupChange, createPickupChange, listPickupChanges, stepPickupChange, verifyChangeHotel, type ChangeStep } from "@/lib/pickup-request/change"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -138,14 +138,24 @@ export async function POST(req: NextRequest) {
       if (!actor) return NextResponse.json({ error: "担当者名を入力してください" }, { status: 400 })
       const str = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : null)
       const side = body.side === "guest" || body.side === "pickup" ? body.side : null
+      const newPlaceId = str(body.newPlaceId)
+      let newCity = str(body.newCity)
+      let newPrefecture = str(body.newPrefecture)
+      // ホテルを変える場合は、候補から選んだ place_id を Google で確かめてから登録する (手入力の place_id は通さない)
+      if (side && newPlaceId) {
+        const v = await verifyChangeHotel(newPlaceId, process.env.GOOGLE_MAPS_API_KEY)
+        if (!v.ok) return NextResponse.json({ error: v.reason }, { status: v.status })
+        newPrefecture = v.prefecture ?? newPrefecture
+        newCity = v.city ?? newCity
+      }
       const r = await createPickupChange({
         shipmentId,
         side,
         newHotel: str(body.newHotel),
         newHotelJa: str(body.newHotelJa),
-        newPlaceId: str(body.newPlaceId),
-        newCity: str(body.newCity),
-        newPrefecture: str(body.newPrefecture),
+        newPlaceId,
+        newCity,
+        newPrefecture,
         reason: str(body.reason) ?? "",
         actor,
       })

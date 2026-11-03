@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { CHANNEL_LABEL_JA, STATE_LABEL_JA, STALE_SENDING_MS, type PickupRequestRow, type PickupRequestState, type ResolveAction } from "@/lib/pickup-request/state"
+import HotelPlacePicker from "@/components/operator/HotelPlacePicker"
 
 const ACTOR_KEY = "bondex_operator_name"
 
@@ -542,17 +543,33 @@ function AfterAcceptChange({
                 <option value="none">ホテルは変えない（問い合わせ番号の振り直しだけ）</option>
               </select>
               {side !== "none" && (
-                <div className="flex flex-wrap gap-2">
-                  <input value={hotel} onChange={(e) => setHotel(e.target.value)} placeholder="新しいホテル（英名・必須）" className={`${input} w-56`} />
-                  <input value={hotelJa} onChange={(e) => setHotelJa(e.target.value)} placeholder="日本語名" className={`${input} w-48`} />
-                  <input value={placeId} onChange={(e) => setPlaceId(e.target.value)} placeholder="Google place_id（必須）" className={`${input} w-56 font-mono`} />
-                  <input value={pref} onChange={(e) => setPref(e.target.value)} placeholder="都道府県" className={`${input} w-24`} />
-                  <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="市区町村" className={`${input} w-32`} />
+                <div className="space-y-1">
+                  {/* place_id・市区・都道府県は候補の選択からだけ入る (手入力不可)。名前は選択後に直せる */}
+                  <HotelPlacePicker
+                    label={`新しい${side === "guest" ? "到着先" : "発送元（集荷先）"}ホテルを検索（Google Places）`}
+                    onPicked={(h) => {
+                      setHotel(h.name)
+                      setHotelJa(h.nameJa)
+                      setPlaceId(h.placeId)
+                      setPref(h.prefecture)
+                      setCity(h.city)
+                    }}
+                    onError={(m) => m && onError(m)}
+                  />
+                  {placeId ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input value={hotel} onChange={(e) => setHotel(e.target.value)} placeholder="英名（必須）" className={`${input} w-56`} />
+                      <input value={hotelJa} onChange={(e) => setHotelJa(e.target.value)} placeholder="和名" className={`${input} w-48`} />
+                      <span className="text-[10px] text-emerald-700">候補から選択済み（{pref || "-"} / {city || "-"}）</span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-red-600">※ ホテル名で検索し、候補から選んでください</p>
+                  )}
                 </div>
               )}
               <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="変更の理由（必須）" className={`${input} w-72`} />
               <button
-                disabled={!!busy}
+                disabled={!!busy || (side !== "none" && (!placeId || !hotel.trim()))}
                 className={`${btn} bg-blue-600 text-white`}
                 onClick={() =>
                   run(

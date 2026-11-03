@@ -18,7 +18,7 @@ export interface LockInput {
   status: string | null | undefined
   label_url?: string | null
   tracking_numbers?: string[] | null
-  /** 運営が佐川へ集荷依頼済みと記録した時刻 (手動 Excel・Biz-Logi とも)。 */
+  /** 運営が佐川へ集荷依頼済みと記録した時刻 (手動 Excel・Biz-Logi とも)。ホテル変更の判定だけで使う。 */
   pickup_requested_at?: string | null
 }
 
@@ -27,11 +27,29 @@ export function legLockedForAgency(s: LockInput): boolean {
   if (!EDITABLE_STATUSES.has(s.status || "")) return true
   if (s.label_url) return true
   if ((s.tracking_numbers?.length ?? 0) > 0) return true
-  // 佐川へ集荷依頼した後は、佐川側の変更 (世田谷営業所への連絡) が要るので代理店のセルフ変更は受けない
-  // (2026-11-04 谷口さん)。変更は BondEx が受付後の変更として扱う。
-  if (s.pickup_requested_at) return true
   return false
 }
+
+/**
+ * 代理店のホテル変更の可否。日程・個数・代表者名・取消より厳しく、佐川へ集荷依頼済み
+ * (pickup_requested_at あり・手動 Excel / Biz-Logi とも) の区間も受けない (2026-11-04 谷口さん)。
+ * 集荷先・届け先の変更は世田谷営業所への連絡と佐川の回答が要るため、BondEx が受付後の変更として扱う。
+ * 日程・個数などは従来どおり締切まで受け、運営へ佐川連絡のアラートを出す (lib/sagawa-alert)。
+ *   "pickup_requested" … 集荷手配済み (専用の案内を出す)
+ *   "locked"           … 集荷済み以降・送り状あり・番号あり (従来の手配済み)
+ */
+export type AgencyHotelChangeLock = "pickup_requested" | "locked" | null
+
+export function agencyHotelChangeLock(s: LockInput): AgencyHotelChangeLock {
+  if (!EDITABLE_STATUSES.has(s.status || "")) return "locked"
+  if (s.pickup_requested_at) return "pickup_requested"
+  return legLockedForAgency(s) ? "locked" : null
+}
+
+export const PICKUP_REQUESTED_HOTEL_MESSAGE = {
+  ja: "集荷手配済みのため、ホテル変更をご希望の場合はBondExサポートへご連絡ください。",
+  en: "Pickup has already been arranged with the courier. To change the hotel, please contact BondEx support.",
+} as const
 
 /** 修正締切 (配送前日 17:00 JST) を ISO(UTC) で返す。17:00 JST = 08:00Z。 */
 export function selfServiceCutoffAt(shipmentDate: string | null | undefined): string | null {

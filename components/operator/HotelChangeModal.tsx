@@ -6,9 +6,10 @@
 // - ゲート: 物理(発行済/集荷済=ブロック) / 準物理(郵送済=旧伝票破棄タスク) / ポリシー(締切超過=理由必須)
 // - 保存は POST /api/operator/shipment/[id]/hotel-change (RPCで単一トランザクション)
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { Loader2, Search, X, AlertTriangle, ArrowRight } from "lucide-react"
+import { useCallback, useState } from "react"
+import { Loader2, X, AlertTriangle, ArrowRight } from "lucide-react"
 import { formatChangeDeadlineJst, isChangeDeadlinePassed, isChangeDeadlineNear } from "@/lib/change-deadline"
+import HotelPlacePicker, { type PickedHotel } from "@/components/operator/HotelPlacePicker"
 
 type Side = "guest" | "pickup"
 
@@ -31,12 +32,6 @@ export interface HotelChangeTarget {
   labelSentAt: string | null
 }
 
-interface Prediction {
-  place_id: string
-  name: string
-  secondary: string
-}
-
 export default function HotelChangeModal({
   target,
   onClose,
@@ -51,11 +46,6 @@ export default function HotelChangeModal({
   const near = isChangeDeadlineNear(target.changeDeadlineAt)
   const oldSlip = !!target.labelSentAt
 
-  const [q, setQ] = useState("")
-  const [preds, setPreds] = useState<Prediction[]>([])
-  const [searching, setSearching] = useState(false)
-  const [resolving, setResolving] = useState(false)
-
   const [newHotel, setNewHotel] = useState("") // 英名
   const [newHotelJa, setNewHotelJa] = useState("") // 和名
   const [newPlaceId, setNewPlaceId] = useState("")
@@ -67,58 +57,12 @@ export default function HotelChangeModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Google Places オートコンプリート (debounce)
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    const query = q.trim()
-    if (query.length < 2) {
-      setPreds([])
-      return
-    }
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true)
-      try {
-        const res = await fetch(`/api/places?q=${encodeURIComponent(query)}&types=lodging`)
-        const data = await res.json()
-        setPreds((data.predictions as Prediction[]) ?? [])
-      } catch {
-        setPreds([])
-      }
-      setSearching(false)
-    }, 300)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [q])
-
-  const pick = useCallback(async (p: Prediction) => {
-    setResolving(true)
-    setError("")
-    try {
-      // 和名 + 市区 + 都道府県 + place_id (ja)
-      const jaRes = await fetch(`/api/places?place_id=${encodeURIComponent(p.place_id)}`)
-      const ja = await jaRes.json()
-      if (!jaRes.ok) throw new Error(ja.error || "詳細取得に失敗")
-      setNewPlaceId(ja.id || p.place_id)
-      setNewHotelJa(ja.name || p.name)
-      setNewCity(ja.city || "")
-      setNewPrefecture(ja.province || "")
-      // 英名 (en)
-      try {
-        const enRes = await fetch(`/api/places?place_id=${encodeURIComponent(p.place_id)}&lang=en`)
-        const en = await enRes.json()
-        setNewHotel(en.name || ja.name || p.name)
-      } catch {
-        setNewHotel(ja.name || p.name)
-      }
-      setPreds([])
-      setQ("")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "詳細取得に失敗")
-    }
-    setResolving(false)
+  const onPicked = useCallback((h: PickedHotel) => {
+    setNewPlaceId(h.placeId)
+    setNewHotelJa(h.nameJa)
+    setNewHotel(h.name)
+    setNewCity(h.city)
+    setNewPrefecture(h.prefecture)
   }, [])
 
   const canSubmit =
@@ -189,33 +133,7 @@ export default function HotelChangeModal({
           )}
 
           {/* Places ピッカー */}
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground">新しい{sideJa}ホテルを検索（Google Places）</label>
-            <div className="mt-1 relative">
-              <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" strokeWidth={1.6} />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="ホテル名を入力（2文字以上）"
-                className="w-full rounded-lg border border-border pl-8 pr-3 py-2 text-sm"
-              />
-              {(searching || resolving) && <Loader2 className="w-4 h-4 absolute right-2.5 top-2.5 animate-spin text-muted-foreground" strokeWidth={1.6} />}
-            </div>
-            {preds.length > 0 && (
-              <div className="mt-1 rounded-lg border border-border bg-white shadow-sm max-h-52 overflow-y-auto">
-                {preds.map((p) => (
-                  <button
-                    key={p.place_id}
-                    onClick={() => void pick(p)}
-                    className="block w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-100 last:border-0"
-                  >
-                    <div className="font-medium text-foreground">{p.name}</div>
-                    {p.secondary && <div className="text-[10px] text-muted-foreground">{p.secondary}</div>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <HotelPlacePicker label={`新しい${sideJa}ホテルを検索（Google Places）`} onPicked={onPicked} onError={setError} />
 
           {/* 取得結果 (英名・和名 必須・編集可) */}
           <div className="grid grid-cols-1 gap-2">

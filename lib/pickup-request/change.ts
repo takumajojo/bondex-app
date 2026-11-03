@@ -4,6 +4,8 @@
 //   連絡前は取り下げ (withdrawn) できる。
 
 import { getSupabase } from "@/lib/supabase"
+import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@/lib/hotel-place"
+import { PLACES_TIMEOUT_MS } from "@/lib/pickup-request/leg-input"
 
 export type ChangeStep = "contact" | "approve" | "reject" | "withdraw"
 
@@ -67,6 +69,31 @@ const REASON_JA: Record<string, string> = {
   invalid_step: "不明な操作です",
 }
 export const changeReasonJa = (r: string) => REASON_JA[r] ?? `処理できませんでした (${r})`
+
+/**
+ * 変更先ホテルの place_id を Google Places で確かめる (運営画面は候補の選択からだけ place_id を入れるが、
+ * API を直接呼ばれても実在しない place_id では登録させない)。都道府県・市区は Google の値を正とする。
+ */
+export async function verifyChangeHotel(
+  placeId: string,
+  apiKey: string | undefined,
+  fetchPlace: typeof fetchHotelPlaceDetailsJa = fetchHotelPlaceDetailsJa,
+): Promise<{ ok: true; prefecture: string | null; city: string | null } | { ok: false; status: number; reason: string }> {
+  if (!apiKey) return { ok: false, status: 503, reason: "GOOGLE_MAPS_API_KEY が未設定のため、ホテルを確認できません" }
+  let d: Awaited<ReturnType<typeof fetchHotelPlaceDetailsJa>>
+  try {
+    d = await fetchPlace("", apiKey, placeId, { timeoutMs: PLACES_TIMEOUT_MS })
+  } catch {
+    return { ok: false, status: 502, reason: "ホテルの照会が完了しませんでした。時間をおいて再度登録してください" }
+  }
+  if (!d) return { ok: false, status: 422, reason: "選んだホテルを Google で確認できません。ホテル名で検索し直してください" }
+  const parsed = parseJpAddressString(d.formattedAddress)
+  return {
+    ok: true,
+    prefecture: pickComponent(d.components, "administrative_area_level_1") || parsed.prefecture || null,
+    city: pickComponent(d.components, "locality") || null,
+  }
+}
 
 function sb() {
   const c = getSupabase()
