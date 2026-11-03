@@ -346,7 +346,7 @@ export interface ShippingDetailResult {
   resultCodes: ResultCodeInfo[]
   /** エラーコードを1つも含まない (ワーニングのみは ok)。 */
   ok: boolean
-  /** 問合番号 (発行依頼が全件正常のときのみ)。個口数ぶん返る。 */
+  /** 問合番号 (発行依頼が全件正常のときのみ)。複数個口でも同一番号 (SG回答 2026-09-03) なので通常は1件。 */
   shippingNumbers: string[]
   depot?: { code: string; name: string; tel: string }
 }

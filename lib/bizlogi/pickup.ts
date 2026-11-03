@@ -47,7 +47,8 @@ export interface PickupLegInput {
   deliverySlot?: string
   /** 記事欄 (最大6行・各17文字)。 */
   notes?: string[]
-  weight?: WeightCode
+  /** 重量(サイズ)コード。未指定は 160。null は送らない (佐川側で自動付与・手動 Excel と同じ扱い)。 */
+  weight?: WeightCode | null
 }
 
 export type PickupBuildResult =
@@ -113,7 +114,7 @@ export function buildPickupDetail(i: PickupLegInput): PickupBuildResult {
       kiji: i.notes,
       shiteiDate: deliveryDate ?? undefined,
       shiteiTimeCode,
-      weight1: i.weight ?? "160",
+      weight1: i.weight === null ? undefined : (i.weight ?? "160"),
       motoChakuCode: "0",
       shukaIrai: {
         shukaIraiCode: i.kokyakuCode,

@@ -16,9 +16,19 @@ import {
   type ShippingResponse,
 } from "./shipping"
 
+/** SGシステムが JOJO に指定した送り状コード (集荷依頼専用 白紙帳票・テスト環境シート Ver2.5)。これ以外は送らない。 */
+export const ALLOWED_OKURI_CODES: readonly string[] = ["N01"]
+
+/** SGシステムのお客様テスト環境の接続先ホスト (テスト環境シート Ver2.5)。 */
+export const BIZLOGI_TEST_HOSTS: readonly string[] = ["beccl-st.biz-blue.net"]
+
+export type BizLogiEnvironment = "test" | "production"
+
 export interface BizLogiConfig {
-  /** 例: "https://<SGシステムから通知されたホスト>/rest/getxml" (末尾スラッシュ無し)。 */
+  /** 例: "https://beccl-st.biz-blue.net/api" (末尾スラッシュ無し・各APIは /shipping 等を後ろに付ける)。 */
   baseUrl: string
+  /** 接続先の宣言。baseUrl のホストと食い違えば設定エラーにする (テスト/本番の取り違え防止)。 */
+  environment: BizLogiEnvironment
   customerId: string
   loginPassword: string
   /** 送り状コード (仕様書 5.1: A501/A401/L02/D03。JOJO は SGシステム指定の N01)。発行依頼で使う。 */
@@ -42,17 +52,34 @@ export class BizLogiTransportError extends Error {
 
 /** env から設定を読む。必須値が欠けていれば不足しているキー名を挙げて失敗する。 */
 export function bizLogiConfigFromEnv(env: Record<string, string | undefined> = process.env): BizLogiConfig {
-  const missing = ["BIZLOGI_BASE_URL", "BIZLOGI_CUSTOMER_ID", "BIZLOGI_LOGIN_PASSWORD"].filter((k) => !env[k])
+  const missing = ["BIZLOGI_BASE_URL", "BIZLOGI_CUSTOMER_ID", "BIZLOGI_LOGIN_PASSWORD", "BIZLOGI_ENV"].filter((k) => !env[k])
   if (missing.length) throw new BizLogiConfigError(`Biz-Logi の設定が不足しています: ${missing.join(", ")}`)
   const baseUrl = env.BIZLOGI_BASE_URL!.replace(/\/+$/, "")
   if (!/^https:\/\//.test(baseUrl)) throw new BizLogiConfigError("BIZLOGI_BASE_URL は https:// で始まる必要があります")
   // 仕様書の URL はダミー (dummy.sgsystems.co.jp)。写し間違いで実送信しないよう弾く。
   if (/\/\/dummy\./.test(baseUrl)) throw new BizLogiConfigError("BIZLOGI_BASE_URL が仕様書のダミーURLのままです")
+  const environment = env.BIZLOGI_ENV
+  if (environment !== "test" && environment !== "production") {
+    throw new BizLogiConfigError('BIZLOGI_ENV は "test" か "production" を指定してください')
+  }
+  const host = new URL(baseUrl).hostname
+  const isTestHost = BIZLOGI_TEST_HOSTS.includes(host)
+  if (environment === "test" && !isTestHost) {
+    throw new BizLogiConfigError(`BIZLOGI_ENV=test ですが接続先 ${host} はテスト環境ではありません`)
+  }
+  if (environment === "production" && isTestHost) {
+    throw new BizLogiConfigError(`BIZLOGI_ENV=production ですが接続先 ${host} はテスト環境です`)
+  }
+  const okuriCode = env.BIZLOGI_OKURI_CODE || undefined
+  if (okuriCode && !ALLOWED_OKURI_CODES.includes(okuriCode)) {
+    throw new BizLogiConfigError(`送り状コード ${okuriCode} は使えません (許可: ${ALLOWED_OKURI_CODES.join(", ")})`)
+  }
   return {
     baseUrl,
+    environment,
     customerId: env.BIZLOGI_CUSTOMER_ID!,
     loginPassword: env.BIZLOGI_LOGIN_PASSWORD!,
-    okuriCode: env.BIZLOGI_OKURI_CODE || undefined,
+    okuriCode,
     live: env.BIZLOGI_LIVE === "true",
   }
 }
@@ -135,12 +162,15 @@ export class BizLogiClient {
    * 送り状発行API (発行依頼)。集荷依頼情報を付けた出荷情報は佐川の基幹システムへ連携される。
    *
    * 注意: 成功すると課金され、取り消すAPIは無い。BizLogiTransportError (タイムアウト等) の
-   * ときは「届いたかどうか不明」なので自動再送しない。同じ管理番号で送り直すと、先の電文が
-   * 届いていれば E1-0002 (管理番号重複) が返るので、それで二重依頼を防げる。
+   * ときは「届いたかどうか不明」なので自動再送しない。過去に送った管理番号を佐川側が重複として
+   * 弾くか (E1-0002 の範囲) は未確認 (SGへの質問 C-04)。それを前提にした再送はしないこと。
    */
   async requestShipping(details: ShippingDetail[], today?: string): Promise<ShippingResponse> {
     if (!this.config.live) {
       throw new BizLogiConfigError("発行依頼は BIZLOGI_LIVE=true のときだけ送信できます (課金・集荷依頼が発生するため)")
+    }
+    if (!this.config.okuriCode || !ALLOWED_OKURI_CODES.includes(this.config.okuriCode)) {
+      throw new BizLogiConfigError(`発行依頼の送り状コードが許可されていません (許可: ${ALLOWED_OKURI_CODES.join(", ")})`)
     }
     const xml = buildShippingRequestXml(
       { customerId: this.config.customerId, loginPassword: this.config.loginPassword, issue: true, okuriCode: this.config.okuriCode, details },

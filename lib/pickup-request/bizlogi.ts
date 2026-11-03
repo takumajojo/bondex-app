@@ -1,0 +1,255 @@
+// Biz-Logi (N01) で1区間の集荷依頼を送る。運営画面のボタンからだけ呼ぶ (Phase 1: 自動送信なし)。
+//
+// 二重依頼を防ぐ順序:
+//   1. 送信前の判定 (締め時刻・取消・番号入力済み・内容が確認画面と同じか)
+//   2. DB で依頼を確保 (claim_pickup_request)。区間に有効な依頼があれば送らない
+//      (手動 Excel 依頼済み・Biz-Logi 依頼済み・結果不明・要確認・変更対応中のどれでも)
+//   3. 確認機能 (printOutFlg=0・無課金) でエラーが無いことを確かめる
+//   4. 発行依頼 (printOutFlg=1) を1回だけ送る
+//   5. 結果を保存:
+//        受付成功 = 処理結果が正常 かつ 発行受付IDあり かつ 問合番号あり (HTTP 200 だけでは成功にしない)
+//        明確な失敗 = エラーコードが返った (発行受付IDなし = 課金なし・佐川に登録なし) → failed
+//        それ以外 (通信断・タイムアウト・応答不正・保存失敗) → unknown。自動再送も CSV への切替もしない
+// 送り状 PDF は取得しない (集荷依頼プランでは佐川が送り状を作る)。
+
+import { createHash, randomUUID } from "node:crypto"
+import { BizLogiConfigError, BizLogiTransportError, type BizLogiClient } from "@/lib/bizlogi/client"
+import { pickupRequestClosed, pickupRequestCutoff } from "@/lib/bizlogi/deadline"
+import { buildPickupDetail, type PickupLegInput } from "@/lib/bizlogi/pickup"
+import { BizLogiValidationError, type ShippingDetail, type ShippingResponse } from "@/lib/bizlogi/shipping"
+import { normalizeManageNumber } from "@/lib/bizlogi/text"
+import type { OpsAlertInput } from "@/lib/ops-alert"
+import { legTrackingNumbers } from "@/lib/shipment-reissue"
+import { legRef, type PickupShipmentRow } from "./leg-input"
+import { PickupStoreError, type PickupStore } from "./store"
+
+export interface BizLogiSendDeps {
+  store: PickupStore
+  client: Pick<BizLogiClient, "checkShipping" | "requestShipping">
+  environment: "test" | "production"
+  alert: (input: OpsAlertInput) => Promise<unknown>
+  now?: () => Date
+  newOwner?: () => string
+}
+
+export type PreviewResult =
+  | {
+      ok: true
+      fingerprint: string
+      detail: ShippingDetail
+      warnings: string[]
+      cutoffAt: string | null
+    }
+  | { ok: false; errors: string[] }
+
+export type SendOutcome =
+  | { outcome: "accepted"; requestId: string; shippingNumber: string; printRequestId: string }
+  | { outcome: "failed"; requestId: string; errors: string[] }
+  | { outcome: "unknown"; requestId: string; reason: string }
+  | { outcome: "blocked"; reason: string }
+
+/** 確認画面に出した内容と送信内容が同じかを確かめるための指紋。 */
+export function detailFingerprint(detail: ShippingDetail): string {
+  return createHash("sha256").update(JSON.stringify(detail)).digest("hex").slice(0, 32)
+}
+
+const ymd = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, "")
+
+/** 送信前の判定。区間の状態とローカル検証だけで決まるもの (DB の依頼記録は claim で見る)。 */
+function precheck(row: PickupShipmentRow, now: Date): string[] {
+  const errors: string[] = []
+  if (row.status === "cancelled") errors.push("この区間は取消済みです")
+  if (legTrackingNumbers(row).length > 0) errors.push("佐川の問合番号が入力済みです (佐川側に依頼があります)")
+  if (pickupRequestClosed(row.shipment_date, now)) {
+    errors.push("集荷依頼の締め (集荷前日 20:00) を過ぎています。世田谷営業所へ相談してください")
+  }
+  return errors
+}
+
+function buildDetail(input: PickupLegInput): { detail?: ShippingDetail; errors: string[] } {
+  const built = buildPickupDetail(input)
+  if (!built.ok) return { errors: built.issues.map((i) => `${i.field}: ${i.message}`) }
+  return { detail: built.detail, errors: [] }
+}
+
+function responseErrors(res: ShippingResponse): string[] {
+  const all = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
+  return all.filter((c) => c.severity === "error").map((c) => `${c.code} ${c.message}`)
+}
+
+function responseCodes(res: ShippingResponse): string[] {
+  return [res.result.code, ...res.details.flatMap((d) => d.resultCodes.map((c) => c.code))]
+}
+
+/** 確認機能 (無課金) で送信内容を検証し、運営に見せる。DB には何も書かない。 */
+export async function previewBizLogiPickup(
+  row: PickupShipmentRow,
+  input: PickupLegInput,
+  deps: Pick<BizLogiSendDeps, "client" | "now">,
+): Promise<PreviewResult> {
+  const now = deps.now?.() ?? new Date()
+  const errors = precheck(row, now)
+  const { detail, errors: buildErrors } = buildDetail(input)
+  errors.push(...buildErrors)
+  if (errors.length || !detail) return { ok: false, errors }
+  let res: ShippingResponse
+  try {
+    res = await deps.client.checkShipping([detail], ymd(now))
+  } catch (e) {
+    return { ok: false, errors: [`確認機能の通信に失敗しました (送信はしていません): ${e instanceof Error ? e.message : String(e)}`] }
+  }
+  const resErrors = responseErrors(res)
+  if (resErrors.length) return { ok: false, errors: resErrors }
+  const warnings = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
+    .filter((c) => c.severity === "warning")
+    .map((c) => `${c.code} ${c.message}`)
+  return { ok: true, fingerprint: detailFingerprint(detail), detail, warnings, cutoffAt: pickupRequestCutoff(row.shipment_date)?.toISOString() ?? null }
+}
+
+export async function sendBizLogiPickup(
+  row: PickupShipmentRow,
+  input: PickupLegInput,
+  opts: { actor: string; expectedFingerprint: string },
+  deps: BizLogiSendDeps,
+): Promise<SendOutcome> {
+  const now = deps.now?.() ?? new Date()
+  const ref = legRef(row)
+  const pre = precheck(row, now)
+  if (pre.length) return { outcome: "blocked", reason: pre.join(" / ") }
+  const { detail, errors } = buildDetail(input)
+  if (!detail) return { outcome: "blocked", reason: errors.join(" / ") }
+  if (detailFingerprint(detail) !== opts.expectedFingerprint) {
+    return { outcome: "blocked", reason: "確認画面のあとで送信内容が変わりました。もう一度確認してから送信してください" }
+  }
+
+  const owner = deps.newOwner?.() ?? randomUUID()
+  // 2. 確保。ここで失敗したら何も送らない。
+  let claim
+  try {
+    claim = await deps.store.claim({
+      shipmentId: row.id,
+      channel: "bizlogi",
+      environment: deps.environment,
+      manageNumber: normalizeManageNumber(input.legRef),
+      pieceCount: input.suitcaseCount,
+      pickupDate: row.shipment_date,
+      actor: opts.actor,
+      owner,
+      note: null,
+    })
+  } catch (e) {
+    return { outcome: "blocked", reason: e instanceof Error ? e.message : String(e) }
+  }
+  if (!claim.claimed || !claim.requestId) return { outcome: "blocked", reason: claimReasonJa(claim.reason) }
+  const requestId = claim.requestId
+
+  const finish = async (to: "failed" | "unknown", fields: { error: string; resultCodes?: string[] }) => {
+    try {
+      const t = await deps.store.transition({ requestId, from: ["sending"], to, owner, error: fields.error, resultCodes: fields.resultCodes ?? null })
+      return t.applied
+    } catch {
+      return false
+    }
+  }
+
+  // 3. 確認機能 (無課金・佐川に登録されない)。ここでの失敗は「送っていない」ので failed。
+  let check: ShippingResponse
+  try {
+    check = await deps.client.checkShipping([detail], ymd(now))
+  } catch (e) {
+    const msg = `確認機能の通信に失敗 (発行依頼は未送信): ${e instanceof Error ? e.message : String(e)}`
+    await finish("failed", { error: msg })
+    return { outcome: "failed", requestId, errors: [msg] }
+  }
+  const checkErrors = responseErrors(check)
+  if (checkErrors.length) {
+    await finish("failed", { error: checkErrors.join(" / "), resultCodes: responseCodes(check) })
+    return { outcome: "failed", requestId, errors: checkErrors }
+  }
+
+  // 4. 発行依頼。1回だけ送る。
+  let res: ShippingResponse
+  try {
+    res = await deps.client.requestShipping([detail], ymd(now))
+  } catch (e) {
+    if (e instanceof BizLogiConfigError || e instanceof BizLogiValidationError) {
+      // 設定・電文の検証で送信前に止まった (通信していない)
+      await finish("failed", { error: e.message })
+      return { outcome: "failed", requestId, errors: [e.message] }
+    }
+    const reason =
+      e instanceof BizLogiTransportError
+        ? `発行依頼の通信が完了しませんでした (${e.message})`
+        : `発行依頼の応答を処理できませんでした (${e instanceof Error ? e.message : String(e)})`
+    await finish("unknown", { error: reason })
+    await alertUnknown(deps, ref, requestId, reason)
+    return { outcome: "unknown", requestId, reason }
+  }
+
+  const resErrors = responseErrors(res)
+  const number = res.details[0]?.shippingNumbers[0] ?? null
+  if (res.ok && res.printRequestId && number) {
+    try {
+      const t = await deps.store.transition({
+        requestId,
+        from: ["sending"],
+        to: "accepted",
+        owner,
+        shippingNumber: number,
+        printRequestId: res.printRequestId,
+        resultCodes: responseCodes(res),
+      })
+      if (t.applied) return { outcome: "accepted", requestId, shippingNumber: number, printRequestId: res.printRequestId }
+      throw new PickupStoreError(`状態更新が適用されませんでした (${t.reason})`)
+    } catch (e) {
+      // 佐川は受け付けたが BondEx に保存できなかった。番号を必ず運営へ渡す。依頼は送信中のまま残り、再送できない。
+      const reason = `佐川は受付済み (問合番号 ${number} / 発行受付ID ${res.printRequestId}) ですが、BondEx への保存に失敗しました: ${e instanceof Error ? e.message : String(e)}`
+      await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
+      await alertUnknown(deps, ref, requestId, reason)
+      return { outcome: "unknown", requestId, reason }
+    }
+  }
+  if (resErrors.length && !res.printRequestId) {
+    // 明確な失敗: エラーコードがあり発行受付IDが無い = 課金なし・佐川に登録なし
+    await finish("failed", { error: resErrors.join(" / "), resultCodes: responseCodes(res) })
+    return { outcome: "failed", requestId, errors: resErrors }
+  }
+  const reason = `発行依頼の応答が想定外です (結果 ${res.result.code}・発行受付ID ${res.printRequestId ?? "なし"}・問合番号 ${number ?? "なし"})`
+  await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
+  await alertUnknown(deps, ref, requestId, reason)
+  return { outcome: "unknown", requestId, reason }
+}
+
+async function alertUnknown(deps: BizLogiSendDeps, ref: string, requestId: string, reason: string): Promise<void> {
+  try {
+    await deps.alert({
+      subject: `【要確認】Biz-Logi 集荷依頼の結果不明: ${ref}`,
+      lines: [
+        `区間: ${ref}`,
+        `接続先: ${deps.environment === "production" ? "本番" : "テスト環境"}`,
+        `内容: ${reason}`,
+        "",
+        "佐川側で受け付けられたか分からないため、自動では再送していません。CSV への切り替えもしていません。",
+        "世田谷営業所 (またはSGシステム) に受付の有無を確認し、運営画面の「佐川へ集荷依頼」から結果を記録してください。",
+        `記録ID: ${requestId}`,
+      ],
+    })
+  } catch (e) {
+    console.error("[pickup-request] alert failed", e instanceof Error ? e.message : e)
+  }
+}
+
+export function claimReasonJa(reason: string): string {
+  switch (reason) {
+    case "live_request_exists":
+      return "この区間には既に有効な集荷依頼があります (依頼済み・送信中・結果不明・要確認・変更対応中のいずれか)"
+    case "shipment_cancelled":
+      return "この区間は取消済みです"
+    case "tracking_number_exists":
+      return "佐川の問合番号が入力済みです"
+    case "shipment_not_found":
+      return "区間が見つかりません"
+    default:
+      return `集荷依頼を確保できませんでした (${reason})`
+  }
+}

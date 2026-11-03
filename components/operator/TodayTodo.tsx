@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { Loader2, Phone, Mail, Check, RefreshCw } from "lucide-react"
+import PickupRequestPanel, { OperatorNameInput, useOperatorName } from "./PickupRequestPanel"
 
 interface HotelTask {
   shipmentId: string
@@ -35,7 +36,25 @@ interface SagawaPickupTask {
   fromHotel: string
   fromHotelJa: string | null
   shipmentDate: string
+  suitcaseCount?: number
+  /** overdue=当日以前 / due=明日発送 (今日20時締め) / upcoming=2日後以降 */
   urgency: string
+  cutoffAt?: string | null
+}
+
+interface PickupAttentionTask extends SagawaPickupTask {
+  kind: string
+  requestId: string
+  channel: string
+  state: string
+}
+
+const ATTENTION_LABEL: Record<string, string> = {
+  unknown: "結果不明・再送禁止",
+  stale_sending: "送信中のまま止まっている",
+  cancel_needed: "取消した区間に依頼が残っている",
+  needs_review: "依頼済みか不明",
+  change_pending: "変更・取消の返信待ち",
 }
 
 interface TodoData {
@@ -43,6 +62,9 @@ interface TodoData {
   total: number
   hotelTasks: HotelTask[]
   sagawaPickupTasks?: SagawaPickupTask[]
+  pickupAttention?: PickupAttentionTask[]
+  pickupLegacyMode?: boolean
+  pickupError?: string | null
   counts: Record<string, number>
 }
 
@@ -58,6 +80,7 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
   const [data, setData] = useState<TodoData | null>(null)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState("")
+  const [actor, setActor] = useOperatorName()
 
   const load = useCallback(async () => {
     setError("")
@@ -96,14 +119,18 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
   }
 
   const markPickupRequested = async (t: SagawaPickupTask) => {
+    if (!actor.trim()) {
+      setError("担当者名を入力してください (集荷依頼の記録に残します)")
+      return
+    }
     setBusy("pk-" + t.shipmentId)
     try {
       const res = await fetch("/api/operator/sagawa-pickup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shipmentId: t.shipmentId }),
+        body: JSON.stringify({ shipmentId: t.shipmentId, actor }),
       })
-      if (!res.ok) throw new Error("更新に失敗しました")
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "更新に失敗しました")
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "更新に失敗しました")
@@ -137,7 +164,10 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
 
   const sagawaPickups = data.sagawaPickupTasks ?? []
   const pkOverdue = sagawaPickups.filter((t) => t.urgency === "overdue")
-  const pkDue = sagawaPickups.filter((t) => t.urgency !== "overdue")
+  const pkDue = sagawaPickups.filter((t) => t.urgency === "due")
+  const pkUpcoming = sagawaPickups.filter((t) => t.urgency === "upcoming")
+  const attention = data.pickupAttention ?? []
+  const hasPickup = sagawaPickups.length > 0 || attention.length > 0 || !!data.pickupError
 
   const categoryChips = Object.entries(CATEGORY_LABEL)
     .map(([view, label]) => ({ view, label, count: data.counts[view] ?? 0 }))
@@ -162,7 +192,7 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
       </div>
 
       {/* カテゴリチップ (件数・クリックで一覧フィルタへ) */}
-      {(data.hotelTasks.length > 0 || sagawaPickups.length > 0 || categoryChips.length > 0) && (
+      {(data.hotelTasks.length > 0 || hasPickup || categoryChips.length > 0) && (
         <div className="flex items-center gap-2 flex-wrap px-5 py-2.5 border-b border-slate-100">
           <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF2F2] text-[#C8102E] border border-[#FECACA] px-3 py-1 text-[11px] font-semibold">
             <Phone className="w-3 h-3" strokeWidth={1.8} /> ホテル連絡 {data.hotelTasks.length}
@@ -170,6 +200,11 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
           {sagawaPickups.length > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 text-[11px] font-semibold">
               🚚 佐川集荷依頼 {sagawaPickups.length}
+            </span>
+          )}
+          {attention.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-700 border border-red-200 px-3 py-1 text-[11px] font-semibold">
+              集荷依頼の要確認 {attention.length}
             </span>
           )}
           {categoryChips.map((c) => (
@@ -184,18 +219,45 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
         </div>
       )}
 
-      {data.hotelTasks.length === 0 && sagawaPickups.length === 0 && categoryChips.length === 0 ? (
+      {data.hotelTasks.length === 0 && !hasPickup && categoryChips.length === 0 ? (
         <div className="px-5 py-6 text-center text-sm text-muted-foreground">今日のホテル連絡・対応タスクはありません 🎉</div>
       ) : (
         <div>
-          {sagawaPickups.length > 0 && (
+          {hasPickup && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-3 pb-1">
+              <span className="text-[11px] font-bold text-blue-700">🚚 佐川へ集荷依頼（集荷前日 20:00 締め）</span>
+              <OperatorNameInput value={actor} onChange={setActor} />
+            </div>
+          )}
+          {data.pickupError && <div className="px-5 py-2 text-[12px] text-red-700">集荷依頼の一覧を読み込めません: {data.pickupError}</div>}
+          {data.pickupLegacyMode && (
+            <div className="px-5 py-1 text-[11px] text-amber-700">集荷依頼の記録 (sql/062) が未適用のため、従来の「依頼済み」印で判定しています。</div>
+          )}
+          {attention.length > 0 && (
             <>
-              <div className="px-5 pt-3 pb-1 text-[11px] font-bold text-blue-700">🚚 佐川へ集荷依頼（集荷の前日までに連絡）</div>
-              {pkOverdue.map((t) => (
-                <SagawaPickupRow key={t.shipmentId} t={t} overdue busy={busy} onDone={markPickupRequested} />
+              <div className="px-5 pt-2 pb-1 text-[11px] font-bold text-red-700">要確認（再送せず、佐川に確認してから記録）</div>
+              {attention.map((t) => (
+                <div key={t.requestId} className="px-5 py-2 border-t border-slate-100">
+                  <p className="mb-1 text-[11px]">
+                    <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">{ATTENTION_LABEL[t.kind] ?? t.kind}</span>{" "}
+                    <span className="font-mono">{t.bookingId}-L{t.legIndex + 1}</span>　発送 {t.shipmentDate}　{t.fromHotelJa || t.fromHotel}
+                  </p>
+                  <PickupRequestPanel shipmentId={t.shipmentId} legLabel={`${t.bookingId}-L${t.legIndex + 1}`} actor={actor} onChanged={() => void load()} />
+                </div>
               ))}
-              {pkDue.map((t) => (
-                <SagawaPickupRow key={t.shipmentId} t={t} busy={busy} onDone={markPickupRequested} />
+            </>
+          )}
+          {pkOverdue.map((t) => (
+            <SagawaPickupRow key={t.shipmentId} t={t} overdue busy={busy} actor={actor} onDone={markPickupRequested} onChanged={() => void load()} />
+          ))}
+          {pkDue.map((t) => (
+            <SagawaPickupRow key={t.shipmentId} t={t} busy={busy} actor={actor} onDone={markPickupRequested} onChanged={() => void load()} />
+          ))}
+          {pkUpcoming.length > 0 && (
+            <>
+              <div className="px-5 pt-3 pb-1 text-[11px] font-bold text-slate-600">今後7日以内の未依頼（早めの依頼も可）</div>
+              {pkUpcoming.map((t) => (
+                <SagawaPickupRow key={t.shipmentId} t={t} busy={busy} actor={actor} onDone={markPickupRequested} onChanged={() => void load()} />
               ))}
             </>
           )}
@@ -281,56 +343,77 @@ function HotelTaskRow({
   )
 }
 
-// 佐川への集荷依頼タスク1行。「依頼済み」で pickup_requested_at を記録し TODO から消す。
+// 佐川への集荷依頼タスク1行 (未依頼の区間)。
+// 「Excel で依頼済みにする」で手動依頼として記録 (pickup_requests・sql/062)。「詳細・Biz-Logi」で依頼パネルを開く。
 function SagawaPickupRow({
   t,
   overdue,
   busy,
+  actor,
   onDone,
+  onChanged,
 }: {
   t: SagawaPickupTask
   overdue?: boolean
   busy: string
+  actor: string
   onDone: (t: SagawaPickupTask) => void
+  onChanged: () => void
 }) {
+  const [open, setOpen] = useState(false)
   const isBusy = busy === "pk-" + t.shipmentId
   const md = (() => {
     const d = new Date(`${t.shipmentDate}T00:00:00+09:00`)
     return `${d.getMonth() + 1}/${d.getDate()}`
   })()
+  const badge =
+    t.urgency === "overdue" || overdue ? (
+      <span className="rounded bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-bold">本日発送・締め超過（世田谷へ相談）</span>
+    ) : t.urgency === "due" ? (
+      <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">明日発送・今日20:00締め</span>
+    ) : (
+      <span className="rounded bg-slate-100 text-slate-700 px-1.5 py-0.5 text-[10px] font-bold">未依頼</span>
+    )
   return (
-    <div className="flex items-start gap-3 px-5 py-3 border-t border-slate-100">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center flex-wrap gap-1.5">
-          <span className="font-mono text-[12px] font-medium text-foreground">
-            {t.bookingId}-L{t.legIndex + 1}
-          </span>
-          {overdue ? (
-            <span className="rounded bg-red-100 text-red-700 px-1.5 py-0.5 text-[10px] font-bold">本日発送・至急</span>
-          ) : (
-            <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">明日発送</span>
-          )}
-          <span className="text-[11px] text-muted-foreground">発送 {md}</span>
-          {t.tourNumber && <span className="text-[11px] text-muted-foreground">・ツアー {t.tourNumber}</span>}
+    <div className="px-5 py-3 border-t border-slate-100">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center flex-wrap gap-1.5">
+            <span className="font-mono text-[12px] font-medium text-foreground">
+              {t.bookingId}-L{t.legIndex + 1}
+            </span>
+            {badge}
+            <span className="text-[11px] text-muted-foreground">発送 {md}</span>
+            {t.suitcaseCount ? <span className="text-[11px] text-muted-foreground">・{t.suitcaseCount}個</span> : null}
+            {t.tourNumber && <span className="text-[11px] text-muted-foreground">・ツアー {t.tourNumber}</span>}
+          </div>
+          <p className="mt-0.5 text-[12px] text-foreground">
+            集荷場所：{t.fromHotelJa || t.fromHotel}
+            {t.representative ? <span className="text-muted-foreground">（{t.representative} 様）</span> : null}
+          </p>
         </div>
-        <p className="mt-0.5 text-[12px] text-foreground">
-          集荷場所：{t.fromHotelJa || t.fromHotel}
-          {t.representative ? <span className="text-muted-foreground">（{t.representative} 様）</span> : null}
-        </p>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <button
+            onClick={() => onDone(t)}
+            disabled={isBusy}
+            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isBusy ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.8} /> : <Check className="w-3 h-3" strokeWidth={2} />}
+            Excelで依頼済みにする
+          </button>
+          <button onClick={() => setOpen((v) => !v)} className="text-[11px] text-blue-600 hover:underline">
+            {open ? "閉じる" : "詳細・Biz-Logi →"}
+          </button>
+        </div>
       </div>
-      <div className="flex flex-col items-end gap-1.5 shrink-0">
-        <button
-          onClick={() => onDone(t)}
-          disabled={isBusy}
-          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isBusy ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.8} /> : <Check className="w-3 h-3" strokeWidth={2} />}
-          依頼済みにする
-        </button>
-        <a href={`/operator/bookings/${encodeURIComponent(t.bookingId)}`} className="text-[11px] text-blue-600 hover:underline">
-          詳細 →
-        </a>
-      </div>
+      {open && (
+        <div className="mt-2">
+          <PickupRequestPanel shipmentId={t.shipmentId} legLabel={`${t.bookingId}-L${t.legIndex + 1}`} actor={actor} onChanged={onChanged} />
+          <a href={`/operator/bookings/${encodeURIComponent(t.bookingId)}`} className="mt-1 inline-block text-[11px] text-blue-600 hover:underline">
+            予約の詳細 →
+          </a>
+        </div>
+      )}
     </div>
   )
 }

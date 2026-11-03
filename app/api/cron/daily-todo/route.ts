@@ -4,6 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert, opsAlertConfigured } from "@/lib/ops-alert"
 import { listHotelContactDue, countBoardViews } from "@/lib/shipments-db"
 import { HOTEL_ROUTE_LABEL } from "@/lib/hotel-notification"
+import { loadPickupTodo } from "@/lib/pickup-request/todo"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -70,19 +71,21 @@ export async function GET(req: NextRequest) {
     const today = todayJst()
     const tomorrow = tomorrowJst()
 
-    // 1) 佐川への集荷依頼: 発行済み・依頼未・発送が今日/明日(JST)。
-    const { data: pk } = await sb
-      .from("shipments")
-      .select("booking_id, leg_index, representative, from_hotel, from_hotel_ja, shipment_date")
-      .eq("status", "issued")
-      .is("pickup_requested_at", null)
-      .gte("shipment_date", today)
-      .lte("shipment_date", tomorrow)
-      .order("shipment_date", { ascending: true })
-    const sagawa = (pk ?? []) as Array<{
-      booking_id: string; leg_index: number; representative: string
-      from_hotel: string; from_hotel_ja: string | null; shipment_date: string
-    }>
+    // 1) 佐川への集荷依頼 (2026-11-03 是正): 集荷依頼の記録で判定。未依頼で発送が今日/明日(JST)。
+    //    status='requested' の区間も含める (旧条件の status='issued' では未依頼の区間が漏れていた)。
+    // 集荷依頼の一覧が読めなくても他の TODO は配信する (読めなかったことは本文に出す)
+    let pickupLoadError: string | null = null
+    const pickupTodo = await loadPickupTodo(sb, today).catch((e: unknown) => {
+      pickupLoadError = e instanceof Error ? e.message : String(e)
+      return { needRequest: [], attention: [], legacyMode: false }
+    })
+    const sagawa = pickupTodo.needRequest
+      .filter((t) => t.shipmentDate <= tomorrow)
+      .map((t) => ({
+        booking_id: t.bookingId, leg_index: t.legIndex, representative: t.representative,
+        from_hotel: t.fromHotel, from_hotel_ja: t.fromHotelJa, shipment_date: t.shipmentDate,
+      }))
+    const pickupAttention = pickupTodo.attention
 
     // 2) ホテル連絡 (due/urgent/overdue)。区間×ルートに展開して期限が厳しい順に。
     const hotelRows = await listHotelContactDue(today)
@@ -110,16 +113,34 @@ export async function GET(req: NextRequest) {
       .map(([k, n]) => `${COUNT_LABEL[k] ?? k} ${n}`)
 
     const countsTotal = Object.values(counts).reduce((s, n) => s + (typeof n === "number" ? n : 0), 0)
-    const total = sagawa.length + hotelTasks.length + countsTotal
+    const total = sagawa.length + pickupAttention.length + hotelTasks.length + countsTotal
 
     // ── メール本文 (簡潔・プレーンテキスト)
     const lines: string[] = []
+    if (pickupLoadError) {
+      lines.push(`■ 佐川への集荷依頼: 一覧を読み込めませんでした（運営画面で確認してください）: ${pickupLoadError}`)
+      lines.push("")
+    }
     if (sagawa.length > 0) {
-      lines.push(`■ 佐川への集荷依頼（${sagawa.length}件）※集荷の前日までに佐川へご連絡`)
+      lines.push(`■ 佐川への集荷依頼（${sagawa.length}件）※集荷前日 20:00 までに依頼`)
       for (const s of sagawa) {
         const head = s.shipment_date <= today ? "【本日発送・至急】" : "【明日発送】"
         const hotel = s.from_hotel_ja || s.from_hotel || "—"
         lines.push(`  ${head} ${s.booking_id}-L${s.leg_index + 1}  ${hotel}  発送 ${mmdd(s.shipment_date)}（${s.representative}）`)
+      }
+      lines.push("")
+    }
+    if (pickupAttention.length > 0) {
+      const kindLabel: Record<string, string> = {
+        unknown: "【結果不明・要確認】",
+        stale_sending: "【送信中のまま・要確認】",
+        cancel_needed: "【取消済み区間・佐川へ取消連絡】",
+        needs_review: "【依頼済みか不明・要確認】",
+        change_pending: "【変更・取消の返信待ち】",
+      }
+      lines.push(`■ 集荷依頼の要対応（${pickupAttention.length}件）※再送せず、佐川へ確認してから記録`)
+      for (const a of pickupAttention) {
+        lines.push(`  ${kindLabel[a.kind] ?? a.kind} ${a.bookingId}-L${a.legIndex + 1}  発送 ${mmdd(a.shipmentDate)}`)
       }
       lines.push("")
     }
@@ -136,7 +157,7 @@ export async function GET(req: NextRequest) {
       lines.push("")
     }
 
-    const hasTodo = sagawa.length > 0 || hotelTasks.length > 0 || countParts.length > 0
+    const hasTodo = !!pickupLoadError || sagawa.length > 0 || pickupAttention.length > 0 || hotelTasks.length > 0 || countParts.length > 0
     const bodyLines = hasTodo
       ? [...lines, `ダッシュボード: ${SITE_URL}/operator/dashboard`]
       : ["本日、対応が必要なTODOはありません。", "", `ダッシュボード: ${SITE_URL}/operator/dashboard`]

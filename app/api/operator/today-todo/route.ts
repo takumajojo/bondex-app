@@ -5,7 +5,8 @@ import { listHotelContactDue, countBoardViews } from "@/lib/shipments-db"
 import { parseHotelContactInfo } from "@/lib/hotel-contact-info"
 import { lookupHotelHistory } from "@/lib/hotel-history"
 import { HOTEL_ROUTE_LABEL } from "@/lib/hotel-notification"
-import { endpointLabel } from "@/lib/residence"
+import { loadPickupTodo, type PickupAttentionTask, type SagawaPickupTask } from "@/lib/pickup-request/todo"
+import { bizLogiAvailability } from "@/lib/pickup-request/service"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -17,17 +18,8 @@ function todayJst(): string {
 /** urgency の並び順 (overdue が最優先)。 */
 const URGENCY_RANK: Record<string, number> = { overdue: 0, urgent: 1, due: 2 }
 
-export interface SagawaPickupTask {
-  shipmentId: string
-  bookingId: string
-  legIndex: number
-  representative: string
-  tourNumber: string | null
-  fromHotel: string
-  fromHotelJa: string | null
-  shipmentDate: string
-  urgency: string
-}
+// 佐川への集荷依頼タスクの型は lib/pickup-request/todo.ts (2026-11-03 抽出条件を是正)。
+export type { SagawaPickupTask, PickupAttentionTask } from "@/lib/pickup-request/todo"
 
 export interface HotelTodoTask {
   shipmentId: string
@@ -138,31 +130,23 @@ export async function GET(req: NextRequest) {
     return (a.deadline ?? "").localeCompare(b.deadline ?? "")
   })
 
-  // 佐川への集荷依頼タスク: 発行済み・集荷依頼未・発送日が今日/明日(JST)の区間。
-  // 集荷の前日に佐川へ連絡が必要なので、明日発送分を今日出す(+今日発送で未依頼は overdue)。
-  const tomorrow = new Date(Date.now() + 9 * 3600 * 1000 + 86_400_000).toISOString().slice(0, 10)
+  // 佐川への集荷依頼タスク (2026-11-03 是正): 配送状態ではなく集荷依頼の記録で判定する。
+  // 依頼が必要 = 取消以外で有効な集荷依頼が無い区間 (status='requested' でも出す)。今日〜7日先。
+  // 要対応 = 結果不明 / 要確認 / 送信中のまま / 変更・取消の連絡中 / 取消した区間に依頼が残っている。
   let sagawaPickupTasks: SagawaPickupTask[] = []
+  let pickupAttention: PickupAttentionTask[] = []
+  let pickupLegacyMode = false
+  let pickupError: string | null = null
   if (sb) {
-    const { data: pk } = await sb
-      .from("shipments")
-      .select("id, booking_id, leg_index, representative, tour_number, from_hotel, from_residence, from_hotel_ja, shipment_date")
-      .eq("status", "issued")
-      .is("pickup_requested_at", null)
-      .gte("shipment_date", today)
-      .lte("shipment_date", tomorrow)
-      .order("shipment_date", { ascending: true })
-    sagawaPickupTasks = (pk ?? []).map((r) => ({
-      shipmentId: r.id as string,
-      bookingId: r.booking_id as string,
-      legIndex: r.leg_index as number,
-      representative: (r.representative as string) ?? "",
-      tourNumber: (r.tour_number as string | null) ?? null,
-      // 個人宅（民泊）区間は from_hotel に氏名が入るため、集荷先として住所を表示する。
-      fromHotel: endpointLabel(r.from_hotel, r.from_residence),
-      fromHotelJa: (r.from_hotel_ja as string | null) ?? null,
-      shipmentDate: r.shipment_date as string,
-      urgency: (r.shipment_date as string) <= today ? "overdue" : "due",
-    }))
+    try {
+      const todo = await loadPickupTodo(sb, today)
+      sagawaPickupTasks = todo.needRequest
+      pickupAttention = todo.attention
+      pickupLegacyMode = todo.legacyMode
+    } catch (e) {
+      // TODO 全体は止めない。集荷依頼の欄にエラーを出す。
+      pickupError = e instanceof Error ? e.message : String(e)
+    }
   }
 
   // 他カテゴリの件数 (チップ表示・既存フィルタへ誘導)。
@@ -170,8 +154,21 @@ export async function GET(req: NextRequest) {
 
   const total =
     hotelTasks.length +
-    sagawaPickupTasks.length +
+    sagawaPickupTasks.filter((t) => t.urgency !== "upcoming").length +
+    pickupAttention.length +
     Object.entries(counts).reduce((s, [, n]) => s + (typeof n === "number" ? n : 0), 0)
 
-  return NextResponse.json({ today, total, hotelTasks, sagawaPickupTasks, counts })
+  const avail = bizLogiAvailability()
+  return NextResponse.json({
+    today,
+    total,
+    hotelTasks,
+    sagawaPickupTasks,
+    pickupAttention,
+    pickupLegacyMode,
+    pickupError,
+    // 運営画面に Biz-Logi ボタンを出すか (設定が揃っているときだけ)。秘密の値は含めない。
+    bizlogi: avail.available ? { available: true, environment: avail.environment, live: avail.live } : { available: false, reason: avail.reason },
+    counts,
+  })
 }

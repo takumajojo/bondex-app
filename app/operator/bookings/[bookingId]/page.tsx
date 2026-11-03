@@ -7,6 +7,7 @@
 // 操作 (ステータス変更・日付編集・個数修正) は一覧の「⋯」メニューから行う。
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
+import PickupRequestPanel, { OperatorNameInput, useOperatorName } from "@/components/operator/PickupRequestPanel"
 import {
   ArrowLeft,
   ExternalLink,
@@ -161,6 +162,7 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
 // 本来は荷物問い合わせ連携で自動反映だが、復旧までは当面ここで手動運用 (2026-10-21 谷口さん)。
 function LegTaskChecklist({ row, onChanged }: { row: Row; onChanged: () => Promise<void> | void }) {
   const [busy, setBusy] = useState<string | null>(null)
+  const [actor, setActor] = useOperatorName()
   const nt = row.note_target === "from" || row.note_target === "to" || row.note_target === "both" ? row.note_target : "to"
   const pickupApplies = nt === "from" || nt === "both"
   const guestApplies = nt === "to" || nt === "both"
@@ -183,7 +185,8 @@ function LegTaskChecklist({ row, onChanged }: { row: Row; onChanged: () => Promi
   const toggleArrange = async (next: boolean) => {
     setBusy("arrange")
     try {
-      const res = await fetch("/api/operator/sagawa-pickup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipmentId: row.id, undo: !next }) })
+      if (!actor.trim()) throw new Error("担当者名を入力してください (集荷依頼の記録に残します)")
+      const res = await fetch("/api/operator/sagawa-pickup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipmentId: row.id, undo: !next, actor }) })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "更新に失敗しました")
       await onChanged()
     } catch (e) {
@@ -210,6 +213,12 @@ function LegTaskChecklist({ row, onChanged }: { row: Row; onChanged: () => Promi
         {pickupApplies && <Check id="pickup" label="集荷元ホテル連絡 済み" done={!!row.pickup_hotel_notified_at} onToggle={(n) => toggleHotel("pickup", n)} />}
         {guestApplies && <Check id="guest" label="配送先ホテル連絡 済み" done={!!row.guest_hotel_notified_at} onToggle={(n) => toggleHotel("guest", n)} />}
       </div>
+      {arrangeApplies && (
+        <div className="mt-3 space-y-2">
+          <OperatorNameInput value={actor} onChange={setActor} />
+          <PickupRequestPanel shipmentId={row.id} legLabel={`L${row.leg_index + 1}`} actor={actor} onChanged={() => void onChanged()} />
+        </div>
+      )}
     </div>
   )
 }

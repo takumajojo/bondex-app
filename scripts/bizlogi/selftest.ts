@@ -85,10 +85,11 @@ const LEG: PickupLegInput = {
 }
 
 const CONFIG: BizLogiConfig = {
-  baseUrl: "https://bizlogi.example.test/rest/getxml",
+  baseUrl: "https://beccl-st.biz-blue.net/api",
+  environment: "test",
   customerId: "testcustomer",
   loginPassword: "p&ss<w>rd==",
-  okuriCode: "A501",
+  okuriCode: "N01",
   live: false,
 }
 
@@ -302,10 +303,24 @@ async function main() {
     check("住所チェック: 不一致", !mismatch.matched && mismatch.result.code === "E2-0001")
 
     check("env: 必須キーの不足を名指しする", /BIZLOGI_CUSTOMER_ID/.test((await throws(() => bizLogiConfigFromEnv({ BIZLOGI_BASE_URL: "https://x.test" }), BizLogiConfigError))?.message ?? ""))
-    const dummyEnv = { BIZLOGI_BASE_URL: "https://dummy.sgsystems.co.jp/rest/getxml", BIZLOGI_CUSTOMER_ID: "a", BIZLOGI_LOGIN_PASSWORD: "b" }
-    check("env: 仕様書のダミーURLを弾く", !!(await throws(() => bizLogiConfigFromEnv(dummyEnv), BizLogiConfigError)))
+    const dummyEnv = { BIZLOGI_BASE_URL: "https://dummy.sgsystems.co.jp/rest/getxml", BIZLOGI_CUSTOMER_ID: "a", BIZLOGI_LOGIN_PASSWORD: "b", BIZLOGI_ENV: "production" }
+    check("env: 仕様書のダミーURLを弾く", /ダミー/.test((await throws(() => bizLogiConfigFromEnv(dummyEnv), BizLogiConfigError))?.message ?? ""))
     const cfg = bizLogiConfigFromEnv({ ...dummyEnv, BIZLOGI_BASE_URL: "https://real.example.test/rest/getxml/", BIZLOGI_LIVE: "TRUE" })
     check("env: 末尾スラッシュ除去・LIVE は厳密に \"true\" のみ", cfg.baseUrl.endsWith("/getxml") && cfg.live === false)
+
+    // 2026-11-03 安全策: テスト/本番の取り違え防止・送り状コードの限定
+    const testEnv = { BIZLOGI_BASE_URL: "https://beccl-st.biz-blue.net/api", BIZLOGI_CUSTOMER_ID: "a", BIZLOGI_LOGIN_PASSWORD: "b", BIZLOGI_ENV: "test", BIZLOGI_OKURI_CODE: "N01" }
+    check("env: BIZLOGI_ENV 未設定は不足として名指し", /BIZLOGI_ENV/.test((await throws(() => bizLogiConfigFromEnv({ ...testEnv, BIZLOGI_ENV: undefined }), BizLogiConfigError))?.message ?? ""))
+    check("env: test + テスト環境ホスト は通る", bizLogiConfigFromEnv(testEnv).environment === "test")
+    check("env: production なのにテスト環境ホストは拒否", !!(await throws(() => bizLogiConfigFromEnv({ ...testEnv, BIZLOGI_ENV: "production" }), BizLogiConfigError)))
+    check("env: test なのに本番ホストは拒否", !!(await throws(() => bizLogiConfigFromEnv({ ...testEnv, BIZLOGI_BASE_URL: "https://prod.example.test/api" }), BizLogiConfigError)))
+    check("env: 許可外の送り状コード (A501) は拒否", /A501/.test((await throws(() => bizLogiConfigFromEnv({ ...testEnv, BIZLOGI_OKURI_CODE: "A501" }), BizLogiConfigError))?.message ?? ""))
+    const m9 = mockFetch(() => ({ body: OK_RESPONSE }))
+    const badCode = await throws(() => new BizLogiClient({ ...CONFIG, live: true, okuriCode: "A501" }, m9.impl).requestShipping([detail], TODAY), BizLogiConfigError)
+    check("発行依頼: 許可外の送り状コードなら通信ゼロで拒否", !!badCode && m9.calls.length === 0)
+    const m10 = mockFetch(() => ({ body: OK_RESPONSE }))
+    const noCode = await throws(() => new BizLogiClient({ ...CONFIG, live: true, okuriCode: undefined }, m10.impl).requestShipping([detail], TODAY), BizLogiConfigError)
+    check("発行依頼: 送り状コード未設定なら通信ゼロで拒否", !!noCode && m10.calls.length === 0)
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)
