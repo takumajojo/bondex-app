@@ -427,7 +427,7 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
       [...targets, ...targets].map((id) => sb.rpc("claim_pickup_request", { p_shipment_id: id, p_channel: "bizlogi", p_environment: "production", p_manage_number: "X", p_piece_count: 1, p_pickup_date: jst(3), p_actor: "a", p_owner: "o", p_note: null, p_snapshot: null })),
     )
     const parMs = Date.now() - t0
-    const claimed = results.filter((r: { data: Array<{ claimed: boolean }> }) => r.data?.[0]?.claimed).length
+    const claimed = results.filter((r) => (r.data as Array<{ claimed: boolean }> | null)?.[0]?.claimed).length
     console.log(`     2,950件の確保 ${claimMs}ms (1件 ${(claimMs / 2950).toFixed(2)}ms)・TODO 読込 ${todoMs}ms (依頼が必要 ${t.needRequest.length}件)・同時100件 ${parMs}ms`)
     assert.equal(claimed, 50, "同じ区間への2回目はすべて拒否")
     const live = (await db.query(`select count(*)::int n from pickup_requests where shipment_id = any($1::uuid[])`, [targets])).rows[0].n
