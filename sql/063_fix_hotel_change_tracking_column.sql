@@ -1,4 +1,6 @@
--- ホテル変更の DB 関数 apply_hotel_change が、改名前の列 yamato_tracking を参照したまま残っている (2026-11-03 監査で発見)。未適用。
+-- ホテル変更の DB 関数 apply_hotel_change が、改名前の列 yamato_tracking を参照したまま残っていた (2026-11-03 監査で発見)。
+-- 適用済み (2026-11-03・Supabase migration 20261103143313 fix_hotel_change_tracking_column)。
+-- 適用前の定義のバックアップ (ロールバック用) は、リポジトリ外の運用フォルダに保管している。
 --
 -- sql/044 (2026-09-29) で shipments.yamato_tracking を tracking_numbers に改名したが、関数は作り直していない。
 -- PL/pgSQL は実行時に列を解決するため、呼ぶと必ず
