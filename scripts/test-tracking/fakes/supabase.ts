@@ -28,17 +28,9 @@ class Builder {
     this.filters.push((r) => r[col] === val)
     return this
   }
-  // 定時処理の付随チェック (配達完了メールの再送確認・集荷依頼の送信中確認) が使う絞り込み
   is(col: string, val: unknown) {
+    if (this.table === "shipments") S.lastShipmentQuery.push(["is", col, val])
     this.filters.push((r) => (val === null ? r[col] === null || r[col] === undefined : r[col] === val))
-    return this
-  }
-  in(col: string, vals: unknown[]) {
-    this.filters.push((r) => vals.includes(r[col]))
-    return this
-  }
-  lt(col: string, val: unknown) {
-    this.filters.push((r) => r[col] != null && String(r[col]) < String(val))
     return this
   }
   order() { return this }
