@@ -1244,3 +1244,20 @@ R01〜R08（紹介料）と D10（ShipAll）は MVP では決めなくてよい�
 - **入口の英語名**: `b2c_entry_links.referrer_name_en` を追加（英語の画面で「For Hankyu Travel travelers」）。
 - **既存の追跡の試験の 4件の失敗の原因**: `lib/tracking/poll-policy.ts` の夜間のガード（JST 21:00〜翌 8:00 は照会しない）により、夜間に試験を実行すると定時の照会がされず失敗していた（コードの不具合ではない）。試験の中の「今」を JST の昼に固定し、偽の Supabase に `.is()` を足して 8/8 合格（`scripts/test-tracking/run.ts`・`fakes/supabase.ts`）。B2C は Phase 1A で自動の集荷確認を使わず（`B2C_PICKUP_AUTOMATION_ENABLED` OFF）、B2C の請求は B2B の課金の入口で止まる（16.20）ので、この試験の結果は B2C に影響しない。
 - **開発の環境**: ローカルの Supabase（REST を含む）＋ `.env.local`（ローカルの Supabase のキーと Google の検索のキーだけ。本番の Supabase・Stripe・メール・WhatsApp のキーは無い）。DB は `scripts/test-b2c/db/seed-dev.sh` でダミーのデータで作る。
+
+### 16.24 Stage 3（カード登録・Stripe のテストモード）の実装と網羅試験（2026-11-04）
+
+根拠: たくまさんの承認（2026-11-03「Stage 3への着手を承認」・2026-11-04「全て事細かくチェック…決済系であるエラーなど全て網羅」）。
+
+- **方式**: SetupIntent（`usage=off_session`・`payment_method_types=[card]`）。予約の時に請求・オーソリ（PaymentIntent）は作らない（`lib/b2c/card-service.ts` は PaymentIntent を作らない。試験で Stripe の PaymentIntent が 0件であることを確認）。
+- **Customer**: 旅行者（予約）ごとに作る。metadata `channel=b2c`・`order_id`。B2B の代理店の Customer（`agencies.stripe_customer_id`）とは別。冪等キー `b2c-cus-<order_id>`・`b2c-si-<order_id>` で、通信の失敗・同時の押下でも 1つずつ。
+- **状態の移り変わり**: draft →（開始・同意の記録・受付の枠の確保）card_pending/registering →（Stripe で登録の完了を確認）card_status=registered → `b2c_confirm_order` → ホテルの条件を満たせば confirmed（shipments を作る）、満たさなければ awaiting_hotel_confirmation。カード登録の成功は確定ではない。失敗は card_status=failed（同じ予約で別のカードを入れ直せる）。30分放置は cancelled（card_timeout）で枠を返す（Stripe の SetupIntent を先に取り消し、取り消せない＝直前に登録が終わった時は確定に回す）。締切・確認の期限の後に登録が終わったものは確定しない（運営の判断に回す）。
+- **状態の正**: いつも Stripe から取り直した SetupIntent。画面の報告・Webhook の中身は照合のきっかけ。通知の重複・順序の逆転・画面の切断でも同じ結果（`finalizeB2cCard`）。
+- **Webhook**: B2C 専用の受信口 `app/api/b2c/stripe/webhook`（鍵 `STRIPE_B2C_WEBHOOK_SECRET`）。B2B の `/api/stripe/webhook` は変更なし。`b2c_stripe_events` で 1回だけ処理、失敗は 500 で Stripe の再送。予約が無い・別の予約の SetupIntent は再送させず記録。
+- **CVC の照合の失敗は受け付けない**（網羅試験で、登録は通るのに後の請求で失敗しうるカードを確認したため）。カードを外し、新しい SetupIntent で別のカードを入れてもらう。
+- **DB の障害**: 「予約が無い」と区別して 503（画面は「予約は保存されています。予約し直さないで」）。DB を待つのは 8秒まで。
+- **本番のキーの拒否**: `lib/b2c/stripe.ts` は sk_live_/rk_live_/pk_live_ を `B2C_STRIPE_ALLOW_LIVE=true` が無い限り使わない。試験の道具も sk_test_ 以外は止まる。
+- **Cookie の案内**: `components/consent-banner.tsx` が `/book/` では `?lang=` に合わせる（英語の画面で日本語の案内がボタンを覆い、カード登録を押せなかったため）。B2B のページの判定は変更なし。
+- **試験**（すべてローカルの開発サーバー＋ローカルの Supabase＋Stripe のテストモード）: 通しの試験 53（`scripts/test-b2c/card_e2e.py`）、カードの種類・拒否の理由・操作の事故の網羅 86（`card_matrix.py`）、Stripe の障害の注入 17（`card_faults.ts`）、DB の停止 7（`card_dbdown.py`）、画面（画面なしの Chrome で本物の Stripe の入力欄と 3D セキュア）（`scripts/test-b2c/ui/card_ui.mjs`）、単体 33、予約の API 18、B2B の回帰（金額 10・配送日数 28・追跡 8・課金の入口・運営のセッション）。
+- **試験で見つけて直した不具合**: (1) DB の障害を「予約が無い」と返し、二重の予約を招きうる (2) 予約の無い通知を Stripe が再送し続ける (3) 3D セキュアの後に画面が Stripe の部品の返事を受け取れないと結果が出ない（確認の最中からサーバーに照合する） (4) 画面の照合が開発時に一度も動かない（表示中の印の戻し忘れ） (5) 英語の画面で Cookie の案内が日本語でボタンを覆う。
+- **未解決（判断が要る）**: 中国の銀聯（UnionPay）は Stripe で登録不可。登録は通るが後の請求で失敗しうるカード（不正の疑い・Radar で止まる・請求だけ拒否）は登録の時点で見分けられない（Stage 5 で未収の扱い）。カードの入力欄に Stripe の Link（情報の保存）が出る（消すには Stripe の管理画面の設定で、B2B にも影響）。放置の片付けの定期の実行は Stage 4。`b2c_confirm_order` が shipments の guest_language を 'en' 固定で入れている（日本語の旅行者の通知の言語。Stage 4 で直す・DB の関数の変更が要る）。

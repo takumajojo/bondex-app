@@ -9,6 +9,9 @@ import { changeDeadlineAt } from "@/lib/change-deadline"
 import { b2cChangeBlockedReason } from "@/lib/b2c/change-gate"
 import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { judgeB2cHotels, hotelCheckDueAt, earliestPickupWithUnknownHotel, planB2cConfirmation } from "@/lib/b2c/hotel-gate"
+import { cardStateOfSetupIntent, threeDsResultOf } from "@/lib/b2c/card-service"
+import { b2cStripeConfig } from "@/lib/b2c/stripe"
+import type Stripe from "stripe"
 
 let passed = 0
 function t(name: string, fn: () => void) {
@@ -235,6 +238,43 @@ t("channel・b2c_order_id・代理店名のどれかで B2C と判定（列が�
   assert.equal(isB2cShipmentRow({ channel: "b2b", b2c_order_id: null, agency: "JTB" }), false)
   assert.equal(isB2cShipmentRow({ agency: "JTB" }), false) // 列の適用前の B2B の行
   assert.equal(isB2cShipmentRow(null), false)
+})
+
+console.log("カード登録の状態の読み替え（Stripe の SetupIntent → 予約の card_status）")
+t("succeeded だけが registered。requires_action は認証待ち、失敗は failed、処理中は registering", () => {
+  const si = (status: Stripe.SetupIntent.Status, err: unknown = null) => ({ status, last_setup_error: err }) as Pick<Stripe.SetupIntent, "status" | "last_setup_error">
+  assert.equal(cardStateOfSetupIntent(si("succeeded")), "registered")
+  assert.equal(cardStateOfSetupIntent(si("requires_action")), "requires_action")
+  assert.equal(cardStateOfSetupIntent(si("processing")), "registering")
+  assert.equal(cardStateOfSetupIntent(si("requires_payment_method")), "registering") // まだ入力していない
+  assert.equal(cardStateOfSetupIntent(si("requires_payment_method", { code: "card_declined" })), "failed")
+  assert.equal(cardStateOfSetupIntent(si("canceled")), "failed")
+})
+t("3D セキュアの結果: 認証済み・試行・不要・不明", () => {
+  const at = (tds: unknown) => ({ latest_attempt: { payment_method_details: { card: { three_d_secure: tds } } } }) as unknown as Pick<Stripe.SetupIntent, "latest_attempt">
+  assert.equal(threeDsResultOf(at({ result: "authenticated" })), "authenticated")
+  assert.equal(threeDsResultOf(at({ result: "attempt_acknowledged" })), "attempted")
+  assert.equal(threeDsResultOf(at(null)), "not_required")
+  assert.equal(threeDsResultOf(at({ result: "failed" })), "unknown")
+  assert.equal(threeDsResultOf({ latest_attempt: null } as Pick<Stripe.SetupIntent, "latest_attempt">), "unknown")
+})
+
+t("本番の Stripe のキーは B2C では使わない（B2C_STRIPE_ALLOW_LIVE=true が無い限り）", () => {
+  const keep = { sk: process.env.STRIPE_SECRET_KEY, pk: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, allow: process.env.B2C_STRIPE_ALLOW_LIVE }
+  const set = (sk?: string, pk?: string, allow?: string) => {
+    for (const [k, v] of [["STRIPE_SECRET_KEY", sk], ["NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", pk], ["B2C_STRIPE_ALLOW_LIVE", allow]] as const) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+  const reason = () => { const r = b2cStripeConfig(); return r.ok ? r.config.mode : r.reason }
+  set(undefined, undefined); assert.equal(reason(), "not_configured")
+  set("sk_live_x", "pk_live_x"); assert.equal(reason(), "live_key_blocked")
+  set("rk_live_x", "pk_test_x"); assert.equal(reason(), "live_key_blocked")
+  set("sk_test_x", "pk_live_x"); assert.equal(reason(), "live_key_blocked")
+  set("sk_test_x", "pk_test_x"); assert.equal(reason(), "test")
+  set("sk_live_x", "pk_live_x", "true"); assert.equal(reason(), "live")
+  set(keep.sk, keep.pk, keep.allow)
 })
 
 console.log(`\n${passed} passed`)

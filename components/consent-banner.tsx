@@ -69,8 +69,13 @@ const BANNER: Record<string, BannerText> = {
 function localeFromPath(): string {
   if (typeof window === "undefined") return "ja"
   const seg = window.location.pathname.split("/")[1]
+  // B2C の旅行者の予約画面（/book/<token>）は URL の ?lang= が言語（既定は英語。components/b2c/booking-form.tsx）
+  if (seg === "book") return new URLSearchParams(window.location.search).get("lang") === "ja" ? "ja" : "en"
   return ["en", "es", "fr", "zh", "it"].includes(seg) ? seg : "ja"
 }
+
+/** 予約画面で言語を切り替えた時の知らせ（B2C の予約画面だけが出す）。 */
+export const B2C_LANG_EVENT = "bondex:b2c-lang"
 
 /**
  * 解析 Cookie の同意バナー (GA Consent Mode 連動)。
@@ -81,6 +86,12 @@ function localeFromPath(): string {
 export function ConsentBanner() {
   const [visible, setVisible] = useState(false)
   const [loc, setLoc] = useState("ja")
+
+  useEffect(() => {
+    const onLang = () => setLoc(localeFromPath())
+    window.addEventListener(B2C_LANG_EVENT, onLang)
+    return () => window.removeEventListener(B2C_LANG_EVENT, onLang)
+  }, [])
 
   useEffect(() => {
     setLoc(localeFromPath())

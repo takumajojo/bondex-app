@@ -33,16 +33,31 @@ export interface B2cEntry {
   referrerNameEn: string
 }
 
+/**
+ * DB に届かない・時間切れ（B2C_DB_TIMEOUT_MS）。「見つからない」と分けて扱う。
+ * 見つからないと答えると、画面が「もう一度ご予約ください」と案内し、二重の予約になりうるため。
+ */
+export class B2cDbUnavailable extends Error {
+  constructor(what: string) {
+    super(`b2c db unavailable: ${what}`)
+    this.name = "B2cDbUnavailable"
+  }
+}
+/** B2C の画面・Webhook が DB を待つ上限。超えたら B2cDbUnavailable（画面は照合を続け、Webhook は Stripe が再送する）。 */
+export const B2C_DB_TIMEOUT_MS = 8000
+
 export async function resolveEntry(token: unknown): Promise<B2cEntry | null> {
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(token)) return null
   const sb = getSupabase()
-  if (!sb) return null
+  if (!sb) throw new B2cDbUnavailable("not configured")
   const { data, error } = await sb
     .from("b2c_entry_links")
     .select("id, referrer_code, referrer_name, referrer_name_en, status")
     .eq("token_hash", sha256Hex(token))
+    .abortSignal(AbortSignal.timeout(B2C_DB_TIMEOUT_MS))
     .maybeSingle()
-  if (error || !data || data.status !== "active") return null
+  if (error) throw new B2cDbUnavailable("entry")
+  if (!data || data.status !== "active") return null
   return { id: data.id, referrerCode: data.referrer_code, referrerName: data.referrer_name, referrerNameEn: data.referrer_name_en || data.referrer_name }
 }
 

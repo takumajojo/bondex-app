@@ -3,11 +3,13 @@
 /**
  * B2C の旅行者の予約画面（Stage 2・阪急交通社向けの限定 Beta）。スマホを最優先にした 1列の画面。
  * 料金・選べる日付・ホテルの状態はすべてサーバー（/api/b2c/quote）が計算し、画面は表示するだけ。
- * 予約の下書きの作成（/api/b2c/orders）もサーバーで計算し直す。カード登録は Stage 3。
+ * 予約の下書きの作成（/api/b2c/orders）もサーバーで計算し直す。その後のカード登録は card-step.tsx（Stage 3）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { B2cCardStep, type B2cPendingOrder } from "./card-step"
+import { B2C_LANG_EVENT } from "@/components/consent-banner"
 
 type Lang = "en" | "ja"
 type HotelStatus = "verified" | "unknown"
@@ -100,9 +102,6 @@ const T = {
       invalid_link: "This booking link is not valid. Please ask your travel agent for the correct link.",
       booking_closed: "Booking is currently closed.",
     } as Record<string, string>,
-    doneTitle: "Your details are saved",
-    doneNo: (n: number) => `Request number ${n}`,
-    doneNext: "Next step: card registration (coming in the next build). Nothing has been charged.",
   },
   ja: {
     lang: "English",
@@ -159,9 +158,6 @@ const T = {
       invalid_link: "この予約のリンクは無効です。旅行会社に正しいリンクをご確認ください。",
       booking_closed: "現在、受付を停止しています。",
     } as Record<string, string>,
-    doneTitle: "入力内容を保存しました",
-    doneNo: (n: number) => `受付番号 ${n}`,
-    doneNext: "次はカード登録です（次の開発段階で追加）。まだ請求はされていません。",
   },
 }
 
@@ -301,7 +297,35 @@ export function B2cBookingForm({ token, referrerName, initialLang }: { token: st
   const [consent, setConsent] = useState(false)
   const [errs, setErrs] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [done, setDone] = useState<{ orderNumber: number } | null>(null)
+  const [done, setDone] = useState<B2cPendingOrder | null>(null)
+
+  // 言語の切替を URL（?lang=）にも残す（再読込でも同じ言語・Cookie の案内も同じ言語にする）
+  const switchLang = (next: Lang) => {
+    setLang(next)
+    try {
+      const u = new URL(window.location.href)
+      u.searchParams.set("lang", next)
+      window.history.replaceState(null, "", u.toString())
+      window.dispatchEvent(new Event(B2C_LANG_EVENT))
+    } catch {
+      /* noop */
+    }
+  }
+
+  // 下書きの後の予約番号と秘密の token はこのタブにだけ残す（再読込・通信の切断の後にカード登録から再開する）
+  const storeKey = `b2c-pending:${token}`
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(storeKey)
+      if (raw) setDone(JSON.parse(raw) as B2cPendingOrder)
+    } catch {
+      /* 保存できない環境では再開しない */
+    }
+  }, [storeKey])
+  const restart = () => {
+    try { sessionStorage.removeItem(storeKey) } catch { /* noop */ }
+    setDone(null)
+  }
 
   const ready = !!(origin && dest && oStay.checkIn && oStay.checkOut && dStay.checkIn && dStay.checkOut)
 
@@ -329,13 +353,15 @@ export function B2cBookingForm({ token, referrerName, initialLang }: { token: st
   const submit = async () => {
     setErrs([])
     setSubmitting(true)
-    const r = await post<{ ok?: boolean; errors?: string[]; error?: string; orderNumber?: number }>("/api/b2c/orders", {
+    const r = await post<{ ok?: boolean; errors?: string[]; error?: string; orderNumber?: number; accessToken?: string; totalGrossYen?: number }>("/api/b2c/orders", {
       token, originPlaceId: origin?.placeId, destPlaceId: dest?.placeId, origin: oStay, dest: dStay, pieces,
       pickupDate: pickup, deliveryDate: delivery, name, email, whatsapp: wa, language: lang, consent,
     })
     setSubmitting(false)
-    if (r.data.ok && r.data.orderNumber) {
-      setDone({ orderNumber: r.data.orderNumber })
+    if (r.data.ok && r.data.orderNumber && r.data.accessToken && r.data.totalGrossYen) {
+      const pending = { orderNumber: r.data.orderNumber, accessToken: r.data.accessToken, totalGrossYen: r.data.totalGrossYen }
+      try { sessionStorage.setItem(storeKey, JSON.stringify(pending)) } catch { /* noop */ }
+      setDone(pending)
       window.scrollTo({ top: 0, behavior: "smooth" })
       return
     }
@@ -350,7 +376,7 @@ export function B2cBookingForm({ token, referrerName, initialLang }: { token: st
         <p className="text-lg font-bold tracking-tight">BondEx</p>
         <p className="text-xs text-muted-foreground">{t.via(referrerName)}</p>
       </div>
-      <button type="button" className="rounded-full border px-3 py-1.5 text-sm font-medium" onClick={() => setLang(lang === "en" ? "ja" : "en")}>
+      <button type="button" className="rounded-full border px-3 py-1.5 text-sm font-medium" onClick={() => switchLang(lang === "en" ? "ja" : "en")}>
         {t.lang}
       </button>
     </header>
@@ -360,11 +386,7 @@ export function B2cBookingForm({ token, referrerName, initialLang }: { token: st
     return (
       <main className="mx-auto min-h-dvh max-w-md bg-background px-4 py-6">
         {header}
-        <section className="rounded-2xl border bg-card p-5 shadow-sm">
-          <h1 className="text-xl font-semibold">{t.doneTitle}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{t.doneNo(done.orderNumber)}</p>
-          <p className="mt-4 text-sm leading-relaxed">{t.doneNext}</p>
-        </section>
+        <B2cCardStep token={token} lang={lang} order={done} onRestart={restart} />
       </main>
     )
   }
