@@ -18,18 +18,13 @@ export const hooks: { beforeRpc: null | ((name: string, params: Row) => void) } 
 
 export async function initSchema(repo: string) {
   // 本番 shipments の列構成 (2026-11-03 information_schema) に、既定値を検証に必要な分だけ付けたもの
-  await db.exec(`
-  create role anon; create role authenticated;
-  create table shipments (id uuid primary key default gen_random_uuid(), booking_id text not null, leg_index integer not null default 0, agency text not null default 'T', representative text not null default 'TEST GUEST', traveler_count integer, booking_name text, shipment_date date not null, expected_arrival date not null, from_hotel text not null, from_city text, from_place_id text, from_check_in date, to_hotel text not null, to_city text, to_place_id text, to_check_out date, recipient text not null default 'X', suitcase_count integer default 1, amount_yen integer, tracking_numbers jsonb, label_url text, issuable_from date, ship_ref_number text, status text default 'requested', error_message text, notes text, created_at timestamptz default now(), updated_at timestamptz default now(), tour_number text, group_name text, tracking_detail jsonb, guest_language text, pickup_alert_sent_at timestamptz, drive_url text, delivery_time text, carrier text default 'sagawa', note_target text, from_hotel_en text, to_hotel_en text, charged_at timestamptz, stripe_payment_intent_id text, charge_amount_yen integer, charge_error text, from_residence jsonb, to_residence jsonb, item_type text, count_change_log jsonb, pickup_hotel_notified_at timestamptz, guest_hotel_notified_at timestamptz, booking_type text, tour_leader_name text, tour_leader_phone text, tour_leader_whatsapp text, is_addition boolean, addition_note text, stripe_checkout_session_id text, stripe_checkout_url text, from_prefecture text, from_hotel_ja text, to_prefecture text, to_hotel_ja text, refunded_at timestamptz, refund_amount_yen integer, disputed_at timestamptz, dispute_status text, payment_failed_at timestamptz, payment_failure_message text, label_to text, label_split boolean, label_sender text, label_sender_info jsonb, label_sent_at timestamptz, label_mail_due date, issue_claimed_at timestamptz, hotel_contact_info jsonb, change_deadline_at timestamptz, picked_up_at timestamptz, pickup_ack_at timestamptz, pickup_requested_at timestamptz, delivered_at timestamptz, origin_check_in date, delivery_overdue_alerted_at timestamptz, cancelled_at timestamptz, cancelled_by text, cancel_source text, pickup_time text, sagawa_cost_actual_yen integer, delivered_notified_at timestamptz, tracking_limit_reached boolean, unique (booking_id, leg_index));
-  create table agencies (id uuid primary key default gen_random_uuid(), name text unique, contact_email text, contact_person text, locale text, payment_method text, status text default 'active', stripe_customer_id text, card_on_file boolean default false, is_domestic boolean default false, contract_status text default 'signed', billing_address jsonb);
-  create table user_agencies (user_id uuid primary key, agency_id uuid not null);
-  create table agency_emails (id uuid primary key default gen_random_uuid(), agency_id uuid, email text);
-  insert into agencies (name, contact_email, contact_person, locale) values ('T', 'ops@agency.test', 'PIC', 'ja');
-  insert into user_agencies (user_id, agency_id) select '00000000-0000-0000-0000-00000000a001', id from agencies where name = 'T';
-  create table shipment_hotel_changes (id uuid primary key default gen_random_uuid(), shipment_id uuid not null, booking_id text not null, leg_index integer not null, side text not null, old_hotel text, new_hotel text, old_hotel_ja text, new_hotel_ja text, old_place_id text, new_place_id text, over_deadline boolean, reason text, old_slip_task boolean, changed_by text, agency text, changed_at timestamptz default now(), old_hotel_cancel_task boolean);
-  `)
+  await db.exec(`create role anon; create role authenticated; create role service_role;`)
+  await db.exec(readFileSync(`${repo}/scripts/test-pickup-e2e/schema-base.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/043_shipment_change_requests.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/062_pickup_requests.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/063_fix_hotel_change_tracking_column.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/064_change_requests_pickup_lock.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/065_facilities.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)
@@ -65,6 +60,14 @@ class Query {
   lte(c: string, v: unknown) { this.where.push(`${c} <= ${this.p(v)}`); return this }
   lt(c: string, v: unknown) { this.where.push(`${c} < ${this.p(v)}`); return this }
   in(c: string, arr: unknown[]) { this.where.push(`${c}::text = any(${this.p(arr.map(String))}::text[])`); return this }
+  not(c: string, op: string, v: unknown) {
+    if (op === "in") {
+      const list = String(v).replace(/^\(|\)$/g, "").split(",").map((x) => x.replace(/^"|"$/g, ""))
+      this.where.push(`not (${c}::text = any(${this.p(list)}::text[]))`)
+    } else if (op === "is") this.where.push(v === null ? `${c} is not null` : `${c} is not ${v ? "true" : "false"}`)
+    else throw new Error(`fake: not(${op}) 未対応`)
+    return this
+  }
   is(c: string, v: unknown) { this.where.push(v === null ? `${c} is null` : `${c} is ${v ? "true" : "false"}`); return this }
   or(expr: string) {
     const parts = expr.split(",").map((t) => {

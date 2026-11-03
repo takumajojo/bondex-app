@@ -23,7 +23,7 @@ import { legTrackingNumbers } from "@/lib/shipment-reissue"
 import { legRef, type PickupShipmentRow } from "./leg-input"
 import { PickupStoreError, type PickupStore } from "./store"
 import { bizlogiEligibility } from "./eligibility"
-import { pickupSnapshot } from "./snapshot"
+import { pickupSnapshot, snapshotChanges } from "./snapshot"
 
 export interface BizLogiSendDeps {
   store: PickupStore
@@ -153,6 +153,20 @@ export async function sendBizLogiPickup(
   }
   if (!claim.claimed || !claim.requestId) return { outcome: "blocked", reason: claimReasonJa(claim.reason) }
   const requestId = claim.requestId
+
+  // 2b. 確保した時点の区間 (DB が行ロック中に作った依頼内容) と、電文の元にした内容が同じか。
+  // 読み取りから確保までの間に変更が入っていたら送らない。確保の後は DB のトリガーが区間の書き換えを止めるので、
+  // ここで一致すれば、佐川へ送る電文と DB の依頼内容は一致したままになる (2026-11-04 段階A)。
+  const drift = snapshotChanges(claim.snapshot, row)
+  if (claim.snapshot == null || drift.length > 0) {
+    const why = claim.snapshot == null ? "確保した時点の依頼内容を確認できません" : `確認のあとで区間が変わりました (${drift.join("・")})`
+    try {
+      await deps.store.transition({ requestId, from: ["sending"], to: "void", owner, note: `送信前に中止: ${why}` })
+    } catch {
+      // 送信していないので、記録が残っても「送信中」の監視が拾う (外部へは何も送っていない)
+    }
+    return { outcome: "blocked", reason: `${why}。もう一度確認してから送信してください` }
+  }
 
   const finish = async (to: "failed" | "unknown", fields: { error: string; resultCodes?: string[] }) => {
     try {

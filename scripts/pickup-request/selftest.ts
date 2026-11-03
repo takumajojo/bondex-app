@@ -59,7 +59,7 @@ class MemoryStore implements PickupStore {
       request_snapshot: i.snapshot ?? null,
       ...({ attempt_owner: i.owner } as object),
     } as PickupRequestRow)
-    return { claimed: true, requestId: id, reason: "claimed" }
+    return { claimed: true, requestId: id, reason: "claimed", snapshot: i.snapshot ?? null }
   }
   async transition(i: TransitionInput) {
     if (this.failTransition) throw new Error("db down")

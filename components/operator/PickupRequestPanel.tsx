@@ -48,6 +48,8 @@ export function OperatorNameInput({ value, onChange }: { value: string; onChange
 
 interface ChangeRow {
   id: string
+  kind: string
+  large_lot: boolean
   side: "guest" | "pickup" | null
   new_hotel: string | null
   new_hotel_ja: string | null
@@ -437,6 +439,20 @@ export default function PickupRequestPanel({
 }
 
 // 集荷依頼の受付後の変更 (ホテル・問い合わせ番号)。佐川の回答 (承認) を記録するまで区間のホテル情報は変えない。
+const CHANGE_KIND_LABEL: Record<string, string> = {
+  dates: "日程",
+  count: "個数",
+  representative: "代表者名",
+  cancel: "取消",
+  number: "問い合わせ番号の振り直し",
+  rearrange: "個別再手配",
+}
+
+function changeSummary(c: ChangeRow): string {
+  if (c.side) return `${c.side === "guest" ? "到着" : "発送元"}ホテル → ${c.new_hotel_ja || c.new_hotel}`
+  return `${CHANGE_KIND_LABEL[c.kind] ?? c.kind}${c.large_lot ? "（20個以上：世田谷へ事前確認）" : ""}`
+}
+
 function AfterAcceptChange({
   shipmentId,
   changes,
@@ -489,7 +505,7 @@ function AfterAcceptChange({
         <div className="space-y-1.5">
           <p className="text-[12px]">
             <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800">{CHANGE_STATE_LABEL[open.state]}</span>{" "}
-            {open.side ? `${open.side === "guest" ? "到着" : "発送元"}ホテル → ${open.new_hotel_ja || open.new_hotel}` : "問い合わせ番号の振り直し"}
+            {changeSummary(open)}
             <span className="text-muted-foreground">（理由：{open.reason}・登録 {open.requested_by}）</span>
           </p>
           {open.state === "requested" && (
@@ -604,7 +620,7 @@ function AfterAcceptChange({
             .map((c) => (
               <li key={c.id}>
                 {new Date(c.created_at).toLocaleDateString("ja-JP")} {CHANGE_STATE_LABEL[c.state]}・
-                {c.side ? `${c.old_hotel ?? ""} → ${c.new_hotel_ja || c.new_hotel}` : "番号のみ"}
+                {c.side ? `${c.old_hotel ?? ""} → ${c.new_hotel_ja || c.new_hotel}` : changeSummary(c)}
                 {c.number_policy === "changed" ? `・番号 ${c.old_shipping_number ?? "-"} → ${c.new_shipping_number}` : c.number_policy === "kept" ? "・番号維持" : ""}
               </li>
             ))}

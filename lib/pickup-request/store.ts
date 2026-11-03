@@ -15,7 +15,10 @@ export interface ClaimInput {
   actor: string
   owner: string
   note: string | null
-  /** 依頼した時点の内容 (./snapshot.ts)。依頼後の変更検知に使う。 */
+  /**
+   * 呼び出し側が電文・記録の元にした区間の内容 (./snapshot.ts)。DB には渡さない (DB は行ロック中に自分で作る)。
+   * 確保の結果の snapshot と比べ、違えば送らない (読み取りから確保までの間に区間が変わった)。
+   */
   snapshot: unknown
 }
 
@@ -24,6 +27,8 @@ export interface ClaimResult {
   requestId: string | null
   /** claimed / live_request_exists / shipment_cancelled / tracking_number_exists / shipment_not_found / invalid_channel */
   reason: string
+  /** 確保した時点の依頼内容 (DB が行ロック中に作ったもの)。確保できなかったときは null。 */
+  snapshot?: unknown
 }
 
 export interface TransitionInput {
@@ -73,11 +78,10 @@ export function supabasePickupStore(): PickupStore {
         p_actor: i.actor,
         p_owner: i.owner,
         p_note: i.note,
-        p_snapshot: i.snapshot ?? null,
       })
       if (error) throw new PickupStoreError(`集荷依頼の確保に失敗しました: ${error.message}`)
-      const row = (Array.isArray(data) ? data[0] : data) as { claimed?: boolean; request_id?: string; reason?: string } | null
-      return { claimed: row?.claimed === true, requestId: row?.request_id ?? null, reason: row?.reason ?? "unknown" }
+      const row = (Array.isArray(data) ? data[0] : data) as { claimed?: boolean; request_id?: string; reason?: string; snapshot?: unknown } | null
+      return { claimed: row?.claimed === true, requestId: row?.request_id ?? null, reason: row?.reason ?? "unknown", snapshot: row?.snapshot ?? null }
     },
     async transition(i) {
       const { data, error } = await sb.rpc("transition_pickup_request", {

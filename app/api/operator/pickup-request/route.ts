@@ -13,7 +13,17 @@ import { supabasePickupStore, liveRequestByShipment, PickupStoreError, isPickupT
 import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/state"
 import { cleanOverrides } from "@/lib/pickup-request/leg-input"
 import { bizlogiEligibility } from "@/lib/pickup-request/eligibility"
-import { applyPickupChange, createPickupChange, listPickupChanges, stepPickupChange, verifyChangeHotel, type ChangeStep } from "@/lib/pickup-request/change"
+import {
+  applyPickupChange,
+  createPickupChange,
+  hotelChangeFields,
+  listPickupChanges,
+  stepPickupChange,
+  verifyChangeHotel,
+  CHANGE_KINDS,
+  type ChangeKind,
+  type ChangeStep,
+} from "@/lib/pickup-request/change"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -28,6 +38,7 @@ export const maxDuration = 60
  *   POST { action: "resolve", requestId, resolveAction, actor, shippingNumber?, note? }  運営の確認結果を記録
  *   受付後の変更 (ホテル・問い合わせ番号。佐川の回答前は区間の情報を変えない):
  *   POST { action: "change_create", shipmentId, side: "guest"|"pickup"|null, newHotel, newHotelJa, newPlaceId, newCity?, newPrefecture?, reason, actor }
+ *        または { action: "change_create", shipmentId, kind, fields, reason, actor } (日程・個数・代表者名・取消・個別再手配)
  *   POST { action: "change_step", changeId, step: "contact"|"approve"|"reject"|"withdraw", actor, note, numberPolicy?, newNumber? }
  *   POST { action: "change_apply", changeId, actor }   承認済みの変更を区間へ反映
  *
@@ -137,26 +148,45 @@ export async function POST(req: NextRequest) {
       const actor = actorOf(body.actor)
       if (!actor) return NextResponse.json({ error: "担当者名を入力してください" }, { status: 400 })
       const str = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : null)
+      // 画面 (受付後の変更) は side でホテル、side なしで番号の振り直し。API は kind + fields でほかの種類も受ける。
       const side = body.side === "guest" || body.side === "pickup" ? body.side : null
-      const newPlaceId = str(body.newPlaceId)
-      let newCity = str(body.newCity)
-      let newPrefecture = str(body.newPrefecture)
+      let kind: ChangeKind
+      let fields: Record<string, unknown>
+      if (typeof body.kind === "string") {
+        if (!(CHANGE_KINDS as string[]).includes(body.kind)) return NextResponse.json({ error: "変更の種類が正しくありません" }, { status: 400 })
+        kind = body.kind as ChangeKind
+        fields = body.fields && typeof body.fields === "object" && !Array.isArray(body.fields) ? (body.fields as Record<string, unknown>) : {}
+      } else if (side) {
+        ;({ kind, fields } = hotelChangeFields({
+          side,
+          newHotel: str(body.newHotel),
+          newHotelJa: str(body.newHotelJa),
+          newPlaceId: str(body.newPlaceId),
+          newCity: str(body.newCity),
+          newPrefecture: str(body.newPrefecture),
+        }))
+      } else {
+        kind = "number"
+        fields = {}
+      }
       // ホテルを変える場合は、候補から選んだ place_id を Google で確かめてから登録する (手入力の place_id は通さない)
-      if (side && newPlaceId) {
-        const v = await verifyChangeHotel(newPlaceId, process.env.GOOGLE_MAPS_API_KEY)
-        if (!v.ok) return NextResponse.json({ error: v.reason }, { status: v.status })
-        newPrefecture = v.prefecture ?? newPrefecture
-        newCity = v.city ?? newCity
+      if (kind === "hotel_guest" || kind === "hotel_pickup") {
+        const pre = kind === "hotel_guest" ? "to" : "from"
+        const placeId = str(fields[`${pre}_place_id`])
+        if (placeId) {
+          const v = await verifyChangeHotel(placeId, process.env.GOOGLE_MAPS_API_KEY)
+          if (!v.ok) return NextResponse.json({ error: v.reason }, { status: v.status })
+          if (v.prefecture) fields[`${pre}_prefecture`] = v.prefecture
+          if (v.city) fields[`${pre}_city`] = v.city
+        }
       }
       const r = await createPickupChange({
         shipmentId,
-        side,
-        newHotel: str(body.newHotel),
-        newHotelJa: str(body.newHotelJa),
-        newPlaceId,
-        newCity,
-        newPrefecture,
+        kind,
+        fields,
         reason: str(body.reason) ?? "",
+        source: "operator",
+        requester: "operator",
         actor,
       })
       return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })

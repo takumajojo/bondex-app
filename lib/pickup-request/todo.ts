@@ -122,11 +122,32 @@ function base(l: PickupTodoLeg) {
 export interface OpenChangeRow {
   id: string
   shipment_id: string
+  /** shipment_change_requests.stage */
   state: string
-  side: string | null
-  new_hotel: string | null
-  new_hotel_ja: string | null
+  /** shipment_change_requests.kind */
+  kind: string
+  fields: Record<string, unknown> | null
   updated_at: string
+}
+
+const OPEN_CHANGE_KIND_JA: Record<string, string> = {
+  hotel_guest: "到着ホテル",
+  hotel_pickup: "発送元ホテル",
+  dates: "日程",
+  count: "個数",
+  representative: "代表者名",
+  cancel: "取消",
+  number: "問い合わせ番号の振り直し",
+  rearrange: "個別再手配",
+}
+
+function openChangeNote(c: OpenChangeRow): string {
+  const f = c.fields ?? {}
+  const label = OPEN_CHANGE_KIND_JA[c.kind] ?? c.kind
+  if (c.kind === "hotel_guest") return `${label}: ${String(f.to_hotel_ja ?? f.to_hotel ?? "-")}`
+  if (c.kind === "hotel_pickup") return `${label}: ${String(f.from_hotel_ja ?? f.from_hotel ?? "-")}`
+  if (c.kind === "count" && f.suitcase_count != null) return `${label}: ${String(f.suitcase_count)}個`
+  return `変更申請: ${label}`
 }
 
 export function buildPickupTodo(
@@ -201,7 +222,7 @@ export function buildPickupTodo(
       state: r?.state ?? "",
       shippingNumber: r?.shipping_number ?? null,
       error: null,
-      note: c.side ? `新しい${c.side === "guest" ? "到着" : "発送元"}ホテル: ${c.new_hotel_ja || c.new_hotel || "-"}` : "問い合わせ番号の振り直し",
+      note: openChangeNote(c),
       updatedAt: c.updated_at,
     })
   }
@@ -270,12 +291,13 @@ export async function loadPickupTodo(sb: SupabaseClient, today: string, now: Dat
 
   // 記録が指す区間のうち、窓の外 (過去日・取消) のものを追加で読む
   const known = new Set(legs.map((l) => l.id))
-  // 受付後の変更で進行中のもの (sql/062 の古い版では無い → 空)
+  // 変更申請で進行中のもの (未連絡・承認済みで未反映)。sql/064 未適用の環境では列が無く空になる。
   const { data: chg } = await sb
-    .from("pickup_change_requests")
-    .select("id, shipment_id, state, side, new_hotel, new_hotel_ja, updated_at")
-    .in("state", ["requested", "approved"])
-  const openChanges = (chg ?? []) as OpenChangeRow[]
+    .from("shipment_change_requests")
+    .select("id, shipment_id, stage, kind, fields, updated_at")
+    .in("stage", ["requested", "approved"])
+    .not("kind", "in", '("correction","fields")')
+  const openChanges = ((chg ?? []) as Array<Omit<OpenChangeRow, "state"> & { stage: string }>).map((c) => ({ ...c, state: c.stage }))
   const extraIds = [...new Set([...requests.map((r) => r.shipment_id), ...openChanges.map((c) => c.shipment_id)])].filter((id) => !known.has(id))
   if (extraIds.length) {
     const { data: extra, error: exErr } = await sb.from("shipments").select(PICKUP_TODO_COLUMNS).in("id", extraIds)
