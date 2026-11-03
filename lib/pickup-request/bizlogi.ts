@@ -14,7 +14,7 @@
 
 import { createHash, randomUUID } from "node:crypto"
 import { BizLogiConfigError, BizLogiTransportError, type BizLogiClient } from "@/lib/bizlogi/client"
-import { pickupRequestClosed, pickupRequestCutoff } from "@/lib/bizlogi/deadline"
+import { pastRecommendedTime, pickupRequestClosed, pickupRequestCutoff } from "@/lib/bizlogi/deadline"
 import { buildPickupDetail, type PickupLegInput } from "@/lib/bizlogi/pickup"
 import { BizLogiValidationError, type ShippingDetail, type ShippingResponse } from "@/lib/bizlogi/shipping"
 import { normalizeManageNumber } from "@/lib/bizlogi/text"
@@ -22,6 +22,7 @@ import type { OpsAlertInput } from "@/lib/ops-alert"
 import { legTrackingNumbers } from "@/lib/shipment-reissue"
 import { legRef, type PickupShipmentRow } from "./leg-input"
 import { PickupStoreError, type PickupStore } from "./store"
+import { pickupSnapshot } from "./snapshot"
 
 export interface BizLogiSendDeps {
   store: PickupStore
@@ -103,13 +104,19 @@ export async function previewBizLogiPickup(
   const warnings = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
     .filter((c) => c.severity === "warning")
     .map((c) => `${c.code} ${c.message}`)
+  // 18:00 以降も送信はできる (正式な締めは 20:00)。結果不明時に確認が間に合わない恐れだけを知らせる。
+  if (pastRecommendedTime(row.shipment_date, now)) {
+    warnings.unshift(
+      "社内の推奨完了時刻 (集荷前日 18:00) を過ぎています。送信はできますが、結果不明になった場合は締め (20:00) までに世田谷営業所へ確認できないことがあります (その場合は再依頼せず SOP に従う)",
+    )
+  }
   return { ok: true, fingerprint: detailFingerprint(detail), detail, warnings, cutoffAt: pickupRequestCutoff(row.shipment_date)?.toISOString() ?? null }
 }
 
 export async function sendBizLogiPickup(
   row: PickupShipmentRow,
   input: PickupLegInput,
-  opts: { actor: string; expectedFingerprint: string },
+  opts: { actor: string; expectedFingerprint: string; note?: string | null },
   deps: BizLogiSendDeps,
 ): Promise<SendOutcome> {
   const now = deps.now?.() ?? new Date()
@@ -135,7 +142,8 @@ export async function sendBizLogiPickup(
       pickupDate: row.shipment_date,
       actor: opts.actor,
       owner,
-      note: null,
+      note: opts.note ?? null,
+      snapshot: pickupSnapshot(row),
     })
   } catch (e) {
     return { outcome: "blocked", reason: e instanceof Error ? e.message : String(e) }

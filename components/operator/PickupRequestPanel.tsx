@@ -102,6 +102,12 @@ export default function PickupRequestPanel({
   const [number, setNumber] = useState("")
   const [note, setNote] = useState("")
   const [showHistory, setShowHistory] = useState(false)
+  // 佐川の宛名欄 (25文字×2行) に収まらないときに運営が入れる佐川向けの名称 (自動では切り詰めない)
+  const [showNames, setShowNames] = useState(false)
+  const [ovOrigin, setOvOrigin] = useState("")
+  const [ovDest, setOvDest] = useState("")
+  const [ovGuest, setOvGuest] = useState("")
+  const overrides = { originName: ovOrigin, destinationName: ovDest, guestName: ovGuest }
 
   const load = useCallback(async () => {
     setError("")
@@ -167,16 +173,20 @@ export default function PickupRequestPanel({
   }
 
   const runPreview = async () => {
-    const r = await post("preview", { action: "bizlogi_preview", shipmentId })
+    const r = await post("preview", { action: "bizlogi_preview", shipmentId, overrides })
     if (!r) return
     if (!r.res.ok) return setError(r.d.error || "確認できませんでした")
-    setPreview(r.d as Preview)
+    const pv = r.d as Preview
+    setPreview(pv)
+    setConfirmNoManual(false)
+    // 宛名が収まらないエラーなら、佐川向けの名称の入力欄を開く
+    if (!pv.ok && (pv.errors ?? []).some((e) => /宛名|Nm1/.test(e))) setShowNames(true)
   }
 
   const send = async () => {
     if (needActor() || !preview?.fingerprint) return
     if (!confirmNoManual) return setError("佐川指定 Excel で依頼していないことを確認してください")
-    const r = await post("send", { action: "bizlogi_send", shipmentId, fingerprint: preview.fingerprint, actor, confirmNoManual: true })
+    const r = await post("send", { action: "bizlogi_send", shipmentId, fingerprint: preview.fingerprint, actor, confirmNoManual: true, overrides })
     if (!r) return
     const d = r.d as { outcome?: string; shippingNumber?: string; errors?: string[]; reason?: string; error?: string }
     if (d.outcome === "accepted") return done(`集荷依頼を受け付けました。問合番号 ${d.shippingNumber}`)
@@ -259,6 +269,26 @@ export default function PickupRequestPanel({
               <span className="text-[11px] text-muted-foreground">Biz-Logi は未設定（{data.bizlogi.reason}）</span>
             )}
           </div>
+          {data.bizlogi.available && (
+            <div>
+              <button onClick={() => setShowNames((v) => !v)} className="text-[11px] text-blue-600 hover:underline">
+                佐川の宛名を指定（ホテル名・旅行者名が長く収まらない場合）{showNames ? " ▲" : " ▼"}
+              </button>
+              {showNames && (
+                <div className="mt-1 space-y-1 rounded-lg border border-slate-200 bg-white p-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    佐川の宛名は「ホテル名 気付」「旅行者名 様」を各25文字までで送ります。自動では切り詰めません。
+                    収まらない場合だけ、佐川の現場で分かる名称を入力してください（この依頼にだけ使い、記録に残します）。入力後に「送信内容を確認」をやり直してください。
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <input value={ovOrigin} onChange={(e) => setOvOrigin(e.target.value)} placeholder="発送元ホテル名（佐川向け・22文字まで）" className="w-64 rounded border border-border px-2 py-1 text-[12px]" />
+                    <input value={ovDest} onChange={(e) => setOvDest(e.target.value)} placeholder="到着ホテル名（佐川向け・22文字まで）" className="w-64 rounded border border-border px-2 py-1 text-[12px]" />
+                    <input value={ovGuest} onChange={(e) => setOvGuest(e.target.value)} placeholder="旅行者名（佐川向け・24文字まで）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {preview && (
             <div className="space-y-1.5 rounded-lg border border-blue-200 bg-white p-2.5">
               <p className="font-medium">
@@ -297,7 +327,7 @@ export default function PickupRequestPanel({
           <p className="text-[11px] text-red-700">
             {live.state === "needs_review"
               ? "佐川へ依頼済みかどうか不明です。世田谷営業所への依頼状況を確認して記録してください。"
-              : "佐川で受け付けられたか不明です。再送しないでください。世田谷営業所（または SG システム）に確認して記録してください。"}
+              : "佐川で受け付けられたか不明です。再送しないでください。世田谷営業所（または SG システム）に確認して記録してください。締め（集荷前日 20:00）までに確認できないときも再依頼はせず、翌朝の始業後に確認します（SOP：結果不明時の対応）。"}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -317,7 +347,7 @@ export default function PickupRequestPanel({
 
       {live && live.state === "accepted" && (
         <div className="flex flex-wrap items-center gap-2">
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="連絡内容メモ" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="世田谷へ連絡した内容（必須）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
           <B k="start_change" label="世田谷へ変更・取消を連絡した" cls={secondary} onClick={() => resolve("start_change", "変更・取消の連絡中として記録しました。佐川の返信を受けたら完了を記録してください")} />
           {live.channel === "manual" && !live.shipping_number && (
             <B k="confirm_none" label="依頼済みの記録を取り消す（押し間違い）" cls={secondary} onClick={() => resolve("confirm_none", "記録を取り消しました")} />
@@ -329,7 +359,7 @@ export default function PickupRequestPanel({
         <div className="space-y-1.5">
           <p className="text-[11px] text-blue-800">メールを送っただけでは完了にしません。佐川から反映確認の返信を受けたら記録してください。</p>
           <div className="flex flex-wrap items-center gap-2">
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="返信の内容" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="佐川からの返信の内容（必須）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
             <B k="change_done" label="変更が反映された" cls={primary} onClick={() => resolve("change_done", "変更の反映を記録しました")} />
             <B k="cancel_done" label="取消が反映された" cls={secondary} onClick={() => resolve("cancel_done", "取消の反映を記録しました")} />
           </div>

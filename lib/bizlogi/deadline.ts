@@ -14,6 +14,20 @@ export function pickupRequestCutoff(pickupDate: string): Date | null {
   return new Date(startOfDayJst - 4 * 3600 * 1000)
 }
 
+/**
+ * 社内の推奨完了時刻 = 集荷前日 18:00 JST (2026-11-03 谷口さん)。正式な締め (20:00) ではない。
+ * これを過ぎても送信はできる。結果不明になったとき、世田谷営業所の受付時間内に確認できるよう早めに送るための目安。
+ */
+export function pickupRequestRecommendedBy(pickupDate: string): Date | null {
+  const cutoff = pickupRequestCutoff(pickupDate)
+  return cutoff ? new Date(cutoff.getTime() - 2 * 3600 * 1000) : null
+}
+
+export function pastRecommendedTime(pickupDate: string, now: Date = new Date()): boolean {
+  const t = pickupRequestRecommendedBy(pickupDate)
+  return !!t && now.getTime() >= t.getTime()
+}
+
 /** 締めを過ぎていれば true (= API ではもう依頼できない。世田谷営業所へ相談)。 */
 export function pickupRequestClosed(pickupDate: string, now: Date = new Date()): boolean {
   const cutoff = pickupRequestCutoff(pickupDate)

@@ -11,6 +11,7 @@ import {
 } from "@/lib/pickup-request/service"
 import { supabasePickupStore, liveRequestByShipment, PickupStoreError, isPickupTableMissing } from "@/lib/pickup-request/store"
 import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/state"
+import { cleanOverrides } from "@/lib/pickup-request/leg-input"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -73,6 +74,9 @@ export async function POST(req: NextRequest) {
       const actor = actorOf(body.actor)
       if (!requestId || !RESOLVE_TRANSITIONS[resolveAction]) return NextResponse.json({ error: "requestId / resolveAction が不正です" }, { status: 400 })
       if (!actor) return NextResponse.json({ error: "担当者名を入力してください" }, { status: 400 })
+      // 変更の反映を記録するときは、区間の今の内容を新しい依頼内容として保存する
+      const req0 = await store.get(requestId)
+      const current = req0 ? await loadPickupShipment(req0.shipment_id) : null
       const r = await resolvePickupRequest(
         requestId,
         resolveAction,
@@ -80,6 +84,7 @@ export async function POST(req: NextRequest) {
           actor,
           shippingNumber: typeof body.shippingNumber === "string" ? body.shippingNumber : null,
           note: typeof body.note === "string" ? body.note.slice(0, 500) : null,
+          current,
         },
         store,
       )
@@ -106,7 +111,7 @@ export async function POST(req: NextRequest) {
       if (live) return NextResponse.json({ error: `この区間には既に集荷依頼の記録があります (${live.channel}・${live.state})` }, { status: 409 })
 
       if (action === "bizlogi_preview") {
-        const p = await previewForShipment(row)
+        const p = await previewForShipment(row, cleanOverrides(body.overrides))
         return NextResponse.json({ ...p, environment: avail.environment, live: avail.live })
       }
 
@@ -117,7 +122,7 @@ export async function POST(req: NextRequest) {
       }
       const fingerprint = typeof body.fingerprint === "string" ? body.fingerprint : ""
       if (!fingerprint) return NextResponse.json({ error: "先に送信内容の確認をしてください" }, { status: 400 })
-      const outcome = await sendForShipment(row, { actor, expectedFingerprint: fingerprint }, store)
+      const outcome = await sendForShipment(row, { actor, expectedFingerprint: fingerprint, overrides: cleanOverrides(body.overrides) }, store)
       const status = outcome.outcome === "accepted" ? 200 : outcome.outcome === "blocked" ? 409 : outcome.outcome === "failed" ? 422 : 202
       return NextResponse.json(outcome, { status })
     }

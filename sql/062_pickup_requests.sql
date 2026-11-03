@@ -39,6 +39,11 @@ create table if not exists public.pickup_requests (
   resolved_by        text,
   -- 送信の試行を確保した実行の識別子。結果の保存はこの所有者からのみ受け付ける。
   attempt_owner      text,
+  -- 依頼した時点の内容 (発送元・到着先・集荷日・配達日・時間帯・個数)。区間の今の内容と比べ、
+  -- 依頼後に変わっていれば「世田谷へ変更連絡が必要」として TODO に出す (lib/pickup-request/snapshot.ts)。
+  request_snapshot   jsonb,
+  -- 「送信中」のまま止まった記録をアラート済みにした時刻 (アラートは1回だけ)。
+  stale_alerted_at   timestamptz,
   created_at         timestamptz not null default now(),
   sent_at            timestamptz,
   resolved_at        timestamptz,
@@ -70,7 +75,8 @@ create or replace function public.claim_pickup_request(
   p_pickup_date     date,
   p_actor           text,
   p_owner           text,
-  p_note            text
+  p_note            text,
+  p_snapshot        jsonb
 ) returns table (claimed boolean, request_id uuid, reason text)
 language plpgsql
 as $$
@@ -111,14 +117,15 @@ begin
   begin
     insert into public.pickup_requests
       (shipment_id, booking_id, leg_index, channel, state, environment, user_manage_number,
-       piece_count, pickup_date, requested_by, attempt_owner, note, sent_at, resolved_at, resolved_by)
+       piece_count, pickup_date, requested_by, attempt_owner, note, sent_at, resolved_at, resolved_by, request_snapshot)
     values
       (p_shipment_id, s.booking_id, s.leg_index, p_channel, v_state,
        case when p_channel = 'bizlogi' then p_environment else null end,
        p_manage_number, p_piece_count, p_pickup_date, p_actor, p_owner, p_note,
        now(),
        case when p_channel = 'manual' then now() else null end,
-       case when p_channel = 'manual' then p_actor else null end)
+       case when p_channel = 'manual' then p_actor else null end,
+       p_snapshot)
     returning id into v_id;
   exception when unique_violation then
     return query select false, null::uuid, 'live_request_exists'::text;
@@ -152,7 +159,8 @@ create or replace function public.transition_pickup_request(
   p_print_request_id text,
   p_result_codes    jsonb,
   p_error           text,
-  p_note            text
+  p_note            text,
+  p_snapshot        jsonb
 ) returns table (applied boolean, state text, reason text)
 language plpgsql
 as $$
@@ -196,6 +204,8 @@ begin
                                    else note || E'\n' || p_note end,
            resolved_by      = case when p_to_state in ('sending', 'unknown') then resolved_by else coalesce(p_actor, resolved_by) end,
            resolved_at      = case when p_to_state in ('sending', 'unknown') then resolved_at else now() end,
+           -- 変更が佐川に反映されたと記録したときなど、新しい依頼内容を渡されたら置き換える
+           request_snapshot = coalesce(p_snapshot, request_snapshot),
            updated_at       = now()
      where id = p_request_id;
   exception when unique_violation then
@@ -228,8 +238,8 @@ begin
 end;
 $$;
 
-revoke all on function public.claim_pickup_request(uuid, text, text, text, int, date, text, text, text) from public, anon, authenticated;
-revoke all on function public.transition_pickup_request(uuid, text[], text, text, text, text, text, jsonb, text, text) from public, anon, authenticated;
+revoke all on function public.claim_pickup_request(uuid, text, text, text, int, date, text, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.transition_pickup_request(uuid, text[], text, text, text, text, text, jsonb, text, text, jsonb) from public, anon, authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 既存データの移行 (1回だけ)。佐川への依頼状況を3つに分ける:
@@ -241,7 +251,7 @@ revoke all on function public.transition_pickup_request(uuid, text[], text, text
 -- 取消済みの区間は対象外。shipments は変更しない。
 insert into public.pickup_requests
   (shipment_id, booking_id, leg_index, channel, state, shipping_number, note, sent_at, resolved_at, resolved_by, requested_by,
-   pickup_date, piece_count)
+   pickup_date, piece_count, request_snapshot)
 select s.id, s.booking_id, s.leg_index, 'manual',
        case when (jsonb_typeof(s.tracking_numbers) = 'array' and jsonb_array_length(s.tracking_numbers) > 0)
                  or s.status in ('picked_up', 'in_transit', 'delivered')
@@ -263,7 +273,13 @@ select s.id, s.booking_id, s.leg_index, 'manual',
             then 'migration-062' end,
        'migration-062',
        s.shipment_date,
-       s.suitcase_count
+       s.suitcase_count,
+       -- lib/pickup-request/snapshot.ts の pickupSnapshot と同じ形 (移行時点の内容を依頼内容とみなす)
+       jsonb_build_object(
+         'from_hotel', s.from_hotel, 'from_place_id', s.from_place_id, 'from_residence', s.from_residence,
+         'to_hotel', s.to_hotel, 'to_place_id', s.to_place_id, 'to_residence', s.to_residence,
+         'shipment_date', s.shipment_date, 'expected_arrival', s.expected_arrival,
+         'delivery_time', s.delivery_time, 'suitcase_count', s.suitcase_count)
   from public.shipments s
  where s.status <> 'cancelled'
    and (

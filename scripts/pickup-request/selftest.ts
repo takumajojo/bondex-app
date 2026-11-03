@@ -16,6 +16,12 @@ import { LIVE_STATES, type PickupRequestRow } from "../../lib/pickup-request/sta
 import type { ClaimInput, PickupStore, TransitionInput } from "../../lib/pickup-request/store"
 import type { HotelPlaceDetails } from "../../lib/hotel-place"
 import { currentIntervalHours } from "../../lib/tracking/poll-policy"
+import { pickupSnapshot, snapshotChanges } from "../../lib/pickup-request/snapshot"
+import { checkExcelRows, parseLegRef } from "../../lib/pickup-request/excel-check"
+import { alertStaleSending } from "../../lib/pickup-request/watch"
+import { bizLogiAvailability, recordManualFromTrackingNumber } from "../../lib/pickup-request/service"
+import { cleanOverrides, overridesNote, PLACES_TIMEOUT_MS } from "../../lib/pickup-request/leg-input"
+import { pastRecommendedTime } from "../../lib/bizlogi/deadline"
 
 let passed = 0
 let failed = 0
@@ -50,6 +56,7 @@ class MemoryStore implements PickupStore {
       user_manage_number: i.manageNumber, shipping_number: null, print_request_id: null,
       piece_count: i.pieceCount, pickup_date: i.pickupDate, result_codes: null, error: null, note: i.note,
       requested_by: i.actor, resolved_by: null, created_at: now, sent_at: now, resolved_at: null, updated_at: now,
+      request_snapshot: i.snapshot ?? null,
       ...({ attempt_owner: i.owner } as object),
     } as PickupRequestRow)
     return { claimed: true, requestId: id, reason: "claimed" }
@@ -65,6 +72,7 @@ class MemoryStore implements PickupStore {
       return { applied: false, state: r.state, reason: "shipping_number_required" }
     }
     r.state = i.to
+    if (i.snapshot) r.request_snapshot = i.snapshot
     if (i.shippingNumber) r.shipping_number = i.shippingNumber
     if (i.printRequestId) r.print_request_id = i.printRequestId
     if (i.error) r.error = i.error
@@ -211,7 +219,7 @@ async function main() {
   }
   {
     const store = new MemoryStore()
-    await store.claim({ shipmentId: "ship-1", channel: "manual", environment: null, manageNumber: null, pieceCount: 2, pickupDate: "2026-11-07", actor: "谷口", owner: "m", note: null })
+    await store.claim({ shipmentId: "ship-1", channel: "manual", environment: null, manageNumber: null, pieceCount: 2, pickupDate: "2026-11-07", actor: "谷口", owner: "m", note: null, snapshot: null })
     const { client, calls } = makeClient(async () => okResponse())
     const out = await sendBizLogiPickup(ROW, input, { actor: "谷口", expectedFingerprint: fp }, deps(store, client))
     check("Excel で手動依頼済みの区間は Biz-Logi で送らない", out.outcome === "blocked" && calls.check === 0 && calls.issue === 0)
@@ -227,7 +235,7 @@ async function main() {
     check("結果不明でも自動再送しない (発行依頼は1回)", calls.issue === 1)
     const retry = await sendBizLogiPickup(ROW, input, { actor: "谷口", expectedFingerprint: fp }, deps(store, client, alerts))
     check("結果不明の区間はボタンを押しても送れない", retry.outcome === "blocked" && calls.issue === 1)
-    const manual = await store.claim({ shipmentId: "ship-1", channel: "manual", environment: null, manageNumber: null, pieceCount: 2, pickupDate: "2026-11-07", actor: "x", owner: "m", note: null })
+    const manual = await store.claim({ shipmentId: "ship-1", channel: "manual", environment: null, manageNumber: null, pieceCount: 2, pickupDate: "2026-11-07", actor: "x", owner: "m", note: null, snapshot: null })
     check("結果不明の区間を Excel 依頼 (CSV) に切り替えられない", !manual.claimed)
   }
   {
@@ -308,7 +316,7 @@ async function main() {
   }
   {
     const store = new MemoryStore()
-    await store.claim({ shipmentId: "ship-2", channel: "bizlogi", environment: "test", manageNumber: "X", pieceCount: 1, pickupDate: "2026-11-07", actor: "a", owner: "o", note: null })
+    await store.claim({ shipmentId: "ship-2", channel: "bizlogi", environment: "test", manageNumber: "X", pieceCount: 1, pickupDate: "2026-11-07", actor: "a", owner: "o", note: null, snapshot: null })
     const id = store.rows[0].id
     const early = await resolvePickupRequest(id, "confirm_none", { actor: "谷口" }, store, () => new Date())
     check("送信中 (5分未満) は運営が触れない", !early.ok)
@@ -358,6 +366,144 @@ async function main() {
   check("集荷日以降は集荷確認の間隔で照会する", isFinite(currentIntervalHours(pollRow("requested", "2026-11-05"), NOW)))
   check("issued の挙動は従来どおり", !isFinite(currentIntervalHours(pollRow("issued", "2026-11-07"), NOW)) && isFinite(currentIntervalHours(pollRow("issued", "2026-11-05"), NOW)))
   check("配送中は従来どおり", isFinite(currentIntervalHours(pollRow("in_transit", "2026-11-01"), NOW)))
+
+  console.log("8. 依頼後の変更検知 (P1-2)")
+  {
+    const snap = pickupSnapshot(ROW)
+    check("依頼時と同じなら変更なし", snapshotChanges(snap, ROW).length === 0)
+    check("ホテル (place_id) の変更を検知", snapshotChanges(snap, { ...ROW, to_place_id: "pz", to_hotel: "Hotel Z" }).includes("到着ホテル"))
+    check("集荷日・個数・時間帯の変更を検知", JSON.stringify(snapshotChanges(snap, { ...ROW, shipment_date: "2026-11-08", suitcase_count: 3, delivery_time: "16-18" })) === JSON.stringify(["集荷日", "配達時間帯", "個数"]))
+    check("個人宅の住所はキー順が違っても同じなら変更なし", snapshotChanges({ ...snap, from_residence: { zip: "1", city: "a" } }, { ...ROW, from_residence: { city: "a", zip: "1" } }).length === 0)
+    check("DB (jsonb) の日付文字列・数値とも一致する", snapshotChanges(JSON.parse(JSON.stringify(snap)), ROW).length === 0)
+    check("依頼内容が無い古い記録は比較しない", snapshotChanges(null, ROW).length === 0)
+    const legChanged = { ...leg("chg", "2026-11-07"), from_place_id: "pa", to_hotel: "Hotel B", to_place_id: "pz", to_residence: null, expected_arrival: "2026-11-08", delivery_time: "14-16" }
+    const r = { ...req("chg", "accepted"), request_snapshot: { ...pickupSnapshot({ ...ROW, from_hotel: "H", suitcase_count: 2, shipment_date: "2026-11-07" }) } } as PickupRequestRow
+    const t = buildPickupTodo([legChanged], [r], "2026-11-05", NOW)
+    check("依頼後に到着ホテルが変わった区間を『変更連絡が必要』に出す", t.attention[0]?.kind === "changed_after_request" && (t.attention[0]?.changes ?? []).includes("到着ホテル"), t.attention)
+    const r2 = { ...r, state: "change_pending" } as PickupRequestRow
+    check("連絡中 (change_pending) は変更連絡の催促ではなく返信待ちとして出す", buildPickupTodo([legChanged], [r2], "2026-11-05", NOW).attention[0]?.kind === "change_pending")
+  }
+  {
+    const store = new MemoryStore()
+    await store.claim({ shipmentId: "ship-1", channel: "manual", environment: null, manageNumber: null, pieceCount: 2, pickupDate: "2026-11-07", actor: "谷口", owner: "m", note: null, snapshot: pickupSnapshot(ROW) })
+    const id = store.rows[0].id
+    check("世田谷への連絡はメモ必須 (メールを送っただけで完了にしない)", !(await resolvePickupRequest(id, "start_change", { actor: "谷口" }, store)).ok)
+    await resolvePickupRequest(id, "start_change", { actor: "谷口", note: "到着ホテル変更をメール" }, store)
+    check("反映の記録は返信内容が必須", !(await resolvePickupRequest(id, "change_done", { actor: "谷口", current: ROW }, store)).ok)
+    const changedRow = { ...ROW, to_place_id: "pz", to_hotel: "Hotel Z" }
+    const done = await resolvePickupRequest(id, "change_done", { actor: "谷口", note: "反映済みと返信あり", current: changedRow }, store)
+    check("変更の反映を記録 → accepted・依頼内容を新しい内容に更新 (以後は変更扱いにしない)", done.ok && store.rows[0].state === "accepted" && snapshotChanges(store.rows[0].request_snapshot, changedRow).length === 0)
+  }
+
+  console.log("9. 問合番号はあるが記録なし (P1-1)")
+  {
+    const legs = [{ ...leg("num", "2026-11-07"), tracking_numbers: ["100000000011"] }, leg("none", "2026-11-07")]
+    const t = buildPickupTodo(legs, [], "2026-11-05", NOW)
+    check("番号がある区間は『依頼が必要』に出さない", !t.needRequest.some((x) => x.shipmentId === "num") && t.needRequest.some((x) => x.shipmentId === "none"))
+    check("番号があるのに記録が無い区間は要確認 (記録漏れ) に出す", t.attention.some((a) => a.shipmentId === "num" && a.kind === "record_missing"))
+    const store = new MemoryStore()
+    const rec = await recordManualFromTrackingNumber(ROW, store)
+    check("番号の手入力で手動依頼済みとして記録する", rec.recorded && store.rows[0]?.channel === "manual" && store.rows[0]?.state === "accepted")
+    const again = await recordManualFromTrackingNumber(ROW, store)
+    check("既に記録があれば何もしない (重複記録しない)", !again.recorded && store.rows.length === 1)
+    const missing = await recordManualFromTrackingNumber(ROW, { ...store, claim: async () => { throw new Error('relation "public.pickup_requests" does not exist') } } as unknown as PickupStore)
+    check("移行前 (テーブル無し) でも番号の保存を止めない", !missing.recorded && /移行前/.test(missing.note))
+  }
+
+  console.log("10. Excel を作る前の照合 (P1-8)")
+  {
+    const L = (ref: string, extra: Record<string, unknown> = {}) => {
+      const p = parseLegRef(ref)!
+      return { id: ref, booking_id: p.bookingId, leg_index: p.legIndex, status: "requested", tracking_numbers: null, pickup_requested_at: null, ...extra }
+    }
+    const legs = [L("BDX-A-L1"), L("BDX-B-L1"), L("BDX-C-L1", { tracking_numbers: ["1"] }), L("BDX-D-L1", { status: "cancelled" }), L("BDX-E-L1")]
+    const reqs = [{ ...req("BDX-B-L1", "accepted"), channel: "bizlogi" } as PickupRequestRow, req("BDX-E-L1", "failed")]
+    const v = checkExcelRows(["BDX-A-L1", "BDX-B-L1", "BDX-C-L1", "BDX-D-L1", "BDX-E-L1", "BDX-A-L1", "XYZ"], legs, reqs)
+    check("未依頼は OK", v[0].ok)
+    check("Biz-Logi 依頼済みは NG", !v[1].ok)
+    check("問合番号あり・取消は NG", !v[2].ok && !v[3].ok)
+    check("依頼失敗 (failed) の区間は Excel で依頼してよい", v[4].ok)
+    check("同じ区間の2回目・形式違いは NG", !v[5].ok && !v[6].ok)
+    const legacy = checkExcelRows(["BDX-A-L1"], [L("BDX-A-L1", { pickup_requested_at: "2026-11-01T00:00:00Z" })], [])
+    check("移行前は『依頼済み』印で NG にする", !legacy[0].ok)
+  }
+
+  console.log("11. 送信中のまま止まった記録の通知 (P1-4)")
+  {
+    const rows = [
+      { id: "s1", booking_id: "BDX-S", leg_index: 0, environment: "production", state: "sending", updated_at: "2026-11-05T02:40:00Z", pickup_date: "2026-11-07", stale_alerted_at: null as string | null },
+      { id: "s2", booking_id: "BDX-T", leg_index: 0, environment: "production", state: "sending", updated_at: "2026-11-05T02:58:00Z", pickup_date: "2026-11-07", stale_alerted_at: null as string | null },
+    ]
+    const fakeSb = {
+      from: () => {
+        const f: Array<(r: (typeof rows)[number]) => boolean> = []
+        let upd: Record<string, unknown> | null = null
+        const q: Record<string, unknown> = {
+          select: () => q,
+          update: (d: Record<string, unknown>) => { upd = d; return q },
+          eq: (c: string, v: unknown) => { f.push((r) => (r as Record<string, unknown>)[c] === v); return q },
+          lt: (c: string, v: string) => { f.push((r) => String((r as Record<string, unknown>)[c]) < v); return q },
+          is: (c: string, v: unknown) => { f.push((r) => ((r as Record<string, unknown>)[c] ?? null) === v); return q },
+          limit: () => q,
+          then: (res: (v: { data: unknown[]; error: null }) => void) => {
+            const m = rows.filter((r) => f.every((fn) => fn(r)))
+            if (upd) m.forEach((r) => Object.assign(r, upd))
+            res({ data: m.map((r) => ({ ...r })), error: null })
+          },
+        }
+        return q
+      },
+    }
+    const alerts: Array<{ subject: string }> = []
+    const r1 = await alertStaleSending(fakeSb as never, async (a) => void alerts.push(a), NOW)
+    check("5分以上『送信中』の記録だけ通知 (2分前のものは対象外)", r1.alerted === 1 && alerts.length === 1 && /BDX-S/.test(alerts[0].subject))
+    const r2 = await alertStaleSending(fakeSb as never, async (a) => void alerts.push(a), NOW)
+    check("同じ記録は2回通知しない", r2.alerted === 0 && alerts.length === 1)
+    check("記録の状態は変えない (自動で解放・再送しない)", rows[0].state === "sending")
+  }
+  check("外部照会の時間制限: Places 8秒・Biz-Logi 20秒 (合計が API 上限60秒未満)", PLACES_TIMEOUT_MS === 8000 && PLACES_TIMEOUT_MS + 20000 * 2 < 60000)
+
+  console.log("12. テスト環境と本番の取り違え防止 (P1-6)")
+  {
+    const base = { BIZLOGI_CUSTOMER_ID: "a", BIZLOGI_LOGIN_PASSWORD: "b", BIZLOGI_OKURI_CODE: "N01", BIZLOGI_KOKYAKU_CODE: "160310400007", BONDEX_SENDER_PHONE: "03-0000-0000" }
+    const t = bizLogiAvailability({ ...base, BIZLOGI_ENV: "test", BIZLOGI_BASE_URL: "https://beccl-st.biz-blue.net/api" })
+    check("テスト環境の設定ではアプリから送信しない (ボタンを出さない)", !t.available && /scripts\/bizlogi\/test-env/.test((t as { reason: string }).reason))
+    const p = bizLogiAvailability({ ...base, BIZLOGI_ENV: "production", BIZLOGI_BASE_URL: "https://prod.example.test/api" })
+    check("本番の設定なら使える", p.available)
+  }
+
+  console.log("13. 締め時刻と社内推奨時刻 (P1-5)")
+  check("11/7 集荷: 11/6 17:59 は推奨時刻前", !pastRecommendedTime("2026-11-07", new Date("2026-11-06T08:59:00Z")))
+  check("11/6 18:00 以降は推奨時刻を過ぎた (警告のみ)", pastRecommendedTime("2026-11-07", new Date("2026-11-06T09:00:00Z")))
+  {
+    const late = await previewBizLogiPickup(ROW, input, { client: makeClient(async () => okResponse()).client, now: () => new Date("2026-11-06T10:30:00Z") })
+    check("18:00〜20:00 の送信は拒否せず、警告だけ付ける", late.ok && late.warnings[0]?.includes("18:00"))
+    const store = new MemoryStore()
+    const { client, calls } = makeClient(async () => okResponse())
+    const fp2 = late.ok ? late.fingerprint : ""
+    const sent = await sendBizLogiPickup(ROW, input, { actor: "谷口", expectedFingerprint: fp2 }, { ...deps(store, client), now: () => new Date("2026-11-06T10:30:00Z") })
+    check("19:30 の送信は正常に依頼できる (20:00 前)", sent.outcome === "accepted" && calls.issue === 1)
+  }
+
+  console.log("14. 宛名の指定 (P1-7)")
+  {
+    const longHotel = (n: number) => "ホ".repeat(n)
+    const env2: LegInputEnv = { ...ENV, fetchPlace: async (_n, _k, placeId) => (placeId === "pa" ? place(longHotel(30), "日本、〒160-0023 東京都新宿区西新宿2丁目2番1号", "+81 3-1111-2222") : place("ホテルビー京都", "日本、〒600-8216 京都府京都市下京区東塩小路町901", "+81 75-333-4444")) }
+    const built2 = await buildLegInput(ROW, env2)
+    const pv2 = built2.ok ? await previewBizLogiPickup(ROW, built2.input, { client: makeClient(async () => okResponse()).client, now: () => NOW }) : null
+    const nm = pv2 && pv2.ok ? pv2.detail.irai?.nm ?? [] : []
+    check("30文字のホテル名は2行に折り返して送る (1文字も落とさない)", !!pv2 && pv2.ok && nm.join("").replace(/\s/g, "") === `${longHotel(30)}気付SMITHJOHN様`, nm)
+    const env3: LegInputEnv = { ...env2, fetchPlace: async (_n, _k, placeId) => (placeId === "pa" ? place(longHotel(45), "日本、〒160-0023 東京都新宿区西新宿2丁目2番1号", "+81 3-1111-2222") : place("ホテルビー京都", "日本、〒600-8216 京都府京都市下京区東塩小路町901", "+81 75-333-4444")) }
+    const built4 = await buildLegInput(ROW, env3)
+    const pv4 = built4.ok ? await previewBizLogiPickup(ROW, built4.input, { client: makeClient(async () => okResponse()).client, now: () => NOW }) : null
+    check("2行 (50文字) にも収まらない宛名は切り詰めずエラーにする", !!pv4 && !pv4.ok && pv4.errors.some((e) => /宛名/.test(e)), pv4)
+    const ov = cleanOverrides({ originName: "ホテル短縮名" })
+    const built3 = await buildLegInput(ROW, env3, ov)
+    const pv3 = built3.ok ? await previewBizLogiPickup(ROW, built3.input, { client: makeClient(async () => okResponse()).client, now: () => NOW }) : null
+    check("運営が佐川向けの名称を入れれば送れる", !!pv3 && pv3.ok && built3.ok && built3.input.origin.name === "ホテル短縮名")
+    check("指定した名称は記録のメモに残す", overridesNote(ov) === "佐川の宛名を運営が指定: 発送元「ホテル短縮名」")
+    check("空欄は指定なし扱い", overridesNote(cleanOverrides({ originName: "  " })) === null)
+  }
 
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed) process.exit(1)

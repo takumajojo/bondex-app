@@ -21,6 +21,8 @@ await db.exec(`
     shipment_date date not null, status text not null default 'requested',
     carrier text default 'sagawa', tracking_numbers jsonb, pickup_requested_at timestamptz,
     suitcase_count int not null default 1,
+    from_hotel text default 'A', from_place_id text, from_residence jsonb, to_hotel text default 'B', to_place_id text,
+    to_residence jsonb, expected_arrival date, delivery_time text,
     unique (booking_id, leg_index));
   create role anon; create role authenticated;
 `)
@@ -54,6 +56,9 @@ console.log("1. 既存データの3分類")
 check("配達済み+番号 → 手動依頼済み (accepted)", (await one(S.delivered))?.state === "accepted" && (await one(S.delivered)).shipping_number === "111111111111")
 check("配達済み(番号なし) → accepted", (await one(S.deliveredNoMark))?.state === "accepted")
 check("移行した記録に集荷日・個数を入れる (TODO の要確認に出すため)", (await one(S.futureMarkedNoNum))?.pickup_date !== null && (await one(S.futureMarkedNoNum))?.piece_count === 1)
+const snap = (await one(S.futureMarkedNoNum))?.request_snapshot
+check("移行した記録に依頼内容 (snapshot) を入れる・キーはアプリと同じ10項目",
+  !!snap && ["from_hotel","from_place_id","from_residence","to_hotel","to_place_id","to_residence","shipment_date","expected_arrival","delivery_time","suitcase_count"].every((k) => k in snap) && snap.from_hotel === "A" && snap.suitcase_count === 1, snap)
 check("依頼済み印のみ・番号なし → 要確認 (needs_review)", (await one(S.futureMarkedNoNum))?.state === "needs_review")
 check("旧発行 issued・印なし番号なし(今後) → needs_review", (await one(S.futureIssuedNoMark))?.state === "needs_review")
 check("requested・印なし(11月の4案件の形) → 記録なし = 未依頼", (await reqs(S.nov7requested)).length === 0)
@@ -64,10 +69,10 @@ const shipUnchanged = (await db.query(`select status, pickup_requested_at from s
 check("移行で shipments は変更しない", shipUnchanged.status === "requested" && shipUnchanged.pickup_requested_at === null)
 
 const claim = async (id, channel, owner = "o1") => (await db.query(
-  `select * from claim_pickup_request($1,$2,'test','BDXE1',2,$3::date,'谷口',$4,null)`, [id, channel, d4, owner])).rows[0]
+  `select * from claim_pickup_request($1,$2,'test','BDXE1',2,$3::date,'谷口',$4,null,$5::jsonb)`, [id, channel, d4, owner, JSON.stringify({ from_hotel: "A", suitcase_count: 2 })])).rows[0]
 const trans = async (rid, from, to, o) => (await db.query(
-  `select * from transition_pickup_request($1,$2::text[],$3,$4,$5,$6,$7,$8::jsonb,$9,$10)`,
-  [rid, from, to, o.owner ?? null, o.actor ?? null, o.number ?? null, o.prid ?? null, o.codes ?? null, o.error ?? null, o.note ?? null])).rows[0]
+  `select * from transition_pickup_request($1,$2::text[],$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11::jsonb)`,
+  [rid, from, to, o.owner ?? null, o.actor ?? null, o.number ?? null, o.prid ?? null, o.codes ?? null, o.error ?? null, o.note ?? null, o.snapshot ? JSON.stringify(o.snapshot) : null])).rows[0]
 
 console.log("2. 二重依頼の防止")
 const c1 = await claim(S.nov7requested, "bizlogi", "run-1")
@@ -127,8 +132,18 @@ check("佐川の返信後 cancelled → 有効な依頼なし", (await claim(sC,
 const back = await trans(f1.request_id, ["failed"], "accepted", { actor: "x", number: "1" })
 check("有効な依頼がある区間で古い記録を有効へ戻せない", back.applied === false && back.reason === "live_request_exists", back)
 
+console.log("6b. 依頼内容 (snapshot)")
+const sS = await ins("BDX-S", 0, d4, "requested", null, null)
+const cS = await claim(sS, "manual")
+check("確保時に依頼内容を保存", JSON.stringify((await one(sS)).request_snapshot) === JSON.stringify({ from_hotel: "A", suitcase_count: 2 }))
+await trans(cS.request_id, ["accepted"], "change_pending", { actor: "谷口", note: "世田谷へ連絡" })
+check("snapshot を渡さない遷移では依頼内容を変えない", (await one(sS)).request_snapshot.suitcase_count === 2)
+await trans(cS.request_id, ["change_pending"], "accepted", { actor: "谷口", note: "反映確認", snapshot: { from_hotel: "A2", suitcase_count: 3 } })
+check("変更の反映を記録すると新しい依頼内容に置き換える", (await one(sS)).request_snapshot.from_hotel === "A2" && (await one(sS)).request_snapshot.suitcase_count === 3)
+check("送信中のまま止まった通知用の列がある", "stale_alerted_at" in (await one(sS)))
+
 console.log("7. 権限")
-const grants = (await db.query(`select has_function_privilege('anon','claim_pickup_request(uuid,text,text,text,int,date,text,text,text)','execute') as a`)).rows[0]
+const grants = (await db.query(`select has_function_privilege('anon','claim_pickup_request(uuid,text,text,text,int,date,text,text,text,jsonb)','execute') as a`)).rows[0]
 check("匿名ロールは確保関数を実行できない", grants.a === false)
 const rls = (await db.query(`select relrowsecurity from pg_class where relname='pickup_requests'`)).rows[0]
 check("RLS 有効", rls.relrowsecurity === true)

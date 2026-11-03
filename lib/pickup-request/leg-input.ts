@@ -50,7 +50,35 @@ export interface LegInputEnv {
   fetchPlace?: typeof fetchHotelPlaceDetailsJa
 }
 
+/** Google Places 1回の照会の時間制限。送信処理全体を API ルートの上限 (60秒) に収めるため (監査 P1-4)。 */
+export const PLACES_TIMEOUT_MS = 8_000
+
 export type LegInputResult = { ok: true; input: PickupLegInput } | { ok: false; errors: string[] }
+
+/**
+ * 佐川の宛名欄 (25文字×2行) に収まらないとき、運営が確認画面で入力する佐川向けの名称 (監査 P1-7)。
+ * 自動では切り詰めない (別のホテルと誤認されるのを避けるため)。入力した値はその依頼にだけ使い、記録に残す。
+ */
+export interface NameOverrides {
+  originName?: string | null
+  destinationName?: string | null
+  guestName?: string | null
+}
+
+export function cleanOverrides(raw: unknown): NameOverrides {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+  const pick = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 40) : null)
+  return { originName: pick(o.originName), destinationName: pick(o.destinationName), guestName: pick(o.guestName) }
+}
+
+export function overridesNote(o: NameOverrides): string | null {
+  const parts = [
+    o.originName ? `発送元「${o.originName}」` : "",
+    o.destinationName ? `到着先「${o.destinationName}」` : "",
+    o.guestName ? `旅行者「${o.guestName}」` : "",
+  ].filter(Boolean)
+  return parts.length ? `佐川の宛名を運営が指定: ${parts.join("・")}` : null
+}
 
 /** 区間の参照番号 (例: BDX-8QRV2Y-L1)。管理番号はここから記号を除いて作る。 */
 export function legRef(row: Pick<PickupShipmentRow, "booking_id" | "leg_index">): string {
@@ -87,7 +115,12 @@ async function hotelParty(
 ): Promise<{ ok: true; party: PickupHotel; phone: string } | { ok: false; error: string }> {
   if (!env.placesKey) return { ok: false, error: `${label}: GOOGLE_MAPS_API_KEY が未設定のため住所を解決できません` }
   const fetchPlace = env.fetchPlace ?? fetchHotelPlaceDetailsJa
-  const d = await fetchPlace(name, env.placesKey, placeId ?? undefined)
+  let d: Awaited<ReturnType<typeof fetchHotelPlaceDetailsJa>>
+  try {
+    d = await fetchPlace(name, env.placesKey, placeId ?? undefined, { timeoutMs: PLACES_TIMEOUT_MS })
+  } catch (e) {
+    return { ok: false, error: `${label}: 住所の照会が完了しませんでした (${e instanceof Error ? e.name : "error"})。時間をおいて再度確認してください` }
+  }
   if (!d) return { ok: false, error: `${label}: 「${name}」の住所を Google Places で解決できませんでした` }
   const parsed = parseJpAddressString(d.formattedAddress)
   let { zip, prefecture, cityWard, street } = parsed
@@ -139,10 +172,10 @@ export function pickupNotes(row: Pick<PickupShipmentRow, "tour_number" | "delive
   return notes
 }
 
-export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv): Promise<LegInputResult> {
+export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv, overrides: NameOverrides = {}): Promise<LegInputResult> {
   const errors: string[] = []
   if ((row.carrier ?? "sagawa") !== "sagawa") errors.push(`配送会社が佐川ではありません (${row.carrier})`)
-  const guest = (row.representative || row.booking_name || "").trim()
+  const guest = (overrides.guestName || row.representative || row.booking_name || "").trim()
   if (!guest) errors.push("宛名に使う旅行者名 (代表者名) がありません")
   const count = row.suitcase_count ?? 0
   if (count < 1) errors.push("個数が1未満です")
@@ -171,8 +204,8 @@ export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv): P
       legRef: legRef(row),
       kokyakuCode: env.kokyakuCode,
       // 依頼主 (= 実集荷先) の電話は BondEx の荷物連絡先 (承認済み Excel の荷送人電話番号と同じ扱い)
-      origin: { ...from.party, tel: env.contactPhone },
-      destination: to.party,
+      origin: { ...from.party, tel: env.contactPhone, ...(overrides.originName ? { name: overrides.originName } : {}) },
+      destination: { ...to.party, ...(overrides.destinationName ? { name: overrides.destinationName } : {}) },
       guestName: guest,
       suitcaseCount: count,
       pickupDate: row.shipment_date,

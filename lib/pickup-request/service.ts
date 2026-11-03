@@ -4,10 +4,11 @@
 import { getSupabase } from "@/lib/supabase"
 import { bizLogiConfigFromEnv, BizLogiClient, BizLogiConfigError } from "@/lib/bizlogi/client"
 import { sendOpsAlert } from "@/lib/ops-alert"
-import { buildLegInput, legInputEnvFromProcess, PICKUP_SHIPMENT_COLUMNS, type PickupShipmentRow } from "./leg-input"
+import { buildLegInput, legInputEnvFromProcess, overridesNote, PICKUP_SHIPMENT_COLUMNS, type NameOverrides, type PickupShipmentRow } from "./leg-input"
 import { previewBizLogiPickup, sendBizLogiPickup, claimReasonJa, type PreviewResult, type SendOutcome } from "./bizlogi"
 import { RESOLVE_TRANSITIONS, STALE_SENDING_MS, type ResolveAction } from "./state"
-import type { PickupStore } from "./store"
+import { isPickupTableMissing, type PickupStore } from "./store"
+import { pickupSnapshot, type SnapshotSourceRow } from "./snapshot"
 import { randomUUID } from "node:crypto"
 
 export async function loadPickupShipment(shipmentId: string): Promise<PickupShipmentRow | null> {
@@ -27,22 +28,39 @@ export function bizLogiAvailability(env: Record<string, string | undefined> = pr
     if (!cfg.okuriCode) return { available: false, reason: "BIZLOGI_OKURI_CODE が未設定です" }
     const legEnv = legInputEnvFromProcess(env)
     if ("missing" in legEnv) return { available: false, reason: `設定が不足しています: ${legEnv.missing.join(", ")}` }
+    // テスト環境の設定ではアプリから送らない (2026-11-03 監査 P1-6)。本番 DB を使うデプロイ (Production・Preview) に
+    // テスト環境の値を入れると、テストの問合番号が本番の区間に「依頼済み」として書き込まれ、本当の依頼が止まるため。
+    // テスト環境への送信は DB に触れない scripts/bizlogi/test-env.ts からだけ行う。
+    if (cfg.environment !== "production") return { available: false, reason: TEST_ENV_IN_APP_REASON }
     return { available: true, environment: cfg.environment, live: cfg.live }
   } catch (e) {
     return { available: false, reason: e instanceof Error ? e.message : String(e) }
   }
 }
 
+/**
+ * Biz-Logi 1回の通信の時間制限。住所照会 (最大8秒・2件並列) + 確認機能 + 発行依頼 が
+ * API ルートの上限 60 秒に収まるようにする (8 + 20 + 20 = 48 秒・監査 P1-4)。
+ */
+export const BIZLOGI_CALL_TIMEOUT_MS = 20_000
+
+const TEST_ENV_IN_APP_REASON =
+  "BIZLOGI_ENV=test のためアプリからは送信しません (テスト環境の試験は scripts/bizlogi/test-env.ts で行います)"
+
 function clientAndEnv() {
-  const cfg = bizLogiConfigFromEnv()
+  const cfg = { ...bizLogiConfigFromEnv(), timeoutMs: BIZLOGI_CALL_TIMEOUT_MS }
+  if (cfg.environment !== "production") throw new BizLogiConfigError(TEST_ENV_IN_APP_REASON)
   const legEnv = legInputEnvFromProcess()
   if ("missing" in legEnv) throw new BizLogiConfigError(`設定が不足しています: ${legEnv.missing.join(", ")}`)
   return { cfg, legEnv, client: new BizLogiClient(cfg) }
 }
 
-export async function previewForShipment(row: PickupShipmentRow): Promise<PreviewResult & { origin?: unknown; destination?: unknown }> {
+export async function previewForShipment(
+  row: PickupShipmentRow,
+  overrides: NameOverrides = {},
+): Promise<PreviewResult & { origin?: unknown; destination?: unknown }> {
   const { legEnv, client } = clientAndEnv()
-  const built = await buildLegInput(row, legEnv)
+  const built = await buildLegInput(row, legEnv, overrides)
   if (!built.ok) return { ok: false, errors: built.errors }
   const res = await previewBizLogiPickup(row, built.input, { client })
   return { ...res, origin: built.input.origin, destination: built.input.destination }
@@ -50,13 +68,13 @@ export async function previewForShipment(row: PickupShipmentRow): Promise<Previe
 
 export async function sendForShipment(
   row: PickupShipmentRow,
-  opts: { actor: string; expectedFingerprint: string },
+  opts: { actor: string; expectedFingerprint: string; overrides?: NameOverrides },
   store: PickupStore,
 ): Promise<SendOutcome> {
   const { cfg, legEnv, client } = clientAndEnv()
-  const built = await buildLegInput(row, legEnv)
+  const built = await buildLegInput(row, legEnv, opts.overrides ?? {})
   if (!built.ok) return { outcome: "blocked", reason: built.errors.join(" / ") }
-  return sendBizLogiPickup(row, built.input, opts, {
+  return sendBizLogiPickup(row, built.input, { ...opts, note: overridesNote(opts.overrides ?? {}) }, {
     store,
     client,
     environment: cfg.environment,
@@ -81,21 +99,57 @@ export async function markManualRequested(
     actor,
     owner: randomUUID(),
     note: note ?? null,
+    snapshot: pickupSnapshot(row),
   })
   if (!r.claimed || !r.requestId) return { ok: false, reason: claimReasonJa(r.reason) }
   return { ok: true, requestId: r.requestId }
+}
+
+/**
+ * 運営が佐川の問合番号を手入力したとき、その区間に集荷依頼の記録が無ければ「手動依頼済み」として記録する
+ * (2026-11-03 監査 P1-1)。番号がある = 佐川側に依頼がある。記録が無いと TODO から外れず、Excel で
+ * 重ねて依頼する恐れがあるため。既に記録がある・sql/062 未適用のときは何もしない。失敗しても番号の保存は止めない。
+ */
+export async function recordManualFromTrackingNumber(
+  row: PickupShipmentRow,
+  store: PickupStore,
+): Promise<{ recorded: boolean; note: string }> {
+  try {
+    const r = await markManualRequested(row, "運営 (問合番号の手入力)", store, "問合番号の手入力に合わせて手動依頼済みとして記録")
+    return r.ok ? { recorded: true, note: "集荷依頼の記録: 手動依頼済みとして記録" } : { recorded: false, note: `集荷依頼の記録: ${r.reason}` }
+  } catch (e) {
+    if (isPickupTableMissing(e)) return { recorded: false, note: "集荷依頼の記録: 移行前のため記録なし" }
+    console.error("[pickup-request] recordManualFromTrackingNumber failed", e instanceof Error ? e.message : e)
+    return { recorded: false, note: "集荷依頼の記録に失敗 (TODO で確認してください)" }
+  }
+}
+
+/** 佐川の返信の記録が必要な操作 (メールを送っただけでは完了にしない)。 */
+const NOTE_REQUIRED: Partial<Record<ResolveAction, string>> = {
+  start_change: "世田谷営業所へ連絡した内容を入力してください",
+  change_done: "佐川からの反映確認の返信内容を入力してください",
+  cancel_done: "佐川からの取消確認の返信内容を入力してください",
 }
 
 /** 運営が佐川へ確認した結果などを記録する。 */
 export async function resolvePickupRequest(
   requestId: string,
   action: ResolveAction,
-  input: { actor: string; shippingNumber?: string | null; note?: string | null },
+  input: {
+    actor: string
+    shippingNumber?: string | null
+    note?: string | null
+    /** 区間の今の内容。change_done では新しい依頼内容として保存する (変更の検知を解除する)。 */
+    current?: SnapshotSourceRow | null
+  },
   store: PickupStore,
   now: () => Date = () => new Date(),
 ): Promise<{ ok: true; state: string } | { ok: false; reason: string }> {
   const t = RESOLVE_TRANSITIONS[action]
   if (!t) return { ok: false, reason: "不明な操作です" }
+  const required = NOTE_REQUIRED[action]
+  if (required && !(input.note ?? "").trim()) return { ok: false, reason: required }
+  if (action === "change_done" && !input.current) return { ok: false, reason: "区間の今の内容を読めませんでした" }
   const current = await store.get(requestId)
   if (!current) return { ok: false, reason: "集荷依頼の記録が見つかりません" }
   if (!t.from.includes(current.state)) {
@@ -121,6 +175,7 @@ export async function resolvePickupRequest(
     actor: input.actor,
     shippingNumber: number || null,
     note: input.note ? `${input.actor}: ${input.note}` : null,
+    snapshot: action === "change_done" && input.current ? pickupSnapshot(input.current) : null,
   })
   if (!r.applied) {
     const why: Record<string, string> = {

@@ -55,6 +55,8 @@ export interface PickupRequestRow {
   sent_at: string | null
   resolved_at: string | null
   updated_at: string
+  request_snapshot?: unknown
+  stale_alerted_at?: string | null
 }
 
 export function isLive(state: string): boolean {

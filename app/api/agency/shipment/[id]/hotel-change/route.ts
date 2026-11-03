@@ -7,6 +7,7 @@ import { changeBlockedReason } from "@/lib/agency-change-gate"
 import { legLockedForAgency } from "@/lib/agency-self-service"
 import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { notifyBondEx } from "@/lib/notify"
+import { alertSagawaChange } from "@/lib/sagawa-alert"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: ship, error: fErr } = await sb
     .from("shipments")
     .select(
-      "id, booking_id, leg_index, agency, status, booking_type, suitcase_count, shipment_date, change_deadline_at, label_sent_at, tracking_numbers, label_url, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
+      "id, booking_id, leg_index, agency, status, booking_type, suitcase_count, shipment_date, change_deadline_at, label_sent_at, tracking_numbers, label_url, pickup_requested_at, to_hotel, to_hotel_ja, from_hotel, from_hotel_ja, guest_hotel_notified_at, pickup_hotel_notified_at",
     )
     .eq("id", shipmentId)
     .maybeSingle()
@@ -185,6 +186,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // 変更を代理店へメール通知し、最新バウチャーPDF(howto同梱)を添付 (2026-09-30〜)。best-effort。
   await sendBookingUpdateEmail(ship.booking_id as string, [`${sideLabel}ホテル: ${oldHotelJa || oldHotel} → ${newHotelJa}`])
+
+  // 佐川へ集荷依頼済み (手動 Excel で依頼済み・問合番号はまだ無い) の区間のホテル変更は、佐川の依頼が古いホテルの
+  // まま残るため運用へ必ず知らせる。運営側のホテル変更 (operator/shipment/[id]/hotel-change) と同じ扱い
+  // (2026-11-03 監査 P1-3: 代理店側にだけ欠けていた)。問合番号がある区間は上のロックで変更できない。
+  await alertSagawaChange({
+    shipment: {
+      pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null,
+      tracking_numbers: ship.tracking_numbers,
+      booking_id: ship.booking_id as string,
+      agency: ship.agency as string,
+    },
+    legRef,
+    changeSummary: `${sideLabel}ホテル: ${oldHotelJa || oldHotel} → ${newHotelJa}（代理店のセルフ変更）`,
+  })
 
   return NextResponse.json({ ok: true, changeId })
 }

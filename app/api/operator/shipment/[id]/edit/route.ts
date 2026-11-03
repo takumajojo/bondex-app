@@ -7,6 +7,8 @@ import { normalizeRepresentative } from "@/lib/agency-self-service"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
 import { normalizeTrackingNo } from "@/lib/tracking-format"
 import { reconcileTrackingNow } from "@/lib/tracking/reconcile"
+import { loadPickupShipment, recordManualFromTrackingNumber } from "@/lib/pickup-request/service"
+import { supabasePickupStore } from "@/lib/pickup-request/store"
 import { alertTrackingNumberChanged } from "@/lib/sagawa-alert"
 
 export const runtime = "nodejs"
@@ -141,6 +143,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // その場で反映＋代理店メール発火 (best-effort・失敗しても番号更新は成功のまま返す)。
     // 空配列(=番号消去)のときは照会しない。
     if (tracking && tracking.length > 0) {
+      // 番号がある = 佐川側に依頼がある。集荷依頼の記録が無ければ手動依頼済みとして記録する
+      // (TODO の「依頼が必要」から外し、Excel での重複依頼を防ぐ・2026-11-03 監査 P1-1)。
+      try {
+        const legRow = await loadPickupShipment(shipmentId)
+        if (legRow) results.push((await recordManualFromTrackingNumber(legRow, supabasePickupStore())).note)
+      } catch (e) {
+        results.push(`集荷依頼の記録に失敗: ${e instanceof Error ? e.message : String(e)}`)
+      }
       const sync = await reconcileTrackingNow(sb, shipmentId)
       trackingSyncNote = sync.note
       results.push(`即時追跡照会: ${sync.note}`)

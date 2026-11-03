@@ -146,7 +146,10 @@ export async function fetchHotelPlaceDetailsJa(
   hotelName: string,
   apiKey: string,
   placeId?: string,
+  /** 1回の照会の時間制限 (ms)。指定時は超過で例外 (TimeoutError)。未指定は従来どおり制限なし。 */
+  opts?: { timeoutMs?: number },
 ): Promise<HotelPlaceDetails | null> {
+  const signal = () => (opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined)
   // place_id がフロントから渡されている場合は text search をスキップして直接 details へ.
   // (operator / 代理店が autocomplete から選択したホテル — 確定済み)
   let resolvedPlaceId = placeId
@@ -160,7 +163,7 @@ export async function fetchHotelPlaceDetailsJa(
     searchUrl.searchParams.set("region", "jp")
     searchUrl.searchParams.set("key", apiKey)
 
-    const searchRes = await fetch(searchUrl.toString())
+    const searchRes = await fetch(searchUrl.toString(), { signal: signal() })
     if (!searchRes.ok) return null
     const searchData = (await searchRes.json()) as {
       status?: string
@@ -181,7 +184,7 @@ export async function fetchHotelPlaceDetailsJa(
   detailsUrl.searchParams.set("language", "ja")
   detailsUrl.searchParams.set("key", apiKey)
 
-  const detailsRes = await fetch(detailsUrl.toString())
+  const detailsRes = await fetch(detailsUrl.toString(), { signal: signal() })
   if (!detailsRes.ok) return null
   const detailsData = (await detailsRes.json()) as {
     result?: {

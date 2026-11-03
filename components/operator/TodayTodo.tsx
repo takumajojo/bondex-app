@@ -47,6 +47,8 @@ interface PickupAttentionTask extends SagawaPickupTask {
   requestId: string
   channel: string
   state: string
+  changes?: string[]
+  shippingNumber?: string | null
 }
 
 const ATTENTION_LABEL: Record<string, string> = {
@@ -55,6 +57,8 @@ const ATTENTION_LABEL: Record<string, string> = {
   cancel_needed: "取消した区間に依頼が残っている",
   needs_review: "依頼済みか不明",
   change_pending: "変更・取消の返信待ち",
+  changed_after_request: "依頼後に内容が変わった・世田谷へ変更連絡",
+  record_missing: "問合番号はあるが依頼の記録なし（Excel で重ねて依頼しない）",
 }
 
 interface TodoData {
@@ -237,11 +241,19 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
             <>
               <div className="px-5 pt-2 pb-1 text-[11px] font-bold text-red-700">要確認（再送せず、佐川に確認してから記録）</div>
               {attention.map((t) => (
-                <div key={t.requestId} className="px-5 py-2 border-t border-slate-100">
+                <div key={`${t.shipmentId}-${t.kind}`} className="px-5 py-2 border-t border-slate-100">
                   <p className="mb-1 text-[11px]">
                     <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">{ATTENTION_LABEL[t.kind] ?? t.kind}</span>{" "}
                     <span className="font-mono">{t.bookingId}-L{t.legIndex + 1}</span>　発送 {t.shipmentDate}　{t.fromHotelJa || t.fromHotel}
                   </p>
+                  {t.changes && t.changes.length > 0 && (
+                    <p className="mb-1 text-[11px] text-red-700">
+                      変わった項目: {t.changes.join("・")}。佐川の依頼は古い内容のままです。世田谷営業所へ連絡し、返信を受けたら「変更が反映された」を記録してください。
+                    </p>
+                  )}
+                  {t.kind === "record_missing" && (
+                    <p className="mb-1 text-[11px] text-red-700">佐川の問合番号 {t.shippingNumber} が入力済みです。下の「佐川指定 Excel で依頼済みにする」で記録してください（Biz-Logi からは送れません）。</p>
+                  )}
                   <PickupRequestPanel shipmentId={t.shipmentId} legLabel={`${t.bookingId}-L${t.legIndex + 1}`} actor={actor} onChanged={() => void load()} />
                 </div>
               ))}

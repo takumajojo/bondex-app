@@ -15,6 +15,8 @@ export interface ClaimInput {
   actor: string
   owner: string
   note: string | null
+  /** 依頼した時点の内容 (./snapshot.ts)。依頼後の変更検知に使う。 */
+  snapshot: unknown
 }
 
 export interface ClaimResult {
@@ -35,6 +37,8 @@ export interface TransitionInput {
   resultCodes?: string[] | null
   error?: string | null
   note?: string | null
+  /** 新しい依頼内容 (変更が佐川に反映されたと記録するとき)。null/省略は変えない。 */
+  snapshot?: unknown
 }
 
 export interface TransitionResult {
@@ -69,6 +73,7 @@ export function supabasePickupStore(): PickupStore {
         p_actor: i.actor,
         p_owner: i.owner,
         p_note: i.note,
+        p_snapshot: i.snapshot ?? null,
       })
       if (error) throw new PickupStoreError(`集荷依頼の確保に失敗しました: ${error.message}`)
       const row = (Array.isArray(data) ? data[0] : data) as { claimed?: boolean; request_id?: string; reason?: string } | null
@@ -86,6 +91,7 @@ export function supabasePickupStore(): PickupStore {
         p_result_codes: i.resultCodes ?? null,
         p_error: i.error ?? null,
         p_note: i.note ?? null,
+        p_snapshot: i.snapshot ?? null,
       })
       if (error) throw new PickupStoreError(`集荷依頼の状態更新に失敗しました: ${error.message}`)
       const row = (Array.isArray(data) ? data[0] : data) as { applied?: boolean; state?: string; reason?: string } | null
