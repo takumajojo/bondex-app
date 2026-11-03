@@ -94,7 +94,7 @@ export interface PickupAttentionTask extends Omit<SagawaPickupTask, "urgency" | 
 export interface PickupTodo {
   needRequest: SagawaPickupTask[]
   attention: PickupAttentionTask[]
-  /** pickup_requests が未作成 (sql/062 未適用) で旧条件に落としたとき true。 */
+  /** pickup_requests が未作成 (sql/067 未適用) で旧条件に落としたとき true。 */
   legacyMode: boolean
 }
 
@@ -249,7 +249,7 @@ export function buildPickupTodo(
 
 const isMissingTable = (msg: string | undefined) => !!msg && /pickup_requests/.test(msg) && /(does not exist|schema cache|not find)/i.test(msg)
 
-/** TODO を DB から組み立てる。sql/062 未適用なら旧来の印 (pickup_requested_at) で判定する。 */
+/** TODO を DB から組み立てる。sql/067 未適用なら旧来の印 (pickup_requested_at) で判定する。 */
 export async function loadPickupTodo(sb: SupabaseClient, today: string, now: Date = new Date()): Promise<PickupTodo> {
   const horizon = addDays(today, PICKUP_TODO_LOOKAHEAD_DAYS)
   const { data: windowLegs, error: legErr } = await sb
@@ -291,7 +291,7 @@ export async function loadPickupTodo(sb: SupabaseClient, today: string, now: Dat
 
   // 記録が指す区間のうち、窓の外 (過去日・取消) のものを追加で読む
   const known = new Set(legs.map((l) => l.id))
-  // 変更申請で進行中のもの (未連絡・承認済みで未反映)。sql/064 未適用の環境では列が無く空になる。
+  // 変更申請で進行中のもの (未連絡・承認済みで未反映)。sql/068 未適用の環境では列が無く空になる。
   const { data: chg } = await sb
     .from("shipment_change_requests")
     .select("id, shipment_id, stage, kind, fields, updated_at")

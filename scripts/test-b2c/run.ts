@@ -6,10 +6,11 @@ import assert from "node:assert/strict"
 import { quoteB2c, b2cRouteClass, B2C_MAX_PIECES } from "@/lib/b2c/pricing"
 import { judgeB2cBookability, b2cCutoffAt, type B2cBookabilityInput } from "@/lib/b2c/bookability"
 import { changeDeadlineAt } from "@/lib/change-deadline"
+import { pickupCutoffAt } from "@/lib/pickup-cutoff"
 import { b2cChangeBlockedReason } from "@/lib/b2c/change-gate"
 import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { judgeB2cHotels, hotelCheckDueAt, earliestPickupWithUnknownHotel, planB2cConfirmation } from "@/lib/b2c/hotel-gate"
-import { cardStateOfSetupIntent, threeDsResultOf } from "@/lib/b2c/card-service"
+import { cardStateOfSetupIntent, threeDsResultOf, B2C_CARD_WINDOW_MS } from "@/lib/b2c/card-service"
 import { b2cStripeConfig } from "@/lib/b2c/stripe"
 import type Stripe from "stripe"
 
@@ -77,12 +78,17 @@ t("通常のケースは受け付ける", () => {
   assert.equal(r.earliestDelivery, "2026-11-15")
   assert.equal(r.usedFallbackTransit, false)
 })
-t("締切は集荷の前日 17:00 JST", () => {
-  assert.equal(b2cCutoffAt("2026-11-14").toISOString(), "2026-11-13T08:00:00.000Z")
-  const before = judgeB2cBookability(base({ now: new Date("2026-11-13T07:59:59Z") }))
-  assert.ok(!before.errors.includes("past_cutoff"))
-  const at = judgeB2cBookability(base({ now: new Date("2026-11-13T08:00:00Z") }))
-  assert.ok(at.errors.includes("past_cutoff"))
+t("締切は集荷の前日 18:30 JST（B2B と同じ pickupCutoffAt）", () => {
+  assert.equal(b2cCutoffAt("2026-11-14").toISOString(), "2026-11-13T09:30:00.000Z")
+  assert.equal(b2cCutoffAt("2026-11-14").toISOString(), pickupCutoffAt("2026-11-14"))
+  // 18:29 / 18:29:59.999 は受付、18:30:00 / 18:31 は締切後
+  for (const [iso, past] of [["2026-11-13T09:29:00Z", false], ["2026-11-13T09:29:59.999Z", false], ["2026-11-13T09:30:00Z", true], ["2026-11-13T09:31:00Z", true]] as const) {
+    const r = judgeB2cBookability(base({ now: new Date(iso) }))
+    assert.equal(r.errors.includes("past_cutoff"), past, iso)
+  }
+  // 旧 17:00 では締め切らない
+  assert.ok(!judgeB2cBookability(base({ now: new Date("2026-11-13T08:00:00Z") })).errors.includes("past_cutoff"))
+  assert.throws(() => b2cCutoffAt("bad"))
 })
 t("当日・過去の集荷は不可", () => {
   const r = judgeB2cBookability(base({ pickupDate: "2026-11-10", origin: { checkIn: "2026-11-09", checkOut: "2026-11-10" } }))
@@ -135,12 +141,16 @@ t("存在しない日付は invalid_date だけを返す", () => {
   assert.deepEqual(judgeB2cBookability(base({ pickupDate: "2026-02-30" })).errors, ["invalid_date"])
 })
 
+t("カード入力の期限は締切の30分前 = 前日 18:00 JST（据え置き）", () => {
+  assert.equal(B2C_CARD_WINDOW_MS, 30 * 60 * 1000)
+  assert.equal(new Date(b2cCutoffAt("2026-11-14").getTime() - B2C_CARD_WINDOW_MS).toISOString(), "2026-11-13T09:00:00.000Z")
+})
 console.log("B2B と共通の変更締切")
-t("B2B の変更締切も発送の前日 17:00 JST（B2C の締切と同じ・月末・年末をまたいでも前日）", () => {
+t("B2B の変更締切も集荷の前日 18:30 JST（B2C の締切と同じ・月末・年末をまたいでも前日）", () => {
   for (const d of ["2026-11-14", "2027-01-01", "2026-03-01"]) {
     assert.equal(changeDeadlineAt(d), b2cCutoffAt(d).toISOString())
   }
-  assert.equal(changeDeadlineAt("2027-01-01"), "2026-12-31T08:00:00.000Z")
+  assert.equal(changeDeadlineAt("2027-01-01"), "2026-12-31T09:30:00.000Z")
   assert.equal(changeDeadlineAt(""), null)
   assert.equal(changeDeadlineAt("bad"), null)
 })
@@ -151,10 +161,14 @@ t("個数の変更は集荷の 14日前まで（13日前は不可）", () => {
   assert.equal(b2cChangeBlockedReason("count", { pickupDate: "2026-11-24", pieces: 2 }, NOW), null)
   assert.equal(b2cChangeBlockedReason("count", { pickupDate: "2026-11-23", pieces: 2 }, NOW), "count_lead")
 })
-t("日付・ホテルの変更と取消は前日 17:00 まで", () => {
+t("日付・ホテルの変更と取消は前日 18:30 まで（18:29 は可・18:30 / 18:31 は不可）", () => {
   assert.equal(b2cChangeBlockedReason("dates", { pickupDate: "2026-11-12", pieces: 2 }, NOW), null)
   assert.equal(b2cChangeBlockedReason("hotel", { pickupDate: "2026-11-12", pieces: 2 }, NOW), null)
-  const after = new Date("2026-11-11T08:00:00Z") // 11/11 17:00 JST
+  const at1729 = new Date("2026-11-11T09:29:59.999Z")
+  assert.equal(b2cChangeBlockedReason("hotel", { pickupDate: "2026-11-12", pieces: 2 }, at1729), null)
+  assert.equal(b2cChangeBlockedReason("cancel", { pickupDate: "2026-11-12", pieces: 2 }, new Date("2026-11-11T08:00:00Z")), null) // 旧 17:00
+  assert.equal(b2cChangeBlockedReason("dates", { pickupDate: "2026-11-12", pieces: 2 }, new Date("2026-11-11T09:31:00Z")), "past_cutoff")
+  const after = new Date("2026-11-11T09:30:00Z") // 11/11 18:30 JST
   assert.equal(b2cChangeBlockedReason("hotel", { pickupDate: "2026-11-12", pieces: 2 }, after), "past_cutoff")
   assert.equal(b2cChangeBlockedReason("cancel", { pickupDate: "2026-11-12", pieces: 2 }, after), "past_cutoff")
   assert.equal(b2cChangeBlockedReason("cancel", { pickupDate: "2026-11-12", pieces: 2 }, NOW), null)

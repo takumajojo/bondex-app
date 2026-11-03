@@ -1,5 +1,5 @@
 // 集荷依頼の記録 (pickup_requests) への読み書き。DB 関数 claim_pickup_request /
-// transition_pickup_request (sql/062) を通すことで、判定と書き込みを1トランザクションにする。
+// transition_pickup_request (sql/067) を通すことで、判定と書き込みを1トランザクションにする。
 // テストでは PickupStore を差し替える。
 
 import { getSupabase } from "@/lib/supabase"
@@ -126,7 +126,7 @@ export function liveRequestByShipment(rows: PickupRequestRow[]): Map<string, Pic
   return m
 }
 
-/** sql/062 が未適用 (pickup_requests・関数が無い) ことを示すエラーか。 */
+/** sql/067 が未適用 (pickup_requests・関数が無い) ことを示すエラーか。 */
 export function isPickupTableMissing(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e)
   return /pickup_requests|claim_pickup_request|transition_pickup_request/.test(msg) && /(does not exist|schema cache|not find)/i.test(msg)

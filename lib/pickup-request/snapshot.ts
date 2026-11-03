@@ -1,7 +1,7 @@
 // 集荷依頼をした時点の内容 (pickup_requests.request_snapshot)。
 // 依頼後に区間の発送元・到着先・日付・時間帯・個数が変わったら、佐川の依頼は古い内容のまま残る。
 // 今の区間と比べて違いがあれば「世田谷へ変更連絡が必要」として TODO に出す (自動では状態を変えない)。
-// sql/062 の移行 (jsonb_build_object) と同じキー・同じ形にそろえること。
+// sql/067 の移行 (jsonb_build_object) と同じキー・同じ形にそろえること。
 
 export interface SnapshotSourceRow {
   from_hotel: string | null

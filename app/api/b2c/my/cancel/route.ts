@@ -11,7 +11,9 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 export const runtime = "nodejs"
 
 /**
- * POST /api/b2c/my/cancel — 旅行者の取消（My Booking・集荷の前日 17:00 まで）。Stage 4。
+ * POST /api/b2c/my/cancel — 旅行者の取消（My Booking・集荷の前日 18:30 まで）。Stage 4。
+ * 佐川へ集荷依頼済みなら即時には取り消さず、取消申請として受け付ける（202・result=cancel_requested）。
+ * 世田谷営業所へ確認 → 佐川の取消確認 → BondEx が確定するまで、予約・区間・集荷依頼・カードはそのまま。
  * 本人の確認は My Booking の秘密の token だけ。取消・shipments の行の取消・記録・通知は DB の 1つの関数（sql/062）。
  * 請求は発生しない。登録したカードは Stripe の Customer から外す（使わないカードを持たない）。運営に知らせる（ホテルへの連絡のため）。
  */
@@ -28,6 +30,21 @@ export async function POST(req: NextRequest) {
   try {
     const r = await cancelMyBooking(body.token)
     if (r === "not_found") return NextResponse.json({ ok: false, error: r }, { status: 404 })
+    if (r === "cancel_requested" || r === "already_requested") {
+      const v = await loadMyBooking(body.token)
+      if (r === "cancel_requested" && v) {
+        await sendOpsAlert({
+          subject: `【B2C 取消申請・集荷依頼済み】受付番号 ${v.orderNumber}（集荷 ${v.pickupDate}）`,
+          lines: [
+            `集荷元: ${v.origin.name}`, `配送先: ${v.dest.name}`,
+            "→ 旅行者が取消を希望しています。佐川へ集荷依頼済みのため、まだ取り消していません。",
+            "→ 運営画面の集荷依頼の変更申請（取消）から、世田谷営業所へ確認し、佐川の取消確認を記録してから確定してください。",
+          ],
+          agencyEmail: null,
+        }).catch(() => undefined)
+      }
+      return NextResponse.json({ ok: true, result: r, stage: v?.stage, cancelRequested: true }, { status: 202 })
+    }
     if (r !== "cancelled" && r !== "already_cancelled") return NextResponse.json({ ok: false, error: r }, { status: 409 })
     const v = await loadMyBooking(body.token)
     if (r === "cancelled" && v) {

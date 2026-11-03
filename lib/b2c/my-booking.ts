@@ -3,7 +3,7 @@
  *
  * 予約（b2c_orders）・配送（shipments の B2C の行）・決済（カードの登録・b2c_payments）の状態は別々に持ち、
  * 画面にはそれぞれを旅行者の言葉に読み替えて出す。確認待ちの間は集荷を約束する表現を使わない（Beta 計画 4章）。
- * 取消は集荷の前日 17:00（JST）まで（lib/b2c/bookability.ts の締切と同じ）。それ以降は問い合わせ。
+ * 取消は集荷の前日 18:30（JST）まで（lib/pickup-cutoff.ts の締切と同じ）。それ以降は問い合わせ。集荷依頼済みなら取消申請。
  */
 import { getSupabase } from "@/lib/supabase"
 import { b2cCutoffAt } from "./bookability"
@@ -36,6 +36,8 @@ export interface MyBookingView {
   cancelReason: string | null
   cancelledAt: string | null
   canCancel: boolean
+  /** 集荷依頼済みのため取消申請を受け付け、佐川の確認を待っている */
+  cancelRequested: boolean
   cancelDeadline: string
   trackingNumbers: string[]
 }
@@ -63,7 +65,7 @@ export async function loadMyBooking(token: unknown, now: Date = new Date()): Pro
   if (!o || o.status === "draft") return null
 
   const [{ data: ship, error: shipErr }, { data: pays, error: payErr }] = await Promise.all([
-    sb.from("shipments").select("status, tracking_numbers").eq("b2c_order_id", o.id).abortSignal(AbortSignal.timeout(B2C_DB_TIMEOUT_MS)).maybeSingle(),
+    sb.from("shipments").select("id, status, tracking_numbers").eq("b2c_order_id", o.id).abortSignal(AbortSignal.timeout(B2C_DB_TIMEOUT_MS)).maybeSingle(),
     sb.from("b2c_payments").select("status").eq("order_id", o.id).abortSignal(AbortSignal.timeout(B2C_DB_TIMEOUT_MS)),
   ])
   if (shipErr || payErr) throw new B2cDbUnavailable("shipment")
@@ -90,6 +92,20 @@ export async function loadMyBooking(token: unknown, now: Date = new Date()): Pro
   else if (o.card_status === "registered") payment = "card_registered_not_charged"
   else payment = "no_card"
 
+  let cancelRequested = false
+  if (ship?.id && o.status === "confirmed") {
+    const { data: cr, error: crErr } = await sb
+      .from("shipment_change_requests")
+      .select("id")
+      .eq("shipment_id", ship.id as string)
+      .eq("kind", "cancel")
+      .in("stage", ["requested", "contacted", "approved"])
+      .abortSignal(AbortSignal.timeout(B2C_DB_TIMEOUT_MS))
+      .limit(1)
+    if (crErr) throw new B2cDbUnavailable("change_request")
+    cancelRequested = (cr ?? []).length > 0
+  }
+
   const cutoff = b2cCutoffAt(o.pickup_date as string)
   const cancellableStage = ["card_pending", "awaiting_hotel", "confirmed"].includes(stage)
   const snap = (x: Snap) => ({ name: x?.name ?? "", address: x?.address ?? "", nameEn: x?.name_en ?? "", addressEn: x?.address_en ?? "", checkIn: x?.check_in ?? "", checkOut: x?.check_out ?? "" })
@@ -113,15 +129,23 @@ export async function loadMyBooking(token: unknown, now: Date = new Date()): Pro
     confirmationDueAt: (o.confirmation_due_at as string | null) ?? null,
     cancelReason: (o.cancel_reason as string | null) ?? null,
     cancelledAt: (o.cancelled_at as string | null) ?? null,
-    canCancel: cancellableStage && now < cutoff,
+    canCancel: cancellableStage && !cancelRequested && now < cutoff,
+    cancelRequested,
     cancelDeadline: cutoff.toISOString(),
     trackingNumbers: Array.isArray(ship?.tracking_numbers) ? (ship!.tracking_numbers as string[]) : [],
   }
 }
 
-export type MyCancelResult = "cancelled" | "already_cancelled" | "too_late" | "not_cancellable" | "not_found"
+/**
+ * cancel_requested: 佐川へ集荷依頼済みのため即時には取り消さず、取消申請を受け付けた（世田谷営業所へ確認 → 佐川の取消確認 → BondEx が確定）。
+ * already_requested: 取消申請は受付済み（確認待ち）。
+ */
+export type MyCancelResult = "cancelled" | "already_cancelled" | "cancel_requested" | "already_requested" | "too_late" | "not_cancellable" | "not_found"
 
-/** 旅行者の取消（集荷の前日 17:00 まで）。DB の 1つのトランザクション（b2c_cancel_order）。請求は発生しない。 */
+/**
+ * 旅行者の取消（集荷の前日 18:30 まで）。DB の 1つのトランザクション（b2c_cancel_order）。請求は発生しない。
+ * 佐川へ集荷依頼済みなら取り消さず（'pickup_requested'）、取消申請（b2c_request_cancel）にする。
+ */
 export async function cancelMyBooking(token: unknown, now: Date = new Date()): Promise<MyCancelResult> {
   const v = await loadMyBooking(token, now)
   if (!v) return "not_found"
@@ -133,5 +157,11 @@ export async function cancelMyBooking(token: unknown, now: Date = new Date()): P
   const { data, error } = await sb.rpc("b2c_cancel_order", { p_order_id: v.orderId, p_reason: "guest", p_actor_type: "guest" })
   if (error) throw new B2cDbUnavailable("cancel")
   if (data === "cancelled" || data === "already_cancelled" || data === "not_cancellable") return data
+  if (data === "pickup_requested") {
+    const { data: req, error: reqErr } = await sb.rpc("b2c_request_cancel", { p_order_id: v.orderId, p_actor_type: "guest" })
+    if (reqErr) throw new B2cDbUnavailable("cancel_request")
+    if (req === "cancel_requested" || req === "already_requested" || req === "already_cancelled") return req
+    return "not_cancellable"
+  }
   return "not_found"
 }

@@ -1,4 +1,4 @@
-// 佐川への集荷依頼の状態 (sql/062_pickup_requests.sql と同じ定義)。
+// 佐川への集荷依頼の状態 (sql/067_pickup_requests.sql と同じ定義)。
 //
 // 配送状態 (shipments.status) とは別物。status='requested' は「佐川へ依頼済み」を意味しない。
 // 1区間に「有効な依頼」は1件まで (DB の部分一意インデックスで強制)。有効な依頼が無い区間が「未依頼」。
@@ -68,7 +68,7 @@ export function isLive(state: string): boolean {
  * サーバの送信処理だけが行い、ここには含めない。
  *   confirm_accepted : 佐川側で受付済みと確認した (問合番号を入力)
  *   confirm_none     : 佐川側に依頼は無いと確認した (この記録を無効にする)
- *   start_change / change_done / cancel_done : 旧操作。2026-11-04 段階C で「変更申請」(sql/064) に置き換えた。
+ *   start_change / change_done / cancel_done : 旧操作。2026-11-04 段階C で「変更申請」(sql/068) に置き換えた。
  *     依頼記録だけを動かすと区間の情報 (取消など) と食い違うため、resolvePickupRequest は受け付けない。
  */
 export type ResolveAction = "confirm_accepted" | "confirm_none" | "start_change" | "change_done" | "cancel_done"

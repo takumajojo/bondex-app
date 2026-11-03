@@ -1,5 +1,5 @@
 -- 集荷依頼中の区間の書き換え禁止と、変更申請の統合 (2026-11-04 谷口さん承認・段階A)。未適用。
--- 前提: sql/062 (pickup_requests) を先に適用する。
+-- 前提: sql/067 (pickup_requests・一時停止スイッチ) を先に適用する。ロックは無効で作り、sql/072 で有効にする。
 --
 -- 1. 変更申請は既存の shipment_change_requests (sql/043・本番に3件=すべて運営の訂正記録) に統合する。
 --    種類 (kind)・段階 (stage)・佐川への連絡と回答・番号の扱いを足す。既存の status 列は残し、stage と同期する。
@@ -56,6 +56,11 @@ alter table public.shipment_change_requests
     ('requested', 'contacted', 'approved', 'rejected', 'applied', 'withdrawn')),
   drop constraint if exists shipment_change_requests_policy_check,
   add constraint shipment_change_requests_policy_check check (number_policy is null or number_policy in ('kept', 'changed'));
+
+-- 申請者に B2C の旅行者 (guest) を足す (sql/043 は agency / operator だけ)
+alter table public.shipment_change_requests drop constraint if exists shipment_change_requests_requested_by_check;
+alter table public.shipment_change_requests add constraint shipment_change_requests_requested_by_check
+  check (requested_by in ('agency', 'operator', 'guest'));
 
 -- 1区間に進行中の申請は1件まで。運営の訂正の監査記録 (correction) と、旧来の代理店の締切後の申請 (fields) は
 -- 対象外 (旧来の経路の動きを段階C まで変えないため)。
@@ -163,7 +168,11 @@ returns text[] language sql immutable as $$
     case when n.to_residence     is distinct from o.to_residence     then 'to_residence' end,
     case when n.representative   is distinct from o.representative   then 'representative' end,
     case when n.recipient        is distinct from o.recipient        then 'recipient' end,
-    case when n.status = 'cancelled' and o.status is distinct from 'cancelled' then 'cancel' end
+    case when n.status = 'cancelled' and o.status is distinct from 'cancelled' then 'cancel' end,
+    -- 問い合わせ番号: 最初の番号の記入 (空 → 番号) は止めない。入っている番号の書き換え・削除だけを止める
+    -- (番号の変更は佐川の回答を記録した変更申請 = number_policy 'changed' の反映だけ)
+    case when jsonb_typeof(o.tracking_numbers) = 'array' and jsonb_array_length(o.tracking_numbers) > 0
+              and n.tracking_numbers is distinct from o.tracking_numbers then 'tracking_numbers' end
   ], null);
 $$;
 
@@ -204,6 +213,7 @@ begin
   if found then
     v_allowed := public.change_kind_allowed_keys(c.kind);
     if c.kind = 'cancel' then v_allowed := array['cancel']; end if;
+    if c.number_policy = 'changed' then v_allowed := v_allowed || array['tracking_numbers']; end if;
     if v_allowed is not null and v_changed <@ v_allowed then
       return new;
     end if;
@@ -220,8 +230,18 @@ create trigger shipments_pickup_lock
   before update on public.shipments
   for each row execute function public.shipments_pickup_lock();
 
+-- 本番移行 (2026-11-04 谷口さん指示): ロックは無効で作り、アプリの切替後に sql/072 で有効にする。
+-- 無効の間は sql/067 の一時停止スイッチで集荷依頼の記録・送信も止まっている (有効な依頼が新しく増えない)。
+-- 再実行しても、sql/072 で有効化済み (lock_enabled=true) なら有効のまま。
+do $$
+begin
+  if not coalesce((select lock_enabled from public.pickup_request_settings where id), false) then
+    alter table public.shipments disable trigger shipments_pickup_lock;
+  end if;
+end $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
--- 4. 申請の登録・段階・反映 (sql/062 の受付後の変更を一般化して置き換える)
+-- 4. 申請の登録・段階・反映 (sql/067 の受付後の変更を一般化して置き換える)
 
 -- 問い合わせ番号が他の区間で使われていないか (shipments の番号・集荷依頼の記録の両方)
 create or replace function public.pickup_number_in_use(p_number text, p_shipment_id uuid)
@@ -257,7 +277,8 @@ begin
   if v_allowed is null or p_kind in ('fields', 'correction') then
     return query select false, null::uuid, 'invalid_kind'::text; return;
   end if;
-  if p_source not in ('agency', 'operator') then return query select false, null::uuid, 'invalid_source'::text; return; end if;
+  -- guest = B2C の旅行者 (My Booking からの取消の希望。sql/071 の b2c_request_cancel だけが使う)
+  if p_source not in ('agency', 'operator', 'guest') then return query select false, null::uuid, 'invalid_source'::text; return; end if;
   if btrim(coalesce(p_reason, '')) = '' then return query select false, null::uuid, 'reason_required'::text; return; end if;
   if jsonb_typeof(v_fields) <> 'object' then return query select false, null::uuid, 'invalid_fields'::text; return; end if;
   for v_key in select jsonb_object_keys(v_fields) loop
@@ -414,6 +435,24 @@ $$;
 
 -- 承認済みの申請を区間へ反映する (1トランザクション)。トリガーの例外はこの関数の中だけで成り立つ:
 -- 申請の行に apply_txid = 今のトランザクション を付けてから区間を更新し、最後に applied にする。
+-- 取消の反映の差し込み口。区間が他の仕組み (B2C の予約) にも属するとき、その仕組みの取消を同じトランザクションで行う。
+-- 既定は何もしない (false = この区間は B2B だけ)。sql/071 が B2C 用に置き換える。
+-- 再実行で置き換え済みの中身を既定に戻さないよう、無いときだけ作る。
+do $$
+begin
+  if to_regprocedure('public.shipment_cancel_hook(uuid, uuid, text)') is null then
+    execute $f$
+      create function public.shipment_cancel_hook(p_shipment_id uuid, p_change_id uuid, p_actor text)
+      returns boolean language plpgsql security definer set search_path = public as $b$
+      begin
+        return false;
+      end;
+      $b$
+    $f$;
+  end if;
+end $$;
+revoke all on function public.shipment_cancel_hook(uuid, uuid, text) from public, anon, authenticated;
+
 create or replace function public.apply_shipment_change(p_change_id uuid, p_actor text)
 returns table (ok boolean, reason text, hotel_change_id uuid)
 language plpgsql security definer set search_path = public as $$
@@ -517,6 +556,14 @@ begin
   end if;
 
   if c.kind = 'cancel' then
+    -- 佐川の取消確認を反映: 先に集荷依頼の記録を取消にし (有効な依頼が無くなる)、
+    -- B2C の予約なら予約・通知・請求の取消を b2c 側の関数で行う (区間の取消もそこで行う)。
+    if c.needs_sagawa then
+      update public.pickup_requests p set state = 'cancelled', resolved_by = p_actor, resolved_at = now(), updated_at = now(),
+             note = concat_ws(E'\n', p.note, p_actor || ': 佐川の取消確認を記録 (区間を取消)')
+       where p.id = r.id;
+    end if;
+    perform public.shipment_cancel_hook(s.id, c.id, p_actor);
     update public.shipments set status = 'cancelled', cancelled_at = now(),
            cancelled_by = 'operator:' || p_actor,
            cancel_source = case when c.needs_sagawa then 'sagawa_confirmed' else 'change_request' end,
@@ -531,16 +578,15 @@ begin
   end if;
 
   if c.needs_sagawa then
-    if c.kind in ('cancel', 'rearrange') then
-      -- 佐川側で今の依頼が取り消された。取消は区間も取消。再手配は依頼記録だけ取消にし、
-      -- 運営が手動 (Excel・電話) で新しく依頼して記録する (区間は未依頼に戻る)。
+    if c.kind = 'cancel' then
+      null;  -- 依頼記録の取消は上 (区間の取消の前) で済ませた
+    elsif c.kind = 'rearrange' then
+      -- 佐川の回答で個別再手配。今の依頼記録だけ取消にし、運営が手動 (Excel・電話) で新しく依頼して記録する
+      -- (区間は未依頼に戻る)。
       update public.pickup_requests p set state = 'cancelled', resolved_by = p_actor, resolved_at = now(), updated_at = now(),
-             note = concat_ws(E'\n', p.note, p_actor || case when c.kind = 'cancel'
-                    then ': 佐川の取消確認を記録 (区間を取消)' else ': 佐川の回答で個別再手配 (今の依頼は取消・手動で新しく依頼)' end)
+             note = concat_ws(E'\n', p.note, p_actor || ': 佐川の回答で個別再手配 (今の依頼は取消・手動で新しく依頼)')
        where p.id = r.id;
-      if c.kind = 'rearrange' then
-        update public.shipments set pickup_requested_at = null where id = s.id;
-      end if;
+      update public.shipments set pickup_requested_at = null where id = s.id;
     else
       update public.pickup_requests p set
         state = 'accepted',

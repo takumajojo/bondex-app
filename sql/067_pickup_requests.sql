@@ -61,6 +61,37 @@ create index if not exists pickup_requests_state_idx on public.pickup_requests (
 -- サーバ (service role) からのみ使う。匿名・代理店からは読めない。
 alter table public.pickup_requests enable row level security;
 
+-- 受付締切 = 集荷前日 18:30 JST (2026-11-04 谷口さん決定)。lib/pickup-cutoff.ts の pickupCutoffAt と同じ値。
+-- 18:30:00 ちょうど以降は締切後 (now() >= pickup_cutoff_at)。B2B・B2C の DB 関数はこれを使う。
+create or replace function public.pickup_cutoff_at(p_pickup_date date)
+returns timestamptz language sql immutable as $$
+  select ((p_pickup_date - 1)::text || 'T09:30:00Z')::timestamptz;
+$$;
+
+-- 集荷依頼の記録・送信の一時停止スイッチ (1行だけ)。2026-11-04 谷口さん指示 (本番移行の安全策)。
+-- 本番移行は「DB を先に入れる (区間のロック=sql/068 のトリガーは無効) → アプリ切替 → ロック有効化 (sql/072)」の順。
+-- ロックが無効の間に有効な依頼ができると、依頼済みの区間を DB が守れない。そこで claims_paused=true で作り、
+-- sql/072 がロックの有効化と同じトランザクションで false にする。運営の注意に頼らず DB で止める。
+-- 切り戻し (sql/rollback/pause_pickup_lock.sql) はロックを無効にするのと同時に true へ戻す。
+create table if not exists public.pickup_request_settings (
+  id             boolean primary key default true check (id),
+  claims_paused  boolean not null default true,
+  lock_enabled   boolean not null default false,
+  paused_reason  text,
+  updated_at     timestamptz not null default now(),
+  updated_by     text
+);
+-- 既存データの移行 (下) を済ませた時刻。2回目以降の適用では移行しない (後から作られた区間を「要確認」にしない)
+alter table public.pickup_request_settings add column if not exists backfill_done_at timestamptz;
+insert into public.pickup_request_settings (id, claims_paused, lock_enabled, paused_reason, updated_by)
+values (true, true, false, '本番移行中: 区間のロック (sql/072) の有効化まで停止', 'sql/067')
+on conflict (id) do nothing;
+alter table public.pickup_request_settings enable row level security;
+revoke all on table public.pickup_request_settings from public, anon, authenticated;
+do $$ begin
+  execute 'grant select on table public.pickup_request_settings to service_role';
+exception when undefined_object then null; end $$;  -- service_role が無い試験用 DB
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 依頼内容 (request_snapshot)。lib/pickup-request/snapshot.ts の pickupSnapshot と同じキー・同じ形。
 -- 確保・変更の反映・移行のすべてでこの関数を使い、DB の中 (行ロック中) で作る。
@@ -79,7 +110,7 @@ $$;
 --   p_channel='manual'  → state='accepted' で記録し、shipments.pickup_requested_at を入れる
 -- 区間の行ロックで判定と挿入を直列化し、最後は部分一意インデックスで二重を物理的に止める。
 -- 依頼内容 (snapshot) はロック中の区間から DB の中で作って返す。送信側は電文の元にした内容と照合し、
--- 一致しなければ送らない (読み取りから確保までの間に変更が入った場合)。確保の後は sql/064 のトリガーが
+-- 一致しなければ送らない (読み取りから確保までの間に変更が入った場合)。確保の後は sql/068 のトリガーが
 -- 区間の書き換えを止めるので、送る内容と DB の内容が一致する。
 create or replace function public.claim_pickup_request(
   p_shipment_id     uuid,
@@ -102,6 +133,18 @@ declare
 begin
   if p_channel not in ('manual', 'bizlogi') then
     return query select false, null::uuid, 'invalid_channel'::text, null::jsonb;
+    return;
+  end if;
+
+  -- 一時停止中、または区間のロック (sql/068 のトリガー) が無効な間は、手動・Biz-Logi とも記録・送信しない。
+  -- トリガーがまだ無い (068 の前) ときはスイッチだけで判断する (067 は停止の状態で作る)。
+  if coalesce((select claims_paused from public.pickup_request_settings where id), true) then
+    return query select false, null::uuid, 'claims_paused'::text, null::jsonb;
+    return;
+  end if;
+  if exists (select 1 from pg_trigger
+              where tgrelid = 'public.shipments'::regclass and tgname = 'shipments_pickup_lock' and tgenabled = 'D') then
+    return query select false, null::uuid, 'pickup_lock_disabled'::text, null::jsonb;
     return;
   end if;
 
@@ -281,10 +324,10 @@ revoke all on function public.pickup_snapshot_json(public.shipments) from public
 revoke all on function public.transition_pickup_request(uuid, text[], text, text, text, text, text, jsonb, text, text, jsonb) from public, anon, authenticated;
 
 -- 受付後の変更 (ホテル・日程・個数・代表者名・取消・番号) の管理と、依頼中の区間の書き換え禁止は
--- sql/064 (shipment_change_requests への統合・shipments のトリガー) で行う (2026-11-04 谷口さん承認)。
+-- sql/068 (shipment_change_requests への統合・shipments のトリガー) で行う (2026-11-04 谷口さん承認)。
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 既存データの移行 (1回だけ)。佐川への依頼状況を3つに分ける:
+-- 既存データの移行 (1回だけ。pickup_request_settings.backfill_done_at で2回目以降は何もしない)。佐川への依頼状況を3つに分ける:
 --   1. 手動依頼済みが確認できる … 佐川の問合番号がある / 集荷済み以降 → manual・accepted
 --   2. 依頼済みか不明           … 「依頼済み」印 (pickup_requested_at) はあるが番号も配送の進行も無い、
 --                                 または旧発行で issued だが印も番号も無い (今日以降の発送分のみ)
@@ -326,4 +369,6 @@ select s.id, s.booking_id, s.leg_index, 'manual',
       or (s.shipment_date >= (now() at time zone 'Asia/Tokyo')::date
           and (s.pickup_requested_at is not null or s.status = 'issued'))
        )
-   and not exists (select 1 from public.pickup_requests r where r.shipment_id = s.id);
+   and not exists (select 1 from public.pickup_requests r where r.shipment_id = s.id)
+   and not exists (select 1 from public.pickup_request_settings x where x.id and x.backfill_done_at is not null);
+update public.pickup_request_settings set backfill_done_at = now() where id and backfill_done_at is null;

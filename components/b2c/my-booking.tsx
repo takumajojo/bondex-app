@@ -3,7 +3,8 @@
 /**
  * My Booking（旅行者の予約の確認ページ・Stage 4）。秘密のリンクで開く。スマホ優先の 1列。
  * 予約・配送・決済の状態はサーバー（lib/b2c/my-booking.ts）が決め、画面は旅行者の言葉に読み替えて出すだけ。
- * 確認待ちの間は「確定」「集荷」を約束する表現を使わない。取消は集荷の前日 17:00 まで（サーバーでも確かめる）。
+ * 確認待ちの間は「確定」「集荷」を約束する表現を使わない。取消は集荷の前日 18:30 まで（サーバーでも確かめる）。
+ * 佐川へ集荷依頼済みの予約は、取消を申請として受け付け、佐川の確認後に BondEx が確定する（それまでは予約のまま）。
  */
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,7 @@ const T = {
     tracking: "佐川急便の問い合わせ番号", cancelTitle: "予約の取消", cancelUntil: (d: string) => `${d} まで取り消せます。料金はかかりません。`,
     cancelBtn: "この予約を取り消す", cancelConfirm: "本当に取り消しますか？ 取り消すと元に戻せません。", cancelYes: "取り消す", cancelNo: "やめる",
     cancelClosed: "取消の期限を過ぎました。変更・取消はお問い合わせください。", contact: "お問い合わせ",
+    cancelRequested: "取消のお申し込みを受け付けました。集荷の手配が済んでいるため、佐川急便に確認してから取消を確定し、メールでお知らせします。確定するまでは、ご予約はそのままです。料金はかかりません。",
     errors: { too_late: "取消の期限を過ぎました。お問い合わせください。", not_cancellable: "集荷の後のため、ここでは取り消せません。お問い合わせください。", temporarily_unavailable: "ただいま混み合っています。少し待ってからお試しください。", server_error: "エラーが発生しました。もう一度お試しください。" } as Record<string, string>,
   },
   en: {
@@ -95,6 +97,7 @@ const T = {
     tracking: "Sagawa tracking number", cancelTitle: "Cancel booking", cancelUntil: (d: string) => `You can cancel free of charge until ${d}.`,
     cancelBtn: "Cancel this booking", cancelConfirm: "Are you sure? This cannot be undone.", cancelYes: "Yes, cancel", cancelNo: "Keep booking",
     cancelClosed: "The cancellation deadline has passed. Please contact us to change or cancel.", contact: "Contact",
+    cancelRequested: "We have received your cancellation request. Your pickup has already been arranged, so we will confirm with Sagawa first and then email you when the cancellation is complete. Until then, your booking stays as it is. There is no charge.",
     errors: { too_late: "The cancellation deadline has passed. Please contact us.", not_cancellable: "Your bags have already been picked up. Please contact us.", temporarily_unavailable: "Our system is busy. Please try again in a moment.", server_error: "Something went wrong. Please try again." } as Record<string, string>,
   },
 }
@@ -118,8 +121,12 @@ export function B2cMyBooking({ token, view, initialLang, supportEmail }: { token
     setErr("")
     try {
       const res = await fetch("/api/b2c/my/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) })
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
-      if (data.ok) {
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; cancelRequested?: boolean }
+      if (data.ok && data.cancelRequested) {
+        // 集荷依頼済み: 取消申請を受け付けただけ。予約はまだ取り消されていない
+        setV({ ...v, canCancel: false, cancelRequested: true })
+        setAsking(false)
+      } else if (data.ok) {
         setV({ ...v, stage: "cancelled", canCancel: false, cancelReason: "guest", payment: "not_charged_cancelled" })
         setAsking(false)
       } else setErr(data.error ?? "server_error")
@@ -196,7 +203,7 @@ export function B2cMyBooking({ token, view, initialLang, supportEmail }: { token
               )}
             </>
           ) : (
-            <p className="mt-1 text-muted-foreground">{t.cancelClosed}</p>
+            <p className="mt-1 text-muted-foreground" data-my-cancel-requested={v.cancelRequested ? "1" : undefined}>{v.cancelRequested ? t.cancelRequested : t.cancelClosed}</p>
           )}
           {err ? <p role="alert" className="mt-2 rounded-lg bg-red-50 p-2 text-red-900 dark:bg-red-950 dark:text-red-100">{t.errors[err] ?? t.errors.server_error}</p> : null}
         </section>

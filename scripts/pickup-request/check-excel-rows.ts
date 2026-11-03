@@ -31,7 +31,7 @@ async function main() {
     const { data, error: rErr } = await sb.from("pickup_requests").select("*").in("shipment_id", ids)
     if (rErr && !isPickupTableMissing(new Error(rErr.message))) throw new Error(rErr.message)
     requests = (data ?? []) as PickupRequestRow[]
-    if (rErr) console.log("※ 集荷依頼の記録 (sql/062) が未適用のため、従来の「依頼済み」印と問合番号で判定します")
+    if (rErr) console.log("※ 集荷依頼の記録 (sql/067) が未適用のため、従来の「依頼済み」印と問合番号で判定します")
   }
   const verdicts = checkExcelRows(refs, (legs ?? []) as ExcelCheckLeg[], requests)
   for (const v of verdicts) console.log(v.ok ? `  OK   ${v.ref}` : `  NG   ${v.ref}: ${v.reason}`)

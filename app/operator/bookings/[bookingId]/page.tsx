@@ -691,7 +691,7 @@ export default function OperatorBookingDetailPage() {
               {/* 変更受付: 締切表示 + ホテル変更ボタン (物理ゲートで無効化) */}
               {(() => {
                 const shipped = ["picked_up", "in_transit", "delivered"].includes(r.status)
-                // 佐川へ集荷依頼済み (集荷前) は、佐川に渡す内容を DB が直接変えさせない (sql/064)。変更申請へ誘導する。
+                // 佐川へ集荷依頼済み (集荷前) は、佐川に渡す内容を DB が直接変えさせない (sql/068)。変更申請へ誘導する。
                 const requested = !!r.pickup_requested_at && !shipped && r.status !== "cancelled"
                 const gated = shipped || requested || (r.tracking_numbers?.length ?? 0) > 0
                 // 締切は集荷日から計算する (集荷前日 18:30 JST)

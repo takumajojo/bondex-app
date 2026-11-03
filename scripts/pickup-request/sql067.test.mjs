@@ -1,7 +1,7 @@
-// sql/062_pickup_requests.sql を PGlite (組み込み PostgreSQL) で検証する。本番・Supabase には一切触れない。
+// sql/067_pickup_requests.sql を PGlite (組み込み PostgreSQL) で検証する。本番・Supabase には一切触れない。
 // PGlite はリポジトリの依存に入れていないため、作業用の空ディレクトリに入れてから実行する:
 //   mkdir -p /tmp/pgtest && cd /tmp/pgtest && npm init -y && npm i @electric-sql/pglite@0.2.17
-//   node <repo>/scripts/pickup-request/sql062.test.mjs <repo>/sql/062_pickup_requests.sql
+//   node <repo>/scripts/pickup-request/sql067.test.mjs <repo>/sql/067_pickup_requests.sql
 import { createRequire } from "node:module"
 import { readFileSync } from "node:fs"
 const { PGlite } = await import(createRequire(process.cwd() + "/").resolve("@electric-sql/pglite"))
@@ -48,6 +48,22 @@ const S = {
 
 await db.exec(readFileSync(sqlPath, "utf8"))
 console.log("migration applied")
+
+console.log("0. 一時停止スイッチ (本番移行中は記録・送信しない)")
+{
+  const st = (await db.query(`select claims_paused, lock_enabled from pickup_request_settings`)).rows[0]
+  check("067 は停止の状態で作る", st?.claims_paused === true && st?.lock_enabled === false)
+  const n0 = (await db.query(`select count(*)::int n from pickup_requests`)).rows[0].n
+  const r = (await db.query(`select * from claim_pickup_request($1,'manual',null,null,1,current_date+4,'t','o',null)`, [S.futureIssuedNoMark])).rows[0]
+  check("停止中は手動の記録も拒否 (claims_paused)", r.claimed === false && r.reason === "claims_paused")
+  check("停止中の拒否で記録は増えない", (await db.query(`select count(*)::int n from pickup_requests`)).rows[0].n === n0)
+  const anonSel = (await db.query(`select has_table_privilege('anon','pickup_request_settings','select') as a`)).rows[0]
+  check("匿名ロールは停止スイッチを読めない", anonSel.a === false)
+  const cut = (await db.query(`select pickup_cutoff_at('2026-11-14')::text as t`)).rows[0]
+  check("pickup_cutoff_at = 前日 18:30 JST (09:30Z)", cut.t.startsWith("2026-11-13 09:30:00"))
+  // 以降の試験は 072 を流した後 (ロック有効・再開) の状態で行う。この試験は 068 を入れないのでスイッチだけ戻す
+  await db.exec(`update pickup_request_settings set claims_paused = false`)
+}
 
 const reqs = async (id) => (await db.query(`select * from pickup_requests where shipment_id=$1 order by created_at`, [id])).rows
 const one = async (id) => (await reqs(id))[0]
@@ -155,7 +171,8 @@ check("RLS 有効", rls.relrowsecurity === true)
 console.log("8. 移行の再実行")
 const before = (await db.query(`select count(*)::int n from pickup_requests`)).rows[0].n
 await db.exec(readFileSync(sqlPath, "utf8"))
-check("062 を2回流しても記録が増えない", (await db.query(`select count(*)::int n from pickup_requests`)).rows[0].n === before)
+check("067 を2回流しても記録が増えない", (await db.query(`select count(*)::int n from pickup_requests`)).rows[0].n === before)
+check("067 を2回流しても再開済みのスイッチを停止に戻さない", (await db.query(`select claims_paused from pickup_request_settings`)).rows[0].claims_paused === false)
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

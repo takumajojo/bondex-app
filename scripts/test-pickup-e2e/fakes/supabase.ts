@@ -21,10 +21,12 @@ export async function initSchema(repo: string) {
   await db.exec(`create role anon; create role authenticated; create role service_role;`)
   await db.exec(readFileSync(`${repo}/scripts/test-pickup-e2e/schema-base.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/043_shipment_change_requests.sql`, "utf8"))
-  await db.exec(readFileSync(`${repo}/sql/062_pickup_requests.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/067_pickup_requests.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/063_fix_hotel_change_tracking_column.sql`, "utf8"))
-  await db.exec(readFileSync(`${repo}/sql/064_change_requests_pickup_lock.sql`, "utf8"))
-  await db.exec(readFileSync(`${repo}/sql/065_facilities.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/068_change_requests_pickup_lock.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/069_facilities.sql`, "utf8"))
+  // 本番移行の最後の段 (ロック有効化・集荷依頼の記録の再開)。068 はロックを無効で作るので、ここで有効にする
+  await db.exec(readFileSync(`${repo}/sql/072_enable_pickup_lock.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)

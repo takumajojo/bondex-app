@@ -16,8 +16,8 @@ q()  { docker exec -i "$CONTAINER" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -qc "drop database if exists $DB" -c "create database $DB" >/dev/null
 trap 'docker exec -i "$CONTAINER" psql -U postgres -d postgres -qc "drop database if exists '"$DB"'" >/dev/null 2>&1 || true' EXIT
 
-for f in scripts/test-pickup-e2e/schema-base.sql sql/043_shipment_change_requests.sql sql/062_pickup_requests.sql \
-         sql/063_fix_hotel_change_tracking_column.sql sql/064_change_requests_pickup_lock.sql sql/065_facilities.sql; do
+for f in scripts/test-pickup-e2e/schema-base.sql sql/043_shipment_change_requests.sql sql/067_pickup_requests.sql \
+         sql/063_fix_hotel_change_tracking_column.sql sql/068_change_requests_pickup_lock.sql sql/069_facilities.sql sql/072_enable_pickup_lock.sql; do
   q < "$f" >/dev/null
 done
 echo "schema loaded on $CONTAINER/$DB (server_addr=$ADDR)"

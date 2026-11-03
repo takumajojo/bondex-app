@@ -1146,6 +1146,7 @@ R01〜R08（紹介料）と D10（ShipAll）は MVP では決めなくてよい�
 - これを前日 17:00 にそろえた（`changeDeadlineAt` が `selfServiceCutoffAt` を返す）。B2C の締切（`lib/b2c/bookability.ts` の `b2cCutoffAt`）と同じ時刻であることをテストで確認（`scripts/test-b2c/run.ts`）。
 - **変えていないもの**: ホテルへの連絡の期限（発送の 2営業日前、`lib/hotel-notification.ts`）、代理店の変更のリードタイムの制約（団体 30個以上は発送 7日以内は変更不可・個数の変更は 14日前まで、`lib/agency-change-gate.ts`）。締切の直前にホテルが変わった区間は、ホテル連絡のアラートで「至急」になる。
 - 保存済みの締切は `sql/060_change_deadline_day_before.sql` で新しい基準にそろえる（締切を後ろに延ばす方向のみ）。**本番には未適用**。コードのデプロイと同時に、承認を得て適用する。
+- **2026-11-04 更新**: 締切は集荷前日 18:30 JST に変更（B2B・B2C 共通・lib/pickup-cutoff.ts）。sql/060（17:00 への補正）は廃止し、統合ブランチ integ/bizlogi-b2c の sql/070_change_deadline_1830.sql に置き換えた。
 - これは既存 B2B の動きの変更（16.4 の例外。たくまさんの指示による）。
 
 ### 16.16 B2C の予約後の変更も B2B と同じ規則（2026-11-03）

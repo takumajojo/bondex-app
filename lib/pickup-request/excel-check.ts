@@ -27,7 +27,7 @@ export function parseLegRef(ref: string): { bookingId: string; legIndex: number 
 }
 
 /**
- * Excel に入れてよい区間か。記録が無い環境 (sql/062 未適用) では requests を空で渡し、
+ * Excel に入れてよい区間か。記録が無い環境 (sql/067 未適用) では requests を空で渡し、
  * 従来の「依頼済み」印 (pickup_requested_at) と問合番号で判定する。
  */
 export function checkExcelRows(refs: string[], legs: ExcelCheckLeg[], requests: PickupRequestRow[]): ExcelRowVerdict[] {

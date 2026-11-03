@@ -278,6 +278,10 @@ export function claimReasonJa(reason: string): string {
       return "団体の予約は Biz-Logi では送りません。手動 (Excel) で手配してください"
     case "shipment_not_found":
       return "区間が見つかりません"
+    case "claims_paused":
+      return "集荷依頼の記録・送信は一時停止中です (本番移行中または緊急停止)。世田谷営業所への依頼は従来どおり手作業で行い、再開後に記録してください"
+    case "pickup_lock_disabled":
+      return "区間のロックが無効のため、集荷依頼の記録・送信を止めています。BondEx の管理者に連絡してください"
     default:
       return `集荷依頼を確保できませんでした (${reason})`
   }

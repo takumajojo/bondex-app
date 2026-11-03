@@ -1,6 +1,6 @@
 // 佐川への集荷依頼 (lib/pickup-request) と、手入力の問合番号が消える不具合の回帰テスト。
 // 実接続なし・DB なし・課金なし。  npx tsx scripts/pickup-request/selftest.ts
-// DB 関数 (sql/062) そのものの検証は scripts/pickup-request/sql062.test.mjs (PGlite)。
+// DB 関数 (sql/067) そのものの検証は scripts/pickup-request/sql067.test.mjs (PGlite)。
 
 import { buildShipmentUpsertRow } from "../../lib/shipments-db"
 import { reissueBlocked } from "../../lib/shipment-reissue"
@@ -35,7 +35,7 @@ function check(name: string, cond: boolean, detail?: unknown) {
   }
 }
 
-// ── テスト用: sql/062 の判定を写したメモリ上の記録
+// ── テスト用: sql/067 の判定を写したメモリ上の記録
 class MemoryStore implements PickupStore {
   rows: PickupRequestRow[] = []
   tracking = new Map<string, string[]>()

@@ -1,5 +1,5 @@
 /**
- * 佐川への集荷依頼 (Biz-Logi 連携) の通し試験。運営画面が呼ぶ実際の API ルート → サービス → DB 関数 (sql/062・063)
+ * 佐川への集荷依頼 (Biz-Logi 連携) の通し試験。運営画面が呼ぶ実際の API ルート → サービス → DB 関数 (sql/067・063)
  * までを、隔離 DB (PGlite) と模擬 Biz-Logi API・模擬 Google Places で動かす。本番 DB・本番 API・SG のテスト環境には触れない。
  *   実行 (PGlite を入れたディレクトリを PGLITE_DIR に指定):
  *   PGLITE_DIR=/path/to/pgtest npx tsx --tsconfig scripts/test-pickup-e2e/tsconfig.json scripts/test-pickup-e2e/run.ts

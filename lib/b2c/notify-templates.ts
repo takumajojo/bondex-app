@@ -96,7 +96,7 @@ function pickupSteps(d: B2cNotifyData): string[] {
 /** booking: "cancel" = 確認と取消の案内、"view" = 確認だけ（取消の締切の後に送るリマインド）、"none" = リンクなし */
 function footer(d: B2cNotifyData, booking: "cancel" | "view" | "none" = "cancel"): string[] {
   const out: string[] = []
-  if (booking === "cancel") out.push(d.lang === "ja" ? `ご予約の確認・取消（集荷の前日 17:00 まで）: ${d.myBookingUrl}` : `View or cancel your booking (until 17:00 the day before pickup): ${d.myBookingUrl}`)
+  if (booking === "cancel") out.push(d.lang === "ja" ? `ご予約の確認・取消（集荷の前日 18:30 まで）: ${d.myBookingUrl}` : `View or cancel your booking (until 18:30 JST the day before pickup): ${d.myBookingUrl}`)
   if (booking === "view") out.push(d.lang === "ja" ? `ご予約の確認: ${d.myBookingUrl}` : `View your booking: ${d.myBookingUrl}`)
   out.push(d.lang === "ja" ? `お問い合わせ: ${SUPPORT_EMAIL}` : `Questions: ${SUPPORT_EMAIL}`)
   out.push("BondEx")

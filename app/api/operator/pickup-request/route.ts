@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
     const rows = await supabasePickupStore().listForShipments([shipmentId])
     const live = liveRequestByShipment(rows).get(shipmentId) ?? null
     const leg = await loadPickupShipment(shipmentId)
-    // 受付後の変更の記録 (sql/062 未適用の古い環境では空)
+    // 受付後の変更の記録 (sql/067 未適用の古い環境では空)
     const changes = await listPickupChanges(shipmentId).catch(() => [])
     return NextResponse.json({
       requests: rows,
@@ -71,9 +71,9 @@ export async function GET(req: NextRequest) {
       eligibility: leg ? bizlogiEligibility(leg) : null,
     })
   } catch (e) {
-    // sql/062 未適用の環境: 画面は従来の「集荷手配済み」チェックで運用できるよう、記録なしとして返す
+    // sql/067 未適用の環境: 画面は従来の「集荷手配済み」チェックで運用できるよう、記録なしとして返す
     if (isPickupTableMissing(e)) {
-      return NextResponse.json({ requests: [], live: null, legacy: true, bizlogi: { available: false, reason: "集荷依頼の記録 (sql/062) が未適用です" } })
+      return NextResponse.json({ requests: [], live: null, legacy: true, bizlogi: { available: false, reason: "集荷依頼の記録 (sql/067) が未適用です" } })
     }
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }

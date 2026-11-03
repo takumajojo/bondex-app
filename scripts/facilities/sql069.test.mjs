@@ -1,5 +1,5 @@
-// sql/065_facilities.sql (ホテル受付可否の共通台帳) を PGlite で検証する。本番・Supabase には一切触れない。
-//   PGlite を入れたディレクトリで: node <repo>/scripts/facilities/sql065.test.mjs <repo>/sql/065_facilities.sql
+// sql/069_facilities.sql (ホテル受付可否の共通台帳) を PGlite で検証する。本番・Supabase には一切触れない。
+//   PGlite を入れたディレクトリで: node <repo>/scripts/facilities/sql069.test.mjs <repo>/sql/069_facilities.sql
 import { createRequire } from "node:module"
 import { readFileSync } from "node:fs"
 const { PGlite } = await import(createRequire(process.cwd() + "/").resolve("@electric-sql/pglite"))

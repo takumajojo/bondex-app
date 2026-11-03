@@ -108,7 +108,7 @@ export async function markManualRequested(
 /**
  * 運営が佐川の問合番号を手入力したとき、その区間に集荷依頼の記録が無ければ「手動依頼済み」として記録する
  * (2026-11-03 監査 P1-1)。番号がある = 佐川側に依頼がある。記録が無いと TODO から外れず、Excel で
- * 重ねて依頼する恐れがあるため。既に記録がある・sql/062 未適用のときは何もしない。失敗しても番号の保存は止めない。
+ * 重ねて依頼する恐れがあるため。既に記録がある・sql/067 未適用のときは何もしない。失敗しても番号の保存は止めない。
  */
 export async function recordManualFromTrackingNumber(
   row: PickupShipmentRow,
@@ -148,7 +148,7 @@ export async function resolvePickupRequest(
   store: PickupStore,
   now: () => Date = () => new Date(),
 ): Promise<{ ok: true; state: string } | { ok: false; reason: string }> {
-  // 世田谷への変更・取消の連絡と佐川の回答は「変更申請」(shipment_change_requests・sql/064) で記録する
+  // 世田谷への変更・取消の連絡と佐川の回答は「変更申請」(shipment_change_requests・sql/068) で記録する
   // (2026-11-04 段階C)。依頼記録だけを動かす旧操作は、区間の情報 (取消など) と食い違うため受け付けない。
   if (OBSOLETE_ACTIONS.has(action)) {
     return { ok: false, reason: "変更・取消は『変更申請』から登録してください (世田谷への連絡・佐川の回答・反映を記録し、区間の情報と一緒に更新します)" }

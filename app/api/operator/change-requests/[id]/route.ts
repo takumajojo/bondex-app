@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const nowIso = new Date().toISOString()
   const legRef = `${cr.booking_id}-L${(cr.leg_index ?? 0) + 1}`
 
-  // 段階C 以降の申請 (種類つき・sql/064)。佐川への連絡が要る申請は集荷依頼のパネルで連絡・回答・反映を記録する。
+  // 段階C 以降の申請 (種類つき・sql/068)。佐川への連絡が要る申請は集荷依頼のパネルで連絡・回答・反映を記録する。
   // 依頼前の申請 (締切後など) は、ここでの承認 = DB 関数で承認 → 反映 (付随処理つき)。
   const kind = String(cr.kind ?? "fields")
   if (kind !== "fields" && kind !== "correction") {

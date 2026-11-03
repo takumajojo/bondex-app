@@ -1,5 +1,5 @@
 // 区間の変更申請 (日程・個数・ホテル・代表者名・取消・問い合わせ番号・個別再手配)。2026-11-04 谷口さん承認 (段階A)。
-// 記録は shipment_change_requests (sql/043 を sql/064 で拡張)。判定と更新は DB 関数
+// 記録は shipment_change_requests (sql/043 を sql/068 で拡張)。判定と更新は DB 関数
 // (create_shipment_change / step_shipment_change / apply_shipment_change) が1トランザクションで行い、ここは呼ぶだけ。
 //   佐川へ集荷依頼済みの区間 (needs_sagawa): 登録 → 世田谷へ連絡 → 佐川の回答 (承認 / 不可) → 反映
 //   依頼前の区間: 登録 → 運営の承認 / 不可 → 反映
@@ -158,7 +158,7 @@ function toView(r: DbChangeRow): PickupChangeRow {
     number_policy: (r.number_policy as "kept" | "changed" | null) ?? null,
     new_shipping_number: str(r.new_shipping_number),
     old_shipping_number: str(r.old_shipping_number),
-    requested_by: str(r.requested_actor) ?? str(r.requester) ?? String(r.requested_by ?? ""),
+    requested_by: r.requested_by === "guest" ? `旅行者 (My Booking・${str(r.requester) ?? ""})` : str(r.requested_actor) ?? str(r.requester) ?? String(r.requested_by ?? ""),
     contacted_by: str(r.contacted_by),
     contact_note: str(r.contact_note),
     answered_by: str(r.answered_by),

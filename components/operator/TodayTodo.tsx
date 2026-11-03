@@ -239,7 +239,7 @@ export default function TodayTodo({ onSelectView }: { onSelectView?: (view: stri
           )}
           {data.pickupError && <div className="px-5 py-2 text-[12px] text-red-700">集荷依頼の一覧を読み込めません: {data.pickupError}</div>}
           {data.pickupLegacyMode && (
-            <div className="px-5 py-1 text-[11px] text-amber-700">集荷依頼の記録 (sql/062) が未適用のため、従来の「依頼済み」印で判定しています。</div>
+            <div className="px-5 py-1 text-[11px] text-amber-700">集荷依頼の記録 (sql/067) が未適用のため、従来の「依頼済み」印で判定しています。</div>
           )}
           {attention.length > 0 && (
             <>
@@ -360,7 +360,7 @@ function HotelTaskRow({
 }
 
 // 佐川への集荷依頼タスク1行 (未依頼の区間)。
-// 「Excel で依頼済みにする」で手動依頼として記録 (pickup_requests・sql/062)。「詳細・Biz-Logi」で依頼パネルを開く。
+// 「Excel で依頼済みにする」で手動依頼として記録 (pickup_requests・sql/067)。「詳細・Biz-Logi」で依頼パネルを開く。
 function SagawaPickupRow({
   t,
   overdue,

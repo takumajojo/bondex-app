@@ -5,7 +5,8 @@
  * 予約 API・カード登録の直前・運営の承認で、同じ関数を使う。
  *
  * 決まっていること:
- * - 受付締切は集荷の前日 17:00 JST（D03 確定 2026-11-02）。当日の集荷は不可。
+ * - 受付締切は集荷の前日 18:30 JST（2026-11-04 谷口さん決定。B2B と同じ lib/pickup-cutoff.ts の pickupCutoffAt）。
+ *   18:30:00 ちょうど以降は締切後。当日の集荷は不可。
  *   Biz-Logi も集荷依頼の指定日は「翌日以降」（E1-0090）。
  * - 日数は佐川「配達日数検索」の値（lib/sagawa-lead-time.ts）。佐川の側に日数の無い区間は無く、
  *   取れないのは当社の照会の失敗だけ（16.8）。失敗時は安全側の 3日で受ける（M04 確定 2026-11-02）。
@@ -16,10 +17,8 @@
  *   チェックイン前の荷物の受け取りを確認したホテルだけ（設計書 6.3 の 6）。
  */
 import { earliestArrivalYmd } from "@/lib/sagawa-lead-time"
+import { pickupCutoffAt } from "@/lib/pickup-cutoff"
 
-/** 受付締切: 集荷の何日前の何時（JST）まで。 */
-export const B2C_CUTOFF_DAYS_BEFORE = 1
-export const B2C_CUTOFF_HOUR_JST = 17
 /**
  * 何日先の集荷まで受けるか（M03 確定 2026-11-02: 180日）。
  * Biz-Logi は前日にまとめて送るので上限の理由にはならない。Stripe の与信の期限（30日）を超える予約は、
@@ -97,12 +96,15 @@ export function jstYmd(at: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(at)
 }
 
-/** 集荷日の受付締切（集荷の前日 17:00 JST）を UTC の Date で返す。 */
+/**
+ * 集荷日の受付締切（集荷の前日 18:30 JST）を Date で返す。B2B と同じ関数（pickupCutoffAt）で計算し、
+ * B2C だけの締切の計算は持たない。予約・変更・取消・カード登録の判定はすべてこれを使う。
+ * 日付が不正なら例外（締切が分からないまま受け付けない）。
+ */
 export function b2cCutoffAt(pickupDate: string): Date {
-  const eve = addDays(pickupDate, -B2C_CUTOFF_DAYS_BEFORE)
-  const [y, m, d] = eve.split("-").map(Number)
-  // JST = UTC+9（夏時間なし）
-  return new Date(Date.UTC(y, m - 1, d, B2C_CUTOFF_HOUR_JST - 9, 0, 0))
+  const at = pickupCutoffAt(pickupDate)
+  if (!at) throw new Error(`b2cCutoffAt: invalid pickup date ${pickupDate}`)
+  return new Date(at)
 }
 
 export function judgeB2cBookability(input: B2cBookabilityInput): B2cBookabilityResult {

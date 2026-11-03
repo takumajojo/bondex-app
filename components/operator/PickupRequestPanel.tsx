@@ -79,7 +79,7 @@ interface PanelData {
   live: PickupRequestRow | null
   changes?: ChangeRow[]
   eligibility?: { ok: true } | { ok: false; reason: string } | null
-  /** sql/062 未適用 (従来の「集荷手配済み」チェックで運用中) */
+  /** sql/067 未適用 (従来の「集荷手配済み」チェックで運用中) */
   legacy?: boolean
   bizlogi: { available: true; environment: "test" | "production"; live: boolean } | { available: false; reason: string }
 }

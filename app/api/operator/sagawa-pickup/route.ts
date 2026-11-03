@@ -10,10 +10,10 @@ export const runtime = "nodejs"
  * 佐川への集荷依頼を「連絡済み (手動・佐川指定 Excel)」にする (2026-09-16 谷口さん)。middleware で operator 認証済み。
  *   POST /api/operator/sagawa-pickup   { shipmentId, undo?: true, actor? }
  *
- * 2026-11-03〜 集荷依頼の記録 (pickup_requests・sql/062) に手動依頼として記録する。
+ * 2026-11-03〜 集荷依頼の記録 (pickup_requests・sql/067) に手動依頼として記録する。
  * Biz-Logi で依頼済み・結果不明などの区間には重ねて記録できない (二重依頼の防止)。
  * undo は手動の記録だけを無効にできる (Biz-Logi の受付は世田谷営業所への取消連絡が必要)。
- * sql/062 未適用の環境では従来どおり pickup_requested_at だけを更新する。
+ * sql/067 未適用の環境では従来どおり pickup_requested_at だけを更新する。
  */
 export async function POST(req: NextRequest) {
   const limit = rateLimit(req, "sagawa-pickup")
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const r = await markManualRequested(row, actor, store)
     return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.reason }, { status: 409 })
   } catch (e) {
-    // sql/062 未適用 (pickup_requests が無い) の環境だけ、従来の印の更新に戻す
+    // sql/067 未適用 (pickup_requests が無い) の環境だけ、従来の印の更新に戻す
     const msg = e instanceof Error ? e.message : String(e)
     if (!(e instanceof PickupStoreError) || !isPickupTableMissing(e)) {
       return NextResponse.json({ error: msg }, { status: 500 })
