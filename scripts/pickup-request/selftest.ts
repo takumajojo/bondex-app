@@ -442,7 +442,6 @@ async function main() {
           select: () => q,
           update: (d: Record<string, unknown>) => { upd = d; return q },
           eq: (c: string, v: unknown) => { f.push((r) => (r as Record<string, unknown>)[c] === v); return q },
-          lt: (c: string, v: string) => { f.push((r) => String((r as Record<string, unknown>)[c]) < v); return q },
           is: (c: string, v: unknown) => { f.push((r) => ((r as Record<string, unknown>)[c] ?? null) === v); return q },
           limit: () => q,
           then: (res: (v: { data: unknown[]; error: null }) => void) => {

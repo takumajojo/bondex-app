@@ -14,20 +14,21 @@ export async function alertStaleSending(
   alert: (input: OpsAlertInput) => Promise<unknown>,
   now: Date = new Date(),
 ): Promise<{ alerted: number; note: string }> {
-  const before = new Date(now.getTime() - STALE_SENDING_MS).toISOString()
+  // 経過時間はここで判定する (DB 側の比較演算に頼らない。送信中の記録は通常0〜数件)。
   const { data, error } = await sb
     .from("pickup_requests")
     .select("id, booking_id, leg_index, environment, updated_at, pickup_date")
     .eq("state", "sending")
-    .lt("updated_at", before)
     .is("stale_alerted_at", null)
-    .limit(50)
+    .limit(200)
   if (error) {
     if (isPickupTableMissing(new Error(error.message))) return { alerted: 0, note: "pickup_requests 未作成" }
     return { alerted: 0, note: `読み込み失敗: ${error.message}` }
   }
   let alerted = 0
-  for (const r of (data ?? []) as Array<{ id: string; booking_id: string; leg_index: number; environment: string | null; updated_at: string; pickup_date: string | null }>) {
+  type Row = { id: string; booking_id: string; leg_index: number; environment: string | null; updated_at: string; pickup_date: string | null }
+  const stale = ((data ?? []) as Row[]).filter((r) => now.getTime() - Date.parse(r.updated_at) > STALE_SENDING_MS)
+  for (const r of stale) {
     // 先に印を付けた実行だけが通知する (並走しても1回だけ)
     const { data: marked, error: mErr } = await sb
       .from("pickup_requests")
