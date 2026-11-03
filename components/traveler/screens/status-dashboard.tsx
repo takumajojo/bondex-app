@@ -102,7 +102,7 @@ export function StatusDashboard({ data, onBack }: StatusDashboardProps) {
   const currentIndex = steps.findIndex(s => s.key === currentStatus)
 
   const handleCopyTracking = () => {
-    navigator.clipboard.writeText(trackingNumber)
+    navigator.clipboard.writeText(trackingNumber ?? "")
     setCopiedTracking(true)
     setTimeout(() => setCopiedTracking(false), 2000)
   }
