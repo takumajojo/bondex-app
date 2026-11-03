@@ -27,6 +27,8 @@ export interface PickupShipmentRow {
   booking_name: string | null
   tour_number: string | null
   suitcase_count: number | null
+  /** 'fit' | 'group' (sql/021)。団体は Biz-Logi で送らない。 */
+  booking_type?: string | null
   from_hotel: string
   from_hotel_ja: string | null
   from_place_id: string | null
@@ -39,7 +41,7 @@ export interface PickupShipmentRow {
 }
 
 export const PICKUP_SHIPMENT_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers"
+  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers"
 
 export interface LegInputEnv {
   kokyakuCode: string

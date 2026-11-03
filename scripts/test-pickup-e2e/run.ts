@@ -441,7 +441,7 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
   })
 
   console.log("8. 1個口・40個口・100個口")
-  for (const n of [1, 40]) {
+  for (const n of [1, 19]) {
     await test(`${n}個口: 電文の配送個口数=${n}・応答の問合番号は1つ`, async () => {
       const leg = await newLeg({ suitcase_count: n })
       const { send } = await previewAndSend(leg)
@@ -453,13 +453,191 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
       assert.equal((await ship(leg)).tracking_numbers.length, 1)
     })
   }
-  await test("100個口: 仕様 (2桁) を超えるので送らずエラー表示・通信なし", async () => {
+  await test("40個口・100個口: 20個以上のため送らずエラー表示・通信なし (99超の電文の検証は単体試験とテスト環境で確認済み)", async () => {
+    for (const n of [40]) {
+      const l = await newLeg({ suitcase_count: n })
+      const c = mock.checks
+      const r = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: l })
+      assert.equal(r.body.ok, false)
+      assert.equal(mock.checks, c)
+    }
     const leg = await newLeg({ suitcase_count: 100 })
     const c0 = mock.checks
     const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
     assert.equal(pv.body.ok, false)
-    assert.ok((pv.body.errors as string[]).some((e) => /haisoKosu|個口/.test(e)), JSON.stringify(pv.body.errors))
+    assert.ok((pv.body.errors as string[]).some((e) => /haisoKosu|個口|19個まで/.test(e)), JSON.stringify(pv.body.errors))
     assert.equal(mock.checks, c0)
+  })
+
+  console.log("10. 20個以上・団体は Biz-Logi で送らない (サーバ・DB で強制)")
+  await test("20個: 確認は送信前に拒否・送信も拒否・通信なし。画面情報も『手動手配のみ』", async () => {
+    const leg = await newLeg({ suitcase_count: 20 })
+    const c0 = mock.checks, i0 = mock.issues
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    assert.equal(pv.body.ok, false)
+    assert.ok((pv.body.errors as string[]).some((e) => /19個まで/.test(e)))
+    const send = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: "x", actor: "谷口", confirmNoManual: true })
+    assert.equal(send.status, 409)
+    assert.equal(mock.checks + mock.issues, c0 + i0)
+    const g = await call("GET", "/api/operator/pickup-request", undefined, `?shipmentId=${leg}`)
+    assert.equal((g.body.eligibility as { ok: boolean }).ok, false)
+    const t = await todo()
+    assert.ok(t.needRequest.find((x: { shipmentId: string }) => x.shipmentId === leg)?.manualOnlyReason)
+  })
+  await test("DB 関数でも拒否 (画面・API を通さない確保でも 20個以上・団体は不可)", async () => {
+    const leg20 = await newLeg({ suitcase_count: 25 })
+    const legG = await newLeg({ suitcase_count: 5, booking_type: "group" })
+    const r1 = (await db.query(`select * from claim_pickup_request($1,'bizlogi','production','X',25,current_date,'a','o',null,null)`, [leg20])).rows[0]
+    const r2 = (await db.query(`select * from claim_pickup_request($1,'bizlogi','production','X',5,current_date,'a','o',null,null)`, [legG])).rows[0]
+    assert.equal(r1.reason, "too_many_pieces")
+    assert.equal(r2.reason, "group_booking")
+  })
+  await test("19個は送れる・20個以上でも手動 (Excel) の記録はできる", async () => {
+    const leg19 = await newLeg({ suitcase_count: 19 })
+    const { send } = await previewAndSend(leg19)
+    assert.equal(send!.status, 200)
+    const leg30 = await newLeg({ suitcase_count: 30 })
+    assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg30, actor: "谷口" })).status, 200)
+    assert.equal((await reqs(leg30))[0].channel, "manual")
+  })
+
+  console.log("11. 受付後のホテル変更 (佐川の回答を記録してから反映)")
+  const change = (body: Record<string, unknown>) => call("POST", "/api/operator/pickup-request", { actor: "谷口", ...body })
+  const changes = async (leg: string) => (await db.query(`select * from pickup_change_requests where shipment_id=$1 order by created_at`, [leg])).rows
+  let legH = ""
+  let numH = ""
+  await test("佐川の回答前は区間のホテル情報を変えない (登録・連絡の段階・反映の先回りは拒否)", async () => {
+    legH = await newLeg()
+    const { send } = await previewAndSend(legH)
+    numH = String(send!.body.shippingNumber)
+    const before = await ship(legH)
+    const c = await change({ action: "change_create", shipmentId: legH, side: "guest", newHotel: "Test Hotel Osaka", newHotelJa: "テストホテル大阪", newPlaceId: "p-to2", newPrefecture: "大阪府", reason: "旅行者の宿泊先変更" })
+    assert.equal(c.status, 200, JSON.stringify(c.body))
+    const id = String(c.body.changeId)
+    assert.equal((await change({ action: "change_apply", changeId: id })).status, 409, "未承認は反映できない")
+    assert.equal((await change({ action: "change_step", changeId: id, step: "approve", note: "x", numberPolicy: "kept" })).status, 409, "連絡前に承認は記録できない")
+    assert.equal((await change({ action: "change_step", changeId: id, step: "contact" })).status, 409, "連絡内容が必須")
+    assert.equal((await change({ action: "change_step", changeId: id, step: "contact", note: "世田谷へ到着先変更をメール" })).status, 200)
+    assert.equal((await reqs(legH))[0].state, "change_pending")
+    assert.equal((await change({ action: "change_apply", changeId: id })).status, 409, "回答待ちは反映できない")
+    const now = await ship(legH)
+    assert.equal(now.to_hotel, before.to_hotel)
+    assert.equal(now.to_place_id, before.to_place_id)
+    assert.equal((await change({ action: "change_create", shipmentId: legH, side: "guest", newHotel: "X", newPlaceId: "p", reason: "r" })).status, 409, "進行中の変更は1件まで")
+  })
+  await test("二重集荷依頼の防止: 変更の途中でも Biz-Logi の送信・Excel の記録はできない", async () => {
+    const i0 = mock.issues
+    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: legH })).status, 409)
+    assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: legH, actor: "谷口" })).body.alreadyRecorded, true)
+    assert.equal(mock.issues, i0)
+    assert.equal((await reqs(legH)).length, 1)
+  })
+  await test("佐川が承認 (番号維持) → 反映: ホテル更新・履歴保存・番号そのまま・要確認に出ない", async () => {
+    const id = (await changes(legH))[0].id
+    assert.equal((await change({ action: "change_step", changeId: id, step: "approve", note: "佐川: 変更可・番号そのまま", numberPolicy: "kept", newNumber: "123" })).status, 409, "維持なのに新番号は不可")
+    assert.equal((await change({ action: "change_step", changeId: id, step: "approve", note: "佐川: 変更可・番号そのまま", numberPolicy: "kept" })).status, 200)
+    assert.equal((await change({ action: "change_apply", changeId: id })).status, 200)
+    const s2 = await ship(legH)
+    assert.equal(s2.to_hotel, "Test Hotel Osaka")
+    assert.equal(s2.to_place_id, "p-to2")
+    assert.deepEqual(s2.tracking_numbers, [numH])
+    const r = (await reqs(legH))[0]
+    assert.equal(r.state, "accepted")
+    assert.equal(r.shipping_number, numH)
+    const hist = (await db.query(`select * from shipment_hotel_changes where shipment_id=$1`, [legH])).rows
+    assert.equal(hist.length, 1)
+    assert.equal(hist[0].old_hotel, "Test Hotel Kyoto")
+    assert.match(hist[0].reason, /佐川の回答/)
+    const c = (await changes(legH))[0]
+    assert.equal(c.state, "applied")
+    assert.equal(c.old_hotel, "Test Hotel Kyoto")
+    assert.ok(c.hotel_change_id)
+    assert.ok(!(await todo()).attention.some((x: { shipmentId: string }) => x.shipmentId === legH), "依頼内容も更新され、変更連絡の催促は出ない")
+  })
+  let legN = ""
+  let oldN = ""
+  await test("番号の振り直し: 形式・同じ番号・他の区間で使用中を拒否", async () => {
+    legN = await newLeg({ agency: "T" })
+    const { send } = await previewAndSend(legN)
+    oldN = String(send!.body.shippingNumber)
+    const c = await change({ action: "change_create", shipmentId: legN, side: null, reason: "佐川が番号を振り直し" })
+    const id = String(c.body.changeId)
+    await change({ action: "change_step", changeId: id, step: "contact", note: "世田谷へ確認" })
+    for (const [num, why] of [["12345", "形式"], [oldN, "同じ番号"], [numH, "他の区間で使用中"]] as const) {
+      const r = await change({ action: "change_step", changeId: id, step: "approve", note: "佐川: 新番号", numberPolicy: "changed", newNumber: num })
+      assert.equal(r.status, 409, why)
+    }
+    assert.equal((await changes(legN))[0].state, "contacted")
+  })
+  await test("番号の振り直し → 反映: 旧番号と追跡明細を履歴に退避・区間と記録を新番号にそろえる", async () => {
+    await db.query(`update shipments set tracking_detail = '[{"number":"x","queryCount":3}]'::jsonb where id=$1`, [legN])
+    const id = (await changes(legN))[0].id
+    assert.equal((await change({ action: "change_step", changeId: id, step: "approve", note: "佐川: 新番号 2000-0000-0001", numberPolicy: "changed", newNumber: "2000-0000-0001" })).status, 200)
+    assert.equal((await change({ action: "change_apply", changeId: id })).status, 200)
+    const s2 = await ship(legN)
+    assert.deepEqual(s2.tracking_numbers, ["200000000001"])
+    assert.equal(s2.tracking_detail, null, "新番号で追跡をやり直す")
+    assert.equal((await reqs(legN))[0].shipping_number, "200000000001")
+    const c = (await changes(legN))[0]
+    assert.equal(c.old_shipping_number, oldN)
+    assert.deepEqual(c.old_tracking_numbers, [oldN])
+    assert.ok(c.old_tracking_detail, "旧番号の追跡明細を保存")
+    assert.equal(s2.to_hotel, "Test Hotel Kyoto", "番号だけの変更ではホテルは変えない")
+  })
+  await test("振り直し後の追跡・通知・課金: 新番号だけを照会し、集荷メール・課金は1回ずつ", async () => {
+    const { reconcileTrackingNow } = await import("../../lib/tracking/reconcile")
+    const { chargeCalls } = await import("./fakes/charge")
+    const queried: string[] = []
+    const g = globalThis as unknown as { __capturedMails?: Array<{ subject?: string }> }
+    g.__capturedMails = []
+    const c0 = chargeCalls.filter((x) => x === legN).length
+    const prov = { name: "mock", async fetchOne(_c: string, n: string) { queried.push(n); return { number: n, noData: false, status: "picked_up" as const, exception: null } } }
+    await reconcileTrackingNow(sb as never, legN, prov as never)
+    await reconcileTrackingNow(sb as never, legN, prov as never)
+    assert.ok(queried.length > 0 && queried.every((n) => n === "200000000001") && !queried.some((n) => n === oldN), JSON.stringify(queried))
+    assert.equal((await ship(legN)).status, "picked_up")
+    assert.equal((g.__capturedMails ?? []).filter((m) => /集荷/.test(String(m.subject))).length, 1)
+    assert.equal(chargeCalls.filter((x) => x === legN).length - c0, 1)
+  })
+  await test("佐川が変更不可と回答 → 区間の情報はそのまま・集荷依頼は受付済みに戻る", async () => {
+    const leg = await newLeg()
+    await previewAndSend(leg)
+    const before = await ship(leg)
+    const c = await change({ action: "change_create", shipmentId: leg, side: "pickup", newHotel: "Other", newPlaceId: "p-to2", reason: "発送元の変更希望" })
+    const id = String(c.body.changeId)
+    await change({ action: "change_step", changeId: id, step: "contact", note: "世田谷へ連絡" })
+    assert.equal((await change({ action: "change_step", changeId: id, step: "reject", note: "佐川: 集荷当日のため変更不可" })).status, 200)
+    const after = await ship(leg)
+    assert.equal(after.from_hotel, before.from_hotel)
+    assert.deepEqual(after.tracking_numbers, before.tracking_numbers)
+    assert.equal((await reqs(leg))[0].state, "accepted")
+    assert.equal((await changes(leg))[0].state, "rejected")
+    assert.equal((await change({ action: "change_apply", changeId: id })).status, 409)
+  })
+  await test("集荷済み以降・受付前の区間は変更を登録できない", async () => {
+    const fresh = await newLeg()
+    assert.equal((await change({ action: "change_create", shipmentId: fresh, side: "guest", newHotel: "X", newPlaceId: "p", reason: "r" })).status, 409)
+    assert.equal((await change({ action: "change_create", shipmentId: legN, side: "guest", newHotel: "X", newPlaceId: "p", reason: "r" })).status, 409, "legN は集荷済み")
+  })
+  await test("運営の番号入力で、集荷依頼の記録と紐付いた番号は書き換えられない (振り直しは変更の記録から)", async () => {
+    const edit = await import("../../app/api/operator/shipment/[id]/edit/route")
+    const leg = await newLeg()
+    const { send } = await previewAndSend(leg)
+    const req = new NextRequest(`http://localhost/api/operator/shipment/${leg}/edit`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.9.9.9" }, body: JSON.stringify({ tracking: ["300000000003"] }) })
+    const res = await edit.POST(req, { params: Promise.resolve({ id: leg }) })
+    assert.equal(res.status, 409)
+    assert.deepEqual((await ship(leg)).tracking_numbers, [String(send!.body.shippingNumber)])
+  })
+  await test("代理店のセルフ変更: 佐川へ依頼済み (依頼済み印あり) の区間はロック", async () => {
+    const { legLockedForAgency } = await import("../../lib/agency-self-service")
+    assert.equal(legLockedForAgency({ status: "requested", tracking_numbers: null, pickup_requested_at: "2026-11-04T00:00:00Z" }), true)
+    assert.equal(legLockedForAgency({ status: "requested", tracking_numbers: null, pickup_requested_at: null }), false, "未依頼は従来どおり変更できる")
+  })
+  await test("手動 (Excel) で依頼した番号なしの区間: 従来の運営のホテル変更は今までどおり使える", async () => {
+    const leg = await newLeg()
+    await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })
+    const r = await db.query(`select apply_hotel_change($1::uuid,'guest','Test Hotel Osaka','テストホテル大阪','p-to2',null,'大阪府',false,null,false,'operator:t','T',false) as id`, [leg])
+    assert.ok(r.rows[0].id)
   })
 
   console.log("9. 大量予約・同時実行 (PGlite・参考値)")

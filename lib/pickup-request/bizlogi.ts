@@ -22,6 +22,7 @@ import type { OpsAlertInput } from "@/lib/ops-alert"
 import { legTrackingNumbers } from "@/lib/shipment-reissue"
 import { legRef, type PickupShipmentRow } from "./leg-input"
 import { PickupStoreError, type PickupStore } from "./store"
+import { bizlogiEligibility } from "./eligibility"
 import { pickupSnapshot } from "./snapshot"
 
 export interface BizLogiSendDeps {
@@ -59,6 +60,8 @@ const ymd = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000).toISOString().s
 /** 送信前の判定。区間の状態とローカル検証だけで決まるもの (DB の依頼記録は claim で見る)。 */
 function precheck(row: PickupShipmentRow, now: Date): string[] {
   const errors: string[] = []
+  const elig = bizlogiEligibility(row)
+  if (!elig.ok) errors.push(elig.reason)
   if (row.status === "cancelled") errors.push("この区間は取消済みです")
   if (legTrackingNumbers(row).length > 0) errors.push("佐川の問合番号が入力済みです (佐川側に依頼があります)")
   if (pickupRequestClosed(row.shipment_date, now)) {
@@ -255,6 +258,10 @@ export function claimReasonJa(reason: string): string {
       return "この区間は取消済みです"
     case "tracking_number_exists":
       return "佐川の問合番号が入力済みです"
+    case "too_many_pieces":
+      return "20個以上のため Biz-Logi では送りません。佐川へ事前連絡のうえ手動 (Excel) で手配してください"
+    case "group_booking":
+      return "団体の予約は Biz-Logi では送りません。手動 (Excel) で手配してください"
     case "shipment_not_found":
       return "区間が見つかりません"
     default:

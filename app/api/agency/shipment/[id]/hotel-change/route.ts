@@ -88,7 +88,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // ロックゲート (送り状が実在 / 追跡番号あり / 集荷済み以降は BondEx へ連絡)。
   // 2026-09-24〜 依頼直後から "issued" (手配済) になるため status だけでは判定しない。
-  if (legLockedForAgency({ status: ship.status as string, tracking_numbers: ship.tracking_numbers as string[] | null, label_url: (ship as { label_url?: string | null }).label_url ?? null })) {
+  if (legLockedForAgency({ status: ship.status as string, tracking_numbers: ship.tracking_numbers as string[] | null, label_url: (ship as { label_url?: string | null }).label_url ?? null, pickup_requested_at: (ship as { pickup_requested_at?: string | null }).pickup_requested_at ?? null })) {
     return NextResponse.json(
       {
         error: "LOCKED",

@@ -18,6 +18,8 @@ export interface LockInput {
   status: string | null | undefined
   label_url?: string | null
   tracking_numbers?: string[] | null
+  /** 運営が佐川へ集荷依頼済みと記録した時刻 (手動 Excel・Biz-Logi とも)。 */
+  pickup_requested_at?: string | null
 }
 
 /** 代理店がこの区間を自分で変更できないなら true。 */
@@ -25,6 +27,9 @@ export function legLockedForAgency(s: LockInput): boolean {
   if (!EDITABLE_STATUSES.has(s.status || "")) return true
   if (s.label_url) return true
   if ((s.tracking_numbers?.length ?? 0) > 0) return true
+  // 佐川へ集荷依頼した後は、佐川側の変更 (世田谷営業所への連絡) が要るので代理店のセルフ変更は受けない
+  // (2026-11-04 谷口さん)。変更は BondEx が受付後の変更として扱う。
+  if (s.pickup_requested_at) return true
   return false
 }
 

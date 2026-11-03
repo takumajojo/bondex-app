@@ -11,6 +11,7 @@ import { endpointLabel } from "@/lib/residence"
 import { pickupRequestCutoff } from "@/lib/bizlogi/deadline"
 import { STALE_SENDING_MS, isLive, type PickupRequestRow } from "./state"
 import { snapshotChanges } from "./snapshot"
+import { bizlogiEligibility } from "./eligibility"
 import { legTrackingNumbers } from "@/lib/shipment-reissue"
 
 /** 依頼が必要な区間を何日先まで出すか (前日締めに備えて早めに見せる)。 */
@@ -30,6 +31,7 @@ export interface PickupTodoLeg {
   from_residence: unknown
   suitcase_count: number | null
   tracking_numbers: unknown
+  booking_type?: string | null
   // 依頼後の変更検知用 (./snapshot.ts)。古い呼び出し元のために任意。
   from_place_id?: string | null
   to_hotel?: string | null
@@ -40,7 +42,7 @@ export interface PickupTodoLeg {
 }
 
 export const PICKUP_TODO_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, representative, tour_number, from_hotel, from_hotel_ja, from_residence, suitcase_count, tracking_numbers, from_place_id, to_hotel, to_place_id, to_residence, expected_arrival, delivery_time"
+  "id, booking_id, leg_index, status, carrier, shipment_date, representative, tour_number, from_hotel, from_hotel_ja, from_residence, suitcase_count, tracking_numbers, booking_type, from_place_id, to_hotel, to_place_id, to_residence, expected_arrival, delivery_time"
 
 export type PickupUrgency = "overdue" | "due" | "upcoming"
 export type AttentionKind =
@@ -53,6 +55,10 @@ export type AttentionKind =
   | "changed_after_request"
   /** 佐川の問合番号はあるのに集荷依頼の記録が無い → 依頼済みとして記録が必要 (Excel で重ねて依頼しない) */
   | "record_missing"
+  /** 受付後の変更 (ホテル・番号) の希望を登録済みで、世田谷へ未連絡 */
+  | "hotel_change_requested"
+  /** 受付後の変更を佐川が承認済みで、BondEx へ未反映 */
+  | "hotel_change_approved"
 
 export interface SagawaPickupTask {
   shipmentId: string
@@ -67,6 +73,8 @@ export interface SagawaPickupTask {
   /** overdue=当日以前 (締め超過) / due=明日発送 (今日20時が締め) / upcoming=2日後以降 */
   urgency: PickupUrgency
   cutoffAt: string | null
+  /** Biz-Logi で送れない理由 (20個以上・団体)。null は送れる。手動 (Excel) では依頼できる。 */
+  manualOnlyReason?: string | null
 }
 
 export interface PickupAttentionTask extends Omit<SagawaPickupTask, "urgency" | "cutoffAt"> {
@@ -111,7 +119,23 @@ function base(l: PickupTodoLeg) {
 }
 
 /** DB に触れない判定本体 (テスト対象)。legs は今日〜先読み日の取消以外の区間と、要対応の記録が指す区間。 */
-export function buildPickupTodo(legs: PickupTodoLeg[], requests: PickupRequestRow[], today: string, now: Date): PickupTodo {
+export interface OpenChangeRow {
+  id: string
+  shipment_id: string
+  state: string
+  side: string | null
+  new_hotel: string | null
+  new_hotel_ja: string | null
+  updated_at: string
+}
+
+export function buildPickupTodo(
+  legs: PickupTodoLeg[],
+  requests: PickupRequestRow[],
+  today: string,
+  now: Date,
+  openChanges: OpenChangeRow[] = [],
+): PickupTodo {
   const legById = new Map(legs.map((l) => [l.id, l]))
   const live = new Map<string, PickupRequestRow>()
   for (const r of requests) if (isLive(r.state)) live.set(r.shipment_id, r)
@@ -130,6 +154,10 @@ export function buildPickupTodo(legs: PickupTodoLeg[], requests: PickupRequestRo
       ...base(l),
       urgency: l.shipment_date <= today ? "overdue" : l.shipment_date === tomorrow ? "due" : "upcoming",
       cutoffAt: pickupRequestCutoff(l.shipment_date)?.toISOString() ?? null,
+      manualOnlyReason: (() => {
+        const e = bizlogiEligibility(l)
+        return e.ok ? null : e.reason
+      })(),
     })
   }
   needRequest.sort((a, b) => a.shipmentDate.localeCompare(b.shipmentDate))
@@ -160,6 +188,23 @@ export function buildPickupTodo(legs: PickupTodoLeg[], requests: PickupRequestRo
       changes: kind === "changed_after_request" ? changes : undefined,
     })
   }
+  // 受付後の変更 (未連絡・承認済みで未反映)。連絡中 (contacted) は集荷依頼の change_pending として上で出る。
+  for (const c of openChanges) {
+    const l = legById.get(c.shipment_id)
+    if (!l || (c.state !== "requested" && c.state !== "approved")) continue
+    const r = live.get(c.shipment_id)
+    attention.push({
+      ...base(l),
+      kind: c.state === "requested" ? "hotel_change_requested" : "hotel_change_approved",
+      requestId: r?.id ?? "",
+      channel: r?.channel ?? "",
+      state: r?.state ?? "",
+      shippingNumber: r?.shipping_number ?? null,
+      error: null,
+      note: c.side ? `新しい${c.side === "guest" ? "到着" : "発送元"}ホテル: ${c.new_hotel_ja || c.new_hotel || "-"}` : "問い合わせ番号の振り直し",
+      updatedAt: c.updated_at,
+    })
+  }
   // 記録が無いのに佐川の番号がある区間 (今日以降・取消以外)
   for (const l of legs) {
     if (l.status === "cancelled" || live.has(l.id) || l.shipment_date < today) continue
@@ -174,6 +219,8 @@ export function buildPickupTodo(legs: PickupTodoLeg[], requests: PickupRequestRo
     needs_review: 4,
     change_pending: 5,
     record_missing: 6,
+    hotel_change_approved: 3,
+    hotel_change_requested: 4,
   }
   attention.sort((a, b) => order[a.kind] - order[b.kind] || a.shipmentDate.localeCompare(b.shipmentDate))
   return { needRequest, attention, legacyMode: false }
@@ -223,11 +270,17 @@ export async function loadPickupTodo(sb: SupabaseClient, today: string, now: Dat
 
   // 記録が指す区間のうち、窓の外 (過去日・取消) のものを追加で読む
   const known = new Set(legs.map((l) => l.id))
-  const extraIds = [...new Set(requests.map((r) => r.shipment_id))].filter((id) => !known.has(id))
+  // 受付後の変更で進行中のもの (sql/062 の古い版では無い → 空)
+  const { data: chg } = await sb
+    .from("pickup_change_requests")
+    .select("id, shipment_id, state, side, new_hotel, new_hotel_ja, updated_at")
+    .in("state", ["requested", "approved"])
+  const openChanges = (chg ?? []) as OpenChangeRow[]
+  const extraIds = [...new Set([...requests.map((r) => r.shipment_id), ...openChanges.map((c) => c.shipment_id)])].filter((id) => !known.has(id))
   if (extraIds.length) {
     const { data: extra, error: exErr } = await sb.from("shipments").select(PICKUP_TODO_COLUMNS).in("id", extraIds)
     if (exErr) throw new Error(`集荷依頼TODOの区間を読めません: ${exErr.message}`)
     legs.push(...((extra ?? []) as unknown as Array<PickupTodoLeg & { pickup_requested_at: string | null }>))
   }
-  return buildPickupTodo(legs, requests, today, now)
+  return buildPickupTodo(legs, requests, today, now, openChanges)
 }

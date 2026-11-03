@@ -37,6 +37,8 @@ interface SagawaPickupTask {
   fromHotelJa: string | null
   shipmentDate: string
   suitcaseCount?: number
+  /** Biz-Logi で送れない理由 (20個以上・団体)。手動 (Excel) で手配する */
+  manualOnlyReason?: string | null
   /** overdue=当日以前 / due=明日発送 (今日20時締め) / upcoming=2日後以降 */
   urgency: string
   cutoffAt?: string | null
@@ -59,6 +61,8 @@ const ATTENTION_LABEL: Record<string, string> = {
   change_pending: "変更・取消の返信待ち",
   changed_after_request: "依頼後に内容が変わった・世田谷へ変更連絡",
   record_missing: "問合番号はあるが依頼の記録なし（Excel で重ねて依頼しない）",
+  hotel_change_requested: "受付後の変更を登録済み・世田谷へ未連絡",
+  hotel_change_approved: "佐川が変更を承認・BondEx へ未反映",
 }
 
 interface TodoData {
@@ -397,6 +401,9 @@ function SagawaPickupRow({
             {badge}
             <span className="text-[11px] text-muted-foreground">発送 {md}</span>
             {t.suitcaseCount ? <span className="text-[11px] text-muted-foreground">・{t.suitcaseCount}個</span> : null}
+            {t.manualOnlyReason ? (
+              <span title={t.manualOnlyReason} className="rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-bold">手動手配のみ（佐川へ事前連絡）</span>
+            ) : null}
             {t.tourNumber && <span className="text-[11px] text-muted-foreground">・ツアー {t.tourNumber}</span>}
           </div>
           <p className="mt-0.5 text-[12px] text-foreground">

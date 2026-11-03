@@ -20,7 +20,7 @@ await db.exec(`
     booking_id text not null, leg_index int not null default 0,
     shipment_date date not null, status text not null default 'requested',
     carrier text default 'sagawa', tracking_numbers jsonb, pickup_requested_at timestamptz,
-    suitcase_count int not null default 1,
+    suitcase_count int not null default 1, booking_type text not null default 'fit',
     from_hotel text default 'A', from_place_id text, from_residence jsonb, to_hotel text default 'B', to_place_id text,
     to_residence jsonb, expected_arrival date, delivery_time text,
     unique (booking_id, leg_index));

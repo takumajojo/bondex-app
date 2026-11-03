@@ -12,6 +12,8 @@ import {
 import { supabasePickupStore, liveRequestByShipment, PickupStoreError, isPickupTableMissing } from "@/lib/pickup-request/store"
 import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/state"
 import { cleanOverrides } from "@/lib/pickup-request/leg-input"
+import { bizlogiEligibility } from "@/lib/pickup-request/eligibility"
+import { applyPickupChange, createPickupChange, listPickupChanges, stepPickupChange, type ChangeStep } from "@/lib/pickup-request/change"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -24,6 +26,10 @@ export const maxDuration = 60
  *   POST { action: "bizlogi_send", shipmentId, fingerprint, actor, confirmNoManual: true }  集荷依頼を送信
  *   POST { action: "manual_mark", shipmentId, actor, note? }               佐川指定 Excel で依頼したことを記録
  *   POST { action: "resolve", requestId, resolveAction, actor, shippingNumber?, note? }  運営の確認結果を記録
+ *   受付後の変更 (ホテル・問い合わせ番号。佐川の回答前は区間の情報を変えない):
+ *   POST { action: "change_create", shipmentId, side: "guest"|"pickup"|null, newHotel, newHotelJa, newPlaceId, newCity?, newPrefecture?, reason, actor }
+ *   POST { action: "change_step", changeId, step: "contact"|"approve"|"reject"|"withdraw", actor, note, numberPolicy?, newNumber? }
+ *   POST { action: "change_apply", changeId, actor }   承認済みの変更を区間へ反映
  *
  * actor = 操作した運営担当者名 (運営ログインは共有のため入力してもらう)。
  * 送信はボタン操作からだけ。自動送信・自動再送はしない。
@@ -42,7 +48,17 @@ export async function GET(req: NextRequest) {
   try {
     const rows = await supabasePickupStore().listForShipments([shipmentId])
     const live = liveRequestByShipment(rows).get(shipmentId) ?? null
-    return NextResponse.json({ requests: rows, live, bizlogi: bizLogiAvailability() })
+    const leg = await loadPickupShipment(shipmentId)
+    // 受付後の変更の記録 (sql/062 未適用の古い環境では空)
+    const changes = await listPickupChanges(shipmentId).catch(() => [])
+    return NextResponse.json({
+      requests: rows,
+      live,
+      changes,
+      bizlogi: bizLogiAvailability(),
+      // 20個以上・団体は Biz-Logi で送らない (手動 Excel のみ)
+      eligibility: leg ? bizlogiEligibility(leg) : null,
+    })
   } catch (e) {
     // sql/062 未適用の環境: 画面は従来の「集荷手配済み」チェックで運用できるよう、記録なしとして返す
     if (isPickupTableMissing(e)) {
@@ -91,8 +107,51 @@ export async function POST(req: NextRequest) {
       return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
     }
 
+    if (action === "change_step" || action === "change_apply") {
+      const changeId = typeof body.changeId === "string" ? body.changeId.trim() : ""
+      const actor = actorOf(body.actor)
+      if (!changeId) return NextResponse.json({ error: "changeId required" }, { status: 400 })
+      if (!actor) return NextResponse.json({ error: "担当者名を入力してください" }, { status: 400 })
+      if (action === "change_apply") {
+        const r = await applyPickupChange(changeId, actor)
+        return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
+      }
+      const step = body.step as ChangeStep
+      if (!["contact", "approve", "reject", "withdraw"].includes(step)) return NextResponse.json({ error: "step が不正です" }, { status: 400 })
+      const policy = body.numberPolicy === "kept" || body.numberPolicy === "changed" ? body.numberPolicy : null
+      const r = await stepPickupChange({
+        changeId,
+        step,
+        actor,
+        note: typeof body.note === "string" ? body.note.slice(0, 500) : null,
+        numberPolicy: policy,
+        newNumber: typeof body.newNumber === "string" ? body.newNumber : null,
+      })
+      return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
+    }
+
     const shipmentId = typeof body.shipmentId === "string" ? body.shipmentId.trim() : ""
     if (!shipmentId) return NextResponse.json({ error: "shipmentId required" }, { status: 400 })
+
+    if (action === "change_create") {
+      const actor = actorOf(body.actor)
+      if (!actor) return NextResponse.json({ error: "担当者名を入力してください" }, { status: 400 })
+      const str = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : null)
+      const side = body.side === "guest" || body.side === "pickup" ? body.side : null
+      const r = await createPickupChange({
+        shipmentId,
+        side,
+        newHotel: str(body.newHotel),
+        newHotelJa: str(body.newHotelJa),
+        newPlaceId: str(body.newPlaceId),
+        newCity: str(body.newCity),
+        newPrefecture: str(body.newPrefecture),
+        reason: str(body.reason) ?? "",
+        actor,
+      })
+      return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
+    }
+
     const row = await loadPickupShipment(shipmentId)
     if (!row) return NextResponse.json({ error: "区間が見つかりません" }, { status: 404 })
 

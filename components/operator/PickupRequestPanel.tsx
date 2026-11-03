@@ -45,9 +45,37 @@ export function OperatorNameInput({ value, onChange }: { value: string; onChange
   )
 }
 
+interface ChangeRow {
+  id: string
+  side: "guest" | "pickup" | null
+  new_hotel: string | null
+  new_hotel_ja: string | null
+  reason: string
+  state: "requested" | "contacted" | "approved" | "rejected" | "applied" | "withdrawn"
+  number_policy: "kept" | "changed" | null
+  new_shipping_number: string | null
+  old_shipping_number: string | null
+  old_hotel: string | null
+  contact_note: string | null
+  answer_note: string | null
+  requested_by: string
+  created_at: string
+}
+
+const CHANGE_STATE_LABEL: Record<ChangeRow["state"], string> = {
+  requested: "変更希望を登録（世田谷へ未連絡）",
+  contacted: "世田谷へ連絡済み（佐川の回答待ち）",
+  approved: "佐川が承認（BondEx へ未反映）",
+  rejected: "佐川が変更不可と回答",
+  applied: "反映済み",
+  withdrawn: "取り下げ",
+}
+
 interface PanelData {
   requests: PickupRequestRow[]
   live: PickupRequestRow | null
+  changes?: ChangeRow[]
+  eligibility?: { ok: true } | { ok: false; reason: string } | null
   /** sql/062 未適用 (従来の「集荷手配済み」チェックで運用中) */
   legacy?: boolean
   bizlogi: { available: true; environment: "test" | "production"; live: boolean } | { available: false; reason: string }
@@ -263,13 +291,15 @@ export default function PickupRequestPanel({
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <B k="manual" label="佐川指定 Excel で依頼済みにする" cls={secondary} onClick={markManual} />
-            {data.bizlogi.available ? (
+            {data.eligibility && !data.eligibility.ok ? (
+              <span className="text-[11px] text-amber-800">手動手配のみ：{data.eligibility.reason}</span>
+            ) : data.bizlogi.available ? (
               <B k="preview" label="Biz-Logi で依頼：送信内容を確認" cls={primary} onClick={runPreview} />
             ) : (
               <span className="text-[11px] text-muted-foreground">Biz-Logi は未設定（{data.bizlogi.reason}）</span>
             )}
           </div>
-          {data.bizlogi.available && (
+          {data.bizlogi.available && data.eligibility?.ok !== false && (
             <div>
               <button onClick={() => setShowNames((v) => !v)} className="text-[11px] text-blue-600 hover:underline">
                 佐川の宛名を指定（ホテル名・旅行者名が長く収まらない場合）{showNames ? " ▲" : " ▼"}
@@ -366,6 +396,19 @@ export default function PickupRequestPanel({
         </div>
       )}
 
+      {live && (live.state === "accepted" || live.state === "change_pending") && (
+        <AfterAcceptChange
+          shipmentId={shipmentId}
+          changes={data.changes ?? []}
+          liveState={live.state}
+          actor={actor}
+          busy={busy}
+          post={post}
+          onDone={done}
+          onError={setError}
+        />
+      )}
+
       {message && <p className="text-[11px] text-emerald-700">{message}</p>}
       {error && <p className="text-[11px] text-red-700">{error}</p>}
 
@@ -387,6 +430,168 @@ export default function PickupRequestPanel({
             </ul>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+// 集荷依頼の受付後の変更 (ホテル・問い合わせ番号)。佐川の回答 (承認) を記録するまで区間のホテル情報は変えない。
+function AfterAcceptChange({
+  shipmentId,
+  changes,
+  liveState,
+  actor,
+  busy,
+  post,
+  onDone,
+  onError,
+}: {
+  shipmentId: string
+  changes: ChangeRow[]
+  liveState: string
+  actor: string
+  busy: string
+  post: (key: string, body: Record<string, unknown>) => Promise<{ res: Response; d: Record<string, unknown> } | null>
+  onDone: (msg: string) => Promise<void>
+  onError: (msg: string) => void
+}) {
+  const open = changes.find((c) => ["requested", "contacted", "approved"].includes(c.state))
+  const [show, setShow] = useState(false)
+  const [side, setSide] = useState<"guest" | "pickup" | "none">("guest")
+  const [hotel, setHotel] = useState("")
+  const [hotelJa, setHotelJa] = useState("")
+  const [placeId, setPlaceId] = useState("")
+  const [pref, setPref] = useState("")
+  const [city, setCity] = useState("")
+  const [reason, setReason] = useState("")
+  const [note, setNote] = useState("")
+  const [policy, setPolicy] = useState<"kept" | "changed">("kept")
+  const [newNumber, setNewNumber] = useState("")
+  const btn = "rounded-lg px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-50"
+  const run = async (key: string, body: Record<string, unknown>, msg: string) => {
+    if (!actor.trim()) return onError("担当者名を入力してください")
+    const r = await post(key, { ...body, actor })
+    if (!r) return
+    if (!r.res.ok) return onError(String(r.d.error || "記録できませんでした"))
+    setNote("")
+    await onDone(msg)
+  }
+  const input = "rounded border border-border px-2 py-1 text-[12px]"
+  return (
+    <div className="space-y-1.5 rounded-lg border border-slate-200 bg-white p-2.5">
+      <p className="font-medium">受付後の変更（ホテル・問い合わせ番号）</p>
+      <p className="text-[11px] text-muted-foreground">
+        受付後は API で変更できません。世田谷営業所へ連絡し、佐川の回答（承認）を記録してから BondEx に反映します。回答前は区間のホテル情報は変わりません。
+        日付・個数・取消は上の「世田谷へ変更・取消を連絡した」を使ってください。
+      </p>
+      {open ? (
+        <div className="space-y-1.5">
+          <p className="text-[12px]">
+            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800">{CHANGE_STATE_LABEL[open.state]}</span>{" "}
+            {open.side ? `${open.side === "guest" ? "到着" : "発送元"}ホテル → ${open.new_hotel_ja || open.new_hotel}` : "問い合わせ番号の振り直し"}
+            <span className="text-muted-foreground">（理由：{open.reason}・登録 {open.requested_by}）</span>
+          </p>
+          {open.state === "requested" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="世田谷へ連絡した内容（必須）" className={`${input} w-64`} />
+              <button disabled={!!busy || liveState !== "accepted"} className={`${btn} bg-blue-600 text-white`} onClick={() => run("change_step", { action: "change_step", changeId: open.id, step: "contact", note }, "世田谷へ連絡済みとして記録しました")}>
+                世田谷へ連絡した
+              </button>
+              <button disabled={!!busy} className={`${btn} border border-border bg-white`} onClick={() => run("change_step", { action: "change_step", changeId: open.id, step: "withdraw", note }, "変更希望を取り下げました")}>
+                取り下げ
+              </button>
+            </div>
+          )}
+          {open.state === "contacted" && (
+            <div className="space-y-1">
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="佐川の回答の内容（必須）" className={`${input} w-72`} />
+              <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                <label className="inline-flex items-center gap-1"><input type="radio" checked={policy === "kept"} onChange={() => setPolicy("kept")} />問い合わせ番号は維持</label>
+                <label className="inline-flex items-center gap-1"><input type="radio" checked={policy === "changed"} onChange={() => setPolicy("changed")} />振り直し</label>
+                {policy === "changed" && <input value={newNumber} onChange={(e) => setNewNumber(e.target.value)} placeholder="新しい問い合わせ番号" className={`${input} w-40 font-mono`} />}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button disabled={!!busy} className={`${btn} bg-blue-600 text-white`} onClick={() => run("change_step", { action: "change_step", changeId: open.id, step: "approve", note, numberPolicy: policy, newNumber: policy === "changed" ? newNumber : undefined }, "佐川の承認を記録しました。内容を確認して BondEx へ反映してください")}>
+                  佐川が承認した
+                </button>
+                <button disabled={!!busy} className={`${btn} border border-border bg-white`} onClick={() => run("change_step", { action: "change_step", changeId: open.id, step: "reject", note }, "佐川の回答（変更不可）を記録しました。区間の情報は変わりません")}>
+                  佐川が変更不可と回答
+                </button>
+              </div>
+            </div>
+          )}
+          {open.state === "approved" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px]">佐川の回答：{open.answer_note}・番号 {open.number_policy === "changed" ? `振り直し → ${open.new_shipping_number}` : "維持"}</span>
+              <button disabled={!!busy} className={`${btn} bg-emerald-600 text-white`} onClick={() => run("change_apply", { action: "change_apply", changeId: open.id }, "BondEx へ反映しました（変更履歴を保存）")}>
+                BondEx へ反映する
+              </button>
+            </div>
+          )}
+        </div>
+      ) : liveState === "accepted" ? (
+        <div>
+          <button onClick={() => setShow((v) => !v)} className="text-[11px] text-blue-600 hover:underline">
+            変更希望を登録する {show ? "▲" : "▼"}
+          </button>
+          {show && (
+            <div className="mt-1 space-y-1">
+              <select value={side} onChange={(e) => setSide(e.target.value as typeof side)} className={input}>
+                <option value="guest">到着先ホテルを変える</option>
+                <option value="pickup">発送元（集荷先）ホテルを変える</option>
+                <option value="none">ホテルは変えない（問い合わせ番号の振り直しだけ）</option>
+              </select>
+              {side !== "none" && (
+                <div className="flex flex-wrap gap-2">
+                  <input value={hotel} onChange={(e) => setHotel(e.target.value)} placeholder="新しいホテル（英名・必須）" className={`${input} w-56`} />
+                  <input value={hotelJa} onChange={(e) => setHotelJa(e.target.value)} placeholder="日本語名" className={`${input} w-48`} />
+                  <input value={placeId} onChange={(e) => setPlaceId(e.target.value)} placeholder="Google place_id（必須）" className={`${input} w-56 font-mono`} />
+                  <input value={pref} onChange={(e) => setPref(e.target.value)} placeholder="都道府県" className={`${input} w-24`} />
+                  <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="市区町村" className={`${input} w-32`} />
+                </div>
+              )}
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="変更の理由（必須）" className={`${input} w-72`} />
+              <button
+                disabled={!!busy}
+                className={`${btn} bg-blue-600 text-white`}
+                onClick={() =>
+                  run(
+                    "change_create",
+                    {
+                      action: "change_create",
+                      shipmentId,
+                      side: side === "none" ? null : side,
+                      newHotel: hotel,
+                      newHotelJa: hotelJa,
+                      newPlaceId: placeId,
+                      newPrefecture: pref,
+                      newCity: city,
+                      reason,
+                    },
+                    "変更希望を登録しました。世田谷へ連絡したら記録してください（区間の情報はまだ変わりません）",
+                  )
+                }
+              >
+                変更希望を登録
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">別の変更・取消を世田谷へ連絡中です。</p>
+      )}
+      {changes.filter((c) => c !== open).length > 0 && (
+        <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+          {changes
+            .filter((c) => c !== open)
+            .map((c) => (
+              <li key={c.id}>
+                {new Date(c.created_at).toLocaleDateString("ja-JP")} {CHANGE_STATE_LABEL[c.state]}・
+                {c.side ? `${c.old_hotel ?? ""} → ${c.new_hotel_ja || c.new_hotel}` : "番号のみ"}
+                {c.number_policy === "changed" ? `・番号 ${c.old_shipping_number ?? "-"} → ${c.new_shipping_number}` : c.number_policy === "kept" ? "・番号維持" : ""}
+              </li>
+            ))}
+        </ul>
       )}
     </div>
   )

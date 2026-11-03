@@ -8,7 +8,7 @@ import { resyncBookingToDrive } from "@/lib/drive-resync"
 import { normalizeTrackingNo } from "@/lib/tracking-format"
 import { reconcileTrackingNow } from "@/lib/tracking/reconcile"
 import { loadPickupShipment, recordManualFromTrackingNumber } from "@/lib/pickup-request/service"
-import { supabasePickupStore } from "@/lib/pickup-request/store"
+import { supabasePickupStore, liveRequestByShipment, isPickupTableMissing } from "@/lib/pickup-request/store"
 import { alertTrackingNumberChanged } from "@/lib/sagawa-alert"
 
 export const runtime = "nodejs"
@@ -86,6 +86,25 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
     // 重複除去。空配列は「消去」として許可。
     tracking = Array.from(new Set(cleaned))
+  }
+
+  // 集荷依頼の記録に問合番号が紐付いている区間 (Biz-Logi で受付・佐川に確認して記録) は、ここで番号を
+  // 書き換えると記録と区間の番号がずれる。番号の振り直しは「受付後の変更」(佐川の回答を記録) で行う。
+  if (hasTracking) {
+    try {
+      const live = liveRequestByShipment(await supabasePickupStore().listForShipments([shipmentId])).get(shipmentId)
+      if (live?.shipping_number && JSON.stringify(tracking) !== JSON.stringify([live.shipping_number])) {
+        return NextResponse.json(
+          {
+            error: `この区間の問合番号 ${live.shipping_number} は佐川への集荷依頼の記録と紐付いています。番号が振り直された場合は、運営画面の「佐川へ集荷依頼」→「受付後の変更」で佐川の回答として記録してください。`,
+            code: "PICKUP_NUMBER_LINKED",
+          },
+          { status: 409 },
+        )
+      }
+    } catch (e) {
+      if (!isPickupTableMissing(e)) return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+    }
   }
 
   const agency = hasAgency ? (body.agency as string).trim() : ""
