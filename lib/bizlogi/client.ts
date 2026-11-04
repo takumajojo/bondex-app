@@ -35,6 +35,11 @@ export interface BizLogiConfig {
   okuriCode?: string
   /** true のときだけ発行依頼 (課金・集荷依頼の実送信) を許可する。 */
   live: boolean
+  /**
+   * 問合番号の採番方式 (2026-11-04 SG 正式回答・谷口さん): "customer" = BondEx が SG 指定の範囲から採番して送る
+   * (問合番号採番区分 1・基本) / "system" = Biz-Logi が採番 (区分 0)。env BIZLOGI_NUMBERING (既定 customer)。
+   */
+  numbering: "customer" | "system"
   timeoutMs?: number
 }
 
@@ -81,6 +86,7 @@ export function bizLogiConfigFromEnv(env: Record<string, string | undefined> = p
     loginPassword: env.BIZLOGI_LOGIN_PASSWORD!,
     okuriCode,
     live: env.BIZLOGI_LIVE === "true",
+    numbering: env.BIZLOGI_NUMBERING === "system" ? "system" : "customer",
   }
 }
 
@@ -149,10 +155,15 @@ export class BizLogiClient {
     }
   }
 
+  /** 問合番号採番区分 (1-7)。顧客側採番なら 1。古い設定 (numbering 未指定) は顧客側採番として扱う。 */
+  private numberType(): 0 | 1 {
+    return (this.config.numbering ?? "customer") === "system" ? 0 : 1
+  }
+
   /** 送り状発行API (確認機能)。エラー精査のみで、問合番号は採番されない。 */
   async checkShipping(details: ShippingDetail[], today?: string): Promise<ShippingResponse> {
     const xml = buildShippingRequestXml(
-      { customerId: this.config.customerId, loginPassword: this.config.loginPassword, issue: false, okuriCode: this.config.okuriCode, details },
+      { customerId: this.config.customerId, loginPassword: this.config.loginPassword, issue: false, okuriCode: this.config.okuriCode, shippingNumberType: this.numberType(), details },
       today,
     )
     return parseShippingResponse(await this.post("shipping", xml))
@@ -173,7 +184,7 @@ export class BizLogiClient {
       throw new BizLogiConfigError(`発行依頼の送り状コードが許可されていません (許可: ${ALLOWED_OKURI_CODES.join(", ")})`)
     }
     const xml = buildShippingRequestXml(
-      { customerId: this.config.customerId, loginPassword: this.config.loginPassword, issue: true, okuriCode: this.config.okuriCode, details },
+      { customerId: this.config.customerId, loginPassword: this.config.loginPassword, issue: true, okuriCode: this.config.okuriCode, shippingNumberType: this.numberType(), details },
       today,
     )
     return parseShippingResponse(await this.post("shipping", xml))

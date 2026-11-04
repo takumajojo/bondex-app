@@ -82,6 +82,11 @@ export interface ShippingDetail {
   /** 元着コード: 0=元払い (既定) / 1=着払い。 */
   motoChakuCode?: "0" | "1"
   shukaIrai?: ShukaIraiData
+  /**
+   * 顧客指定問合番号 (仕様書 p.35 1-9-1-49 shippingNumber・12桁・チェックデジット込み)。
+   * 問合番号採番区分 (shippingNumberType) が 1 のとき必須。BondEx が SG 指定の範囲から採番した番号 (sql/078)。
+   */
+  shippingNumber?: string
 }
 
 export interface ShippingRequestOptions {
@@ -95,7 +100,18 @@ export interface ShippingRequestOptions {
   outputLevel?: "000" | "900"
   /** 下敷画像表示フラグ: 1=表示 (既定・導入チェックシートの指定) / 0=非表示。省略すると佐川側は非表示扱い。 */
   backLayerFlg?: 0 | 1
+  /**
+   * 問合番号採番区分 (仕様書 p.28 1-7 shippingNumberType): 0/省略=システム採番 / 1=顧客指定採番 (2026-11-04 SG 回答・BondEx の基本)。
+   * 1 のときは全明細に shippingNumber が必要。2 (発行済み番号で再発行) は使わない。
+   */
+  shippingNumberType?: 0 | 1
   details: ShippingDetail[]
+}
+
+/** 佐川の12桁の問合番号のチェックデジット (先頭11桁を 7 で割った余り)。sql/078 sagawa_check_digit_ok と同じ。 */
+export function sagawaCheckDigitOk(n: string): boolean {
+  if (!/^\d{12}$/.test(n)) return false
+  return Number(BigInt(n.slice(0, 11)) % BigInt(7)) === Number(n[11])
 }
 
 export interface ValidationIssue {
@@ -301,6 +317,8 @@ function detailElement(d: ShippingDetail): XmlElement {
             ]
           : [],
       ],
+      // 1-9-1-49 顧客指定問合番号 (集荷依頼情報 1-9-1-48 の後・配送コメント 1-9-1-50 の前)
+      ["shippingNumber", d.shippingNumber],
     ],
   ]
 }
@@ -324,6 +342,18 @@ export function buildShippingRequestXml(o: ShippingRequestOptions, today: string
     }
     seen.add(d.userManageNumber)
     for (const i of validateShippingDetail(d, today)) issues.push({ ...i, userManageNumber: d.userManageNumber })
+    // 顧客側採番: 区分 1 なら全明細に正しい12桁の番号が必要。区分 0 (システム採番) なら番号を送らない
+    if (o.shippingNumberType === 1) {
+      if (!d.shippingNumber) issues.push({ userManageNumber: d.userManageNumber, field: "shippingNumber", message: "顧客側採番では問合番号 (12桁) が必須です (SG 指定の範囲が未登録の可能性)" })
+      else if (!/^\d{12}$/.test(d.shippingNumber)) issues.push({ userManageNumber: d.userManageNumber, field: "shippingNumber", message: "問合番号は12桁の数字です" })
+      else if (!sagawaCheckDigitOk(d.shippingNumber)) issues.push({ userManageNumber: d.userManageNumber, field: "shippingNumber", message: "問合番号のチェックデジットが正しくありません" })
+    } else if (d.shippingNumber) {
+      issues.push({ userManageNumber: d.userManageNumber, field: "shippingNumber", message: "システム採番 (区分0) では問合番号を送りません" })
+    }
+  }
+  if (o.shippingNumberType === 1) {
+    const nums = o.details.map((d) => d.shippingNumber).filter(Boolean)
+    if (new Set(nums).size !== nums.length) issues.push({ userManageNumber: "-", field: "shippingNumber", message: "同じ問合番号が電文内に複数あります" })
   }
   if (issues.length) throw new BizLogiValidationError(issues)
 
@@ -336,6 +366,8 @@ export function buildShippingRequestXml(o: ShippingRequestOptions, today: string
       ["okuriCode", o.okuriCode],
       ["outputLevel", o.outputLevel ?? "000"],
       ["backLayerFlg", o.backLayerFlg ?? 1],
+      // 1-7 問合番号採番区分 (下敷画像表示フラグ 1-6 の後・印字開始位置 1-8 と出荷情報リスト 1-9 の前)
+      ["shippingNumberType", o.shippingNumberType],
       ["printDataList", o.details.map(detailElement)],
     ],
   ])

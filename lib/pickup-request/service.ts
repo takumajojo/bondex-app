@@ -7,8 +7,9 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 import { buildLegInput, legInputEnvFromProcess, overridesNote, PICKUP_SHIPMENT_COLUMNS, type NameOverrides, type PickupShipmentRow } from "./leg-input"
 import { previewBizLogiPickup, sendBizLogiPickup, claimReasonJa, type PreviewResult, type SendOutcome } from "./bizlogi"
 import { RESOLVE_TRANSITIONS, STALE_SENDING_MS, type ResolveAction } from "./state"
-import { isPickupTableMissing, type PickupStore } from "./store"
+import { isPickupTableMissing, supabasePickupStore, type PickupStore } from "./store"
 import { pickupSnapshot, type SnapshotSourceRow } from "./snapshot"
+import { judgeUsage, type UsageVerdict } from "./recovery"
 import { randomUUID } from "node:crypto"
 
 export async function loadPickupShipment(shipmentId: string): Promise<PickupShipmentRow | null> {
@@ -59,10 +60,10 @@ export async function previewForShipment(
   row: PickupShipmentRow,
   overrides: NameOverrides = {},
 ): Promise<PreviewResult & { origin?: unknown; destination?: unknown }> {
-  const { legEnv, client } = clientAndEnv()
+  const { cfg, legEnv, client } = clientAndEnv()
   const built = await buildLegInput(row, legEnv, overrides)
   if (!built.ok) return { ok: false, errors: built.errors }
-  const res = await previewBizLogiPickup(row, built.input, { client })
+  const res = await previewBizLogiPickup(row, built.input, { client, store: supabasePickupStore(), environment: cfg.environment, numbering: cfg.numbering })
   return { ...res, origin: built.input.origin, destination: built.input.destination }
 }
 
@@ -78,8 +79,66 @@ export async function sendForShipment(
     store,
     client,
     environment: cfg.environment,
+    numbering: cfg.numbering,
     alert: (input) => sendOpsAlert(input),
   })
+}
+
+/**
+ * 結果不明の依頼の照合 (読み取りだけ・DB は変えない)。利用実績参照 API でその日の佐川の発行数を取り、
+ * BondEx の記録 (同じ接続先・その日に送った Biz-Logi の依頼) と比べる。状態の確定は運営が画面で行う。
+ */
+export async function usageCheckForRequest(
+  requestId: string,
+  store: PickupStore,
+  deps: { usage?: (ymd: string) => Promise<number>; loadDay?: (environment: string, fromIso: string, toIso: string) => Promise<Array<{ state: string; print_request_id: string | null }>> } = {},
+): Promise<
+  | { ok: true; date: string; sagawaCount: number; localAccepted: number; localUnknown: number; verdict: UsageVerdict; message: string; assignedNumber: string | null }
+  | { ok: false; reason: string }
+> {
+  const r = await store.get(requestId)
+  if (!r) return { ok: false, reason: "集荷依頼の記録が見つかりません" }
+  if (r.channel !== "bizlogi") return { ok: false, reason: "手動 (Excel) の記録は利用実績では照合できません" }
+  const at = Date.parse(r.sent_at ?? r.created_at)
+  const jst = new Date(at + 9 * 3600_000).toISOString().slice(0, 10)
+  const fromIso = new Date(Date.parse(`${jst}T00:00:00+09:00`)).toISOString()
+  const toIso = new Date(Date.parse(`${jst}T00:00:00+09:00`) + 86_400_000).toISOString()
+  const usage =
+    deps.usage ??
+    (async (ymd: string) => {
+      const { client } = clientAndEnv()
+      const u = await client.usage(ymd, ymd)
+      if (u.result.severity === "error") throw new Error(`利用実績参照 API: ${u.result.code} ${u.result.message}`)
+      return u.count
+    })
+  const loadDay =
+    deps.loadDay ??
+    (async (environment: string, from: string, to: string) => {
+      const sb = getSupabase()
+      if (!sb) throw new Error("Supabase が設定されていません")
+      const { data, error } = await sb
+        .from("pickup_requests")
+        .select("state, print_request_id")
+        .eq("channel", "bizlogi")
+        .eq("environment", environment)
+        .gte("created_at", from)
+        .lt("created_at", to)
+      if (error) throw new Error(`集荷依頼の記録を読めません: ${error.message}`)
+      return (data ?? []) as Array<{ state: string; print_request_id: string | null }>
+    })
+  let sagawaCount: number
+  let rows: Array<{ state: string; print_request_id: string | null }>
+  try {
+    sagawaCount = await usage(jst.replace(/-/g, ""))
+    rows = await loadDay(r.environment ?? "production", fromIso, toIso)
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+  // 佐川の発行数は「発行した番号」の数 (後で取り消しても数に残る)。BondEx 側も発行受付IDがある記録を数える
+  const localAccepted = rows.filter((x) => !!x.print_request_id).length
+  const localUnknown = rows.filter((x) => !x.print_request_id && (x.state === "unknown" || x.state === "sending")).length
+  const j = judgeUsage({ sagawaCount, localAccepted, localUnknown })
+  return { ok: true, date: jst, sagawaCount, localAccepted, localUnknown, ...j, assignedNumber: r.assigned_number ?? null }
 }
 
 /** 手動 (佐川指定 Excel) で世田谷営業所へ依頼したことを記録する。 */
@@ -171,7 +230,15 @@ export async function resolvePickupRequest(
   if (action === "confirm_none" && current.state === "accepted" && current.channel !== "manual") {
     return { ok: false, reason: "Biz-Logi で受付済みの依頼は無効にできません。取消は世田谷営業所へ連絡してください" }
   }
-  const number = (input.shippingNumber ?? "").replace(/[^\d]/g, "")
+  let number = (input.shippingNumber ?? "").replace(/[^\d]/g, "")
+  // 顧客側採番 (sql/078): 送った番号が分かっているので、佐川で依頼済みと確かめたらその番号で記録する。
+  // 違う番号を入力したら止める (送った番号と別の番号で登録されたなら、運営が佐川・SG に経緯を確かめてから扱う)。
+  if (action === "confirm_accepted" && current.channel === "bizlogi" && current.assigned_number) {
+    if (number && number !== current.assigned_number) {
+      return { ok: false, reason: `送った問合番号は ${current.assigned_number} です。違う番号で登録されている場合は、SG・世田谷営業所に経緯を確かめてから BondEx 管理者へ連絡してください` }
+    }
+    number = current.assigned_number
+  }
   if (action === "confirm_accepted" && current.channel === "bizlogi" && !number && !current.shipping_number) {
     return { ok: false, reason: "佐川に確認した問合番号を入力してください" }
   }

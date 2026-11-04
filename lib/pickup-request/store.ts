@@ -58,6 +58,13 @@ export interface PickupStore {
   transition(input: TransitionInput): Promise<TransitionResult>
   listForShipments(shipmentIds: string[]): Promise<PickupRequestRow[]>
   get(requestId: string): Promise<PickupRequestRow | null>
+  /**
+   * 顧客側採番 (sql/078): 区間の問合番号 (有効な番号があればそれ、無ければ SG 指定の範囲から払い出す)。
+   * reason: existing / allocated / no_number_range / number_range_exhausted / leg_not_found
+   */
+  legNumber?(shipmentId: string, environment: "test" | "production"): Promise<{ ok: boolean; number: string | null; reason: string }>
+  /** 番号を使わなくする (範囲外・桁数の誤りで佐川が受け付けなかった)。次の送信は新しい番号になる。 */
+  retireNumber?(number: string, reason: string): Promise<void>
 }
 
 /** DB に届かなかった (例外・接続不可)。送信の前なら送らない、後なら結果不明として扱う。 */
@@ -115,6 +122,16 @@ export function supabasePickupStore(): PickupStore {
       const { data, error } = await sb.from("pickup_requests").select("*").eq("id", id).maybeSingle()
       if (error) throw new PickupStoreError(`集荷依頼の読み込みに失敗しました: ${error.message}`)
       return (data as PickupRequestRow | null) ?? null
+    },
+    async legNumber(shipmentId, environment) {
+      const { data, error } = await sb.rpc("pickup_leg_number", { p_shipment_id: shipmentId, p_environment: environment })
+      if (error) throw new PickupStoreError(`問合番号の採番に失敗しました: ${error.message}`)
+      const row = (Array.isArray(data) ? data[0] : data) as { ok?: boolean; number?: string | null; reason?: string } | null
+      return { ok: row?.ok === true, number: row?.number ?? null, reason: row?.reason ?? "unknown" }
+    },
+    async retireNumber(number, reason) {
+      const { error } = await sb.rpc("pickup_retire_number", { p_number: number, p_reason: reason })
+      if (error) throw new PickupStoreError(`問合番号を使わなくする処理に失敗しました: ${error.message}`)
     },
   }
 }

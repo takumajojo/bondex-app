@@ -57,6 +57,8 @@ export interface PickupRequestRow {
   updated_at: string
   request_snapshot?: unknown
   stale_alerted_at?: string | null
+  /** 顧客側採番で送った問合番号 (sql/078)。結果不明のときは、この番号で佐川に確かめる。 */
+  assigned_number?: string | null
 }
 
 export function isLive(state: string): boolean {

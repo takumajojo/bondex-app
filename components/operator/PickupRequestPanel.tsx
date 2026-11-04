@@ -132,6 +132,7 @@ export default function PickupRequestPanel({
   const [confirmNoManual, setConfirmNoManual] = useState(false)
   const [number, setNumber] = useState("")
   const [note, setNote] = useState("")
+  const [usage, setUsage] = useState<string>("")
   const [showHistory, setShowHistory] = useState(false)
   // 佐川の宛名欄 (25文字×2行) に収まらないときに運営が入れる佐川向けの名称 (自動では切り詰めない)
   const [showNames, setShowNames] = useState(false)
@@ -362,11 +363,39 @@ export default function PickupRequestPanel({
               ? "佐川へ依頼済みかどうか不明です。世田谷営業所への依頼状況を確認して記録してください。"
               : "佐川で受け付けられたか不明です。再送しないでください。世田谷営業所（または SG システム）に確認して記録してください。締め（集荷前日 20:00）までに確認できないときも再依頼はせず、翌朝の始業後に確認します（SOP：結果不明時の対応）。"}
           </p>
+          {live.channel === "bizlogi" && live.assigned_number && (
+            <p className="text-[11px]">
+              送った問合番号（BondEx で採番）：<span className="font-mono font-semibold">{live.assigned_number}</span>
+              <span className="text-muted-foreground">　この番号で世田谷営業所・SG・佐川の追跡に確かめてください</span>
+            </p>
+          )}
+          {live.channel === "bizlogi" && live.state === "unknown" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={!!busy}
+                onClick={async () => {
+                  const r = await post("usage", { action: "usage_check", requestId: live.id })
+                  if (!r) return
+                  if (!r.res.ok) {
+                    setError(String((r.d as { error?: string }).error ?? "照合できませんでした"))
+                    return
+                  }
+                  const d = r.d as { date: string; sagawaCount: number; localAccepted: number; localUnknown: number; message: string }
+                  setUsage(`${d.date}：佐川の発行数 ${d.sagawaCount} / BondEx 受付済み ${d.localAccepted} / 結果不明 ${d.localUnknown} — ${d.message}`)
+                }}
+                className={secondary}
+              >
+                利用実績で照合（読み取りだけ）
+              </button>
+              {usage && <span className="text-[11px] text-foreground">{usage}</span>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={number}
               onChange={(e) => setNumber(e.target.value)}
-              placeholder={live.channel === "bizlogi" ? "佐川の問合番号（必須）" : "佐川の問合番号（分かれば）"}
+              placeholder={live.channel === "bizlogi" ? (live.assigned_number ? `送った番号 ${live.assigned_number}（空欄ならこの番号で記録）` : "佐川の問合番号（必須）") : "佐川の問合番号（分かれば）"}
               className="w-44 rounded border border-border px-2 py-1 font-mono text-[12px]"
             />
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="確認メモ（誰に確認したか等）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />

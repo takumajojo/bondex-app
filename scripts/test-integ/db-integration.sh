@@ -29,7 +29,7 @@ fresh() {
         alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;" >/dev/null
   apply scripts/test-b2c/db/000_base_from_prod.sql sql/043_shipment_change_requests.sql sql/033_hotel_change_schema.sql sql/063_fix_hotel_change_tracking_column.sql
 }
-EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql)
+EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/078_pickup_customer_numbering.sql)
 lock_state() { q -c "select tgenabled from pg_trigger where tgrelid='public.shipments'::regclass and tgname='shipments_pickup_lock'"; }
 leg() { # booking_id 集荷日のオフセット(日) → id
   q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient)
@@ -52,7 +52,7 @@ b2c_seed() {
 
 echo "A. 本番移行の順番と二重適用"
 fresh
-apply "${EXPAND[@]}" && eq "拡張段階の SQL (067→069→068→061→062→073→071→074→075→076) を適用できる" ok ok
+apply "${EXPAND[@]}" && eq "拡張段階の SQL (067→069→068→061→062→073→071→074→075→076→078) を適用できる" ok ok
 apply "${EXPAND[@]}" && eq "拡張段階の SQL を2回流しても失敗しない" ok ok
 eq "068 はロックを無効で作る" D "$(lock_state)"
 eq "B2C の確定・取消は 071 の版 (18:30・集荷依頼済みの扱い)" "t|t" "$(q -c "select (prosrc like '%pickup_cutoff_at%') from pg_proc where proname='b2c_confirm_order'")|$(q -c "select (prosrc like '%pickup_requested%') from pg_proc where proname='b2c_cancel_order'")"
@@ -178,11 +178,42 @@ eq "locked の後も区間はそのまま" "3" "$(q -c "select suitcase_count fr
 err_has "直接反映で変えられない項目は拒否" "select * from agency_change_atomic('$A1','{\"from_hotel\":\"X\"}',null,null,null,'t','AG','agency')" "field_not_allowed"
 eq "匿名ロールは呼べない" f "$(q -c "select has_function_privilege('anon','agency_change_atomic(uuid,jsonb,text,jsonb,jsonb,text,text,text)','execute')")"
 
+echo "G. 顧客側採番 (sql/078)"
+LG=$(leg LG 4)
+eq "範囲が未登録なら採番しない (推測の番号を使わない)" "false|no_number_range" "$(q -c "select ok||'|'||reason from pickup_leg_number('$LG','test')")"
+q -c "insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by) values ('test', 99990000000, 99990000199, 99990000000, '模擬 (統合 DB 試験専用)', 'test')" >/dev/null
+N1=$(q -c "select number from pickup_leg_number('$LG','test')")
+eq "12桁・チェックデジット (mod 7) が正しい番号を払い出す" "t" "$(q -c "select sagawa_check_digit_ok('$N1')")"
+eq "同じ区間はもう一度呼んでも同じ番号" "$N1|existing" "$(q -c "select number||'|'||reason from pickup_leg_number('$LG','test')")"
+err_has "範囲の外の next は登録できない" "insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by) values ('production', 10, 5, 10, 'x', 'x')" "check"
+err_has "接続先ごとに有効な範囲は1つ" "insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by) values ('test', 1, 9, 1, 'x', 'x')" "pickup_number_ranges_one_active"
+err_has "出典 (SG の通知) の無い範囲は登録できない" "insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by) values ('production', 1, 9, 1, ' ', 'x')" "check"
+# 手動 (Excel) の番号・ほかの区間の番号とぶつかる候補は飛ばす
+NEXTB=$(q -c "select next_body from pickup_number_ranges where environment='test' and active")
+COLL=$(q -c "select lpad(next_body::text,11,'0')||(next_body % 7)::text from pickup_number_ranges where environment='test' and active")
+LM=$(leg LM 4); q -c "update shipments set tracking_numbers='[\"$COLL\"]' where id='$LM'" >/dev/null
+LH=$(leg LH 4)
+eq "手動の番号とぶつかる候補は飛ばす" "f" "$(q -c "select number = '$COLL' from pickup_leg_number('$LH','test')")"
+# 同時に50区間 (5並列×10) を払い出しても重複しない
+for i in $(seq 1 50); do leg "LC$i" 5 >/dev/null; done
+for p in 1 2 3 4 5; do ( for i in $(seq $p 5 50); do q -c "select number from pickup_leg_number((select id from shipments where booking_id='LC$i'),'test')" >/dev/null 2>&1; done ) & done; wait
+eq "同時の払い出し: 50区間すべてに番号・重複なし・チェックデジット正しい" "50|50|50" "$(q -c "select count(*)||'|'||count(distinct number)||'|'||count(*) filter (where sagawa_check_digit_ok(number)) from pickup_number_ledger where shipment_id in (select id from shipments where booking_id like 'LC%')")"
+# 依頼の確保で番号を記録に写す・取消で番号を使わなくする
+eq "Biz-Logi の依頼を確保すると、区間の番号を記録に写す" "$N1" "$(q -c "select claim_pickup_request('$LG','bizlogi','test','X',2,current_date+4,'a','o',null)" >/dev/null; q -c "select assigned_number from pickup_requests where shipment_id='$LG'")"
+q -c "update pickup_requests set state='cancelled' where shipment_id='$LG'" >/dev/null 2>&1 || q -c "select 1" >/dev/null
+eq "佐川で取消になった番号は使わなくする (再利用しない)" "f" "$(q -c "select active from pickup_number_ledger where number='$N1'")"
+eq "取消の後の同じ区間は新しい番号" "t" "$(q -c "select number <> '$N1' from pickup_leg_number('$LG','test')")"
+eq "番号の使用中の判定に台帳を含む (手動の番号の入力で別区間の番号を拒否)" "t" "$(q -c "select pickup_number_in_use('$N1', '$LM')")"
+q -c "update pickup_number_ranges set next_body = body_end + 1 where environment='test' and active" >/dev/null
+LX=$(leg LX 4)
+eq "範囲を使い切ったら採番しない" "false|number_range_exhausted" "$(q -c "select ok||'|'||reason from pickup_leg_number('$LX','test')")"
+eq "匿名ロールは採番できない" "f" "$(q -c "select has_function_privilege('anon','pickup_leg_number(uuid,text)','execute')")"
+
 echo "F. 切り戻し"
 apply sql/rollback/pause_pickup_lock.sql && eq "ロックを無効・記録を停止 (数秒の切り戻し)" "D|t" "$(lock_state)|$(q -c "select claims_paused from pickup_request_settings")"
 q -c "update shipments set suitcase_count=7 where id='$S3'" >/dev/null && eq "ロック無効で古いアプリの直接更新が通る" ok ok
 apply sql/rollback/rollback_067_072.sql && eq "全体の切り戻しを流せる" ok ok
-eq "切り戻し後: 新しい表・関数・列が無い" "0|0|0|0|0" "$(q -c "select (select count(*) from pg_trigger where tgname='shipments_pickup_lock')||'|'||(select count(*) from information_schema.tables where table_name in ('pickup_requests','pickup_request_settings','facilities'))||'|'||(select count(*) from information_schema.columns where table_name='shipment_change_requests' and column_name='kind')||'|'||(select count(*) from pg_proc where proname in ('b2c_request_cancel','shipment_cancel_hook','pickup_cutoff_at','agency_change_atomic','pickup_watch_claim'))||'|'||(select count(*) from shipment_change_requests where requested_by='guest')")"
+eq "切り戻し後: 新しい表・関数・列が無い" "0|0|0|0|0" "$(q -c "select (select count(*) from pg_trigger where tgname='shipments_pickup_lock')||'|'||(select count(*) from information_schema.tables where table_name in ('pickup_requests','pickup_request_settings','facilities'))||'|'||(select count(*) from information_schema.columns where table_name='shipment_change_requests' and column_name='kind')||'|'||(select count(*) from pg_proc where proname in ('b2c_request_cancel','shipment_cancel_hook','pickup_cutoff_at','agency_change_atomic','pickup_watch_claim','pickup_leg_number','sagawa_check_digit_ok'))||'|'||(select count(*) from shipment_change_requests where requested_by='guest')")"
 eq "切り戻し後: B2C の確定・取消は 062 の版で動く" cancelled "$(O5=$(b2c_order 4); q -c "select b2c_confirm_order('$O5')" >/dev/null; q -c "select b2c_cancel_order('$O5','guest','guest')")"
 q -c "insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, fields, status) values ('$L2','L2',0,'agency','{\"suitcase_count\":3}','pending')" >/dev/null && eq "切り戻し後: 古いアプリの申請が積める" ok ok
 eq "切り戻しのバックアップが残る" "t" "$(q -c "select (select count(*) from pickup_requests_rollback_backup) > 0 and (select count(*) from shipment_change_requests_rollback_backup) > 0")"

@@ -28,6 +28,8 @@ Object.assign(process.env, {
 type Mode = "ok" | "issue-network-error" | "check-network-error" | "issue-error-code" | "issue-no-number"
 const mock = {
   mode: "ok" as Mode, checks: 0, issues: 0, seq: 0, lastIssueXml: "", lastCheckXml: "",
+  /** 利用実績参照 API (riyoujisseki) が返す発行数 */
+  usageCount: 0,
   /** 発行依頼の直前に差し込む処理 (送信中の変更の再現) */
   beforeIssue: null as null | (() => Promise<void>),
 }
@@ -59,7 +61,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       if (mock.mode === "issue-error-code") return new Response(shippingXml(body, { ok: false, codes: ["E2-0004"] }))
       if (mock.mode === "issue-no-number") return new Response(shippingXml(body, { ok: true, prid: `P-${mock.issues}`, number: null }))
       mock.seq++
-      return new Response(shippingXml(body, { ok: true, prid: `P-${mock.issues}`, number: String(100000000000 + mock.seq) }))
+      // 顧客側採番 (sql/078): 佐川は送った番号 (shippingNumber) をそのまま返す。送っていなければ佐川が採番
+      const sent = tag(body, "shippingNumber")
+      return new Response(shippingXml(body, { ok: true, prid: `P-${mock.issues}`, number: sent || String(100000000000 + mock.seq) }))
     }
     mock.checks++
     mock.lastCheckXml = body
@@ -69,6 +73,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       throw e
     }
     return new Response(shippingXml(body, { ok: true }))
+  }
+  if (url.startsWith("https://mock-bizlogi.invalid/api/riyoujisseki")) {
+    return new Response(`<?xml version="1.0" encoding="UTF-8"?><riyouJissekiResponse><customerId>mockcustomer</customerId><startDate>x</startDate><endDate>x</endDate><count>${mock.usageCount}</count><resultCode>S0-0001</resultCode></riyouJissekiResponse>`)
   }
   if (url.includes("maps.googleapis.com/maps/api/place/details/json")) {
     const id = new URL(url).searchParams.get("place_id") ?? ""
@@ -133,6 +140,9 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
 
 ;(async () => {
   await initSchema(process.cwd())
+  // 顧客側採番の番号範囲 (架空・試験専用。SG の範囲ではない)。アプリは BIZLOGI_NUMBERING 未設定 = 顧客側採番で動く
+  await db.query(`insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by)
+                  values ('production', 99998000000, 99998099999, 99998000000, '模擬 (通し試験専用・SG の範囲ではない)', 'e2e')`)
   pickupRoute = await import("../../app/api/operator/pickup-request/route")
   sagawaRoute = await import("../../app/api/operator/sagawa-pickup/route")
   todoMod = await import("../../lib/pickup-request/todo")
@@ -257,12 +267,27 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(mock.issues, i0 + 1)
     const t = await todo()
     assert.ok(t.attention.some((x: { shipmentId: string; kind: string }) => x.shipmentId === leg && x.kind === "unknown"))
-    // 佐川に確認して番号付きで記録 → 受付済み
-    const rid = (await reqs(leg))[0].id
-    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口" })).status, 409, "番号なしでは記録できない")
-    const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: "123456789012", note: "世田谷に確認" })
+    // 顧客側採番: 送った番号が記録に残っている (結果不明でも番号で佐川に確かめられる)
+    const r0 = (await reqs(leg))[0]
+    const rid = r0.id
+    assert.match(r0.assigned_number ?? "", /^\d{12}$/, "送った番号が記録に残る")
+    // 利用実績での照合 (読み取りだけ・状態は変えない): 佐川の発行数 = BondEx の受付済み + この1件 → 発行されている可能性が高い
+    const accepted = (await db.query(`select count(*)::int n from pickup_requests where channel='bizlogi' and environment='production' and print_request_id is not null and created_at >= now() - interval '1 day'`)).rows[0].n
+    const unknown = (await db.query(`select count(*)::int n from pickup_requests where channel='bizlogi' and environment='production' and print_request_id is null and state in ('unknown','sending') and created_at >= now() - interval '1 day'`)).rows[0].n
+    mock.usageCount = accepted + unknown
+    const u = await call("POST", "/api/operator/pickup-request", { action: "usage_check", requestId: rid })
+    assert.equal(u.status, 200, JSON.stringify(u.body))
+    assert.equal(u.body.verdict, "likely_all_issued", JSON.stringify(u.body))
+    assert.equal(u.body.assignedNumber, r0.assigned_number)
+    mock.usageCount = accepted
+    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "usage_check", requestId: rid })).body.verdict, "likely_not_issued")
+    assert.equal((await reqs(leg))[0].state, "unknown", "照合だけでは状態を変えない")
+    // 送った番号と違う番号では記録できない
+    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: "123456789012" })).status, 409, "違う番号では記録できない")
+    // 佐川に確認して記録 → 送った番号で受付済み
+    const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", note: "世田谷に確認" })
     assert.equal(ok.status, 200)
-    assert.deepEqual((await ship(leg)).tracking_numbers, ["123456789012"])
+    assert.deepEqual((await ship(leg)).tracking_numbers, [r0.assigned_number])
   })
   await test("確認機能の段階で通信断 → 未送信として失敗 (422)・発行依頼なし・直して再送できる", async () => {
     const leg = await newLeg()

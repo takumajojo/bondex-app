@@ -8,6 +8,7 @@ import {
   previewForShipment,
   resolvePickupRequest,
   sendForShipment,
+  usageCheckForRequest,
 } from "@/lib/pickup-request/service"
 import { supabasePickupStore, liveRequestByShipment, PickupStoreError, isPickupTableMissing } from "@/lib/pickup-request/store"
 import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/state"
@@ -115,6 +116,16 @@ export async function POST(req: NextRequest) {
         },
         store,
       )
+      return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
+    }
+
+    // 結果不明の照合 (利用実績参照 API・読み取りだけ)。状態は運営が下の resolve で確定する
+    if (action === "usage_check") {
+      const requestId = typeof body.requestId === "string" ? body.requestId.trim() : ""
+      if (!requestId) return NextResponse.json({ error: "requestId required" }, { status: 400 })
+      const avail = bizLogiAvailability()
+      if (!avail.available) return NextResponse.json({ error: `Biz-Logi は使えません: ${avail.reason}` }, { status: 503 })
+      const r = await usageCheckForRequest(requestId, store)
       return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.reason }, { status: 409 })
     }
 

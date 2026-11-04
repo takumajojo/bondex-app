@@ -273,9 +273,14 @@ end $$;
 -- 4. 申請の登録・段階・反映 (sql/067 の受付後の変更を一般化して置き換える)
 
 -- 問い合わせ番号が他の区間で使われていないか (shipments の番号・集荷依頼の記録の両方)
+-- 顧客側採番 (sql/078) の台帳があれば、ほかの区間に払い出した番号も「使用中」に含める。
+-- 台帳は 078 で作るので、ここでは表があるときだけ見る (068 と 078 をどの順で流し直しても同じ判定になる)。
 create or replace function public.pickup_number_in_use(p_number text, p_shipment_id uuid)
-returns boolean language sql stable as $$
-  select exists (
+returns boolean language plpgsql stable as $$
+declare
+  v boolean;
+begin
+  if exists (
     select 1 from public.shipments x
      where x.id <> p_shipment_id and jsonb_typeof(x.tracking_numbers) = 'array'
        and x.tracking_numbers ? p_number
@@ -283,7 +288,16 @@ returns boolean language sql stable as $$
     select 1 from public.pickup_requests r
      where r.shipment_id <> p_shipment_id and r.shipping_number = p_number
        and r.state not in ('void', 'failed')
-  );
+  ) then
+    return true;
+  end if;
+  if to_regclass('public.pickup_number_ledger') is not null then
+    execute 'select exists (select 1 from public.pickup_number_ledger l where l.number = $1 and l.shipment_id <> $2)'
+       into v using p_number, p_shipment_id;
+    return coalesce(v, false);
+  end if;
+  return false;
+end;
 $$;
 
 -- 申請の登録。集荷依頼が受付済みなら needs_sagawa=true (世田谷へ連絡 → 佐川の回答 → 反映)、

@@ -91,6 +91,7 @@ const CONFIG: BizLogiConfig = {
   loginPassword: "p&ss<w>rd==",
   okuriCode: "N01",
   live: false,
+  numbering: "system", // 以前からの試験はシステム採番 (区分0)。顧客側採番は 16章
 }
 
 const OK_RESPONSE = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -321,6 +322,39 @@ async function main() {
     const m10 = mockFetch(() => ({ body: OK_RESPONSE }))
     const noCode = await throws(() => new BizLogiClient({ ...CONFIG, live: true, okuriCode: undefined }, m10.impl).requestShipping([detail], TODAY), BizLogiConfigError)
     check("発行依頼: 送り状コード未設定なら通信ゼロで拒否", !!noCode && m10.calls.length === 0)
+  }
+
+  console.log("16. 顧客側採番 (2026-11-04 SG 正式回答・仕様書 p.28 1-7 / p.35 1-9-1-49)")
+  {
+    const { sagawaCheckDigitOk } = await import("../../lib/bizlogi/shipping")
+    const { judgeUsage } = await import("../../lib/pickup-request/recovery")
+    const num = (body: string) => body + String(Number(BigInt(body) % BigInt(7)))
+    const n1 = num("99999000001")
+    check("チェックデジット: 先頭11桁 mod 7", sagawaCheckDigitOk(n1) && !sagawaCheckDigitOk(n1.slice(0, 11) + String((Number(n1[11]) + 1) % 10)) && !sagawaCheckDigitOk("12345"))
+    const xml = buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: true, okuriCode: "N01", shippingNumberType: 1, details: [{ ...detail, shippingNumber: n1 }] }, TODAY)
+    const pos = (t: string) => xml.indexOf(`<${t}>`)
+    check("採番区分 1 を送る", xml.includes("<shippingNumberType>1</shippingNumberType>"))
+    check("項目の順番: backLayerFlg (1-6) → shippingNumberType (1-7) → printDataList (1-9)", pos("backLayerFlg") < pos("shippingNumberType") && pos("shippingNumberType") < pos("printDataList"))
+    check("項目の順番: shukaIraiData (1-9-1-48) の後に shippingNumber (1-9-1-49)", pos("shukaIraiData") > 0 && xml.indexOf("</shukaIraiData>") < pos("shippingNumber") && xml.includes(`<shippingNumber>${n1}</shippingNumber>`))
+    const sysXml = buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: false, details: [detail] }, TODAY)
+    check("システム採番 (区分省略) では採番区分も番号も送らない", !sysXml.includes("shippingNumberType") && !sysXml.includes("<shippingNumber>"))
+    const noNum = await throws(async () => buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: true, okuriCode: "N01", shippingNumberType: 1, details: [detail] }, TODAY), BizLogiValidationError)
+    check("区分 1 で番号なしは送る前に止める", !!noNum && /問合番号 \(12桁\) が必須/.test(noNum.message))
+    const badCd = await throws(async () => buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: true, okuriCode: "N01", shippingNumberType: 1, details: [{ ...detail, shippingNumber: n1.slice(0, 11) + String((Number(n1[11]) + 1) % 10) }] }, TODAY), BizLogiValidationError)
+    check("チェックデジットが違う番号は送る前に止める", !!badCd && /チェックデジット/.test(badCd.message))
+    const len = await throws(async () => buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: true, okuriCode: "N01", shippingNumberType: 1, details: [{ ...detail, shippingNumber: "12345678901" }] }, TODAY), BizLogiValidationError)
+    check("12桁でない番号は送る前に止める", !!len && /12桁/.test(len.message))
+    const sysWithNum = await throws(async () => buildShippingRequestXml({ customerId: "c", loginPassword: "p", issue: false, details: [{ ...detail, shippingNumber: n1 }] }, TODAY), BizLogiValidationError)
+    check("システム採番で番号を送ろうとしたら止める", !!sysWithNum)
+    const m = mockFetch(() => ({ body: OK_RESPONSE }))
+    await new BizLogiClient({ ...CONFIG, numbering: "customer" }, m.impl).checkShipping([{ ...detail, shippingNumber: n1 }], TODAY)
+    check("クライアント: 顧客側採番の設定なら区分 1 で送る", String(m.calls[0]?.body ?? "").includes("<shippingNumberType>1</shippingNumberType>"))
+    const cfgDefault = bizLogiConfigFromEnv({ BIZLOGI_BASE_URL: "https://beccl-st.biz-blue.net/api", BIZLOGI_ENV: "test", BIZLOGI_CUSTOMER_ID: "x", BIZLOGI_LOGIN_PASSWORD: "y" })
+    check("設定の既定は顧客側採番 (BIZLOGI_NUMBERING 未設定)", cfgDefault.numbering === "customer")
+    check("利用実績の照合: 発行数 = 受付済み → 発行されていない可能性", judgeUsage({ sagawaCount: 3, localAccepted: 3, localUnknown: 1 }).verdict === "likely_not_issued")
+    check("利用実績の照合: 発行数 = 受付済み + 結果不明 → 発行されている可能性", judgeUsage({ sagawaCount: 4, localAccepted: 3, localUnknown: 1 }).verdict === "likely_all_issued")
+    check("利用実績の照合: 結果不明2件のうち1件だけ → 件数では決められない", judgeUsage({ sagawaCount: 4, localAccepted: 3, localUnknown: 2 }).verdict === "ambiguous")
+    check("利用実績の照合: 合わない → 世田谷・SG へ", judgeUsage({ sagawaCount: 9, localAccepted: 3, localUnknown: 1 }).verdict === "mismatch")
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)

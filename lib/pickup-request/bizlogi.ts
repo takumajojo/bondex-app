@@ -30,6 +30,11 @@ export interface BizLogiSendDeps {
   client: Pick<BizLogiClient, "checkShipping" | "requestShipping">
   environment: "test" | "production"
   alert: (input: OpsAlertInput) => Promise<unknown>
+  /**
+   * 問合番号の採番方式 (2026-11-04 SG 正式回答): customer = BondEx が SG 指定の範囲から採番 (sql/078・基本) /
+   * system = Biz-Logi が採番。省略は system (以前からの試験のため。アプリは設定 BIZLOGI_NUMBERING の値を渡す)。
+   */
+  numbering?: "customer" | "system"
   now?: () => Date
   newOwner?: () => string
 }
@@ -85,17 +90,58 @@ function responseCodes(res: ShippingResponse): string[] {
   return [res.result.code, ...res.details.flatMap((d) => d.resultCodes.map((c) => c.code))]
 }
 
-/** 確認機能 (無課金) で送信内容を検証し、運営に見せる。DB には何も書かない。 */
+// ── 顧客側採番 (sql/078)
+/** 佐川の応答のうち、問合番号に関するコード (5.2 処理結果コード)。 */
+const NUMBER_DUPLICATE = "E1-0206" // 問合番号が重複しています → 成功でも失敗でもない (結果不明として運営が確認)
+const NUMBER_RETIRE = ["E1-0207", "E1-0204", "E1-0205"] // 範囲外・桁数・値なし → 佐川に登録なし。番号を使わなくして運営へ
+
+export function numberReasonJa(reason: string): string {
+  switch (reason) {
+    case "no_number_range":
+      return "SG 指定の問合番号の範囲が未登録のため、Biz-Logi では送れません (範囲の受領後に登録します。推測の番号は使いません)"
+    case "number_range_exhausted":
+      return "SG 指定の問合番号の範囲を使い切りました。SG に新しい範囲を依頼して登録してください"
+    case "leg_not_found":
+      return "区間が見つかりません"
+    default:
+      return `問合番号を採番できませんでした (${reason})`
+  }
+}
+
+/** 顧客側採番なら、区間の番号を電文に入れる。番号が取れなければ送らない (理由を返す)。 */
+async function attachNumber(
+  row: PickupShipmentRow,
+  detail: ShippingDetail,
+  deps: { numbering?: "customer" | "system"; environment?: "test" | "production"; store?: PickupStore },
+): Promise<string | null> {
+  if ((deps.numbering ?? "system") !== "customer") return null
+  if (!deps.store?.legNumber || !deps.environment) return "顧客側採番の設定がありません (採番の仕組みに接続できません)"
+  let r: { ok: boolean; number: string | null; reason: string }
+  try {
+    r = await deps.store.legNumber(row.id, deps.environment)
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e)
+  }
+  if (!r.ok || !r.number) return numberReasonJa(r.reason)
+  detail.shippingNumber = r.number
+  return null
+}
+
+const codesOf = (res: ShippingResponse) => [res.result, ...res.details.flatMap((d) => d.resultCodes)].map((c) => c.code)
+
+/** 確認機能 (無課金) で送信内容を検証し、運営に見せる。採番 (台帳への記録) のほか DB には何も書かない。 */
 export async function previewBizLogiPickup(
   row: PickupShipmentRow,
   input: PickupLegInput,
-  deps: Pick<BizLogiSendDeps, "client" | "now">,
+  deps: Pick<BizLogiSendDeps, "client" | "now" | "numbering"> & { store?: PickupStore; environment?: "test" | "production" },
 ): Promise<PreviewResult> {
   const now = deps.now?.() ?? new Date()
   const errors = precheck(row, now)
   const { detail, errors: buildErrors } = buildDetail(input)
   errors.push(...buildErrors)
   if (errors.length || !detail) return { ok: false, errors }
+  const numErr = await attachNumber(row, detail, deps)
+  if (numErr) return { ok: false, errors: [numErr] }
   let res: ShippingResponse
   try {
     res = await deps.client.checkShipping([detail], ymd(now))
@@ -103,6 +149,9 @@ export async function previewBizLogiPickup(
     return { ok: false, errors: [`確認機能の通信に失敗しました (送信はしていません): ${e instanceof Error ? e.message : String(e)}`] }
   }
   const resErrors = responseErrors(res)
+  if (codesOf(res).includes(NUMBER_DUPLICATE)) {
+    return { ok: false, errors: [`${NUMBER_DUPLICATE} 問合番号 ${detail.shippingNumber ?? ""} が佐川に既にあります。前の依頼が届いている可能性があるため送りません。利用実績・追跡・世田谷営業所で確かめてください`] }
+  }
   if (resErrors.length) return { ok: false, errors: resErrors }
   const warnings = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
     .filter((c) => c.severity === "warning")
@@ -128,6 +177,9 @@ export async function sendBizLogiPickup(
   if (pre.length) return { outcome: "blocked", reason: pre.join(" / ") }
   const { detail, errors } = buildDetail(input)
   if (!detail) return { outcome: "blocked", reason: errors.join(" / ") }
+  // 顧客側採番: 確認画面と同じ番号 (区間に割り当て済み) を入れる。取れなければ送らない
+  const numErr = await attachNumber(row, detail, deps)
+  if (numErr) return { outcome: "blocked", reason: numErr }
   if (detailFingerprint(detail) !== opts.expectedFingerprint) {
     return { outcome: "blocked", reason: "確認画面のあとで送信内容が変わりました。もう一度確認してから送信してください" }
   }
@@ -187,7 +239,16 @@ export async function sendBizLogiPickup(
     return { outcome: "failed", requestId, errors: [msg] }
   }
   const checkErrors = responseErrors(check)
+  // E1-0206 (番号の重複) = その番号が佐川に既にある。前の依頼が届いていた可能性があるので、失敗扱いで番号を変えて
+  // 送り直すと二重の集荷になりうる。成功でも失敗でもなく「結果不明」にして運営が確かめる (自動で再送しない)。
+  if (codesOf(check).includes(NUMBER_DUPLICATE)) {
+    const reason = `確認機能で ${NUMBER_DUPLICATE} (問合番号 ${detail.shippingNumber ?? "-"} が佐川に既にある)。前の依頼が届いている可能性があるため発行していません`
+    await finish("unknown", { error: reason, resultCodes: responseCodes(check) })
+    await alertUnknown(deps, ref, requestId, reason)
+    return { outcome: "unknown", requestId, reason }
+  }
   if (checkErrors.length) {
+    await retireIfNumberRejected(deps, detail, check, "確認機能")
     await finish("failed", { error: checkErrors.join(" / "), resultCodes: responseCodes(check) })
     return { outcome: "failed", requestId, errors: checkErrors }
   }
@@ -213,6 +274,19 @@ export async function sendBizLogiPickup(
 
   const resErrors = responseErrors(res)
   const number = res.details[0]?.shippingNumbers[0] ?? null
+  if (codesOf(res).includes(NUMBER_DUPLICATE)) {
+    const reason = `発行依頼で ${NUMBER_DUPLICATE} (問合番号 ${detail.shippingNumber ?? "-"} の重複)。成功とは扱いません。前の依頼が届いている可能性があるので、利用実績・追跡・世田谷営業所で確かめてから記録してください`
+    await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
+    await alertUnknown(deps, ref, requestId, reason)
+    return { outcome: "unknown", requestId, reason }
+  }
+  // 顧客側採番: 佐川が返した番号が、送った番号と同じでなければ結果不明 (どちらの番号で登録されたか分からない)
+  if (detail.shippingNumber && number && number !== detail.shippingNumber) {
+    const reason = `佐川の応答の問合番号 (${number}) が送った番号 (${detail.shippingNumber}) と違います。どちらで登録されたか確かめてください`
+    await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
+    await alertUnknown(deps, ref, requestId, reason)
+    return { outcome: "unknown", requestId, reason }
+  }
   if (res.ok && res.printRequestId && number) {
     try {
       const t = await deps.store.transition({
@@ -236,6 +310,7 @@ export async function sendBizLogiPickup(
   }
   if (resErrors.length && !res.printRequestId) {
     // 明確な失敗: エラーコードがあり発行受付IDが無い = 課金なし・佐川に登録なし
+    await retireIfNumberRejected(deps, detail, res, "発行依頼")
     await finish("failed", { error: resErrors.join(" / "), resultCodes: responseCodes(res) })
     return { outcome: "failed", requestId, errors: resErrors }
   }
@@ -243,6 +318,30 @@ export async function sendBizLogiPickup(
   await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
   await alertUnknown(deps, ref, requestId, reason)
   return { outcome: "unknown", requestId, reason }
+}
+
+/** 範囲外・桁数・値なし (E1-0207/0204/0205) で佐川が番号を受け付けなかったら、その番号を使わなくして運営へ知らせる。 */
+async function retireIfNumberRejected(deps: BizLogiSendDeps, detail: ShippingDetail, res: ShippingResponse, stage: string): Promise<void> {
+  if (!detail.shippingNumber) return
+  const hit = codesOf(res).find((c) => NUMBER_RETIRE.includes(c))
+  if (!hit) return
+  try {
+    await deps.store.retireNumber?.(detail.shippingNumber, `${stage}で ${hit}`)
+  } catch {
+    // 使わなくする記録に失敗しても、送信は失敗として止まっている (次の送信の確認機能でまた止まる)
+  }
+  try {
+    await deps.alert({
+      subject: `【要確認】Biz-Logi の問合番号が受け付けられません (${hit})`,
+      lines: [
+        `番号: ${detail.shippingNumber} (${stage})`,
+        `佐川の応答: ${hit}${hit === "E1-0207" ? " 利用可能問合番号範囲ではありません" : ""}`,
+        "SG 指定の番号範囲の登録 (pickup_number_ranges) が正しいかを確かめてください。この番号は使わないようにしました。",
+      ],
+    })
+  } catch {
+    /* 通知の失敗は送信の結果を変えない */
+  }
 }
 
 async function alertUnknown(deps: BizLogiSendDeps, ref: string, requestId: string, reason: string): Promise<void> {

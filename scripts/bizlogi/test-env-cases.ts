@@ -3,6 +3,9 @@
 // → previewBizLogiPickup (確認機能) → sendBizLogiPickup (DB で依頼を確保 → 発行依頼 → 結果の保存)。
 // DB は組み込みの PostgreSQL (PGlite・sql/067〜076) で、本番・Supabase には触れない。Google は使わない (住所は下の固定値)。
 //
+//   問合番号は顧客側採番 (2026-11-04 SG 正式回答・sql/078)。dry-run は架空の番号範囲 (99999000000〜) だけを使う。
+//   confirm / issue は SG から受け取った専用の範囲を --range=<先頭11桁の開始>-<終了> --range-note="<SG の通知>" で渡したときだけ動く
+//   (推測の番号は使わない)。
 //   既定 (--mode=dry-run): 外部へ一切送らない。模擬の Biz-Logi で、送信内容・判定・DB の保存を確かめる (今すぐ実行できる)
 //   --mode=confirm                : テスト環境へ確認機能 (printOutFlg=0・採番なし) だけを送る
 //   --mode=issue --yes-issue-test-env : テスト環境へ発行依頼 (printOutFlg=1・N01・テスト環境は課金・集荷なし)
@@ -25,7 +28,7 @@ import { initSchema, db } from "../test-pickup-e2e/fakes/supabase"
 
 const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, "").split("="); return [k, v ?? "true"] as [string, string] }))
 const mode = (args.get("mode") ?? "dry-run") as "dry-run" | "confirm" | "issue"
-const only = new Set((args.get("case") ?? "1,40,long,kyoto,error,dup").split(","))
+const only = new Set((args.get("case") ?? "1,40,long,kyoto,error,dup,num").split(","))
 if (mode === "issue" && args.get("yes-issue-test-env") !== "true") throw new Error("発行依頼は --yes-issue-test-env を付けたときだけ実行します")
 
 const LOG_DIR = `${homedir()}/JOJO/ops/bizlogi-test-log`
@@ -70,21 +73,29 @@ const records = async (id: string) => (await db.query(`select state, channel, sh
 // ── Biz-Logi の接続 (dry-run は模擬)
 type Client = Pick<BizLogiClient, "checkShipping" | "requestShipping">
 let issues = 0
-function mockClient(behavior: "ok" | "error" = "ok"): Client {
-  const resp = (issue: boolean, ums: string[], pieces: number): ShippingResponse => ({
+function mockClient(behavior: "ok" | "error" | "dup" | "range" | "dupOnIssue" = "ok"): Client {
+  if (behavior === "dupOnIssue") {
+    // 確認機能は通り、発行依頼で初めて E1-0206 が返る (例: 結果不明の後に誰かが同じ番号で送っていた)
+    const okc = mockClient("ok")
+    const dup = mockClient("dup")
+    return { checkShipping: (d) => okc.checkShipping(d), requestShipping: async (d) => { issues++; return dup.checkShipping(d) } } as Client
+  }
+  const errCode = behavior === "dup" ? "E1-0206" : behavior === "range" ? "E1-0207" : "E2-0004"
+  const resp = (issue: boolean, ums: string[], pieces: number, nums: Array<string | undefined>): ShippingResponse => ({
     ok: behavior === "ok", result: { code: behavior === "ok" ? "S0-0001" : "E8-0001", message: "", severity: behavior === "ok" ? "ok" : "error" },
     printRequestId: issue && behavior === "ok" ? `P-MOCK-${issues}` : null,
-    details: ums.map((u) => ({
+    details: ums.map((u, i) => ({
       userManageNumber: u,
-      resultCodes: [{ code: behavior === "ok" ? "S0-0001" : "E2-0004", message: behavior === "ok" ? "" : "模擬: 住所エラー", severity: behavior === "ok" ? "ok" : "error" }],
-      shippingNumbers: issue && behavior === "ok" ? [String(500000000000 + issues)] : [],
+      resultCodes: [{ code: behavior === "ok" ? "S0-0001" : errCode, message: behavior === "ok" ? "" : `模擬: ${errCode}`, severity: behavior === "ok" ? "ok" : "error" }],
+      // 顧客側採番: 佐川は送った番号をそのまま返す (仕様書 p.36 1-6-1-4-1)
+      shippingNumbers: issue && behavior === "ok" ? [nums[i] ?? String(500000000000 + issues)] : [],
       depot: null,
       pieces,
     })),
   }) as unknown as ShippingResponse
   return {
-    async checkShipping(d) { return resp(false, d.map((x) => x.userManageNumber), d[0]?.haisoKosu ?? 0) },
-    async requestShipping(d) { await new Promise((r) => setTimeout(r, 50)); issues++; return resp(true, d.map((x) => x.userManageNumber), d[0]?.haisoKosu ?? 0) },
+    async checkShipping(d) { return resp(false, d.map((x) => x.userManageNumber), d[0]?.haisoKosu ?? 0, d.map((x) => x.shippingNumber)) },
+    async requestShipping(d) { await new Promise((r) => setTimeout(r, 50)); issues++; return resp(true, d.map((x) => x.userManageNumber), d[0]?.haisoKosu ?? 0, d.map((x) => x.shippingNumber)) },
   } as Client
 }
 function realClient(): { client: Client; kokyaku: string; phone: string } {
@@ -110,12 +121,23 @@ const check = (name: string, cond: boolean, detail?: unknown) => {
 async function main() {
   await initSchema(process.cwd())
   await db.exec(`update pickup_request_settings set claims_paused = false`)
+  // 問合番号の範囲。dry-run は架空 (99999000000〜99999000049)。confirm / issue は SG の範囲を渡したときだけ
+  if (mode === "dry-run") {
+    await db.query(`insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by)
+                    values ('test', 99999000000, 99999000049, 99999000000, '模擬 (dry-run 専用・SG の範囲ではない)', 'test-env-cases')`)
+  } else {
+    const m = /^(\d{11})-(\d{11})$/.exec(args.get("range") ?? "")
+    const note = (args.get("range-note") ?? "").trim()
+    if (!m || !note) throw new Error("SG から受け取った問合番号の範囲を --range=<開始11桁>-<終了11桁> --range-note=\"<SG の通知>\" で指定してください (推測の番号は使いません)")
+    await db.query(`insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by) values ('test', $1, $2, $1, $3, 'test-env-cases')`, [m[1], m[2], note])
+  }
   const real = mode === "dry-run" ? null : realClient()
   const kokyaku = real?.kokyaku ?? "100000000000"
   const env = { kokyakuCode: kokyaku, contactPhone: real?.phone ?? "0300000000", placesKey: "unused", fetchPlace }
   const store = supabasePickupStore()
   const alerts: unknown[] = []
-  const deps = (client: Client) => ({ store, client, environment: "test" as const, alert: async (a: unknown) => void alerts.push(a) })
+  const deps = (client: Client) => ({ store, client, environment: "test" as const, numbering: "customer" as const, alert: async (a: unknown) => void alerts.push(a) })
+  const pvDeps = (client: Client) => ({ client, store, environment: "test" as const, numbering: "customer" as const })
   const client = real?.client ?? mockClient()
   console.log(`モード: ${mode}${mode === "dry-run" ? " (外部へ送らない・模擬の Biz-Logi)" : " (Biz-Logi テスト環境)"}`)
 
@@ -123,13 +145,13 @@ async function main() {
   async function run(row: PickupShipmentRow, c: Client, overrides: Record<string, string> = {}) {
     const built = await buildLegInput(row, env, cleanOverrides(overrides))
     if (!built.ok) return { built, preview: null, send: null }
-    const preview = await previewBizLogiPickup(row, built.input, { client: c })
+    const preview = await previewBizLogiPickup(row, built.input, pvDeps(c))
     if (!preview.ok || mode === "confirm") return { built, preview, send: null }
     const send = await sendBizLogiPickup(row, built.input, { actor: "接続試験", expectedFingerprint: preview.fingerprint }, deps(c))
     return { built, preview, send }
   }
-  const show = (label: string, d: { haisoKosu: number; otodokeNm: string[]; otodokeAdd: string[]; otodokeYubin: string; irai?: { nm: string[]; add: string[]; yubin: string }; shukaIrai?: { shukaIraiShiteiDate?: string } }) => {
-    console.log(`    送信内容 (${label}): 個数 ${d.haisoKosu}・集荷日 ${d.shukaIrai?.shukaIraiShiteiDate ?? "-"}`)
+  const show = (label: string, d: { shippingNumber?: string; haisoKosu: number; otodokeNm: string[]; otodokeAdd: string[]; otodokeYubin: string; irai?: { nm: string[]; add: string[]; yubin: string }; shukaIrai?: { shukaIraiShiteiDate?: string } }) => {
+    console.log(`    送信内容 (${label}): 個数 ${d.haisoKosu}・集荷日 ${d.shukaIrai?.shukaIraiShiteiDate ?? "-"}・問合番号 ${d.shippingNumber ?? "(システム採番)"} (採番区分 1)`)
     console.log(`      集荷先 〒${d.irai?.yubin} ${d.irai?.add.join(" / ")}・宛名 ${d.irai?.nm.join(" / ")}`)
     console.log(`      届け先 〒${d.otodokeYubin} ${d.otodokeAdd.join(" / ")}・宛名 ${d.otodokeNm.join(" / ")}`)
   }
@@ -145,6 +167,10 @@ async function main() {
       const rec = await records(row.id)
       check("発行 → 受付済み・問合番号1つ", r.send?.outcome === "accepted" && /^\d{10,12}$/.test(rec[0]?.shipping_number ?? ""), { send: r.send, rec })
       check("DB の記録は1件 (accepted)", rec.length === 1 && rec[0].state === "accepted", rec)
+      const sent = r.preview?.ok ? r.preview.detail.shippingNumber : null
+      const ar = (await db.query(`select assigned_number from pickup_requests where shipment_id=$1`, [row.id])).rows[0]
+      check("顧客側採番: 送った番号 = 記録の番号 = 佐川の応答の番号・チェックデジット (mod 7) が正しい",
+        !!sent && sent === rec[0]?.shipping_number && sent === ar?.assigned_number && Number(BigInt(sent.slice(0, 11)) % BigInt(7)) === Number(sent[11]), { sent, rec, ar })
     }
     log({ case: "T1", preview: r.preview?.ok, send: r.send, records: await records(row.id) })
   }
@@ -203,7 +229,7 @@ async function main() {
       const row = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
       const bad = mockClient("error")
       const built = await buildLegInput(row, env, {})
-      const pv = built.ok ? await previewBizLogiPickup(row, built.input, { client: mockClient() }) : null
+      const pv = built.ok ? await previewBizLogiPickup(row, built.input, pvDeps(mockClient())) : null
       const send = built.ok && pv?.ok ? await sendBizLogiPickup(row, built.input, { actor: "接続試験", expectedFingerprint: pv.fingerprint }, deps(bad)) : null
       const rec = await records(row.id)
       check("佐川のエラーコード → failed・番号なし", send?.outcome === "failed" && rec[0]?.state === "failed" && !rec[0]?.shipping_number, { send, rec })
@@ -213,7 +239,7 @@ async function main() {
       const row = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
       const built = await buildLegInput(row, env, {})
       if (built.ok) built.input.destination.postalCode = "6018104" // 大阪の住所に京都の郵便番号
-      const pv = built.ok ? await previewBizLogiPickup(row, built.input, { client }) : null
+      const pv = built.ok ? await previewBizLogiPickup(row, built.input, pvDeps(client)) : null
       check("確認機能でエラー (E2-0001 等) を返し、送信に進まない", pv?.ok === false, pv)
       check("DB に記録なし (確認で止まったため)", (await records(row.id)).length === 0)
       log({ case: "T5", preview: pv })
@@ -227,7 +253,7 @@ async function main() {
     const row = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
     const built = await buildLegInput(row, env, {})
     if (!built.ok) throw new Error(built.errors.join(" / "))
-    const pv = await previewBizLogiPickup(row, built.input, { client })
+    const pv = await previewBizLogiPickup(row, built.input, pvDeps(client))
     if (!pv.ok) throw new Error(`確認で止まりました: ${JSON.stringify(pv)}`)
     if (mode === "confirm") {
       console.log("  confirm モードでは発行しないため、この試験は issue モードで行う (確認機能は S0-0001)")
@@ -247,6 +273,55 @@ async function main() {
       check("受付済みの区間はもう一度送れない", again.outcome === "blocked" && calls === 1, again)
       log({ case: "T6", outcomes: [a, b, again], calls, records: rec })
     }
+  }
+
+  if (only.has("num") && mode === "dry-run") {
+    console.log("\n■ T7 顧客側採番の異常 (dry-run だけ: 模擬の応答)")
+    // E1-0206 (重複): 成功でも失敗でもなく結果不明・番号はそのまま・自動で再送しない
+    const a = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
+    const ba = await buildLegInput(a, env, {})
+    const pa = ba.ok ? await previewBizLogiPickup(a, ba.input, pvDeps(mockClient())) : null
+    const before = issues
+    const sa = ba.ok && pa?.ok ? await sendBizLogiPickup(a, ba.input, { actor: "接続試験", expectedFingerprint: pa.fingerprint }, deps(mockClient("dup"))) : null
+    const ra = await records(a.id)
+    check("E1-0206 → 結果不明 (成功・失敗のどちらにもしない)", sa?.outcome === "unknown" && ra[0]?.state === "unknown" && /E1-0206/.test(ra[0]?.error ?? ""), { sa, ra })
+    check("確認機能で E1-0206 → 発行依頼は送らない", issues === before)
+    const a2 = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
+    const ba2 = await buildLegInput(a2, env, {})
+    const pa2 = ba2.ok ? await previewBizLogiPickup(a2, ba2.input, pvDeps(mockClient())) : null
+    const before2 = issues
+    const sa2 = ba2.ok && pa2?.ok ? await sendBizLogiPickup(a2, ba2.input, { actor: "接続試験", expectedFingerprint: pa2.fingerprint }, deps(mockClient("dupOnIssue"))) : null
+    const ra2 = await records(a2.id)
+    check("発行依頼で E1-0206 → 結果不明・問合番号を記録しない・再送しない (呼び出し1回)", sa2?.outcome === "unknown" && ra2[0]?.state === "unknown" && !ra2[0]?.shipping_number && issues === before2 + 1, { sa2, ra2 })
+    check("E1-0206 の番号は使い続ける (使わなくしない・別の番号で送り直さない)", (await db.query(`select active from pickup_number_ledger where shipment_id=$1`, [a.id])).rows[0]?.active === true)
+    // E1-0207 (範囲外): 失敗・その番号は使わなくする・次は別の番号
+    const b = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
+    const bb = await buildLegInput(b, env, {})
+    const pb = bb.ok ? await previewBizLogiPickup(b, bb.input, pvDeps(mockClient())) : null
+    const n1 = pb?.ok ? pb.detail.shippingNumber : null
+    const sb1 = bb.ok && pb?.ok ? await sendBizLogiPickup(b, bb.input, { actor: "接続試験", expectedFingerprint: pb.fingerprint }, deps(mockClient("range"))) : null
+    check("E1-0207 → 送信失敗・番号を使わなくする", sb1?.outcome === "failed" && (await db.query(`select active from pickup_number_ledger where number=$1`, [n1])).rows[0]?.active === false, sb1)
+    const pb2 = bb.ok ? await previewBizLogiPickup(b, bb.input, pvDeps(mockClient())) : null
+    check("次の確認では別の番号になる", !!pb2?.ok && pb2.detail.shippingNumber !== n1, pb2)
+    // 佐川のエラー (E2-0004・佐川に登録なし): 同じ区間の送り直しは同じ番号
+    const c = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
+    const bc = await buildLegInput(c, env, {})
+    const pc = bc.ok ? await previewBizLogiPickup(c, bc.input, pvDeps(mockClient())) : null
+    const nc = pc?.ok ? pc.detail.shippingNumber : null
+    if (bc.ok && pc?.ok) await sendBizLogiPickup(c, bc.input, { actor: "接続試験", expectedFingerprint: pc.fingerprint }, deps(mockClient("error")))
+    const pc2 = bc.ok ? await previewBizLogiPickup(c, bc.input, pvDeps(mockClient())) : null
+    check("送信失敗 (佐川に登録なし) の後の送り直しは同じ番号", !!pc2?.ok && pc2.detail.shippingNumber === nc, { nc, again: pc2 })
+    const sc2 = bc.ok && pc2?.ok ? await sendBizLogiPickup(c, bc.input, { actor: "接続試験", expectedFingerprint: pc2.fingerprint }, deps(mockClient())) : null
+    check("送り直し → 受付済み (同じ番号)", sc2?.outcome === "accepted" && (sc2 as { shippingNumber?: string }).shippingNumber === nc, sc2)
+    // 範囲の使い切り: 送らずに止める
+    await db.exec(`update pickup_number_ranges set next_body = body_end + 1 where environment = 'test' and active`)
+    const d = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
+    const bd = await buildLegInput(d, env, {})
+    const pd = bd.ok ? await previewBizLogiPickup(d, bd.input, pvDeps(mockClient())) : null
+    check("範囲を使い切ったら送らずに止める (新しい範囲の登録を案内)", pd?.ok === false && /使い切りました/.test(JSON.stringify(pd)), pd)
+    await db.exec(`update pickup_number_ranges set active = false where environment = 'test'`)
+    const pe = bd.ok ? await previewBizLogiPickup(d, bd.input, pvDeps(mockClient())) : null
+    check("範囲が未登録なら送らずに止める (推測の番号は使わない)", pe?.ok === false && /範囲が未登録/.test(JSON.stringify(pe)), pe)
   }
 
   console.log(`\n${pass} passed, ${fail} failed`)

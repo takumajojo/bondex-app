@@ -29,6 +29,7 @@ export async function initSchema(repo: string) {
   await db.exec(readFileSync(`${repo}/sql/072_enable_pickup_lock.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/075_pickup_watch_alerts.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/076_agency_change_atomic.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/078_pickup_customer_numbering.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)

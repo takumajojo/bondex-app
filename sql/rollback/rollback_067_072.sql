@@ -1,7 +1,7 @@
 -- 段階A〜C と B2C 締切 (sql/067〜072) の本番適用の切り戻し (緊急時のみ・承認のうえで実行)。未実行。
 -- 前提: 先に sql/rollback/pause_pickup_lock.sql (ロック無効・集荷依頼の記録を停止) → アプリを統合前のデプロイへ戻す
 --       (Vercel の Instant Rollback)。古いアプリは pickup_requests・変更申請の新しい列・施設台帳を使わない。
--- 戻す順番は適用の逆: 072 (pause_pickup_lock) → 070 → 076 → 075 → 071 → 068 → 069 → 067。
+-- 戻す順番は適用の逆: 072 (pause_pickup_lock) → 070 → 078 → 076 → 075 → 071 → 068 → 069 → 067。
 -- B2C の土台 (sql/061・062) はここでは消さない (B2C は機能フラグで閉じる。061・062 の切り戻しは B2C 側の手順)。
 -- データは消す前に *_rollback_backup に写す (後で調べる・やり直すため)。
 
@@ -36,6 +36,27 @@ alter table public.shipments disable trigger shipments_pickup_lock;
 -- ── 070: 変更受付締切を元の値に戻す
 update public.shipments s set change_deadline_at = b.change_deadline_at
   from public.change_deadline_backup_070 b where b.shipment_id = s.id;
+
+-- ── 078: 顧客側採番 (番号範囲・台帳は写してから消す。採番を記録した列も消す)
+do $$ begin
+  if to_regclass('public.pickup_number_ledger') is not null then
+    execute 'create table if not exists public.pickup_number_ledger_rollback_backup as select * from public.pickup_number_ledger';
+    execute 'create table if not exists public.pickup_number_ranges_rollback_backup as select * from public.pickup_number_ranges';
+  end if;
+end $$;
+drop trigger if exists pickup_requests_numbering_ins on public.pickup_requests;
+drop trigger if exists pickup_requests_numbering_upd on public.pickup_requests;
+drop function if exists public.pickup_requests_numbering();
+drop function if exists public.pickup_leg_number(uuid, text);
+drop function if exists public.pickup_retire_number(text, text);
+drop function if exists public.sagawa_check_digit_ok(text);
+drop table if exists public.pickup_number_ledger;
+drop table if exists public.pickup_number_ranges;
+do $$ begin
+  if to_regclass('public.pickup_requests') is not null then
+    execute 'alter table public.pickup_requests drop column if exists assigned_number';
+  end if;
+end $$;
 
 -- ── 076: 代理店の変更の一括反映 (古いアプリは使わない)
 drop function if exists public.agency_change_atomic(uuid, jsonb, text, jsonb, jsonb, text, text, text);
