@@ -175,7 +175,7 @@ export function DashboardOverview({ onSelectOrder, onViewPaymentFailures, onView
             <Package className="w-5 h-5" />
             Recent orders
           </h2>
-          <Button variant="ghost" size="sm" onClick={onViewOrders}>
+          <Button variant="ghost" size="sm" onClick={() => onViewOrders()}>
             View all
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>

@@ -10,20 +10,18 @@
  */
 
 import { sendMail, mailerConfigured, type MailAttachment } from "./mailer"
-import { CONTRACT_PRICE_YEN } from "./contract-content"
-import { taxOf } from "./tax"
+import { estimateTotals, type AmountBreakdown } from "./pricing"
 
 /**
- * 受付メールに載せる「概算金額」。実課金と同じ基準(税抜単価=CONTRACT_PRICE_YEN・国内/海外とも+10%)で
- * 全区間のお預かり個数合計から算出する。確定は集荷完了時(個数変更可)。個数不明(0)なら null。
+ * 受付メールに載せる「概算金額」。実課金と同じ基準 (税抜単価=代理店別単価 resolveUnitPriceYen・
+ * 国内/海外とも +10%) で全区間のお預かり個数合計から算出する ＝ 発行時の請求と同じ単価になる
+ * (旧: CONTRACT_PRICE_YEN 固定で、契約単価を設定した代理店では概算と実請求がズレていた)。
+ * 確定は集荷完了時 (個数変更可)。個数不明(0)なら null。
  */
-function feeEstimate(input: BookingRequestEmailInput): { pieces: number; unit: number; net: number; tax: number; gross: number } | null {
+function feeEstimate(input: BookingRequestEmailInput): AmountBreakdown | null {
   const pieces = (input.legs ?? []).reduce((s, l) => s + (l.suitcaseCount ?? 0), 0)
   if (pieces <= 0) return null
-  const unit = CONTRACT_PRICE_YEN
-  const net = pieces * unit
-  const tax = taxOf(net) // 海外の代理店も 10% 課税 (2026-10-05 税理士確認)
-  return { pieces, unit, net, tax, gross: net + tax }
+  return estimateTotals(pieces, input.agencyUnitPriceYen)
 }
 
 const yen = (n: number) => "¥" + n.toLocaleString("ja-JP")
@@ -58,6 +56,8 @@ export interface BookingRequestEmailInput {
   representative?: string | null
   /** 代理店が国内か。消費税は国内/海外とも課税のため、概算金額の計算には使わない。 */
   isDomestic?: boolean | null
+  /** 代理店の契約単価 (agencies.unit_price_yen)。概算金額を実課金と同じ単価で出すため。未設定(null)は既定単価。 */
+  agencyUnitPriceYen?: number | null
   /** 2026-09-24〜 の運用 (送り状は集荷員が持参)。true なら「バウチャーをそのままお渡し」+ 区間ごとの予定表を本文にする。 */
   waybillNotNeeded?: boolean
   /** 区間ごとの予定表 (waybillNotNeeded のとき使う)。suitcaseCount=個数。 */

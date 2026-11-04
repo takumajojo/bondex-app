@@ -60,7 +60,7 @@ export default function LeadTimeGuideEn() {
           <tr><td>Next day (Hikyaku Air)</td><td>To / from Okinawa (varies by area)</td></tr>
         </tbody>
       </table>
-      <p className="note">Depending on the pickup hotel's area, a route can take one extra day even from the same city (e.g. Ginza, Tokyo → Hakodate takes three days; other Tokyo areas → Hakodate take two). We confirm the earliest arrival for each pair of hotels when you book.</p>
+      <p className="note">Depending on the pickup hotel&apos;s area, a route can take one extra day even from the same city (e.g. Ginza, Tokyo → Hakodate takes three days; other Tokyo areas → Hakodate take two). We confirm the earliest arrival for each pair of hotels when you book.</p>
       <p className="note">This is not a same-day service. When guests move cities on the pickup day, have them carry an overnight bag and collect the suitcase at the next hotel the following day.</p>
 
       <h2>Booking cut-offs</h2>
