@@ -27,12 +27,13 @@ export async function initSchema(repo: string) {
   await db.exec(readFileSync(`${repo}/sql/069_facilities.sql`, "utf8"))
   // 本番移行の最後の段 (ロック有効化・集荷依頼の記録の再開)。068 はロックを無効で作るので、ここで有効にする
   await db.exec(readFileSync(`${repo}/sql/072_enable_pickup_lock.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/075_pickup_watch_alerts.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)
 
 class Query {
-  private op: "select" | "update" | "insert" = "select"
+  private op: "select" | "update" | "insert" | "delete" = "select"
   private cols = "*"
   private where: string[] = []
   private params: unknown[] = []
@@ -59,6 +60,10 @@ class Query {
   insert(p: Row) {
     this.op = "insert"
     this.payload = p
+    return this
+  }
+  delete() {
+    this.op = "delete"
     return this
   }
   eq(c: string, v: unknown) { this.where.push(`${c} = ${this.p(v)}`); return this }
@@ -104,6 +109,10 @@ class Query {
         const r = await db.query(`insert into ${this.table} (${cols}) values (${vals})${this.returning ? ` returning ${this.cols}` : ""}`, this.params)
         return { data: this.returning ? (this.single ? r.rows[0] : r.rows) : null, error: null }
       }
+      if (this.op === "delete") {
+        await db.query(`delete from ${this.table}${w}`, this.params)
+        return { data: null, error: null }
+      }
       if (this.op === "update") {
         const sets = Object.entries(this.payload ?? {}).map(([k, v]) => `${k} = ${this.p(jsonCol(v) ? JSON.stringify(v) : v)}${jsonCol(v) ? "::jsonb" : ""}`)
         const sql = `update ${this.table} set ${sets.join(", ")}${w}${this.returning ? ` returning ${this.cols}` : ""}`
@@ -136,10 +145,10 @@ const client = {
       const keys = Object.keys(params)
       const vals = keys.map((k) => {
         const v = params[k]
-        if (k === "p_from_states") return v // text[]
+        if (k === "p_from_states" || k === "p_keys") return v // text[]
         return jsonCol(v) ? JSON.stringify(v) : v
       })
-      const args = keys.map((k, i) => `${k} := $${i + 1}${jsonCol(params[k]) && k !== "p_from_states" ? "::jsonb" : ""}`)
+      const args = keys.map((k, i) => `${k} := $${i + 1}${jsonCol(params[k]) && k !== "p_from_states" && k !== "p_keys" ? "::jsonb" : ""}`)
       const r = await db.query(`select * from ${name}(${args.join(", ")})`, vals)
       return { data: r.rows, error: null }
     } catch (e) {

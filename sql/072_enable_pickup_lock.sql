@@ -4,6 +4,29 @@
 -- 18:00〜19:30 (締切と集荷依頼の時間帯) を避けて実行する。ロック待ちが長いときは失敗させてやり直す。
 -- 再実行しても結果は同じ。戻すとき: sql/rollback/pause_pickup_lock.sql
 
+-- 移行の表の確保 (2026-11-04 デッドロック対策・072)。関係する表を「待たずに」まとめて掴む (nowait)。
+-- 掴めなければ何も持たずに 0.2秒待って掴み直す (待っている間は表を持たないので、利用者の操作とデッドロックしない)。
+-- 掴んだ後は、この SQL が終わるまで (1秒未満) 利用者の操作のほうが待つだけで、失敗しない。
+-- 10秒たっても掴めなければ、何も変えずに失敗する (少し待って流し直す)。1つのトランザクションの中で流すこと。
+do $migration_lock$
+declare
+  i int;
+  targets text;
+begin
+  -- 存在する表だけ (例: 067 の前は pickup_requests が無い)
+  select string_agg(t, ', ') into targets from unnest(array['public.shipments', 'public.shipment_change_requests', 'public.operator_passkeys']) t where to_regclass(t) is not null;
+  if targets is null then return; end if;
+  for i in 1..50 loop
+    begin
+      execute format('lock table %s in access exclusive mode nowait', targets);
+      return;
+    exception when lock_not_available then
+      perform pg_sleep(0.2);
+    end;
+  end loop;
+  raise exception 'migration: 表 (%) を10秒以内に確保できませんでした。何も変えていません。少し待って流し直してください', targets;
+end $migration_lock$;
+
 set lock_timeout = '5s';
 
 alter table public.shipments enable trigger shipments_pickup_lock;
