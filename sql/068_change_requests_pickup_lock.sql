@@ -13,6 +13,16 @@
 -- 集荷済み以降 (picked_up / in_transit / delivered) は対象外 (集荷時の個数訂正・課金の訂正を止めない)。
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 0. 表を掴む順番を固定する (2026-11-04 移行リハーサル)。利用者の操作を流したまま適用すると、
+--    「変更申請の表 → 区間の表」の順に掴む本 SQL と、「区間 → 変更申請」の順に読む画面の照会が
+--    デッドロックし、どちらかが打ち切られた (scripts/test-integ/migration-rehearsal.sh)。
+--    最初に 区間 → 集荷依頼 → 変更申請 の順でまとめて掴む。利用者の操作は適用の間 (1秒未満) だけ待つ
+--    (lock_timeout を付けて流す。待ち切れなければ何も変えずに失敗する)。
+lock table public.shipments in access exclusive mode;  -- トリガーの作り直し (drop trigger) が最も強い鍵を要るので最初から取る
+lock table public.pickup_requests in share row exclusive mode;
+lock table public.shipment_change_requests in access exclusive mode;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 1. shipment_change_requests の拡張
 alter table public.shipment_change_requests
   add column if not exists kind                 text,

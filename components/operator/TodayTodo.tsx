@@ -39,6 +39,7 @@ interface SagawaPickupTask {
   suitcaseCount?: number
   /** Biz-Logi で送れない理由 (20個以上・団体)。手動 (Excel) で手配する */
   manualOnlyReason?: string | null
+  lastFailure?: { error: string | null; at: string } | null
   /** overdue=当日以前 / due=明日発送 (今日20時締め) / upcoming=2日後以降 */
   urgency: string
   cutoffAt?: string | null
@@ -403,6 +404,9 @@ function SagawaPickupRow({
             {t.suitcaseCount ? <span className="text-[11px] text-muted-foreground">・{t.suitcaseCount}個</span> : null}
             {t.manualOnlyReason ? (
               <span title={t.manualOnlyReason} className="rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-bold">手動手配のみ（佐川へ事前連絡）</span>
+            ) : null}
+            {t.lastFailure ? (
+              <span title={t.lastFailure.error ?? ""} className="rounded bg-red-100 text-red-800 px-1.5 py-0.5 text-[10px] font-bold">前回の依頼は佐川が受付せず（未依頼）</span>
             ) : null}
             {t.tourNumber && <span className="text-[11px] text-muted-foreground">・ツアー {t.tourNumber}</span>}
           </div>

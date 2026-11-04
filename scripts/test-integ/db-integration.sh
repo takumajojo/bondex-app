@@ -13,7 +13,8 @@ R="$(cd "$(dirname "$0")/../.." && pwd)"
 C=supabase_db_supa-local; DB=bondex_integ_test
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
-apply() { for f in "$@"; do q < "$R/$f" >/dev/null 2>/tmp/integ_err.txt || { echo "  適用失敗: $f"; grep -m3 ERROR /tmp/integ_err.txt; FAIL=$((FAIL+1)); return 1; }; done; }
+# 本番 (Supabase の migration) と同じく、1ファイル1トランザクションで流す
+apply() { for f in "$@"; do q -1 < "$R/$f" >/dev/null 2>/tmp/integ_err.txt || { echo "  適用失敗: $f"; grep -m3 ERROR /tmp/integ_err.txt; FAIL=$((FAIL+1)); return 1; }; done; }
 eq() { # 説明 期待値 実際の値
   if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "  ok   $1"; else FAIL=$((FAIL+1)); echo "  FAIL $1 (期待: $2 / 実際: $3)"; fi
 }

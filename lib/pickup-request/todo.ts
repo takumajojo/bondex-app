@@ -75,6 +75,11 @@ export interface SagawaPickupTask {
   cutoffAt: string | null
   /** Biz-Logi で送れない理由 (20個以上・団体)。null は送れる。手動 (Excel) では依頼できる。 */
   manualOnlyReason?: string | null
+  /**
+   * 最後の依頼が佐川に断られた (failed = エラーコードの応答・佐川に登録なし)。未依頼と区別して表示する
+   * (2026-11-04 最終検証: 送信失敗の区間が「依頼が必要」に紛れて気づけない)。
+   */
+  lastFailure?: { error: string | null; at: string } | null
 }
 
 export interface PickupAttentionTask extends Omit<SagawaPickupTask, "urgency" | "cutoffAt"> {
@@ -162,6 +167,12 @@ export function buildPickupTodo(
   for (const r of requests) if (isLive(r.state)) live.set(r.shipment_id, r)
   const tomorrow = addDays(today, 1)
   const horizon = addDays(today, PICKUP_TODO_LOOKAHEAD_DAYS)
+  // 区間ごとの最新の記録 (送信失敗の表示用)
+  const latest = new Map<string, PickupRequestRow>()
+  for (const r of requests) {
+    const cur = latest.get(r.shipment_id)
+    if (!cur || (r.created_at ?? "") > (cur.created_at ?? "")) latest.set(r.shipment_id, r)
+  }
 
   const needRequest: SagawaPickupTask[] = []
   for (const l of legs) {
@@ -178,6 +189,10 @@ export function buildPickupTodo(
       manualOnlyReason: (() => {
         const e = bizlogiEligibility(l)
         return e.ok ? null : e.reason
+      })(),
+      lastFailure: (() => {
+        const r = latest.get(l.id)
+        return r && r.state === "failed" ? { error: r.error ?? null, at: r.updated_at } : null
       })(),
     })
   }

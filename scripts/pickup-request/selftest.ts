@@ -18,7 +18,7 @@ import type { HotelPlaceDetails } from "../../lib/hotel-place"
 import { currentIntervalHours } from "../../lib/tracking/poll-policy"
 import { pickupSnapshot, snapshotChanges } from "../../lib/pickup-request/snapshot"
 import { checkExcelRows, parseLegRef } from "../../lib/pickup-request/excel-check"
-import { alertStaleSending } from "../../lib/pickup-request/watch"
+import { alertStaleSending, eveningGaps } from "../../lib/pickup-request/watch"
 import { bizLogiAvailability, recordManualFromTrackingNumber } from "../../lib/pickup-request/service"
 import { cleanOverrides, overridesNote, PLACES_TIMEOUT_MS } from "../../lib/pickup-request/leg-input"
 import { pastRecommendedTime } from "../../lib/bizlogi/deadline"
@@ -499,6 +499,35 @@ async function main() {
     check("運営が佐川向けの名称を入れれば送れる", !!pv3 && pv3.ok && built3.ok && built3.input.origin.name === "ホテル短縮名")
     check("指定した名称は記録のメモに残す", overridesNote(ov) === "佐川の宛名を運営が指定: 発送元「ホテル短縮名」")
     check("空欄は指定なし扱い", overridesNote(cleanOverrides({ originName: "  " })) === null)
+  }
+
+  console.log("15. 送信失敗の表示と夕方の依頼漏れの判定 (2026-11-04 最終検証)")
+  {
+    const L = (id: string, date: string): PickupTodoLeg => ({
+      id, booking_id: `BDX-${id}`, leg_index: 0, status: "requested", carrier: "sagawa", shipment_date: date,
+      representative: "X", tour_number: null, from_hotel: "H", from_hotel_ja: null, from_residence: null, suitcase_count: 2, tracking_numbers: null,
+    })
+    const R = (id: string, sid: string, state: PickupRequestRow["state"], created: string): PickupRequestRow =>
+      ({ id, shipment_id: sid, state, channel: "bizlogi", created_at: created, updated_at: created, shipping_number: null, error: state === "failed" ? "E2-0004" : null, note: null } as PickupRequestRow)
+    const now = new Date("2026-11-05T10:05:00Z") // 19:05 JST
+    const t = buildPickupTodo(
+      [L("fail", "2026-11-06"), L("refail", "2026-11-06"), L("none", "2026-11-06"), L("unk", "2026-11-06"), L("later", "2026-11-08")],
+      [
+        R("f1", "fail", "failed", "2026-11-05T10:00:00Z"),
+        R("f2", "refail", "failed", "2026-11-05T09:00:00Z"), R("f3", "refail", "void", "2026-11-05T10:01:00Z"),
+        R("u1", "unk", "unknown", "2026-11-05T10:00:00Z"),
+      ],
+      "2026-11-05", now,
+    )
+    const by = (id: string) => t.needRequest.find((x) => x.shipmentId === id)
+    check("最後の依頼が failed の区間は「依頼が必要」に残り、前回失敗の印 (エラーコード) が付く", by("fail")?.lastFailure?.error === "E2-0004", by("fail"))
+    check("失敗の後に別の記録 (void 等) が最新なら印を付けない", !by("refail")?.lastFailure, by("refail"))
+    check("一度も送っていない区間には印を付けない", by("none")?.lastFailure === null)
+    const g = eveningGaps(t, now)
+    check("19:05: 明日集荷の未依頼 (送信失敗を含む) と結果不明を拾い、3日後は拾わない",
+      !!g && g.unsent.map((x) => x.shipmentId).sort().join(",") === "fail,none,refail" && g.attention.map((x) => x.shipmentId).join(",") === "unk", g)
+    check("18:59 は対象外", eveningGaps(t, new Date("2026-11-05T09:59:00Z")) === null)
+    check("21:59 は対象・22:00 は対象外", !!eveningGaps(t, new Date("2026-11-05T12:59:00Z")) && eveningGaps(t, new Date("2026-11-05T13:00:00Z")) === null)
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)

@@ -18,7 +18,7 @@ trap 'docker exec -i "$CONTAINER" psql -U postgres -d postgres -qc "drop databas
 
 for f in scripts/test-pickup-e2e/schema-base.sql sql/043_shipment_change_requests.sql sql/067_pickup_requests.sql \
          sql/063_fix_hotel_change_tracking_column.sql sql/068_change_requests_pickup_lock.sql sql/069_facilities.sql sql/072_enable_pickup_lock.sql; do
-  q < "$f" >/dev/null
+  q -1 < "$f" >/dev/null   # 本番の migration と同じく1ファイル1トランザクション
 done
 echo "schema loaded on $CONTAINER/$DB (server_addr=$ADDR)"
 

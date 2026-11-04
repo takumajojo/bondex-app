@@ -7,6 +7,11 @@
 
 begin;
 
+-- 表を掴む順番を固定する (sql/068 と同じ。利用者の操作とのデッドロックを避ける)
+lock table public.shipments in access exclusive mode;  -- トリガーの作り直し (drop trigger) が最も強い鍵を要るので最初から取る
+lock table public.pickup_requests in share row exclusive mode;
+lock table public.shipment_change_requests in access exclusive mode;
+
 -- ── 072: ロック無効・記録の停止 (pause_pickup_lock.sql を先に流していれば何も変わらない)
 alter table public.shipments disable trigger shipments_pickup_lock;
 

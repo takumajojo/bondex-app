@@ -12,7 +12,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
 import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
-import { alertStaleSending } from "@/lib/pickup-request/watch"
+import { alertStaleSending, alertEveningPickupGaps } from "@/lib/pickup-request/watch"
 import { shouldQueryLeg, numberHasBudget, legProgressStatus, TRACKING_MAX_QUERIES, type NumberMeta } from "@/lib/tracking/poll-policy"
 
 export const runtime = "nodejs"
@@ -111,6 +111,10 @@ export async function GET(req: NextRequest) {
     if (sbWatch) {
       await alertStaleSending(sbWatch, (input) => sendOpsAlert(input)).catch((e) =>
         console.error("[sync-tracking] pickup watch failed:", e instanceof Error ? e.message : e),
+      )
+      // 夕方 (19:00〜21:59) に明日集荷の依頼漏れ・結果不明が残っていれば知らせる (2026-11-04 最終検証)
+      await alertEveningPickupGaps(sbWatch, (input) => sendOpsAlert(input)).catch((e) =>
+        console.error("[sync-tracking] evening pickup watch failed:", e instanceof Error ? e.message : e),
       )
     }
   }
