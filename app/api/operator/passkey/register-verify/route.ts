@@ -1,3 +1,4 @@
+import { attemptEmailCode, attemptMessage } from "@/lib/operator-email-challenge"
 import { NextRequest, NextResponse } from "next/server"
 import { verifyRegistrationResponse } from "@simplewebauthn/server"
 import { rateLimit } from "@/lib/rate-limit"
@@ -6,7 +7,6 @@ import { rpFrom, encodePublicKey, operatorPasswordOk, operatorEmailAllowed, devi
 import {
   issueOperatorSession,
   verifyChallengeToken,
-  verifyEmailCodeToken,
   OPERATOR_CHALLENGE_COOKIE,
   OPERATOR_EMAIL_CODE_COOKIE,
   OPERATOR_SESSION_COOKIE,
@@ -28,16 +28,16 @@ export async function POST(req: NextRequest) {
   }
   const email = typeof body.email === "string" ? body.email.trim() : ""
   const code = typeof body.code === "string" ? body.code.trim() : ""
-  const emailOk =
-    email !== "" &&
-    code !== "" &&
-    operatorEmailAllowed(email) &&
-    (await verifyEmailCodeToken(req.cookies.get(OPERATOR_EMAIL_CODE_COOKIE)?.value, email, code))
-  if (!emailOk && !operatorPasswordOk(body.password)) {
-    return NextResponse.json(
-      { error: "認証コードが正しくないか、有効期限が切れています。もう一度コードを送信してください。" },
-      { status: 401 },
-    )
+  // メールのコード (第2段: 使い切る (used・以後は使えない))。試行の回数・無効化・1回限りは DB で数える (sql/077・lib/operator-email-challenge.ts)。
+  // 運営のパスワードで入る従来の経路は変えない (パスワードがあればメールのコードは数えない)。
+  const passwordOk = operatorPasswordOk(body.password)
+  const attempt =
+    !passwordOk && email !== "" && code !== "" && operatorEmailAllowed(email)
+      ? await attemptEmailCode(req.cookies.get(OPERATOR_EMAIL_CODE_COOKIE)?.value, email, code, true)
+      : null
+  const emailOk = attempt === "ok"
+  if (!emailOk && !passwordOk) {
+    return NextResponse.json({ error: attemptMessage(attempt ?? "wrong") }, { status: attempt === "unavailable" ? 503 : 401 })
   }
   const challenge = await verifyChallengeToken(req.cookies.get(OPERATOR_CHALLENGE_COOKIE)?.value)
   if (!challenge) {

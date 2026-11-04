@@ -33,6 +33,13 @@ async function hmacKey(): Promise<CryptoKey | null> {
   )
 }
 
+function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4))
+  const out = new Uint8Array(new ArrayBuffer(bin.length))
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
 function b64url(buf: ArrayBuffer): string {
   let s = ""
   const bytes = new Uint8Array(buf)
@@ -123,8 +130,8 @@ export async function verifyChallengeToken(token: string | undefined | null): Pr
  * メール認証コード (パスキー登録時の本人確認・2026-08-31)。
  * 運営パスワードは Vercel 環境変数で人間が覚えていないため、人間の登録フローは
  * 「許可されたメールアドレス + 6桁コード」に置き換える (谷口さん指示: メアドと指紋で)。
- * コード自体は cookie に載せず、HMAC(ペイロード + コード) だけを署名として保存する。
- * 形式: "e1.<exp>.<base64url(email)>.<sig>"
+ * 2026-11-04（Stage 6 B2）から、コードの照合と試行の回数は DB（sql/077）で行う。cookie はコードの記録を指すだけ
+ * （下の issueEmailChallengeCookie。旧形式 "e1.…" の cookie は受け付けない＝コードを送り直してもらう）。
  */
 export const OPERATOR_EMAIL_CODE_COOKIE = "bondex_op_emailcode"
 const EMAIL_CODE_TTL_SEC = 10 * 60
@@ -133,41 +140,41 @@ function b64urlStr(s: string): string {
   return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
 
-export async function issueEmailCodeToken(
-  email: string,
-  code: string,
-): Promise<string | null> {
+/**
+ * メール認証コードの記録（sql/077 の operator_email_challenges）を指す cookie（2026-11-04 Stage 6 B2）。
+ * 形式: "e2.<exp>.<記録の ID>.<base64url(email)>.<sig>"。コードは入れない（コードの照合と試行の回数は DB）。
+ */
+export async function issueEmailChallengeCookie(challengeId: string, email: string): Promise<string | null> {
   const key = await hmacKey()
   if (!key) return null
   const exp = Math.floor(Date.now() / 1000) + EMAIL_CODE_TTL_SEC
-  const payload = `e1.${exp}.${b64urlStr(email)}`
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`${payload}:${code}`),
-  )
+  const payload = `e2.${exp}.${challengeId}.${b64urlStr(email.trim().toLowerCase())}`
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload))
   return `${payload}.${b64url(sig)}`
 }
 
-/** 入力されたコードとメールを cookie の署名と突き合わせる。一致すれば email を返す。 */
-export async function verifyEmailCodeToken(
-  token: string | undefined | null,
-  email: string,
-  code: string,
-): Promise<boolean> {
-  if (!token) return false
-  const m = /^e1\.(\d{10,})\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{20,})$/.exec(token)
-  if (!m) return false
-  const exp = Number(m[1])
-  if (!Number.isFinite(exp) || exp * 1000 < Date.now()) return false
-  if (m[2] !== b64urlStr(email)) return false
+/** cookie の署名と期限を確かめ、記録の ID とメールを返す（コードの照合は DB の関数）。 */
+export async function readEmailChallengeCookie(token: string | undefined | null): Promise<{ challengeId: string; emailB64: string } | null> {
+  if (!token) return null
+  const m = /^e2\.(\d{10,})\.([0-9a-f-]{36})\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{20,})$/.exec(token)
+  if (!m) return null
+  if (Number(m[1]) * 1000 < Date.now()) return null
   const key = await hmacKey()
-  if (!key) return false
-  const payload = `e1.${m[1]}.${m[2]}`
-  const expected = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`${payload}:${code}`),
-  )
-  return b64url(expected) === m[3]
+  if (!key) return null
+  const payload = `e2.${m[1]}.${m[2]}.${m[3]}`
+  const ok = await crypto.subtle.verify("HMAC", key, b64urlToBytes(m[4]), new TextEncoder().encode(payload))
+  return ok ? { challengeId: m[2], emailB64: m[3] } : null
 }
+
+export function emailB64(email: string): string {
+  return b64urlStr(email.trim().toLowerCase())
+}
+
+/** DB に保存するコードの HMAC（コードそのものは保存しない）。記録の ID を混ぜるので、同じコードでも記録ごとに違う値になる。 */
+export async function emailCodeHash(challengeId: string, code: string): Promise<string | null> {
+  const key = await hmacKey()
+  if (!key) return null
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`email-code:${challengeId}:${code}`))
+  return b64url(sig)
+}
+
