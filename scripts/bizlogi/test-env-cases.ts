@@ -206,9 +206,9 @@ async function main() {
   async function run(row: PickupShipmentRow, c: Client, overrides: Record<string, string> = {}) {
     const built = await buildLegInput(row, env, cleanOverrides(overrides))
     if (!built.ok) return { built, preview: null, send: null }
-    const preview = await previewBizLogiPickup(row, built.input, pvDeps(c))
+    const preview = await previewBizLogiPickup(row, built.input, pvDeps(c), { guestOverridden: built.guestOverridden })
     if (!preview.ok || mode === "confirm") return { built, preview, send: null }
-    const send = await sendBizLogiPickup(row, built.input, { actor: "接続試験", expectedFingerprint: preview.fingerprint }, deps(c))
+    const send = await sendBizLogiPickup(row, built.input, { actor: "接続試験", expectedFingerprint: preview.fingerprint, guestOverridden: built.guestOverridden }, deps(c))
     return { built, preview, send }
   }
   const show = (label: string, d: { shippingNumber?: string; haisoKosu: number; otodokeNm: string[]; otodokeAdd: string[]; otodokeYubin: string; irai?: { nm: string[]; add: string[]; yubin: string }; shukaIrai?: { shukaIraiShiteiDate?: string } }) => {

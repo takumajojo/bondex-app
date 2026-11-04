@@ -26,7 +26,8 @@ export function stripKyotoRouteName(street: string, prefecture: string): string 
 export function normalizeBanchi(s: string): string {
   return (s || "")
     .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)) // 全角数字→半角
-    .replace(/[−－–—ー]/g, "-") // 全角ハイフン類→半角
+    .replace(/[−－–—‐‑‒―]/g, "-") // ダッシュ類→半角
+    .replace(/(?<=\d)ー(?=\d)/g, "-") // 長音「ー」は数字の間 (ハイフンの打ち間違い) だけ。地名・建物名のカタカナは変えない (2026-11-04)
     .replace(/(\d+)丁目/g, "$1-") // 3丁目 → 3-
     .replace(/(\d+)番地(\d+)号?/g, "$1-$2") // 44番地1 / 44番地1号 → 44-1
     .replace(/(\d+)番(\d+)号?/g, "$1-$2") // 17番1号 → 17-1

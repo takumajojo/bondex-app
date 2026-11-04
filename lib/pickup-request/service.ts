@@ -59,25 +59,69 @@ function clientAndEnv() {
 export async function previewForShipment(
   row: PickupShipmentRow,
   overrides: NameOverrides = {},
-): Promise<PreviewResult & { origin?: unknown; destination?: unknown }> {
+): Promise<PreviewResult & { origin?: unknown; destination?: unknown; sources?: unknown; registered?: RegisteredLeg }> {
   const { cfg, legEnv, client } = clientAndEnv()
   const built = await buildLegInput(row, legEnv, overrides)
-  if (!built.ok) return { ok: false, errors: built.errors }
-  const res = await previewBizLogiPickup(row, built.input, { client, store: supabasePickupStore(), environment: cfg.environment, numbering: cfg.numbering })
-  return { ...res, origin: built.input.origin, destination: built.input.destination }
+  if (!built.ok) return { ok: false, errors: built.errors, registered: registeredLeg(row) }
+  const res = await previewBizLogiPickup(
+    row,
+    built.input,
+    { client, store: supabasePickupStore(), environment: cfg.environment, numbering: cfg.numbering },
+    { guestOverridden: built.guestOverridden },
+  )
+  return { ...res, origin: built.input.origin, destination: built.input.destination, sources: built.sources, registered: registeredLeg(row) }
+}
+
+/** 確認画面で、送る内容と並べて出す予約の登録内容 (正本)。 */
+export interface RegisteredLeg {
+  legRef: string
+  fromHotel: string
+  fromHotelJa: string | null
+  toHotel: string
+  toHotelJa: string | null
+  guestName: string
+  pickupDate: string
+  deliveryDate: string | null
+  deliveryTime: string | null
+  suitcaseCount: number | null
+  tourNumber: string | null
+  originCheckIn: string | null
+  destCheckIn: string | null
+  destCheckOut: string | null
+}
+
+export function registeredLeg(row: PickupShipmentRow): RegisteredLeg {
+  return {
+    legRef: `${row.booking_id}-L${row.leg_index + 1}`,
+    fromHotel: row.from_hotel,
+    fromHotelJa: row.from_hotel_ja,
+    toHotel: row.to_hotel,
+    toHotelJa: row.to_hotel_ja,
+    guestName: (row.representative || row.booking_name || "").trim(),
+    pickupDate: row.shipment_date,
+    deliveryDate: row.expected_arrival,
+    deliveryTime: row.delivery_time,
+    suitcaseCount: row.suitcase_count,
+    tourNumber: row.tour_number,
+    originCheckIn: row.origin_check_in ?? null,
+    destCheckIn: row.from_check_in ?? null,
+    destCheckOut: row.to_check_out ?? null,
+  }
 }
 
 export async function sendForShipment(
   row: PickupShipmentRow,
-  opts: { actor: string; expectedFingerprint: string; overrides?: NameOverrides },
+  opts: { actor: string; expectedFingerprint: string; overrides?: NameOverrides; acknowledged?: string[] },
   store: PickupStore,
 ): Promise<SendOutcome> {
   const { cfg, legEnv, client } = clientAndEnv()
   const built = await buildLegInput(row, legEnv, opts.overrides ?? {})
   if (!built.ok) return { outcome: "blocked", reason: built.errors.join(" / ") }
-  return sendBizLogiPickup(row, built.input, { ...opts, note: overridesNote(opts.overrides ?? {}) }, {
+  return sendBizLogiPickup(row, built.input, { ...opts, note: overridesNote(opts.overrides ?? {}), guestOverridden: built.guestOverridden }, {
     store,
     client,
+    // 確保の直後に DB から区間を読み直し、電文に効く予約の項目がすべて同じかを確かめる (2026-11-04 監査 N1)
+    reloadRow: () => loadPickupShipment(row.id),
     environment: cfg.environment,
     numbering: cfg.numbering,
     alert: (input) => sendOpsAlert(input),
