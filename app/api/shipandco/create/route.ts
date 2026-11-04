@@ -10,7 +10,8 @@ import { getSupabase } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { normalizeGuestLanguage } from "@/lib/guest-language"
 import { carrierConfig } from "@/lib/carrier"
-import { resolveUnitPriceYen } from "@/lib/pricing"
+import { lineSubtotalYen } from "@/lib/pricing"
+import { resolveLegDiscountBasis } from "@/lib/discount-basis"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { cleanResidence, normalizeZip, type ResidenceAddress } from "@/lib/residence"
 import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@/lib/hotel-place"
@@ -569,7 +570,30 @@ export async function POST(req: NextRequest) {
     ? ((await sbPrice.from("agencies").select("unit_price_yen").eq("name", agency).maybeSingle()).data
         ?.unit_price_yen as number | null | undefined)
     : null
-  const unitPriceYen = resolveUnitPriceYen(agencyUnitPrice)
+  // 金額は単一入口 lineSubtotalYen (= 代理店別単価 ×個数、団体割引は有効時のみ) で算出する。
+  // 団体割引 (Phase 1) の判定材料 (旅行形態・作成日時) を既存予約から解決する (lib/discount-basis.ts)。
+  //   - OFF (既定): DB を引かず fit → amount_yen = suitcaseCount × 代理店別単価 で現行と完全に不変。
+  //   - ON: DB 取得エラー時は **料金を確定せず発行を中止** する (不正確なデータで Ship&co 送信・DB 保存・
+  //         課金を一切発生させない)。既存予約が無い直接発行は FIT 動作を維持。既存予約ありは保存済みを正本にする。
+  // ※ この分岐は Ship&co 呼び出し・saveShipment・リードタイム超の deferred 保存よりすべて前にあるため、
+  //   ok:false の 500 返却時点で外部送信も料金確定も発生しない。
+  const discountBasis = await resolveLegDiscountBasis(sbPrice, bookingId || refNumber, legIndex)
+  if (!discountBasis.ok) {
+    return NextResponse.json(
+      {
+        error: "予約情報の取得に失敗したため発行を中止しました。時間をおいて再度お試しください。",
+        code: "DISCOUNT_BASIS_LOOKUP_FAILED",
+      },
+      { status: 500 },
+    )
+  }
+  const legAmount = (pieces: number) =>
+    lineSubtotalYen({
+      bookingType: discountBasis.bookingType,
+      pieces,
+      agencyUnitPriceYen: agencyUnitPrice,
+      bookingCreatedAt: discountBasis.createdAt,
+    })
   const tourNumber = typeof body.tourNumber === "string" ? body.tourNumber.trim() : ""
   const groupName = typeof body.groupName === "string" ? body.groupName.trim() : ""
 
@@ -641,7 +665,7 @@ export async function POST(req: NextRequest) {
       recipient: (toInput.recipient ?? "").trim(),
       suitcase_count: suitcaseCount,
       item_type: (typeof body.productName === "string" && body.productName.trim()) || null,
-      amount_yen: suitcaseCount * unitPriceYen, // 税抜小計 (代理店別単価 = agencies.unit_price_yen ?? 4,980)
+      amount_yen: legAmount(suitcaseCount), // 税抜小計 (lineSubtotalYen: 代理店別単価 ?? 4,980・団体25個以上は割引=有効時のみ)
       ship_ref_number: refNumber,
       issuable_from: issuableFrom,
       carrier: carrier.id,
@@ -851,7 +875,7 @@ export async function POST(req: NextRequest) {
     recipient: (toInput.recipient ?? "").trim(),
     suitcase_count: suitcaseCount,
     item_type: productName,
-    amount_yen: suitcaseCount * unitPriceYen, // 税抜小計 (代理店別単価 = agencies.unit_price_yen ?? 4,980)
+    amount_yen: legAmount(suitcaseCount), // 税抜小計 (lineSubtotalYen: 代理店別単価 ?? 4,980・団体25個以上は割引=有効時のみ)
     ship_ref_number: refNumber,
     notes: specialNote || null,
     note_target: resolvedNoteTarget,

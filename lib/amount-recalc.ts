@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { resolveUnitPriceYen } from "./pricing"
+import { lineSubtotalYen } from "./pricing"
 
 /**
  * 個数を変えたあとの請求額 (amount_yen・税抜) を返す。
@@ -14,7 +14,14 @@ import { resolveUnitPriceYen } from "./pricing"
  */
 export async function amountForNewCount(
   sb: SupabaseClient,
-  shipment: { agency: string | null; amount_yen: number | null; charged_at: string | null },
+  shipment: {
+    agency: string | null
+    amount_yen: number | null
+    charged_at: string | null
+    // 団体割引 (Phase 1) の判定材料。省略/未指定なら割引なし (base) に倒す (安全側)。
+    booking_type?: string | null
+    created_at?: string | null
+  },
   newCount: number,
 ): Promise<number | undefined> {
   if (!shipment.amount_yen || shipment.amount_yen <= 0) return undefined
@@ -26,5 +33,13 @@ export async function amountForNewCount(
     .maybeSingle()
   // 単価が引けないまま既定単価で上書きすると代理店別単価を壊すので、取得失敗時は例外にして更新を止める。
   if (error) throw new Error(`代理店単価の取得に失敗しました: ${error.message}`)
-  return newCount * resolveUnitPriceYen(data?.unit_price_yen as number | null | undefined)
+  // 単一入口 lineSubtotalYen を通す (発行 shipandco/create・個数是正 adjust-count と同じ基準)。
+  // 団体25個以上の割引は有効時 (env + 予約作成が境界以降) のみ。OFF 時は newCount × 代理店別単価で現行と一致。
+  // created_at を渡すことで、有効化後でも既存予約 (境界より前) の個数変更に割引が付かない (遡及防止)。
+  return lineSubtotalYen({
+    bookingType: shipment.booking_type === "group" ? "group" : "fit",
+    pieces: newCount,
+    agencyUnitPriceYen: data?.unit_price_yen as number | null | undefined,
+    bookingCreatedAt: shipment.created_at ?? null,
+  })
 }
