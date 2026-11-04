@@ -19,8 +19,8 @@ step() { # 説明 ファイル... (本番と同じく lock_timeout 5秒・1フ�
   local t0 t1; t0=$(date +%s)
   for f in "${@:2}"; do
     echo "$(date +%T.%N | cut -c1-12) start $f" >> $WORK/steps.log
-    # 本番の手順と同じく、各 SQL の前に区間の表を排他で掴む (掴む順番の違いによるデッドロックを避ける)
-    { echo "lock table public.shipments in access exclusive mode;"; cat "$R/$f"; } | docker exec -i -e PGOPTIONS='-c lock_timeout=5s' $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -1 -qtA >/dev/null 2>$WORK/step_err.txt \
+    # 本番の手順と同じく、各 SQL の前に共通の前置き (表を待たずに掴み、掴めなければ持たずに待つ) を付ける
+    { cat "$R/sql/ops/migration_lock_prefix.sql"; cat "$R/$f"; } | docker exec -i -e PGOPTIONS='-c lock_timeout=5s' $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -1 -qtA >/dev/null 2>$WORK/step_err.txt \
       || { FAIL=$((FAIL+1)); echo "  FAIL $1: $f"; head -c 600 $WORK/step_err.txt; echo; return 1; }
   done
   t1=$(date +%s); PASS=$((PASS+1)); echo "  ok   $1 ($((t1-t0))秒)"
@@ -52,7 +52,7 @@ with c as (select s.*, case when s.status='cancelled' then 'x' when (jsonb_array
   when s.shipment_date >= current_date and (s.pickup_requested_at is not null or s.status='issued') then 'n' else 'o' end cls from shipments s)
 select (select count(*) from c where cls='a')||'|'||(select count(*) from c where cls='n')||'|'||(select count(*) from c where cls='o' and shipment_date>=current_date)||'|'||(select count(*) from c where cls='x')||'|'||(select count(*) from shipment_change_requests)")"
 
-# ── 利用者の操作 (移行の間ずっと動かす)。古いアプリ (main) が DB に対して行う書き込みと同じ形。
+# ── 利用者の操作 (移行の間ずっと動かす)。デッドロックを含め、1件も失敗しないことを合格条件にする。古いアプリ (main) が DB に対して行う書き込みと同じ形。
 traffic() { # $1 = 停止の印のファイル
   local i=0
   while [ ! -f "$1" ]; do
@@ -87,8 +87,8 @@ HOLD=$!; sleep 1
 T0=$(date +%s)
 docker exec -i -e PGOPTIONS='-c lock_timeout=5s' $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -1 -qtA < "$R/sql/068_change_requests_pickup_lock.sql" >/dev/null 2>$WORK/s068.txt
 R068=$?; T1=$(date +%s)
-eq "長いトランザクションの最中の 068 は待ち続けず、5秒で失敗して何も変えない" "1|0" "$([ $R068 -ne 0 ] && echo 1 || echo 0)|$(q -c "select count(*) from pg_trigger where tgname='shipments_pickup_lock'")"
-eq "その間も利用者の操作は止まらない (待ちは lock_timeout の範囲)" "t" "$([ $((T1-T0)) -le 8 ] && echo t || echo f)"
+eq "長いトランザクション (12秒) の最中の 068 は、10秒で諦めて何も変えずに失敗する" "1|0" "$([ $R068 -ne 0 ] && echo 1 || echo 0)|$(q -c "select count(*) from pg_trigger where tgname='shipments_pickup_lock'")"
+eq "移行が表を待っている間は表を持たない (待ちは10秒まで・利用者の操作は止まらない)" "t" "$([ $((T1-T0)) -le 12 ] && echo t || echo f)"
 wait $HOLD
 step "068 をやり直す (ロックは無効で作る)" sql/068_change_requests_pickup_lock.sql
 step "061・062・073・071 (B2C。機能フラグ OFF のまま)" sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql
@@ -124,7 +124,7 @@ N_OK=$(wc -l < "$OPS" | tr -d ' '); N_ERR=$(grep -vc "deadlock detected" "$ERR" 
 # デッドロック: 移行の SQL (1秒未満) と、2つの表を逆の順番で掴む利用者の操作が重なると、PostgreSQL がどちらかを
 # 打ち切る。本番の権限では移行の側を打ち切らせる設定 (deadlock_timeout) が使えないため 0 にはできない。
 # 打ち切られた操作は何も変えずに失敗する (やり直せる)。ここでは毎秒約25件の操作を流し、回数を記録する。
-eq "移行の間ずっと流した利用者の操作 (成功 $N_OK 件) に、デッドロック以外の失敗が無い (デッドロック $N_DL 件)" 0 "$N_ERR"
+eq "移行の間ずっと流した利用者の操作 (成功 $N_OK 件) が1件も失敗しない (デッドロック $N_DL 件を含む)" 0 "$((N_ERR + N_DL))"
 echo "DEADLOCKS=$N_DL OPS=$N_OK"
 [ "$N_ERR" -gt 0 ] && { head -5 "$ERR" | sed 's/^/    /'; sed 's/^/    step /' $WORK/steps.log; }
 

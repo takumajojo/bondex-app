@@ -1173,6 +1173,73 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
   })
   globalThis.Date = RealDate
 
+  console.log("8b. 集荷依頼の監視ジョブ (追跡の定時処理から分離・重複通知の防止)")
+  await test("夕方の通知は同じ区間・種類に締め前・締め超過で1回ずつ。新しい漏れだけを次の回に通知する", async () => {
+    const tomorrow = jst(1)
+    const atJst = (hhmm: string) => new Date(`${jst(0)}T${hhmm}:00+09:00`)
+    const legA = await newLeg({ booking_id: "BDX-WATCH-A", shipment_date: tomorrow, expected_arrival: jst(2) })
+    const sent: Array<{ subject: string; lines: string[] }> = []
+    const cap = async (a: { subject: string; lines: string[] }) => void sent.push(a)
+    const r1 = await watchMod.alertEveningPickupGaps(sb, cap, atJst("19:00"))
+    const r2 = await watchMod.alertEveningPickupGaps(sb, cap, atJst("19:10"))
+    assert.equal(r1.alerted, true)
+    assert.ok(sent[0].lines.join("\n").includes("BDX-WATCH-A"))
+    assert.equal(r2.alerted, false, "10分後の同じ内容は通知しない")
+    const legB = await newLeg({ booking_id: "BDX-WATCH-B", shipment_date: tomorrow, expected_arrival: jst(2) })
+    const r3 = await watchMod.alertEveningPickupGaps(sb, cap, atJst("19:20"))
+    const body3 = sent[1]?.lines.join("\n") ?? ""
+    assert.equal(r3.newItems, 1)
+    assert.ok(body3.includes("BDX-WATCH-B") && !body3.includes("BDX-WATCH-A-L1  "), "新しい漏れだけを並べる")
+    assert.ok(/通知済みで未解決のものが \d+件/.test(body3), "通知済みの件数は添える")
+    const r4 = await watchMod.alertEveningPickupGaps(sb, cap, atJst("20:00"))
+    assert.equal(r4.alerted, true)
+    assert.ok(/【締め超過】/.test(sent[2].subject), "締め超過で1回だけ再通知")
+    const r5 = await watchMod.alertEveningPickupGaps(sb, cap, atJst("20:30"))
+    assert.equal(r5.alerted, false)
+    await db.query(`delete from shipments where id = any($1::uuid[])`, [[legA, legB]])
+  })
+  await test("通知を送れなかったら「通知済み」を戻し、次の回に送り直す (夕方・送信中のまま)", async () => {
+    const tomorrow = jst(1)
+    const atJst = (hhmm: string) => new Date(`${jst(0)}T${hhmm}:00+09:00`)
+    const leg = await newLeg({ booking_id: "BDX-WATCH-C", shipment_date: tomorrow, expected_arrival: jst(2) })
+    const failing = async () => { throw new Error("模擬: メール送信失敗") }
+    await assert.rejects(watchMod.alertEveningPickupGaps(sb, failing, atJst("19:30")))
+    const sent: unknown[] = []
+    const r = await watchMod.alertEveningPickupGaps(sb, async (a: unknown) => void sent.push(a), atJst("19:40"))
+    assert.equal(r.alerted, true, "失敗した分は次の回に送る")
+    await db.query(`delete from shipments where id = $1`, [leg])
+    // 送信中のまま
+    const leg2 = await newLeg({ booking_id: "BDX-WATCH-S" })
+    const cl = (await db.query(`select * from claim_pickup_request($1,'bizlogi','production','X',2,$2::date,'a','o',null)`, [leg2, jst(3)])).rows[0]
+    assert.equal(cl.claimed, true, JSON.stringify(cl))
+    const later = new Date(Date.now() + 6 * 60 * 1000)
+    const subj = (a: unknown) => String((a as { subject?: string }).subject ?? "")
+    const got1: unknown[] = []
+    await watchMod.alertStaleSending(sb, async (a: unknown) => { got1.push(a); throw new Error("模擬: メール送信失敗") }, later)
+    assert.ok(got1.some((a) => subj(a).includes("BDX-WATCH-S")), "1回目は送ろうとして失敗")
+    const st = (await db.query(`select stale_alerted_at from pickup_requests where shipment_id=$1`, [leg2])).rows[0]
+    assert.equal(st.stale_alerted_at, null, "送れなかったら「通知済み」の印を戻す")
+    const got2: unknown[] = []
+    await watchMod.alertStaleSending(sb, async (a: unknown) => void got2.push(a), later)
+    assert.ok(got2.some((a) => subj(a).includes("BDX-WATCH-S")), "次の回に送り直す")
+    const got3: unknown[] = []
+    await watchMod.alertStaleSending(sb, async (a: unknown) => void got3.push(a), later)
+    assert.ok(!got3.some((a) => subj(a).includes("BDX-WATCH-S")), "送れた後は重ねない")
+  })
+  await test("監視ジョブ (/api/cron/pickup-watch) は CRON_SECRET が無ければ拒否し、追跡の定時処理には監視が残っていない", async () => {
+    process.env.CRON_SECRET = "test-cron-secret"
+    const route = await import("../../app/api/cron/pickup-watch/route")
+    const mk = (auth?: string) => new NextRequest("http://localhost/api/cron/pickup-watch", { headers: auth ? { authorization: auth } : {} })
+    assert.equal((await route.GET(mk())).status, 401)
+    assert.equal((await route.GET(mk("Bearer wrong"))).status, 401)
+    const ok = await route.GET(mk("Bearer test-cron-secret"))
+    const body = (await ok.json()) as Record<string, unknown>
+    assert.ok("staleSending" in body && "evening" in body, JSON.stringify(body))
+    const { readFileSync } = await import("node:fs")
+    const syncSrc = readFileSync(`${process.cwd()}/app/api/cron/sync-tracking/route.ts`, "utf8")
+    assert.ok(!/pickup-request\/watch/.test(syncSrc), "sync-tracking は main と同じ (監視を呼ばない)")
+  })
+
   console.log("9. 大量予約・同時実行 (PGlite・参考値)")
   await test("3,000区間を手動依頼として記録 → TODO の読み込み・100件同時確保 (50区間×2)", async () => {
     await db.query(`insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel)

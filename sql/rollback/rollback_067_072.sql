@@ -7,10 +7,28 @@
 
 begin;
 
--- 表を掴む順番を固定する (sql/068 と同じ。利用者の操作とのデッドロックを避ける)
-lock table public.shipments in access exclusive mode;  -- トリガーの作り直し (drop trigger) が最も強い鍵を要るので最初から取る
-lock table public.pickup_requests in share row exclusive mode;
-lock table public.shipment_change_requests in access exclusive mode;
+-- 移行の表の確保 (2026-11-04 デッドロック対策・切り戻し)。関係する表を「待たずに」まとめて掴む (nowait)。
+-- 掴めなければ何も持たずに 0.2秒待って掴み直す (待っている間は表を持たないので、利用者の操作とデッドロックしない)。
+-- 掴んだ後は、この SQL が終わるまで (1秒未満) 利用者の操作のほうが待つだけで、失敗しない。
+-- 10秒たっても掴めなければ、何も変えずに失敗する (少し待って流し直す)。1つのトランザクションの中で流すこと。
+do $migration_lock$
+declare
+  i int;
+  targets text;
+begin
+  -- 存在する表だけ (例: 067 の前は pickup_requests が無い)
+  select string_agg(t, ', ') into targets from unnest(array['public.shipments', 'public.pickup_requests', 'public.shipment_change_requests', 'public.operator_passkeys']) t where to_regclass(t) is not null;
+  if targets is null then return; end if;
+  for i in 1..50 loop
+    begin
+      execute format('lock table %s in access exclusive mode nowait', targets);
+      return;
+    exception when lock_not_available then
+      perform pg_sleep(0.2);
+    end;
+  end loop;
+  raise exception 'migration: 表 (%) を10秒以内に確保できませんでした。何も変えていません。少し待って流し直してください', targets;
+end $migration_lock$;
 
 -- ── 072: ロック無効・記録の停止 (pause_pickup_lock.sql を先に流していれば何も変わらない)
 alter table public.shipments disable trigger shipments_pickup_lock;
