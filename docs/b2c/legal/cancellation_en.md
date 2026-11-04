@@ -1,6 +1,6 @@
-# Cancellation Policy for Travelers [DRAFT]
+# Cancellation Policy for Travelers [DRAFT v2]
 
-> Draft (2026-11-04). Not reviewed by a lawyer. See `README.md`. Not to be published.
+> Draft v2 (2026-11-04). Reflects business conditions D1 and D2 (`01_business_conditions.md`). The deadline is the "booking deadline" in Article 2(4) of the Terms ([D0], to be decided). Not reviewed by a lawyer. Not to be published.
 
 This policy sets out the conditions for cancellations and refunds under section 9 of the BondEx Terms of Service for Travelers. All times are Japan time.
 
@@ -8,8 +8,8 @@ This policy sets out the conditions for cancellations and refunds under section 
 
 | When | How | Fee |
 |---|---|---|
-| Until 18:30 on the day before pickup | Cancel from your booking page (the link in your confirmation email) | Free |
-| After 18:30 on the day before pickup, before the courier picks up | Contact support@bondex.express. We contact the courier to cancel. If the pickup has already been requested from the courier, this becomes a cancellation request, and the cancellation is confirmed after the courier confirms it. Your booking stays as it is until then | Free if the cancellation is confirmed before pickup |
+| Until the booking deadline ([D0: 17:00 or 18:30] on the day before pickup) | Cancel from your booking page (the link in your confirmation email) | Free |
+| After the booking deadline, before the courier picks up | Contact support@bondex.express. We contact the courier to cancel. If the pickup has already been requested from the courier, this becomes a cancellation request, and the cancellation is confirmed after the courier confirms it. Your booking stays as it is until then | Free if the cancellation is confirmed before pickup |
 | After the courier has picked up your luggage | Cannot be cancelled | Charged |
 
 - Cancelling before your booking is confirmed (while we are checking with the hotels) is also free.
@@ -24,7 +24,7 @@ We cancel your booking at no charge if:
 
 ## 3. If you do not hand over your luggage
 
-If your luggage is not handed over by 11:00 on the pickup date and the courier cannot pick it up: [Decide D1] (currently no charge is made)
+If your luggage is not handed over by 11:00 on the pickup date and the courier cannot pick it up, we do not charge you. We will check the situation and contact you. If a new pickup is then arranged and the courier picks up your luggage, you will be charged as usual for the number of bags actually picked up.
 
 ## 4. Number of bags and refunds
 
@@ -34,7 +34,8 @@ If your luggage is not handed over by 11:00 on the pickup date and the courier c
 
 ## 5. Delays and events after pickup
 
-Refunds or compensation for delays caused by weather, traffic, disasters or other events after pickup: [Decide D2]
+- Refunds for delays are not automatic. We decide case by case, based on the cause of the delay and the actual loss. This does not limit our liability or any obligation to refund under applicable law. [L2]
+- Once the courier has picked up your luggage, the booking cannot be cancelled.
 
 ## 6. Contact
 
