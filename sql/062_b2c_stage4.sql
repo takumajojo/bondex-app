@@ -7,7 +7,7 @@
 -- ---------------------------------------------------------------------------
 alter table public.b2c_outbox drop constraint if exists b2c_outbox_status_check;
 alter table public.b2c_outbox add constraint b2c_outbox_status_check
-  check (status in ('pending', 'sending', 'sent', 'failed', 'cancelled', 'expired', 'unknown'));  -- expired / unknown は sql/063（062 を後から再実行しても 063 の行を壊さない）
+  check (status in ('pending', 'sending', 'sent', 'failed', 'cancelled', 'expired', 'unknown'));  -- expired / unknown は sql/073（062 を後から再実行しても 073 の行を壊さない）
 alter table public.b2c_outbox add column if not exists locked_at           timestamptz;
 alter table public.b2c_outbox add column if not exists language            text check (language in ('ja', 'en'));
 alter table public.b2c_outbox add column if not exists rendered            jsonb;   -- 実際に送った件名・本文（WhatsApp はテンプレート名と差し込み値）

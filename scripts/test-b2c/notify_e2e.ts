@@ -246,7 +246,7 @@ async function main() {
   sql(`insert into b2c_outbox(order_id, kind, channel, dedupe_key, language) values ('${r3.id}', 'reminder_day', 'email', 'reminder_day:${r3.id}:email', 'ja')`)
   const lateMorning = new Date("2026-11-12T02:30:00Z") // 11:30 JST
   await processB2cOutbox(sandboxTransport, lateMorning)
-  ok("11:00 を過ぎた当日のリマインドは送らない（期限切れ expired_before_send・sql/063）", sql(`select status || '|' || last_error from b2c_outbox where dedupe_key='reminder_day:${r3.id}:email'`) === "expired|expired_before_send")
+  ok("11:00 を過ぎた当日のリマインドは送らない（期限切れ expired_before_send・sql/073）", sql(`select status || '|' || last_error from b2c_outbox where dedupe_key='reminder_day:${r3.id}:email'`) === "expired|expired_before_send")
 
   console.log("S10 送信の失敗と再試行・同時の処理での二重送信の防止・止まった送信の回復")
   const g = await draft("ja")

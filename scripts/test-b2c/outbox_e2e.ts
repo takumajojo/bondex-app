@@ -1,6 +1,6 @@
 /**
  * B2C の通知の送信待ち（b2c_outbox）の試験: 滞留・重要度・再試行・重複・期限切れ・結果が分からない時の照合（Stage 4 の追加）。
- * 方針: docs/b2c/B2C_NOTIFICATION_TEMPLATES.md 4章・sql/063_b2c_outbox_hardening.sql・lib/b2c/notify.ts。
+ * 方針: docs/b2c/B2C_NOTIFICATION_TEMPLATES.md 4章・sql/073_b2c_outbox_hardening.sql・lib/b2c/notify.ts。
  *
  * 本番には接続しない: 開発サーバー・DB はローカルだけ（ローカルの Docker のコンテナ）。データはダミーだけ。
  * 外には何も送らない: 送信手段は試験用の偽物（「相手のサービス」を真似て、届いた通知を数え、冪等キーで 1通にまとめる）。

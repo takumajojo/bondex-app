@@ -19,7 +19,7 @@ case "$HOST" in 127.*|172.*|10.*|192.168.*|local-socket|::1) ;; *) echo "refusin
 "${PSQL[@]}" -c "create table if not exists public.cron_locks (name text primary key, locked_at timestamptz not null default now());"  # sql/029 と同じ（定期の処理の二重起動の防止）
 "${PSQL[@]}" < sql/061_b2c_mvp.sql
 "${PSQL[@]}" < sql/062_b2c_stage4.sql
-"${PSQL[@]}" < sql/063_b2c_outbox_hardening.sql
+"${PSQL[@]}" < sql/073_b2c_outbox_hardening.sql
 "${PSQL[@]}" < sql/058_sagawa_lead_times.sql
 "${PSQL[@]}" < sql/059_sagawa_lead_times_seed.sql
 "${PSQL[@]}" -c "insert into b2c_entry_links(referrer_code, referrer_name, referrer_name_en, token_hash) values ('HNK001', '阪急交通社', 'Hankyu Travel', encode(digest('dev-hnk-local-token-0001', 'sha256'), 'hex'));"

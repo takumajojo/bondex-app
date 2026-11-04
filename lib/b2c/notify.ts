@@ -1,6 +1,6 @@
 /**
  * B2C の旅行者への通知の送信と、定期の処理（Stage 4）。docs/b2c/B2C_MVP_SCHEMA_v1.md 4章・B2C_PHASE1A_BETA_PLAN.md。
- * 滞留・再試行・重複・期限切れの方針は docs/b2c/B2C_NOTIFICATION_TEMPLATES.md 4章（sql/063_b2c_outbox_hardening.sql）。
+ * 滞留・再試行・重複・期限切れの方針は docs/b2c/B2C_NOTIFICATION_TEMPLATES.md 4章（sql/073_b2c_outbox_hardening.sql）。
  *
  * 通知は DB の変更と同じトランザクションで b2c_outbox に積む（確定・確認待ち・取消は DB の関数、リマインドはここ）。
  * 送信はこのファイルの processB2cOutbox だけが行う。

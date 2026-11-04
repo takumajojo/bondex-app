@@ -28,11 +28,11 @@ echo "== sql/061 again (must be re-runnable)"
 echo "== sql/062_b2c_stage4.sql (2回・再実行できること)"
 "${PSQL[@]}" < sql/062_b2c_stage4.sql
 "${PSQL[@]}" < sql/062_b2c_stage4.sql
-echo "== sql/063_b2c_outbox_hardening.sql (2回・再実行できること)"
-"${PSQL[@]}" < sql/063_b2c_outbox_hardening.sql
-"${PSQL[@]}" < sql/063_b2c_outbox_hardening.sql
-echo "== 062 → 063 をもう一度（063 の状態 expired / unknown の行があっても 062 を再実行できること）"
+echo "== sql/073_b2c_outbox_hardening.sql (2回・再実行できること)"
+"${PSQL[@]}" < sql/073_b2c_outbox_hardening.sql
+"${PSQL[@]}" < sql/073_b2c_outbox_hardening.sql
+echo "== 062 → 073 をもう一度（073 の状態 expired / unknown の行があっても 062 を再実行できること）"
 "${PSQL[@]}" < sql/062_b2c_stage4.sql
-"${PSQL[@]}" < sql/063_b2c_outbox_hardening.sql
+"${PSQL[@]}" < sql/073_b2c_outbox_hardening.sql
 echo "== verify"
 "${PSQL[@]}" < scripts/test-b2c/db/verify_061.sql
