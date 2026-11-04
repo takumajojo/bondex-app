@@ -106,7 +106,7 @@ const bulk = (o: Ord, kind: string, ch: string, prefix: string, n: number, ageMi
 
 async function main() {
   // 前の実行の試験の行の名前をずらす（DB を作り直さずに続けて実行しても、同じ dedupe_key がぶつからないように）
-  sql(`update b2c_outbox set dedupe_key = 'prev' || id || '#' || dedupe_key where dedupe_key ~ '^(idem409|backlog|blockfail|good|hang-mail|hang-wa|dbfail-mail|dbfail-wa|dbfail-smtp|prefail|stale-[a-e]|flap|stuck|stuck-rem|race):' or dedupe_key in ('ok-eve','exp-day','exp-eve','exp-conf','exp-day2')`)
+  sql(`update b2c_outbox set dedupe_key = 'prev' || id || '#' || dedupe_key where dedupe_key ~ '^(emailonly-[a-z_]+-(mail|wa)|emailonly-fail|wa-enabled|idem409|backlog|blockfail|good|hang-mail|hang-wa|dbfail-mail|dbfail-wa|dbfail-smtp|prefail|stale-[a-e]|flap|stuck|stuck-rem|race):' or dedupe_key in ('ok-eve','exp-day','exp-eve','exp-conf','exp-day2')`)
   const place = async (q: string) => (await http("POST", "/api/b2c/places", { token: TOK, query: q, lang: "en" })).json.candidates[0].placeId as string
   TOKYO = await place("Keio Plaza Hotel Tokyo"); KYOTO = await place("Hotel Granvia Kyoto")
   for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
@@ -344,6 +344,26 @@ async function main() {
   await processB2cOutbox(p409.transport(), NOON_BEFORE, { alert })
   await processB2cOutbox(p409.transport(), plus(NOON_BEFORE, 30), { alert })
   ok("冪等な手段でも 409 invalid_idempotent_request は unknown・呼び出し 1回", st("idem409:1").startsWith("unknown|1|uncertain:resend 409 invalid_idempotent_request") && p409.callsFor("idem409:") === 1, st("idem409:1"))
+
+  console.log("O17 メールだけの運用（WhatsApp の承認の前）: 全種類のメールは送る・WhatsApp は送らずに片付ける・知らせない")
+  isolate(); alerts.length = 0
+  const kinds = ["booking_confirmed", "reminder_day"] // 集荷日の 08:30 に期限内の種類（取消の通知は積んでから 2日の期限なので別の試験 O08 で確認）
+  for (const k of kinds) { bulk(P, k, "email", `emailonly-${k}-mail:`, 1, 5); bulk(P, k, "whatsapp", `emailonly-${k}-wa:`, 1, 5) }
+  const emailOnly = new FakeProvider({ email: true, whatsapp: false }, () => OK)
+  const eo = emailOnly.transport()
+  await processB2cOutbox({ ...eo, whatsappEnabled: false }, DAY_0830, { alert })
+  ok("メール: 予約確定・当日のリマインドを送信", kinds.every((k) => st(`emailonly-${k}-mail:1`).startsWith("sent")), kinds.map((k) => st(`emailonly-${k}-mail:1`)))
+  ok("WhatsApp: 送らずに片付ける（whatsapp_disabled）・呼び出し 0", kinds.every((k) => st(`emailonly-${k}-wa:1`) === "cancelled|0|whatsapp_disabled") && emailOnly.calls.filter((c) => c.ch === "whatsapp").length === 0, kinds.map((k) => st(`emailonly-${k}-wa:1`)))
+  await processB2cOutbox({ ...eo, whatsappEnabled: false }, plus(DAY_0830, 5), { alert })
+  ok("WhatsApp を送らないことは運営への知らせ（失敗）にしない", !alerts.some((a) => a.lines.join("\n").includes("whatsapp_disabled")) && sql("select count(*) from b2c_outbox where last_error='whatsapp_disabled' and status <> 'cancelled'") === "0", alerts.map((a) => a.lines))
+  bulk(C, "booking_confirmed", "email", "emailonly-fail:", 1, 5)
+  const failMail = new FakeProvider({ email: true, whatsapp: false }, () => ({ deliver: false, out: { ok: false, provider: "fake", error: "invalid_recipient", permanent: true } }))
+  await processB2cOutbox({ ...failMail.transport(), whatsappEnabled: false }, NOON_BEFORE, { alert })
+  ok("メールの送信の失敗は検知して運営に知らせる（failed）", st("emailonly-fail:1").startsWith("failed") && alerts.some((a) => a.lines.join("\n").includes("failed（1件）")), [st("emailonly-fail:1"), alerts.map((a) => a.subject)])
+  bulk(C, "booking_confirmed", "whatsapp", "wa-enabled:", 1, 5)
+  const waOn = new FakeProvider({ email: true, whatsapp: false }, () => OK)
+  await processB2cOutbox({ ...waOn.transport(), whatsappEnabled: true }, NOON_BEFORE, { alert })
+  ok("WhatsApp を有効にした後の新しい通知は WhatsApp でも送る", st("wa-enabled:1").startsWith("sent") && waOn.calls.some((c) => c.ch === "whatsapp"), st("wa-enabled:1"))
 
   console.log("O15 外部への送信")
   ok("外に送った通知は 0件（試験は偽の送信手段・sandbox だけ）", sql("select count(*) from b2c_outbox where provider is not null and provider not in ('sandbox','test','fake','email','whatsapp')") === "0" && sql("select count(*) from b2c_outbox where provider in ('resend','smtp')") === "0")
