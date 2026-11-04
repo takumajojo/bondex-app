@@ -9,7 +9,11 @@
 //   (推測の番号は使わない)。
 //   既定 (--mode=dry-run): 外部へ一切送らない。模擬の Biz-Logi で、送信内容・判定・DB の保存を確かめる (今すぐ実行できる)
 //   --mode=confirm                : テスト環境へ確認機能 (printOutFlg=0・採番なし) だけを送る
-//   --mode=issue --yes-issue-test-env : テスト環境へ発行依頼 (printOutFlg=1・N01・テスト環境は課金・集荷なし)
+//   --mode=issue --yes-issue-test-env --case=1 : テスト環境へ発行依頼 (printOutFlg=1・N01・テスト環境は集荷なし)。
+//                                    発行では --case を必ず指定する (最初はシステム採番の1個口 T1 だけ)
+//   --mode=preflight              : 発行の前の確認。接続情報のファイルを読んで、テスト環境・テスト用の値であることを確かめる
+//                                    (通信しない・パスワードや ID は表示しない)
+//   --env-file=<パス>              : 接続情報のファイル (既定はリポジトリ直下の .env.bizlogi-test.local)
 //
 //   PGLITE_DIR=<PGlite を入れたディレクトリ> npx tsx --tsconfig scripts/test-pickup-e2e/tsconfig.json scripts/bizlogi/test-env-cases.ts [--mode=...] [--case=1,40,long,kyoto,error,dup]
 //
@@ -17,7 +21,9 @@
 // 発行は --yes-issue-test-env のときだけ・パスワードは表示も記録もしない・結果はリポジトリ外 (~/JOJO/ops/bizlogi-test-log/) に記録・
 // 失敗しても自動で再送しない。住所は仕様書 Ver2.82 の I/F 例にある SGシステムの住所と、公開の駅前の住所だけを使う。
 
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { dirname, resolve } from "node:path"
 import { homedir } from "node:os"
 import { BizLogiClient, BIZLOGI_TEST_HOSTS, bizLogiConfigFromEnv } from "../../lib/bizlogi/client"
 import type { ShippingResponse } from "../../lib/bizlogi/shipping"
@@ -28,10 +34,12 @@ import { supabasePickupStore } from "../../lib/pickup-request/store"
 import { initSchema, db } from "../test-pickup-e2e/fakes/supabase"
 
 const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, "").split("="); return [k, v ?? "true"] as [string, string] }))
-const mode = (args.get("mode") ?? "dry-run") as "dry-run" | "confirm" | "issue"
+const mode = (args.get("mode") ?? "dry-run") as "dry-run" | "confirm" | "issue" | "preflight"
+const ENV_FILE = resolve(args.get("env-file") ?? new URL("../../.env.bizlogi-test.local", import.meta.url).pathname)
 const NUMBERING: "customer" | "system" = args.get("numbering") === "customer" ? "customer" : "system"
 const only = new Set((args.get("case") ?? "1,40,long,kyoto,error,dup,num,sys").split(","))
 if (mode === "issue" && args.get("yes-issue-test-env") !== "true") throw new Error("発行依頼は --yes-issue-test-env を付けたときだけ実行します")
+if (mode === "issue" && !args.has("case")) throw new Error("発行依頼では --case を必ず指定してください (最初は --case=1 = 1個口だけ)")
 
 const LOG_DIR = `${homedir()}/JOJO/ops/bizlogi-test-log`
 const log = (e: Record<string, unknown>) => {
@@ -105,10 +113,47 @@ function mockClient(behavior: "ok" | "error" | "dup" | "range" | "dupOnIssue" | 
     async requestShipping(d) { await new Promise((r) => setTimeout(r, 50)); issues++; return resp(true, d.map((x) => x.userManageNumber), d[0]?.haisoKosu ?? 0, d.map((x) => x.shippingNumber)) },
   } as Client
 }
-function realClient(): { client: Client; kokyaku: string; phone: string } {
-  const text = readFileSync(new URL("../../.env.bizlogi-test.local", import.meta.url), "utf8")
+function readEnvFile(): Record<string, string> {
+  const text = readFileSync(ENV_FILE, "utf8")
   const env: Record<string, string> = {}
   for (const line of text.split("\n")) { const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim()); if (m) env[m[1]] = m[2] }
+  return env
+}
+
+/** 発行の前の確認 (通信しない・秘密の値は表示しない)。1つでも NG なら発行しない。 */
+function preflight(): boolean {
+  const rows: Array<[string, boolean, string]> = []
+  const add = (name: string, ok: boolean, note = "") => rows.push([name, ok, note])
+  add("接続情報のファイルがある", existsSync(ENV_FILE), ENV_FILE)
+  if (!existsSync(ENV_FILE)) { rows.forEach(([n, ok, note]) => console.log(`  ${ok ? "OK" : "NG"}  ${n}${note ? ` (${note})` : ""}`)); return false }
+  const mode600 = (statSync(ENV_FILE).mode & 0o077) === 0
+  add("ファイルは本人だけが読める (600)", mode600)
+  let ignored = false
+  try { execFileSync("git", ["-C", dirname(ENV_FILE), "check-ignore", "-q", ENV_FILE]); ignored = true } catch { ignored = false }
+  add("ファイルは Git の管理外 (.gitignore)", ignored)
+  const env = readEnvFile()
+  const missing = ["BIZLOGI_BASE_URL", "BIZLOGI_ENV", "BIZLOGI_CUSTOMER_ID", "BIZLOGI_LOGIN_PASSWORD", "BIZLOGI_KOKYAKU_CODE", "BIZLOGI_OKURI_CODE"].filter((k) => !env[k])
+  add("必要な項目がそろっている", missing.length === 0, missing.length ? `不足: ${missing.join(", ")}` : "")
+  add("BIZLOGI_ENV=test", env.BIZLOGI_ENV === "test")
+  let host = ""
+  try { host = new URL(env.BIZLOGI_BASE_URL ?? "").hostname } catch { host = "" }
+  add("接続先が SG のお客様テスト環境のホスト (テスト環境シート Ver2.5)", BIZLOGI_TEST_HOSTS.includes(host), host || "URL が読めない")
+  add("https で接続する", /^https:\/\//.test(env.BIZLOGI_BASE_URL ?? ""))
+  add("送り状コードは N01 (SG 指定・集荷依頼専用)", env.BIZLOGI_OKURI_CODE === "N01")
+  add("採番はシステム採番 (BIZLOGI_NUMBERING を customer にしていない)", env.BIZLOGI_NUMBERING !== "customer")
+  add("ファイルで発行を有効にしていない (BIZLOGI_LIVE は発行のときだけ、このプロセスの中で入れる)", env.BIZLOGI_LIVE !== "true")
+  let cfgOk = false
+  try { cfgOk = bizLogiConfigFromEnv({ ...env, BIZLOGI_LIVE: "", BIZLOGI_NUMBERING: "" }).environment === "test" } catch { cfgOk = false }
+  add("アプリの設定の検査でもテスト環境と判定 (本番のホストとテストの組み合わせを拒否する検査を通る)", cfgOk)
+  const leaked = Object.keys(process.env).filter((k) => k.startsWith("BIZLOGI_"))
+  add("このシェルに BIZLOGI_* の環境変数が無い (本番の値と混ざらない)", leaked.length === 0, leaked.join(", "))
+  add("ID は表示しない (末尾2文字だけ)", true, `顧客ID …${(env.BIZLOGI_CUSTOMER_ID ?? "").slice(-2)}・顧客コード …${(env.BIZLOGI_KOKYAKU_CODE ?? "").slice(-2)}`)
+  for (const [n, ok, note] of rows) console.log(`  ${ok ? "OK" : "NG"}  ${n}${note ? ` (${note})` : ""}`)
+  return rows.every(([, ok]) => ok)
+}
+
+function realClient(): { client: Client; kokyaku: string; phone: string } {
+  const env = readEnvFile()
   if (env.BIZLOGI_ENV !== "test") throw new Error("BIZLOGI_ENV=test ではありません。テスト環境以外には接続しません")
   if (!BIZLOGI_TEST_HOSTS.includes(new URL(env.BIZLOGI_BASE_URL).hostname)) throw new Error("テスト環境のホストではありません")
   const cfg = bizLogiConfigFromEnv({ ...env, BIZLOGI_LIVE: mode === "issue" ? "true" : "", BIZLOGI_NUMBERING: NUMBERING === "customer" ? "customer" : "" })
@@ -126,6 +171,13 @@ const check = (name: string, cond: boolean, detail?: unknown) => {
 }
 
 async function main() {
+  if (mode === "preflight") {
+    console.log("発行の前の確認 (通信しない)")
+    const ok = preflight()
+    console.log(ok ? "\n合格: テスト環境・テスト用の接続情報です。最初の発行は --mode=issue --yes-issue-test-env --case=1 (システム採番・1個口)" : "\n不合格: 発行しないでください")
+    process.exit(ok ? 0 : 1)
+  }
+  if (mode === "issue" && !preflight()) throw new Error("発行の前の確認が不合格のため発行しません")
   await initSchema(process.cwd())
   await db.exec(`update pickup_request_settings set claims_paused = false`)
   // 問合番号の範囲 (顧客側採番のときだけ)。dry-run は架空 (99999000000〜99999000049)。confirm / issue は SG の範囲を渡したときだけ
