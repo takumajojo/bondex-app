@@ -425,6 +425,35 @@ async function main() {
   ok("請求を始めた後は額を変えられない（DB）", sqlFails(`update b2c_payments set amount_yen=1 where id='${payId(a)}'`))
   ok("基本料金の請求は 1予約 1行（DB）", sqlFails(`insert into b2c_payments(order_id, kind, charge_key, amount_yen, scheduled_at, created_by) values ('${a.id}', 'base', 'base:${a.id}', 100, now(), 'x')`))
 
+  console.log("C16 Stage 6 の監査: B2B の運営の画面から B2C の区間を変えない・チャージバック・計測")
+  const g6 = await order("ja", 2)
+  const ship6 = sql(`select id from shipments where b2c_order_id='${g6.id}'`)
+  const agencyName = sql("select name from agencies where name <> 'BondEx Direct' limit 1") || "E2E Agency"
+  const e1 = await http("POST", `/api/operator/shipment/${ship6}/edit`, { agency: agencyName }, v1Cookie)
+  ok("区間の編集: B2C の区間の代理店名は変えられない（409）", e1.status === 409, [e1.status, e1.json])
+  const e2 = await http("POST", `/api/operator/shipment/${ship6}/edit`, { representative: "別人" }, v1Cookie)
+  ok("区間の編集: B2C の区間の代表者名は変えられない（409）", e2.status === 409, e2.status)
+  const e3 = await http("POST", `/api/operator/shipment/${ship6}/edit`, { tracking: ["400012340000"] }, v1Cookie)
+  ok("区間の編集: 問い合わせ番号の記入はできる（200）", e3.status === 200 && sql(`select tracking_numbers::text from shipments where id='${ship6}'`).includes("400012340000"), [e3.status, e3.json])
+  ok("区間の訂正（409）", (await http("POST", `/api/operator/shipment/${ship6}/correct`, { agency: agencyName, reason: "x" }, v1Cookie)).status === 409)
+  const ac = await http("POST", "/api/operator/adjust-count", { id: ship6, newCount: 0, reasonCode: "not_collected" }, v1Cookie)
+  ok("個数の是正（区間の取消を含む）は B2C の区間では 409・区間も予約もそのまま", ac.status === 409 && sql(`select status from shipments where id='${ship6}'`) !== "cancelled" && sql(`select status from b2c_orders where id='${g6.id}'`) === "confirmed", [ac.status, ac.json])
+  const hc = await http("POST", `/api/operator/shipment/${ship6}/hotel-change`, { side: "guest", newHotel: "Other Hotel", newHotelJa: "別のホテル", newPlaceId: "ChIJxxxxxxxxxxxxxxxx", reason: "x" }, v1Cookie)
+  ok("ホテルの変更は B2C の区間では 409", hc.status === 409, [hc.status, hc.json])
+  ok("DB でも B2C の区間の代理店名は変えられない（トリガー）", sqlFails(`update shipments set agency='${agencyName}' where id='${ship6}'`))
+  ok("DB: B2B の区間を B2C にはできない", sqlFails("update shipments set channel='b2c' where id=(select id from shipments where channel='b2b' limit 1)") || sql("select count(*) from shipments where channel='b2b'") === "0")
+  const piD = (await pis(a))[0]
+  const dispute = { id: `dp_e2e_${Date.now()}`, object: "dispute", amount: piD.amount, currency: "jpy", payment_intent: piD.id, charge: (await charges(a))[0].id, reason: "fraudulent", status: "needs_response", evidence_details: { due_by: Math.floor(Date.now() / 1000) + 7 * 86400 }, metadata: {} }
+  const dw = await webhook("/api/b2c/stripe/webhook", WH, "charge.dispute.created", dispute)
+  ok("チャージバックの通知（B2C の受信口）→ 200・予約の記録に残す（運営に知らせる）", dw.res.status === 200 && dw.res.json?.result === "dispute:needs_response" && sql(`select count(*) from b2c_order_events where order_id='${a.id}' and event='charge_dispute_created'`) === "1", dw.res.json)
+  const dw2 = await webhook("/api/b2c/stripe/webhook", WH, "charge.dispute.created", dispute, dw.id)
+  ok("同じチャージバックの通知の再送は 1回だけ記録", dw2.res.json?.duplicate === true && sql(`select count(*) from b2c_order_events where order_id='${a.id}' and event='charge_dispute_created'`) === "1")
+  const myHtml = (await http("GET", `/my/${a.token}`)).text
+  const payHtml = (await http("GET", `/my/${a.token}/pay`)).text
+  const topHtml = (await http("GET", "/")).text
+  ok("秘密のリンクのページでは計測（GA・HubSpot・Vercel）を読み込まない", !myHtml.includes("googletagmanager.com/gtag/js") && !payHtml.includes("googletagmanager.com/gtag/js") && !myHtml.includes("hs-scripts.com") && !myHtml.includes("_vercel/insights"))
+  ok("（公開のページでは今までどおり読み込む）", topHtml.includes("googletagmanager.com/gtag/js"))
+
   console.log("C15 本番に何もしていない")
   const acct = await stripe.balance.retrieve()
   ok("Stripe はテストモード（livemode=false）", acct.livemode === false)

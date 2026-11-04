@@ -1,5 +1,6 @@
 "use client"
 
+import { isSecretLinkPath } from "@/components/third-party-analytics"
 import { useEffect, useState } from "react"
 
 const STORAGE_KEY = "bondex_analytics_consent" // "granted" | "denied"
@@ -96,6 +97,8 @@ export function ConsentBanner() {
 
   useEffect(() => {
     setLoc(localeFromPath())
+    // 旅行者の秘密のリンク（/my/・/book/）では計測を読み込まない（components/third-party-analytics.tsx）ので、案内も出さない
+    if (isSecretLinkPath(window.location.pathname)) return
     let stored: string | null = null
     try {
       stored = localStorage.getItem(STORAGE_KEY)
