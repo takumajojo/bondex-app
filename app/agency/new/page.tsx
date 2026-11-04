@@ -669,7 +669,10 @@ const messages = {
 const inputCls =
   "w-full h-11 rounded-xl border border-[#CBD5E1] px-3 text-[14px] text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#C8102E]/40 focus:border-[#C8102E]"
 
-type Msg = (typeof messages)["ja"]
+// ja / en の辞書型の和。messages[locale] はそのままこの型になり、EndpointField 等の t 引数へ代入できる
+// (従来は ja の as const リテラル型だけを指し、値リテラルが異なる en が非代入で型エラーになっていた)。
+// 両辞書はトップレベルキーが完全一致 (各237キー) のため t.xxx アクセスは双方で解決できる。表示・文言・動作は不変。
+type Msg = (typeof messages)["ja"] | (typeof messages)["en"]
 
 /** 個人宅の構造化住所フィールド一式。ホテル検索の代わりに表示する。 */
 function ResidenceFields({
