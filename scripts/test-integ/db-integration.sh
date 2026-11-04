@@ -10,7 +10,7 @@
 #   F. 切り戻し (ロック無効 → 全体の切り戻し → 古いアプリの操作) と再適用
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-C=supabase_db_supa-local; DB=bondex_integ_test
+C=supabase_db_supa-local; DB=${INTEG_TEST_DB:-bondex_integ_test}  # 並行する作業コピーと名前を分けるときは環境変数で変える
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
 # 本番 (Supabase の migration) と同じく、1ファイル1トランザクションで流す
@@ -29,7 +29,7 @@ fresh() {
         alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;" >/dev/null
   apply scripts/test-b2c/db/000_base_from_prod.sql sql/043_shipment_change_requests.sql sql/033_hotel_change_schema.sql sql/063_fix_hotel_change_tracking_column.sql
 }
-EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql)
+EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql)
 lock_state() { q -c "select tgenabled from pg_trigger where tgrelid='public.shipments'::regclass and tgname='shipments_pickup_lock'"; }
 leg() { # booking_id 集荷日のオフセット(日) → id
   q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient)
@@ -154,11 +154,28 @@ q -c "select ok from step_shipment_change('$CB','contact','op','x',null,null); s
 eq "B2B の取消申請の反映は従来どおり" "t|cancelled|cancelled" "$(q -c "select ok from apply_shipment_change('$CB','op')")|$(q -c "select status from shipments where id='$L4'")|$(q -c "select state from pickup_requests where shipment_id='$L4'")"
 eq "匿名ロールは取消申請の関数を呼べない" f "$(q -c "select has_function_privilege('anon','b2c_request_cancel(uuid,text,text,text,text)','execute')")"
 
+echo "E2. 代理店の変更の原子性 (sql/076)"
+# 予約 ATOM: 区間 L0 (未依頼) と L1 (佐川へ依頼済み)
+q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient)
+      values ('ATOM',0,current_date+4,current_date+5,'A','B','requested',2,'AG','OLD','OLD'),('ATOM',1,current_date+6,current_date+7,'B','C','requested',2,'AG','OLD','OLD')" >/dev/null
+A0=$(q -c "select id from shipments where booking_id='ATOM' and leg_index=0"); A1=$(q -c "select id from shipments where booking_id='ATOM' and leg_index=1")
+claim "$A1" >/dev/null
+eq "依頼済みの区間がある予約でも代表者名の変更が通る (L0 直接・L1 は申請)" "1|1" "$(q -c "select direct_legs||'|'||requested_legs from agency_change_atomic('$A0','{\"suitcase_count\":3}',null,null,'{\"representative\":\"NEW\",\"recipient\":\"NEW\"}','t','AG','agency')")"
+eq "L0 は個数と代表者名を反映・L1 は変えない (佐川の確認待ち)" "3|NEW|2|OLD|representative" "$(q -c "select (select suitcase_count||'|'||representative from shipments where id='$A0')||'|'||(select suitcase_count||'|'||representative from shipments where id='$A1')||'|'||(select kind from shipment_change_requests where shipment_id='$A1' and stage='requested')")"
+# 途中で失敗: L1 に処理中の申請があるので代表者名の申請を作れない → L0 の個数も代表者名も変えない
+err_has "途中で失敗したら全部取り消す (理由を返す)" "select * from agency_change_atomic('$A0','{\"suitcase_count\":5}',null,null,'{\"representative\":\"NEWER\"}','t','AG','agency')" "agency_change:open_change_exists"
+eq "失敗した変更は区間に何も残らない (部分更新なし)" "3|NEW|1" "$(q -c "select (select suitcase_count||'|'||representative from shipments where id='$A0')||'|'||(select count(*) from shipment_change_requests where shipment_id in ('$A0','$A1') and kind='representative')")"
+q -c "update shipments set label_url='https://x' where id='$A0'" >/dev/null
+err_has "手配済み (発行済み) の区間は locked で何も変えない" "select * from agency_change_atomic('$A0','{\"suitcase_count\":4}',null,null,null,'t','AG','agency')" "agency_change:locked"
+eq "locked の後も区間はそのまま" "3" "$(q -c "select suitcase_count from shipments where id='$A0'")"
+err_has "直接反映で変えられない項目は拒否" "select * from agency_change_atomic('$A1','{\"from_hotel\":\"X\"}',null,null,null,'t','AG','agency')" "field_not_allowed"
+eq "匿名ロールは呼べない" f "$(q -c "select has_function_privilege('anon','agency_change_atomic(uuid,jsonb,text,jsonb,jsonb,text,text,text)','execute')")"
+
 echo "F. 切り戻し"
 apply sql/rollback/pause_pickup_lock.sql && eq "ロックを無効・記録を停止 (数秒の切り戻し)" "D|t" "$(lock_state)|$(q -c "select claims_paused from pickup_request_settings")"
 q -c "update shipments set suitcase_count=7 where id='$S3'" >/dev/null && eq "ロック無効で古いアプリの直接更新が通る" ok ok
 apply sql/rollback/rollback_067_072.sql && eq "全体の切り戻しを流せる" ok ok
-eq "切り戻し後: 新しい表・関数・列が無い" "0|0|0|0|0" "$(q -c "select (select count(*) from pg_trigger where tgname='shipments_pickup_lock')||'|'||(select count(*) from information_schema.tables where table_name in ('pickup_requests','pickup_request_settings','facilities'))||'|'||(select count(*) from information_schema.columns where table_name='shipment_change_requests' and column_name='kind')||'|'||(select count(*) from pg_proc where proname in ('b2c_request_cancel','shipment_cancel_hook','pickup_cutoff_at'))||'|'||(select count(*) from shipment_change_requests where requested_by='guest')")"
+eq "切り戻し後: 新しい表・関数・列が無い" "0|0|0|0|0" "$(q -c "select (select count(*) from pg_trigger where tgname='shipments_pickup_lock')||'|'||(select count(*) from information_schema.tables where table_name in ('pickup_requests','pickup_request_settings','facilities'))||'|'||(select count(*) from information_schema.columns where table_name='shipment_change_requests' and column_name='kind')||'|'||(select count(*) from pg_proc where proname in ('b2c_request_cancel','shipment_cancel_hook','pickup_cutoff_at','agency_change_atomic','pickup_watch_claim'))||'|'||(select count(*) from shipment_change_requests where requested_by='guest')")"
 eq "切り戻し後: B2C の確定・取消は 062 の版で動く" cancelled "$(O5=$(b2c_order 4); q -c "select b2c_confirm_order('$O5')" >/dev/null; q -c "select b2c_cancel_order('$O5','guest','guest')")"
 q -c "insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, fields, status) values ('$L2','L2',0,'agency','{\"suitcase_count\":3}','pending')" >/dev/null && eq "切り戻し後: 古いアプリの申請が積める" ok ok
 eq "切り戻しのバックアップが残る" "t" "$(q -c "select (select count(*) from pickup_requests_rollback_backup) > 0 and (select count(*) from shipment_change_requests_rollback_backup) > 0")"

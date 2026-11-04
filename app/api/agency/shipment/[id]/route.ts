@@ -15,7 +15,7 @@ import {
   normalizeRepresentative,
   CHANGE_REQUEST_ACCEPTED_MESSAGE,
 } from "@/lib/agency-self-service"
-import { isPickupLockError, liveRequestFor, submitAgencyChange } from "@/lib/pickup-request/agency-change"
+import { applyAgencyChangeAtomic, isPickupLockError, liveRequestFor, submitAgencyChange, type AtomicChangeResult } from "@/lib/pickup-request/agency-change"
 import type { ChangeKind } from "@/lib/pickup-request/change"
 import { resyncBookingToDrive } from "@/lib/drive-resync"
 import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
@@ -129,6 +129,18 @@ export async function PATCH(
       },
       { status: 409 },
     )
+
+  const atomicFailure = (r: Exclude<AtomicChangeResult, { ok: true }>) => {
+    if (r.kind === "pickupLock") return lockRace()
+    if (r.kind === "locked") {
+      return NextResponse.json(
+        { error: "LOCKED", message: "配送業者への手配が済んでいるため、変更は BondEx へご連絡ください。" },
+        { status: 409 },
+      )
+    }
+    if (r.kind === "rejected") return NextResponse.json({ error: r.code, message: r.message }, { status: r.status })
+    return NextResponse.json({ error: r.message }, { status: 500 })
+  }
 
   // ── 取り消し
   if (body.cancel === true && live) {
@@ -322,26 +334,21 @@ export async function PATCH(
       )
     }
     const k = kinds[0]
-    // 代表者名は予約単位。依頼済み・締切後の区間は申請、それ以外の区間は今までどおり直接変える。
-    const legs =
-      k.kind === "representative"
-        ? (((await sb.from("shipments").select("id, shipment_date, status, label_url").eq("booking_id", shipment.booking_id)).data ?? []) as Array<{ id: string; shipment_date: string; status: string; label_url: string | null }>)
-            .filter((l) => ["requested", "pending", "issued"].includes(l.status) && !l.label_url)
-        : [{ id, shipment_date: shipment.shipment_date, status: shipment.status, label_url: shipment.label_url ?? null }]
-    const direct: string[] = []
-    for (const l of legs) {
-      const lLive = l.id === id ? live : await liveRequestFor(sb, l.id)
-      if (lLive || isSelfServiceCutoffPassed(l.shipment_date) || (countNeedsRequest && l.id === id)) {
-        const r = await submitAgencyChange({ shipmentId: l.id, kind: k.kind, fields: k.fields, reason: `代理店からの${k.label}の変更`, agencyName: auth.agency.name, actor: actorLabel, en })
-        if (!r.ok) return NextResponse.json({ error: r.code, message: r.message }, { status: r.status })
-      } else {
-        direct.push(l.id)
-      }
-    }
-    if (direct.length) {
-      const { error } = await sb.from("shipments").update(bookingPatch).in("id", direct).in("status", editableStatuses).is("label_url", null)
-      if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    // 代表者名は予約単位。依頼済み・締切後の区間は申請、それ以外の区間は直接変える。
+    // 判定と書き込みは DB の1つのトランザクションで行う (sql/076・途中で失敗したら全部取り消す)。
+    const r = await applyAgencyChangeAtomic(sb, {
+      shipmentId: id,
+      legKind: k.kind === "representative" ? null : (k.kind as "dates" | "count"),
+      legRequestFields: k.kind === "representative" ? null : k.fields,
+      rep: k.kind === "representative" ? (bookingPatch as { representative: string; recipient?: string }) : null,
+      reason: `代理店からの${k.label}の変更`,
+      agencyName: auth.agency.name,
+      actor: actorLabel,
+      en,
+    })
+    if (!r.ok) return atomicFailure(r)
+    // DB の判定 (時刻・依頼の有無) で申請が0件 = 締切の直前などで直接反映になった。結果どおりに答える
+    if (r.requestedLegs === 0) return NextResponse.json({ ok: true })
     return requestAccepted([k.label], changes, live ? "requested" : "cutoff")
   }
 
@@ -355,31 +362,20 @@ export async function PATCH(
       return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
     }
   }
-  if (Object.keys(patch).length > 0) {
-    const { data: upd2, error } = await sb
-      .from("shipments")
-      .update(patch)
-      .eq("id", id)
-      .in("status", editableStatuses)
-      .is("label_url", null)
-      .select("id")
-    if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
-    if ((upd2 ?? []).length === 0) {
-      return NextResponse.json(
-        { error: "LOCKED", message: "配送業者への手配が済んでいるため、変更は BondEx へご連絡ください。" },
-        { status: 409 },
-      )
-    }
-  }
-  // 代表者名は予約単位 → 全区間 (変更可能な区間のみ)。
+  // 対象区間の日程・個数と、予約の全区間 (変更可能な区間のみ) の代表者名を1つのトランザクションで反映する (sql/076)。
+  // 同じ予約の別の区間が佐川へ依頼済み・締切後なら、その区間の代表者名だけ変更申請になる。
+  const atomic = await applyAgencyChangeAtomic(sb, {
+    shipmentId: id,
+    legPatch: patch,
+    rep: Object.keys(bookingPatch).length > 0 ? (bookingPatch as { representative: string; recipient?: string }) : null,
+    reason: "代理店からの代表者名の変更",
+    agencyName: auth.agency.name,
+    actor: actorLabel,
+    en,
+  })
+  if (!atomic.ok) return atomicFailure(atomic)
+  if (atomic.requestedLegs > 0) changes.push(`代表者名: 佐川へ依頼済み・締切後の ${atomic.requestedLegs}区間は変更申請 (BondEx の確認後に反映)`)
   if (Object.keys(bookingPatch).length > 0) {
-    const { error } = await sb
-      .from("shipments")
-      .update(bookingPatch)
-      .eq("booking_id", shipment.booking_id)
-      .in("status", editableStatuses)
-      .is("label_url", null)
-    if (error) return isPickupLockError(error.message) ? lockRace() : NextResponse.json({ error: error.message }, { status: 500 })
     // Drive のバウチャーも差し替え (best-effort)。ポータルの DL は都度生成なので常に最新。
     try {
       await resyncBookingToDrive(sb, shipment.booking_id)
