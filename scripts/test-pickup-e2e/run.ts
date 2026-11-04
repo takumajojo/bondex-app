@@ -1256,6 +1256,11 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const ok = await route.GET(mk("Bearer test-cron-secret"))
     const body = (await ok.json()) as Record<string, unknown>
     assert.ok("staleSending" in body && "evening" in body, JSON.stringify(body))
+    const probe = await route.GET(new NextRequest("http://localhost/api/cron/pickup-watch?probe=1", { headers: { authorization: "Bearer test-cron-secret" } }))
+    const pb = (await probe.json()) as Record<string, unknown>
+    assert.equal(pb.probe, true, "?probe=1 は通知の到達確認だけ")
+    assert.ok(!("evening" in pb), "probe では監視しない")
+    assert.equal((await route.GET(new NextRequest("http://localhost/api/cron/pickup-watch?probe=1"))).status, 401, "probe も認証が要る")
     const { readFileSync } = await import("node:fs")
     const syncSrc = readFileSync(`${process.cwd()}/app/api/cron/sync-tracking/route.ts`, "utf8")
     assert.ok(!/pickup-request\/watch/.test(syncSrc), "sync-tracking は main と同じ (監視を呼ばない)")
