@@ -97,19 +97,18 @@ function responseCodes(res: ShippingResponse): string[] {
 const MANAGE_NUMBER_DUPLICATE = "E1-0002"
 
 // ── 顧客側採番 (オプション・sql/078・BIZLOGI_NUMBERING=customer のときだけ)
-/** 佐川の応答のうち、顧客側採番の問合番号に関するコード (5.2 処理結果コード)。番号を送ったときだけ見る。 */
+/** 佐川の応答のうち、問合番号の重複を示すコード (5.2 処理結果コード)。採番方式によらず結果不明で止める
+ *  (システム採番では返らない想定だが、返ったら前の依頼が届いている可能性を否定できない・2026-11-04 谷口さん指示)。 */
 const NUMBER_DUPLICATE = ["E1-0206", "E2-0038"] // 番号の重複・90日以内の再利用 → 成功でも失敗でもない (結果不明として運営が確認)
 const NUMBER_RETIRE = ["E1-0207", "E1-0204", "E1-0205"] // 範囲外・桁数・値なし → 佐川に登録なし。番号を使わなくして運営へ
 const NUMBER_NOT_ENABLED = "E2-0036" // 顧客コードで顧客側採番が使えない → 設定の誤り (失敗・番号はそのまま)
 
-/** 前の依頼が届いている可能性を示すコード (結果不明にする)。顧客側採番のコードは番号を送ったときだけ。 */
+/** 前の依頼が届いている可能性を示すコード (結果不明にする)。採番方式によらず、重複を示すコードはすべて対象。 */
 function duplicateHit(res: ShippingResponse, detail: ShippingDetail): string | null {
   const codes = codesOf(res)
   if (codes.includes(MANAGE_NUMBER_DUPLICATE)) return `${MANAGE_NUMBER_DUPLICATE} (管理番号の重複)`
-  if (detail.shippingNumber) {
-    const hit = codes.find((c) => NUMBER_DUPLICATE.includes(c))
-    if (hit) return `${hit} (問合番号 ${detail.shippingNumber} の重複)`
-  }
+  const hit = codes.find((c) => NUMBER_DUPLICATE.includes(c))
+  if (hit) return `${hit} (問合番号 ${detail.shippingNumber ?? "(システム採番)"} の重複)`
   return null
 }
 

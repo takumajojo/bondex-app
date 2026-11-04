@@ -309,12 +309,14 @@ async function main() {
     const sb = bb.ok && pb?.ok ? await sendBizLogiPickup(b, bb.input, { actor: "接続試験", expectedFingerprint: pb.fingerprint }, deps(mockClient("dupManage"))) : null
     const rb = await records(b.id)
     check("E1-0002 → 結果不明 (送り直さない)・発行依頼は送らない", sb?.outcome === "unknown" && rb[0]?.state === "unknown" && issues === before2, { sb, rb })
-    // E1-0206 は顧客側採番のコード。番号を送っていないシステム採番では重複扱いにしない (通常の失敗)
+    // E1-0206 (問合番号の重複) もシステム採番で結果不明 (返らない想定だが、返ったら前の依頼が届いている可能性を否定できない)
     const c = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka" })
     const bc = await buildLegInput(c, env, {})
     const pc = bc.ok ? await previewBizLogiPickup(c, bc.input, pvDeps(mockClient())) : null
-    const sc = bc.ok && pc?.ok ? await sendBizLogiPickup(c, bc.input, { actor: "接続試験", expectedFingerprint: pc.fingerprint }, deps(mockClient("dup"))) : null
-    check("システム採番の E1-0206 は通常の失敗 (顧客側採番の処理に入らない)", sc?.outcome === "failed", sc)
+    const before3 = issues
+    const sc = bc.ok && pc?.ok ? await sendBizLogiPickup(c, bc.input, { actor: "接続試験", expectedFingerprint: pc.fingerprint }, deps(mockClient("dupOnIssue"))) : null
+    const rc = await records(c.id)
+    check("システム採番の E1-0206 (発行依頼) → 結果不明・番号なし・発行依頼は1回", sc?.outcome === "unknown" && rc[0]?.state === "unknown" && !rc[0]?.shipping_number && issues === before3 + 1, { sc, rc })
     check("番号範囲・台帳は使っていない", (await db.query(`select count(*)::int n from pickup_number_ledger`)).rows[0].n === 0 && (await db.query(`select count(*)::int n from pickup_number_ranges`)).rows[0].n === 0)
   }
 

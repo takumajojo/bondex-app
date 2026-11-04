@@ -27,11 +27,13 @@ Object.assign(process.env, {
 })
 
 // ── 模擬の外部 API
-type Mode = "ok" | "issue-network-error" | "check-network-error" | "issue-error-code" | "issue-no-number" | "issue-timeout" | "check-dup-manage" | "issue-dup-manage" | "check-dup-number"
+type Mode = "ok" | "issue-network-error" | "check-network-error" | "issue-error-code" | "issue-no-number" | "issue-timeout" | "check-dup" | "issue-dup"
 const mock = {
   mode: "ok" as Mode, checks: 0, issues: 0, seq: 0, lastIssueXml: "", lastCheckXml: "",
   /** 利用実績参照 API (riyoujisseki) が返す発行数 */
   usageCount: 0,
+  /** 重複の模擬で返すコード */
+  dupCode: "E1-0002",
   /** 発行依頼の直前に差し込む処理 (送信中の変更の再現) */
   beforeIssue: null as null | (() => Promise<void>),
 }
@@ -67,7 +69,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
         e.name = "AbortError"
         throw e
       }
-      if (mock.mode === "issue-dup-manage") return new Response(shippingXml(body, { ok: false, codes: ["E1-0002"] }))
+      if (mock.mode === "issue-dup") return new Response(shippingXml(body, { ok: false, codes: [mock.dupCode] }))
       mock.seq++
       // 顧客側採番 (sql/078): 佐川は送った番号 (shippingNumber) をそのまま返す。送っていなければ佐川が採番
       const sent = tag(body, "shippingNumber")
@@ -80,8 +82,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       e.name = "AbortError"
       throw e
     }
-    if (mock.mode === "check-dup-manage") return new Response(shippingXml(body, { ok: false, codes: ["E1-0002"] }))
-    if (mock.mode === "check-dup-number") return new Response(shippingXml(body, { ok: false, codes: ["E1-0206"] }))
+    if (mock.mode === "check-dup") return new Response(shippingXml(body, { ok: false, codes: [mock.dupCode] }))
     return new Response(shippingXml(body, { ok: true }))
   }
   if (url.startsWith("https://mock-bizlogi.invalid/api/riyoujisseki")) {
@@ -1386,33 +1387,33 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
       setNumbering(base)
     }
   })
-  await test("E1-0002 (管理番号の重複) は確認機能でも発行依頼でも結果不明。失敗扱いの送り直しはしない", async () => {
-    for (const mode of ["check-dup-manage", "issue-dup-manage"] as const) {
-      const leg = await newLeg()
-      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
-      mock.mode = mode
-      const i0 = mock.issues
-      const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
-      mock.mode = "ok"
-      assert.equal(s1.body.outcome, "unknown", `${mode}: ${JSON.stringify(s1.body)}`)
-      assert.equal(mock.issues, i0 + (mode === "issue-dup-manage" ? 1 : 0), "発行依頼は多くて1回")
-      assert.equal((await reqs(leg))[0].state, "unknown")
-      assert.equal((await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })).status, 409, "再送できない")
+  await test("重複を示すコード (E1-0002・E1-0206・E2-0038) は採番方式によらず結果不明。自動の再送なし・再操作も拒否", async () => {
+    for (const m of ["system", "customer"] as const) {
+      setNumbering(m)
+      if (m === "customer" && !(await hasRange())) await insertMockRange()
+      for (const code of ["E1-0002", "E1-0206", "E2-0038"]) {
+        for (const stage of ["check", "issue"] as const) {
+          const leg = await newLeg()
+          const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+          assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+          mock.dupCode = code
+          mock.mode = stage === "check" ? "check-dup" : "issue-dup"
+          const i0 = mock.issues
+          const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
+          mock.mode = "ok"
+          const label = `${m}/${code}/${stage}`
+          assert.equal(s1.body.outcome, "unknown", `${label}: ${JSON.stringify(s1.body)}`)
+          assert.equal(mock.issues, i0 + (stage === "issue" ? 1 : 0), `${label}: 発行依頼は多くて1回`)
+          const r = (await reqs(leg))[0]
+          assert.equal(r.state, "unknown", label)
+          assert.equal(r.shipping_number ?? null, null, `${label}: 番号を記録しない`)
+          assert.equal((await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })).status, 409, `${label}: 再送できない`)
+          assert.equal(mock.issues, i0 + (stage === "issue" ? 1 : 0), `${label}: 自動の再送なし`)
+        }
+      }
     }
+    setNumbering(base)
   })
-  if (!CUSTOMER) {
-    await test("システム採番: E1-0206 (顧客側採番のコード) は番号を送っていないので重複扱いにしない (通常のエラー・発行なし)", async () => {
-      const leg = await newLeg()
-      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
-      mock.mode = "check-dup-number"
-      const i0 = mock.issues
-      const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
-      mock.mode = "ok"
-      assert.equal(s1.body.outcome, "failed", JSON.stringify(s1.body))
-      assert.equal(mock.issues, i0)
-      assert.equal((await reqs(leg))[0].state, "failed")
-    })
-  }
   await test("採番方式の切替: 既存の送信中・結果不明・受付済みの依頼は自動で送られず、番号も変わらない", async () => {
     if (!(await hasRange())) await insertMockRange()
     // 顧客側採番で送って結果不明 (番号あり)
