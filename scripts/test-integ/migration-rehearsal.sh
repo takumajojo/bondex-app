@@ -91,9 +91,10 @@ eq "長いトランザクション (12秒) の最中の 068 は、10秒で諦め
 eq "移行が表を待っている間は表を持たない (待ちは10秒まで・利用者の操作は止まらない)" "t" "$([ $((T1-T0)) -le 12 ] && echo t || echo f)"
 wait $HOLD
 step "068 をやり直す (ロックは無効で作る)" sql/068_change_requests_pickup_lock.sql
-step "061・062・073・071・075・076 (B2C は機能フラグ OFF のまま)" sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql
+step "061・062・073・071・074・075・076 (B2C は機能フラグ OFF のまま・074 も前置き付き)" sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql
 eq "拡張後: ロック無効・記録の停止中・B2C の関数は 071 の版" "D|t|t|t" "$(q -c "select tgenabled from pg_trigger where tgname='shipments_pickup_lock'")|$(q -c "select claims_paused from pickup_request_settings")|$(q -c "select prosrc like '%pickup_cutoff_at%' from pg_proc where proname='b2c_confirm_order'")|$(q -c "select prosrc like '%pickup_requested%' from pg_proc where proname='b2c_cancel_order'")"
 eq "既存データの分類 (受付済み21・要確認0・今後の未依頼は記録なし)" "21|0|0" "$(q -c "select count(*) from pickup_requests where state='accepted'")|$(q -c "select count(*) from pickup_requests where state='needs_review'")|$(q -c "select count(*) from pickup_requests r join shipments s on s.id=r.shipment_id where s.booking_id like 'FUT-%'")"
+eq "074 の B2C 区間の守りが入り、071 の版は上書きされない" "1|t" "$(q -c "select count(*) from pg_trigger where tgname='b2c_shipments_guard'")|$(q -c "select prosrc like '%pickup_cutoff_at%' from pg_proc where proname='b2c_confirm_order'")"
 eq "既存の変更申請3件は運営の訂正 (correction・applied) として残る" "3" "$(q -c "select count(*) from shipment_change_requests where kind='correction' and stage='applied'")"
 
 echo "2. 手順3 (アプリ切替) の後 — 新しいアプリの操作"

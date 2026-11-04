@@ -2,7 +2,7 @@
 # B2C と Biz-Logi の統合の DB 試験 (ローカルの PostgreSQL の試験専用データベースだけ。本番・Supabase には接続しない)。
 #   実行: bash scripts/test-integ/db-integration.sh   (Supabase CLI のローカル DB コンテナ supabase_db_supa-local を使う)
 # 確かめること:
-#   A. 本番移行の順番 (067 → 069 → 068 → 061 → 062 → 073 → 071 → [アプリ] → 072 → 070) と二重適用
+#   A. 本番移行の順番 (067 → 069 → 068 → 061 → 062 → 073 → 071 → 074 → 075 → 076 → [アプリ] → 072 → 070) と二重適用
 #   B. 拡張段階 (ロック無効・記録の停止) で古いアプリの操作が通り、集荷依頼の記録は DB が止める
 #   C. 072 の後: ロック・二重依頼の防止・停止スイッチ
 #   D. 締切 18:30 (DB の pickup_cutoff_at・b2c_confirm_order の判定と保存値)
@@ -52,12 +52,14 @@ b2c_seed() {
 
 echo "A. 本番移行の順番と二重適用"
 fresh
-apply "${EXPAND[@]}" && eq "拡張段階の SQL (067→069→068→061→062→073→071) を適用できる" ok ok
+apply "${EXPAND[@]}" && eq "拡張段階の SQL (067→069→068→061→062→073→071→074→075→076) を適用できる" ok ok
 apply "${EXPAND[@]}" && eq "拡張段階の SQL を2回流しても失敗しない" ok ok
 eq "068 はロックを無効で作る" D "$(lock_state)"
 eq "B2C の確定・取消は 071 の版 (18:30・集荷依頼済みの扱い)" "t|t" "$(q -c "select (prosrc like '%pickup_cutoff_at%') from pg_proc where proname='b2c_confirm_order'")|$(q -c "select (prosrc like '%pickup_requested%') from pg_proc where proname='b2c_cancel_order'")"
 eq "067 は集荷依頼の記録を停止で作る" "true|false" "$(q -c "select claims_paused||'|'||lock_enabled from pickup_request_settings")"
 q < "$R/scripts/test-b2c/db/verify_061.sql" > /tmp/integ_v061.txt 2>&1; eq "B2C の検証 (verify_061) が通る" 0 "$?"
+eq "074: B2C 区間の守りのトリガーがあり、通知の既定・請求の守りは 074 の版" "1|t|t" "$(q -c "select count(*) from pg_trigger where tgname='b2c_shipments_guard' and tgrelid='public.shipments'::regclass")|$(q -c "select prosrc like '%payment_action_required%' from pg_proc where proname='b2c_outbox_defaults'")|$(q -c "select count(*)=1 from pg_proc where proname='b2c_payments_guard'")"
+eq "074 は 071・075・076 の関数を上書きしない" "t|t|t" "$(q -c "select prosrc like '%pickup_cutoff_at%' from pg_proc where proname='b2c_confirm_order'")|$(q -c "select count(*)=1 from pg_proc where proname='pickup_watch_claim'")|$(q -c "select count(*)=1 from pg_proc where proname='agency_change_atomic'")"
 
 echo "B. 拡張段階 (古いアプリが動いている間)"
 L1=$(leg L1 3); L2=$(leg L2 3)
@@ -154,6 +156,11 @@ q -c "select ok from step_shipment_change('$CB','contact','op','x',null,null); s
 eq "B2B の取消申請の反映は従来どおり" "t|cancelled|cancelled" "$(q -c "select ok from apply_shipment_change('$CB','op')")|$(q -c "select status from shipments where id='$L4'")|$(q -c "select state from pickup_requests where shipment_id='$L4'")"
 eq "匿名ロールは取消申請の関数を呼べない" f "$(q -c "select has_function_privilege('anon','b2c_request_cancel(uuid,text,text,text,text)','execute')")"
 
+echo "E1b. 074 の B2C 区間の守りと B2B の区間"
+LB=$(leg LB 5)
+q -c "update shipments set agency='AG2' where id='$LB'" >/dev/null && eq "B2B の区間の代理店名は変えられる (074 のトリガーは B2C だけ)" "AG2" "$(q -c "select agency from shipments where id='$LB'")"
+SB2C=$(q -c "select id from shipments where channel='b2c' limit 1")
+err_has "B2C の区間の代理店名は変えられない (074)" "update shipments set agency='AG2' where id='$SB2C'" "b2c"
 echo "E2. 代理店の変更の原子性 (sql/076)"
 # 予約 ATOM: 区間 L0 (未依頼) と L1 (佐川へ依頼済み)
 q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient)
