@@ -1,11 +1,15 @@
 -- Biz-Logi の顧客側採番 (BondEx が問合番号を採番して送る) の番号範囲・台帳・採番 (2026-11-04 SG 喜田様の正式回答・谷口さん指示)。未適用。
+-- **オプション** (2026-11-04 谷口さん決定): 標準は Biz-Logi のシステム採番 (アプリの BIZLOGI_NUMBERING 未設定)。
+--   この SQL を流しても、BIZLOGI_NUMBERING=customer にしない限り番号は払い出されず、送る電文も記録も変わらない。
+--   送った番号 (assigned_number) は、顧客側採番で実際に送るときにアプリが pickup_set_assigned_number で書く
+--   (区間の台帳から自動では写さない = システム採番で送った依頼に番号が付かない)。一度書いたら変えられない。
 -- 前提: sql/067 (pickup_requests)・sql/068 (pickup_number_in_use。台帳があれば台帳も見る)。
 --
 -- SG の回答 (確定仕様):
 --   - N01 集荷依頼プランで顧客側採番が使える。問合番号採番区分 (仕様書 p.28 1-7 shippingNumberType) = 1、
 --     顧客指定問合番号 (p.35 1-9-1-49 shippingNumber・12桁・チェックデジット込み) に BondEx の番号を入れる
 --   - 重複は E1-0206、範囲外は E1-0207 で返る (5.2)
--- 方針: 今後は全件 BondEx 側で採番する。**SG の専用の番号範囲が届くまで範囲は登録しない** (推測の番号を使わない)。
+-- 方針: 顧客側採番を使うと決めたときだけ範囲を登録する。**SG の専用の番号範囲が届くまで範囲は登録しない** (推測の番号を使わない)。
 --   範囲が無ければ採番せず、Biz-Logi の送信はアプリが止める。
 --
 -- 仕組み:
@@ -151,16 +155,43 @@ begin
 end;
 $$;
 
--- 8. Biz-Logi の依頼を確保したら、区間の番号を記録に写す。佐川で取り消されたら番号を使わなくする
+-- 8. 送った番号の記録 (顧客側採番で送るときだけ・アプリが明示的に書く)。
+--    書けるのは: Biz-Logi の依頼・送信中 (確保の直後・佐川へ送る前)・まだ番号が無い・区間に有効な台帳の番号と同じとき。
+drop function if exists public.pickup_set_assigned_number(uuid, text);  -- 戻り値の形を変えても流し直せるように
+create or replace function public.pickup_set_assigned_number(p_request_id uuid, p_number text)
+returns table (ok boolean) language plpgsql security definer set search_path = public as $$
+declare
+  r public.pickup_requests;
+begin
+  select * into r from public.pickup_requests pr where pr.id = p_request_id for update;
+  if not found or r.channel <> 'bizlogi' or r.state <> 'sending' or r.environment is null then
+    return query select false; return;
+  end if;
+  if r.assigned_number is not null then return query select r.assigned_number = p_number; return; end if;
+  if not exists (select 1 from public.pickup_number_ledger l
+                  where l.number = p_number and l.shipment_id = r.shipment_id and l.environment = r.environment and l.active) then
+    return query select false; return;
+  end if;
+  update public.pickup_requests pr set assigned_number = p_number where pr.id = p_request_id;
+  return query select true;
+end;
+$$;
+
+--    送った番号は一度書いたら変えられない (採番方式を切り替えても、送信中・結果不明・受付済みの依頼の番号は変わらない)。
+--    佐川で取り消されたら番号を使わなくする (再利用しない)。
 create or replace function public.pickup_requests_numbering()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if tg_op = 'INSERT' then
-    if new.channel = 'bizlogi' and new.assigned_number is null and new.environment is not null then
-      select l.number into new.assigned_number from public.pickup_number_ledger l
-       where l.shipment_id = new.shipment_id and l.environment = new.environment and l.active;
-    end if;
+    -- 確保の時点では番号を持たない (システム採番の依頼に番号が付かないように。顧客側採番はこの後アプリが書く)
+    new.assigned_number := null;
     return new;
+  end if;
+  if old.assigned_number is not null and new.assigned_number is distinct from old.assigned_number then
+    raise exception 'pickup_requests: 送った問合番号 (assigned_number) は変更できません';
+  end if;
+  if old.assigned_number is null and new.assigned_number is not null and old.state <> 'sending' then
+    raise exception 'pickup_requests: 送った問合番号は送信中の依頼にだけ記録できます';
   end if;
   if new.state = 'cancelled' and old.state is distinct from 'cancelled' and new.assigned_number is not null then
     update public.pickup_number_ledger set active = false, retired_at = now(), retired_reason = '佐川で依頼を取消 (番号は再利用しない)'
@@ -173,15 +204,18 @@ drop trigger if exists pickup_requests_numbering_ins on public.pickup_requests;
 create trigger pickup_requests_numbering_ins before insert on public.pickup_requests
   for each row execute function public.pickup_requests_numbering();
 drop trigger if exists pickup_requests_numbering_upd on public.pickup_requests;
-create trigger pickup_requests_numbering_upd after update of state on public.pickup_requests
+drop trigger if exists pickup_requests_numbering_guard on public.pickup_requests;
+create trigger pickup_requests_numbering_guard before update on public.pickup_requests
   for each row execute function public.pickup_requests_numbering();
 
 -- 9. 実行権限: サーバ (service_role) だけ
 revoke all on function public.pickup_leg_number(uuid, text) from public, anon, authenticated;
 revoke all on function public.pickup_retire_number(text, text) from public, anon, authenticated;
+revoke all on function public.pickup_set_assigned_number(uuid, text) from public, anon, authenticated;
 revoke all on function public.pickup_requests_numbering() from public, anon, authenticated;
 do $$ begin
   execute 'grant execute on function public.pickup_leg_number(uuid, text) to service_role';
   execute 'grant execute on function public.pickup_retire_number(text, text) to service_role';
+  execute 'grant execute on function public.pickup_set_assigned_number(uuid, text) to service_role';
   execute 'grant select on table public.pickup_number_ranges, public.pickup_number_ledger to service_role';
 exception when undefined_object then null; end $$;

@@ -46,7 +46,9 @@ do $$ begin
 end $$;
 drop trigger if exists pickup_requests_numbering_ins on public.pickup_requests;
 drop trigger if exists pickup_requests_numbering_upd on public.pickup_requests;
+drop trigger if exists pickup_requests_numbering_guard on public.pickup_requests;
 drop function if exists public.pickup_requests_numbering();
+drop function if exists public.pickup_set_assigned_number(uuid, text);
 drop function if exists public.pickup_leg_number(uuid, text);
 drop function if exists public.pickup_retire_number(text, text);
 drop function if exists public.sagawa_check_digit_ok(text);

@@ -198,8 +198,20 @@ eq "手動の番号とぶつかる候補は飛ばす" "f" "$(q -c "select number
 for i in $(seq 1 50); do leg "LC$i" 5 >/dev/null; done
 for p in 1 2 3 4 5; do ( for i in $(seq $p 5 50); do q -c "select number from pickup_leg_number((select id from shipments where booking_id='LC$i'),'test')" >/dev/null 2>&1; done ) & done; wait
 eq "同時の払い出し: 50区間すべてに番号・重複なし・チェックデジット正しい" "50|50|50" "$(q -c "select count(*)||'|'||count(distinct number)||'|'||count(*) filter (where sagawa_check_digit_ok(number)) from pickup_number_ledger where shipment_id in (select id from shipments where booking_id like 'LC%')")"
-# 依頼の確保で番号を記録に写す・取消で番号を使わなくする
-eq "Biz-Logi の依頼を確保すると、区間の番号を記録に写す" "$N1" "$(q -c "select claim_pickup_request('$LG','bizlogi','test','X',2,current_date+4,'a','o',null)" >/dev/null; q -c "select assigned_number from pickup_requests where shipment_id='$LG'")"
+# 送った番号の記録は送信処理が明示的に書く (確保では写さない = システム採番の依頼に番号が付かない)・一度書いたら変えない・取消で使わなくする
+eq "確保しただけでは番号を記録しない (区間の台帳に番号があっても)" "" "$(q -c "select claim_pickup_request('$LG','bizlogi','test','X',2,current_date+4,'a','o',null)" >/dev/null; q -c "select coalesce(assigned_number,'') from pickup_requests where shipment_id='$LG'")"
+RID=$(q -c "select id from pickup_requests where shipment_id='$LG'")
+NH=$(q -c "select number from pickup_number_ledger where shipment_id='$LH' and active")
+eq "ほかの区間の番号は記録できない" "f" "$(q -c "select ok from pickup_set_assigned_number('$RID','$NH')")"
+eq "送信中の依頼に区間の番号を記録できる" "t" "$(q -c "select ok from pickup_set_assigned_number('$RID','$N1')")"
+eq "記録した番号を別の番号に書き換えられない (関数)" "f" "$(q -c "select ok from pickup_set_assigned_number('$RID','$NH')")"
+err_has "記録した番号を別の番号に書き換えられない (直接の更新)" "update pickup_requests set assigned_number='$NH' where id='$RID'" "変更できません"
+LS=$(leg LS 4); q -c "select claim_pickup_request('$LS','bizlogi','test','X',2,current_date+4,'a','o',null)" >/dev/null
+q -c "update pickup_requests set state='unknown' where shipment_id='$LS'" >/dev/null
+NS=$(q -c "select number from pickup_leg_number('$LS','test')")
+eq "結果不明の依頼には後から番号を記録できない (関数)" "f" "$(q -c "select ok from pickup_set_assigned_number((select id from pickup_requests where shipment_id='$LS'),'$NS')")"
+err_has "結果不明の依頼には後から番号を記録できない (直接の更新)" "update pickup_requests set assigned_number='$NS' where shipment_id='$LS'" "送信中の依頼にだけ"
+eq "匿名ロールは番号を記録できない" "f" "$(q -c "select has_function_privilege('anon','pickup_set_assigned_number(uuid,text)','execute')")"
 q -c "update pickup_requests set state='cancelled' where shipment_id='$LG'" >/dev/null 2>&1 || q -c "select 1" >/dev/null
 eq "佐川で取消になった番号は使わなくする (再利用しない)" "f" "$(q -c "select active from pickup_number_ledger where number='$N1'")"
 eq "取消の後の同じ区間は新しい番号" "t" "$(q -c "select number <> '$N1' from pickup_leg_number('$LG','test')")"
@@ -213,7 +225,7 @@ echo "F. 切り戻し"
 apply sql/rollback/pause_pickup_lock.sql && eq "ロックを無効・記録を停止 (数秒の切り戻し)" "D|t" "$(lock_state)|$(q -c "select claims_paused from pickup_request_settings")"
 q -c "update shipments set suitcase_count=7 where id='$S3'" >/dev/null && eq "ロック無効で古いアプリの直接更新が通る" ok ok
 apply sql/rollback/rollback_067_072.sql && eq "全体の切り戻しを流せる" ok ok
-eq "切り戻し後: 新しい表・関数・列が無い" "0|0|0|0|0" "$(q -c "select (select count(*) from pg_trigger where tgname='shipments_pickup_lock')||'|'||(select count(*) from information_schema.tables where table_name in ('pickup_requests','pickup_request_settings','facilities'))||'|'||(select count(*) from information_schema.columns where table_name='shipment_change_requests' and column_name='kind')||'|'||(select count(*) from pg_proc where proname in ('b2c_request_cancel','shipment_cancel_hook','pickup_cutoff_at','agency_change_atomic','pickup_watch_claim','pickup_leg_number','sagawa_check_digit_ok'))||'|'||(select count(*) from shipment_change_requests where requested_by='guest')")"
+eq "切り戻し後: 新しい表・関数・列が無い" "0|0|0|0|0" "$(q -c "select (select count(*) from pg_trigger where tgname='shipments_pickup_lock')||'|'||(select count(*) from information_schema.tables where table_name in ('pickup_requests','pickup_request_settings','facilities'))||'|'||(select count(*) from information_schema.columns where table_name='shipment_change_requests' and column_name='kind')||'|'||(select count(*) from pg_proc where proname in ('b2c_request_cancel','shipment_cancel_hook','pickup_cutoff_at','agency_change_atomic','pickup_watch_claim','pickup_leg_number','sagawa_check_digit_ok','pickup_set_assigned_number'))||'|'||(select count(*) from shipment_change_requests where requested_by='guest')")"
 eq "切り戻し後: B2C の確定・取消は 062 の版で動く" cancelled "$(O5=$(b2c_order 4); q -c "select b2c_confirm_order('$O5')" >/dev/null; q -c "select b2c_cancel_order('$O5','guest','guest')")"
 q -c "insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, fields, status) values ('$L2','L2',0,'agency','{\"suitcase_count\":3}','pending')" >/dev/null && eq "切り戻し後: 古いアプリの申請が積める" ok ok
 eq "切り戻しのバックアップが残る" "t" "$(q -c "select (select count(*) from pickup_requests_rollback_backup) > 0 and (select count(*) from shipment_change_requests_rollback_backup) > 0")"

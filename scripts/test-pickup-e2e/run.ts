@@ -20,12 +20,14 @@ Object.assign(process.env, {
   BIZLOGI_KOKYAKU_CODE: "100000000000",
   BIZLOGI_OKURI_CODE: "N01",
   BIZLOGI_LIVE: "true",
+  // 採番方式: 既定はシステム採番 (Biz-Logi が採番)。E2E_NUMBERING=customer で顧客側採番 (オプション・sql/078) を通す
+  ...(process.env.E2E_NUMBERING === "customer" ? { BIZLOGI_NUMBERING: "customer" } : {}),
   BONDEX_SENDER_PHONE: "03-0000-0000",
   GOOGLE_MAPS_API_KEY: "mock-key",
 })
 
 // ── 模擬の外部 API
-type Mode = "ok" | "issue-network-error" | "check-network-error" | "issue-error-code" | "issue-no-number"
+type Mode = "ok" | "issue-network-error" | "check-network-error" | "issue-error-code" | "issue-no-number" | "issue-timeout" | "check-dup-manage" | "issue-dup-manage" | "check-dup-number"
 const mock = {
   mode: "ok" as Mode, checks: 0, issues: 0, seq: 0, lastIssueXml: "", lastCheckXml: "",
   /** 利用実績参照 API (riyoujisseki) が返す発行数 */
@@ -60,6 +62,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       if (mock.mode === "issue-network-error") throw new TypeError("fetch failed (模擬: 通信断)")
       if (mock.mode === "issue-error-code") return new Response(shippingXml(body, { ok: false, codes: ["E2-0004"] }))
       if (mock.mode === "issue-no-number") return new Response(shippingXml(body, { ok: true, prid: `P-${mock.issues}`, number: null }))
+      if (mock.mode === "issue-timeout") {
+        const e = new Error("This operation was aborted (模擬: 時間切れ)")
+        e.name = "AbortError"
+        throw e
+      }
+      if (mock.mode === "issue-dup-manage") return new Response(shippingXml(body, { ok: false, codes: ["E1-0002"] }))
       mock.seq++
       // 顧客側採番 (sql/078): 佐川は送った番号 (shippingNumber) をそのまま返す。送っていなければ佐川が採番
       const sent = tag(body, "shippingNumber")
@@ -72,6 +80,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       e.name = "AbortError"
       throw e
     }
+    if (mock.mode === "check-dup-manage") return new Response(shippingXml(body, { ok: false, codes: ["E1-0002"] }))
+    if (mock.mode === "check-dup-number") return new Response(shippingXml(body, { ok: false, codes: ["E1-0206"] }))
     return new Response(shippingXml(body, { ok: true }))
   }
   if (url.startsWith("https://mock-bizlogi.invalid/api/riyoujisseki")) {
@@ -85,6 +95,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   throw new Error(`外部通信は禁止 (試験): ${url}`)
 }) as typeof fetch
 void realFetch
+
+const CUSTOMER = process.env.E2E_NUMBERING === "customer"
+console.log(`採番方式: ${CUSTOMER ? "顧客側採番 (オプション)" : "システム採番 (既定)"}`)
+const insertMockRange = () =>
+  db.query(`insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by)
+            values ('production', 99998000000, 99998099999, 99998000000, '模擬 (通し試験専用・SG の範囲ではない)', 'e2e')`)
 
 let pass = 0
 let fail = 0
@@ -140,9 +156,9 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
 
 ;(async () => {
   await initSchema(process.cwd())
-  // 顧客側採番の番号範囲 (架空・試験専用。SG の範囲ではない)。アプリは BIZLOGI_NUMBERING 未設定 = 顧客側採番で動く
-  await db.query(`insert into pickup_number_ranges (environment, body_start, body_end, next_body, source_note, created_by)
-                  values ('production', 99998000000, 99998099999, 99998000000, '模擬 (通し試験専用・SG の範囲ではない)', 'e2e')`)
+  // 顧客側採番 (E2E_NUMBERING=customer) のときだけ番号範囲を登録する (架空・試験専用。SG の範囲ではない)。
+  // 既定 (システム採番) では範囲を登録しない = 範囲が未設定でもシステム採番で送れることを全体で確かめる
+  if (CUSTOMER) await insertMockRange()
   pickupRoute = await import("../../app/api/operator/pickup-request/route")
   sagawaRoute = await import("../../app/api/operator/sagawa-pickup/route")
   todoMod = await import("../../lib/pickup-request/todo")
@@ -267,10 +283,16 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(mock.issues, i0 + 1)
     const t = await todo()
     assert.ok(t.attention.some((x: { shipmentId: string; kind: string }) => x.shipmentId === leg && x.kind === "unknown"))
-    // 顧客側採番: 送った番号が記録に残っている (結果不明でも番号で佐川に確かめられる)
     const r0 = (await reqs(leg))[0]
     const rid = r0.id
-    assert.match(r0.assigned_number ?? "", /^\d{12}$/, "送った番号が記録に残る")
+    if (CUSTOMER) {
+      // 顧客側採番: 送った番号が記録に残っている (結果不明でも番号で佐川に確かめられる)
+      assert.match(r0.assigned_number ?? "", /^\d{12}$/, "送った番号が記録に残る")
+    } else {
+      // システム採番: 番号は佐川が採番するので、結果不明では番号が無い (送った電文にも番号は無い)
+      assert.equal(r0.assigned_number ?? null, null)
+      assert.ok(!mock.lastIssueXml.includes("shippingNumber"), "区分・番号を送らない")
+    }
     // 利用実績での照合 (読み取りだけ・状態は変えない): 佐川の発行数 = BondEx の受付済み + この1件 → 発行されている可能性が高い
     const accepted = (await db.query(`select count(*)::int n from pickup_requests where channel='bizlogi' and environment='production' and print_request_id is not null and created_at >= now() - interval '1 day'`)).rows[0].n
     const unknown = (await db.query(`select count(*)::int n from pickup_requests where channel='bizlogi' and environment='production' and print_request_id is null and state in ('unknown','sending') and created_at >= now() - interval '1 day'`)).rows[0].n
@@ -282,12 +304,20 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     mock.usageCount = accepted
     assert.equal((await call("POST", "/api/operator/pickup-request", { action: "usage_check", requestId: rid })).body.verdict, "likely_not_issued")
     assert.equal((await reqs(leg))[0].state, "unknown", "照合だけでは状態を変えない")
-    // 送った番号と違う番号では記録できない
-    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: "123456789012" })).status, 409, "違う番号では記録できない")
-    // 佐川に確認して記録 → 送った番号で受付済み
-    const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", note: "世田谷に確認" })
-    assert.equal(ok.status, 200)
-    assert.deepEqual((await ship(leg)).tracking_numbers, [r0.assigned_number])
+    if (CUSTOMER) {
+      // 送った番号と違う番号では記録できない
+      assert.equal((await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: "123456789012" })).status, 409, "違う番号では記録できない")
+      // 佐川に確認して記録 → 送った番号で受付済み
+      const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", note: "世田谷に確認" })
+      assert.equal(ok.status, 200)
+      assert.deepEqual((await ship(leg)).tracking_numbers, [r0.assigned_number])
+    } else {
+      // システム採番: 佐川 (世田谷) に確かめた番号の入力が必須
+      assert.equal((await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口" })).status, 409, "番号なしでは記録できない")
+      const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: "100000777771", note: "世田谷に確認" })
+      assert.equal(ok.status, 200, JSON.stringify(ok.body))
+      assert.deepEqual((await ship(leg)).tracking_numbers, ["100000777771"])
+    }
   })
   await test("確認機能の段階で通信断 → 未送信として失敗 (422)・発行依頼なし・直して再送できる", async () => {
     const leg = await newLeg()
@@ -1289,6 +1319,156 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const { readFileSync } = await import("node:fs")
     const syncSrc = readFileSync(`${process.cwd()}/app/api/cron/sync-tracking/route.ts`, "utf8")
     assert.ok(!/pickup-request\/watch/.test(syncSrc), "sync-tracking は main と同じ (監視を呼ばない)")
+  })
+
+  console.log("15. 採番方式 (標準 = システム採番・顧客側採番はオプション)")
+  const setNumbering = (m: "system" | "customer") => {
+    if (m === "customer") process.env.BIZLOGI_NUMBERING = "customer"
+    else delete process.env.BIZLOGI_NUMBERING
+  }
+  const base = CUSTOMER ? "customer" : "system"
+  const hasRange = async () => (await db.query(`select count(*)::int n from pickup_number_ranges where environment='production' and active`)).rows[0].n > 0
+  await test("システム採番: 番号範囲が未設定でも正常受付。区分・番号は送らず、佐川の応答の問合番号と発行受付IDを保存", async () => {
+    setNumbering("system")
+    try {
+      const leg = await newLeg()
+      if (!CUSTOMER) assert.equal(await hasRange(), false, "範囲は未設定")
+      const { pv, send } = await previewAndSend(leg)
+      assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+      assert.ok(!mock.lastCheckXml.includes("shippingNumber") && !mock.lastIssueXml.includes("shippingNumber"), "採番区分・番号を送らない")
+      assert.equal(send!.status, 200, JSON.stringify(send!.body))
+      const r = (await reqs(leg))[0]
+      assert.equal(r.state, "accepted")
+      assert.equal(r.shipping_number, String(send!.body.shippingNumber))
+      assert.match(r.shipping_number, /^1\d{11}$/, "佐川が採番した番号")
+      assert.match(r.print_request_id ?? "", /^P-\d+$/, "発行受付ID")
+      assert.equal(r.assigned_number ?? null, null, "送った番号は無い")
+      assert.deepEqual((await ship(leg)).tracking_numbers, [r.shipping_number])
+    } finally {
+      setNumbering(base)
+    }
+  })
+  await test("システム採番: 発行依頼の時間切れ → 結果不明・自動再送なし・再操作も拒否", async () => {
+    setNumbering("system")
+    try {
+      const leg = await newLeg()
+      mock.mode = "issue-timeout"
+      const i0 = mock.issues
+      const { send } = await previewAndSend(leg)
+      mock.mode = "ok"
+      assert.equal(send!.status, 202)
+      assert.equal(send!.body.outcome, "unknown")
+      assert.equal(mock.issues, i0 + 1, "発行依頼は1回だけ")
+      const r = (await reqs(leg))[0]
+      assert.equal(r.state, "unknown")
+      assert.equal(r.shipping_number ?? null, null)
+      assert.equal(r.print_request_id ?? null, null)
+      // 結果不明の区間はボタンでも Excel でも再依頼できない
+      assert.equal((await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })).status, 409)
+      assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })).body.alreadyRecorded, true)
+      assert.equal(mock.issues, i0 + 1)
+    } finally {
+      mock.mode = "ok"
+      setNumbering(base)
+    }
+  })
+  await test("システム採番: 同じ区間への5つ同時の送信 → 発行依頼1回・記録1件", async () => {
+    setNumbering("system")
+    try {
+      const leg = await newLeg()
+      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+      const i0 = mock.issues
+      const rs = await Promise.all(Array.from({ length: 5 }, (_, k) => call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: `担当${k}`, confirmNoManual: true })))
+      assert.equal(rs.filter((r) => r.status === 200).length, 1)
+      assert.equal(mock.issues, i0 + 1)
+      assert.equal((await reqs(leg)).length, 1)
+    } finally {
+      setNumbering(base)
+    }
+  })
+  await test("E1-0002 (管理番号の重複) は確認機能でも発行依頼でも結果不明。失敗扱いの送り直しはしない", async () => {
+    for (const mode of ["check-dup-manage", "issue-dup-manage"] as const) {
+      const leg = await newLeg()
+      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+      mock.mode = mode
+      const i0 = mock.issues
+      const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
+      mock.mode = "ok"
+      assert.equal(s1.body.outcome, "unknown", `${mode}: ${JSON.stringify(s1.body)}`)
+      assert.equal(mock.issues, i0 + (mode === "issue-dup-manage" ? 1 : 0), "発行依頼は多くて1回")
+      assert.equal((await reqs(leg))[0].state, "unknown")
+      assert.equal((await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })).status, 409, "再送できない")
+    }
+  })
+  if (!CUSTOMER) {
+    await test("システム採番: E1-0206 (顧客側採番のコード) は番号を送っていないので重複扱いにしない (通常のエラー・発行なし)", async () => {
+      const leg = await newLeg()
+      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+      mock.mode = "check-dup-number"
+      const i0 = mock.issues
+      const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
+      mock.mode = "ok"
+      assert.equal(s1.body.outcome, "failed", JSON.stringify(s1.body))
+      assert.equal(mock.issues, i0)
+      assert.equal((await reqs(leg))[0].state, "failed")
+    })
+  }
+  await test("採番方式の切替: 既存の送信中・結果不明・受付済みの依頼は自動で送られず、番号も変わらない", async () => {
+    if (!(await hasRange())) await insertMockRange()
+    // 顧客側採番で送って結果不明 (番号あり)
+    setNumbering("customer")
+    const legU = await newLeg()
+    mock.mode = "issue-network-error"
+    await previewAndSend(legU)
+    mock.mode = "ok"
+    const u0 = (await reqs(legU))[0]
+    assert.equal(u0.state, "unknown")
+    assert.match(u0.assigned_number ?? "", /^\d{12}$/)
+    // 顧客側採番の確認画面だけ (番号は台帳に払い出し済み・未送信)
+    const legP = await newLeg()
+    const pvC = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: legP })
+    assert.equal(pvC.body.ok, true)
+    // システム採番で受付済み
+    setNumbering("system")
+    const legA2 = await newLeg()
+    await previewAndSend(legA2)
+    const a0 = (await reqs(legA2))[0]
+    assert.equal(a0.state, "accepted")
+    // 送信中のまま残った依頼 (止まった送信の再現)
+    const legS = await newLeg()
+    await db.query(`select * from claim_pickup_request($1,'bizlogi','production','X',2,current_date+3,'a','o',null)`, [legS])
+    const before = (await db.query(`select id, state, assigned_number, shipping_number, print_request_id from pickup_requests where shipment_id = any($1::uuid[]) order by id`, [[legU, legA2, legS]])).rows
+    const c0 = mock.checks, i0 = mock.issues
+    // 既定 (システム採番) のまま、運営画面の読み込み・TODO・監視ジョブを動かす → 佐川へは何も送らない
+    for (const id of [legU, legA2, legS, legP]) await call("GET", "/api/operator/pickup-request", undefined, `?shipmentId=${id}`)
+    await todo()
+    await watchMod.alertStaleSending(sb, async () => {}, new Date(Date.now() + 3600_000))
+    setNumbering("customer")
+    for (const id of [legU, legA2, legS]) await call("GET", "/api/operator/pickup-request", undefined, `?shipmentId=${id}`)
+    setNumbering(base)
+    assert.equal(mock.checks, c0, "確認機能も呼ばない")
+    assert.equal(mock.issues, i0, "発行依頼を送らない")
+    const after = (await db.query(`select id, state, assigned_number, shipping_number, print_request_id from pickup_requests where shipment_id = any($1::uuid[]) order by id`, [[legU, legA2, legS]])).rows
+    assert.deepEqual(after, before, "状態・番号は変わらない")
+    // 送信済みの依頼の番号は DB でも変えられない
+    const upd = await db.query(`update pickup_requests set assigned_number = '999990000014' where id = $1`, [u0.id]).then(() => "ok", (e: Error) => e.message)
+    assert.match(upd, /変更できません/)
+    const set = await sb.rpc("pickup_set_assigned_number", { p_request_id: a0.id, p_number: u0.assigned_number })
+    assert.equal((set.data as Array<{ ok: boolean }>)[0].ok, false, "受付済みには番号を書けない")
+    // 結果不明は、どちらの方式でも送った番号で確定する (方式を切り替えても変わらない)
+    setNumbering("system")
+    const ok = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: u0.id, resolveAction: "confirm_accepted", actor: "谷口", note: "世田谷に確認" })
+    assert.equal(ok.status, 200, JSON.stringify(ok.body))
+    assert.deepEqual((await ship(legU)).tracking_numbers, [u0.assigned_number])
+    // 未送信の区間 (顧客側採番で確認画面だけ) は、システム採番に切り替えると番号を送らずに送れる・番号は記録されない
+    const { pv, send } = await previewAndSend(legP)
+    assert.equal(pv.body.ok, true)
+    assert.ok(!mock.lastIssueXml.includes("shippingNumber"))
+    assert.equal(send!.status, 200, JSON.stringify(send!.body))
+    const p0 = (await reqs(legP))[0]
+    assert.equal(p0.assigned_number ?? null, null, "台帳に番号があっても、システム採番で送った依頼には番号を付けない")
+    assert.match(p0.shipping_number, /^1\d{11}$/)
+    setNumbering(base)
   })
 
   console.log("9. 大量予約・同時実行 (PGlite・参考値)")

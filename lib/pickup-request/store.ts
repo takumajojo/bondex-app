@@ -65,6 +65,8 @@ export interface PickupStore {
   legNumber?(shipmentId: string, environment: "test" | "production"): Promise<{ ok: boolean; number: string | null; reason: string }>
   /** 番号を使わなくする (範囲外・桁数の誤りで佐川が受け付けなかった)。次の送信は新しい番号になる。 */
   retireNumber?(number: string, reason: string): Promise<void>
+  /** 顧客側採番で送る番号を依頼の記録に書く (送信中・未記録・区間の台帳の番号のときだけ。一度書いたら変わらない)。 */
+  setAssignedNumber?(requestId: string, number: string): Promise<boolean>
 }
 
 /** DB に届かなかった (例外・接続不可)。送信の前なら送らない、後なら結果不明として扱う。 */
@@ -128,6 +130,12 @@ export function supabasePickupStore(): PickupStore {
       if (error) throw new PickupStoreError(`問合番号の採番に失敗しました: ${error.message}`)
       const row = (Array.isArray(data) ? data[0] : data) as { ok?: boolean; number?: string | null; reason?: string } | null
       return { ok: row?.ok === true, number: row?.number ?? null, reason: row?.reason ?? "unknown" }
+    },
+    async setAssignedNumber(requestId, number) {
+      const { data, error } = await sb.rpc("pickup_set_assigned_number", { p_request_id: requestId, p_number: number })
+      if (error) throw new PickupStoreError(`送る問合番号の記録に失敗しました: ${error.message}`)
+      const row = (Array.isArray(data) ? data[0] : data) as { ok?: boolean } | null
+      return row?.ok === true
     },
     async retireNumber(number, reason) {
       const { error } = await sb.rpc("pickup_retire_number", { p_number: number, p_reason: reason })

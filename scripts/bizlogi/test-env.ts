@@ -180,13 +180,12 @@ async function main() {
   if (step === "tls") return tlsCheck(host)
 
   const issue = step === "issue"
-  // 2026-11-04 SG 正式回答で顧客側採番 (BondEx が SG 指定の範囲から採番) に切り替えた。この台本の発行はシステム採番
-  // (Biz-Logi が番号を決める) なので、SG 指定外の番号で発行することになる。発行は test-env-cases.ts (顧客側採番・
-  // SG 指定の範囲を --range で渡す) で行う。確認機能 (採番なし) と他のステップは、システム採番のまま使える。
-  if (issue) {
-    throw new Error("このステップの発行は廃止しました (顧客側採番へ切替)。scripts/bizlogi/test-env-cases.ts --mode=issue --range=... で行ってください")
+  // 発行はシステム採番 (Biz-Logi が番号を決める・標準・2026-11-04 谷口さん決定)。--yes-issue-test-env のときだけ、
+  // このプロセス内でだけ BIZLOGI_LIVE=true にする (テスト環境は課金・集荷なし)。結果が分からなくても自動で再送しない。
+  if (issue && args.get("yes-issue-test-env") !== "true") {
+    throw new Error("発行依頼は --yes-issue-test-env を付けたときだけ実行します")
   }
-  const cfg = bizLogiConfigFromEnv({ ...env, BIZLOGI_LIVE: "", BIZLOGI_NUMBERING: "system" })
+  const cfg = bizLogiConfigFromEnv({ ...env, BIZLOGI_LIVE: issue ? "true" : "", BIZLOGI_NUMBERING: "" })
   if (cfg.environment !== "test") throw new Error("テスト環境の設定ではありません")
   const client = new BizLogiClient(cfg)
 

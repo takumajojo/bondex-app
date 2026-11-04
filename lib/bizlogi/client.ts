@@ -36,8 +36,9 @@ export interface BizLogiConfig {
   /** true のときだけ発行依頼 (課金・集荷依頼の実送信) を許可する。 */
   live: boolean
   /**
-   * 問合番号の採番方式 (2026-11-04 SG 正式回答・谷口さん): "customer" = BondEx が SG 指定の範囲から採番して送る
-   * (問合番号採番区分 1・基本) / "system" = Biz-Logi が採番 (区分 0)。env BIZLOGI_NUMBERING (既定 customer)。
+   * 問合番号の採番方式 (2026-11-04 谷口さん決定): "system" = Biz-Logi が採番 (仕様書の既定・区分を送らない・標準) /
+   * "customer" = BondEx が SG 指定の範囲から採番して送る (区分 1・オプション・sql/078)。
+   * env BIZLOGI_NUMBERING が "customer" のときだけ顧客側採番 (未設定・それ以外は system)。
    */
   numbering: "customer" | "system"
   timeoutMs?: number
@@ -86,7 +87,7 @@ export function bizLogiConfigFromEnv(env: Record<string, string | undefined> = p
     loginPassword: env.BIZLOGI_LOGIN_PASSWORD!,
     okuriCode,
     live: env.BIZLOGI_LIVE === "true",
-    numbering: env.BIZLOGI_NUMBERING === "system" ? "system" : "customer",
+    numbering: env.BIZLOGI_NUMBERING === "customer" ? "customer" : "system",
   }
 }
 
@@ -155,9 +156,9 @@ export class BizLogiClient {
     }
   }
 
-  /** 問合番号採番区分 (1-7)。顧客側採番なら 1。古い設定 (numbering 未指定) は顧客側採番として扱う。 */
-  private numberType(): 0 | 1 {
-    return (this.config.numbering ?? "customer") === "system" ? 0 : 1
+  /** 問合番号採番区分 (1-7)。顧客側採番 (明示したときだけ) なら 1。システム採番は送らない (仕様書の既定 = 0/null)。 */
+  private numberType(): 0 | 1 | undefined {
+    return this.config.numbering === "customer" ? 1 : undefined
   }
 
   /** 送り状発行API (確認機能)。エラー精査のみで、問合番号は採番されない。 */

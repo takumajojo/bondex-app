@@ -90,10 +90,28 @@ function responseCodes(res: ShippingResponse): string[] {
   return [res.result.code, ...res.details.flatMap((d) => d.resultCodes.map((c) => c.code))]
 }
 
-// ── 顧客側採番 (sql/078)
-/** 佐川の応答のうち、問合番号に関するコード (5.2 処理結果コード)。 */
-const NUMBER_DUPLICATE = "E1-0206" // 問合番号が重複しています → 成功でも失敗でもない (結果不明として運営が確認)
+// ── 管理番号の重複 (E1-0002・採番方式によらない)
+// 仕様書 5.2 は「管理番号が重複」とだけあり、過去の依頼まで見るのか (対象期間) は分からない。
+// 二重依頼を防ぐ保証としては扱わない (防止は DB の一意制約・結果不明での停止・Excel との相互排他で行う)。
+// 返ってきたら、前の依頼が佐川に届いている可能性があるので、失敗にして送り直さず「結果不明」で止める。
+const MANAGE_NUMBER_DUPLICATE = "E1-0002"
+
+// ── 顧客側採番 (オプション・sql/078・BIZLOGI_NUMBERING=customer のときだけ)
+/** 佐川の応答のうち、顧客側採番の問合番号に関するコード (5.2 処理結果コード)。番号を送ったときだけ見る。 */
+const NUMBER_DUPLICATE = ["E1-0206", "E2-0038"] // 番号の重複・90日以内の再利用 → 成功でも失敗でもない (結果不明として運営が確認)
 const NUMBER_RETIRE = ["E1-0207", "E1-0204", "E1-0205"] // 範囲外・桁数・値なし → 佐川に登録なし。番号を使わなくして運営へ
+const NUMBER_NOT_ENABLED = "E2-0036" // 顧客コードで顧客側採番が使えない → 設定の誤り (失敗・番号はそのまま)
+
+/** 前の依頼が届いている可能性を示すコード (結果不明にする)。顧客側採番のコードは番号を送ったときだけ。 */
+function duplicateHit(res: ShippingResponse, detail: ShippingDetail): string | null {
+  const codes = codesOf(res)
+  if (codes.includes(MANAGE_NUMBER_DUPLICATE)) return `${MANAGE_NUMBER_DUPLICATE} (管理番号の重複)`
+  if (detail.shippingNumber) {
+    const hit = codes.find((c) => NUMBER_DUPLICATE.includes(c))
+    if (hit) return `${hit} (問合番号 ${detail.shippingNumber} の重複)`
+  }
+  return null
+}
 
 export function numberReasonJa(reason: string): string {
   switch (reason) {
@@ -149,8 +167,9 @@ export async function previewBizLogiPickup(
     return { ok: false, errors: [`確認機能の通信に失敗しました (送信はしていません): ${e instanceof Error ? e.message : String(e)}`] }
   }
   const resErrors = responseErrors(res)
-  if (codesOf(res).includes(NUMBER_DUPLICATE)) {
-    return { ok: false, errors: [`${NUMBER_DUPLICATE} 問合番号 ${detail.shippingNumber ?? ""} が佐川に既にあります。前の依頼が届いている可能性があるため送りません。利用実績・追跡・世田谷営業所で確かめてください`] }
+  const dupPreview = duplicateHit(res, detail)
+  if (dupPreview) {
+    return { ok: false, errors: [`${dupPreview}。前の依頼が佐川に届いている可能性があるため送りません。利用実績・追跡・世田谷営業所で確かめてください`] }
   }
   if (resErrors.length) return { ok: false, errors: resErrors }
   const warnings = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
@@ -220,6 +239,25 @@ export async function sendBizLogiPickup(
     return { outcome: "blocked", reason: `${why}。もう一度確認してから送信してください` }
   }
 
+  // 2c. 顧客側採番: 送る番号を依頼の記録に書く (佐川へ送る前)。書けなければ送らない。
+  //     システム採番では何も書かない (番号は佐川の正常応答から受け取って保存する)。
+  if (detail.shippingNumber) {
+    let set = false
+    try {
+      set = (await deps.store.setAssignedNumber?.(requestId, detail.shippingNumber)) === true
+    } catch {
+      set = false
+    }
+    if (!set) {
+      try {
+        await deps.store.transition({ requestId, from: ["sending"], to: "void", owner, note: "送信前に中止: 送る問合番号を記録できません" })
+      } catch {
+        // 送信していない。記録が残っても「送信中」の監視が拾う
+      }
+      return { outcome: "blocked", reason: "送る問合番号を記録できませんでした (佐川へは送っていません)。もう一度確認してから送信してください" }
+    }
+  }
+
   const finish = async (to: "failed" | "unknown", fields: { error: string; resultCodes?: string[] }) => {
     try {
       const t = await deps.store.transition({ requestId, from: ["sending"], to, owner, error: fields.error, resultCodes: fields.resultCodes ?? null })
@@ -239,10 +277,11 @@ export async function sendBizLogiPickup(
     return { outcome: "failed", requestId, errors: [msg] }
   }
   const checkErrors = responseErrors(check)
-  // E1-0206 (番号の重複) = その番号が佐川に既にある。前の依頼が届いていた可能性があるので、失敗扱いで番号を変えて
-  // 送り直すと二重の集荷になりうる。成功でも失敗でもなく「結果不明」にして運営が確かめる (自動で再送しない)。
-  if (codesOf(check).includes(NUMBER_DUPLICATE)) {
-    const reason = `確認機能で ${NUMBER_DUPLICATE} (問合番号 ${detail.shippingNumber ?? "-"} が佐川に既にある)。前の依頼が届いている可能性があるため発行していません`
+  // 重複 (E1-0002 管理番号 / 顧客側採番なら E1-0206・E2-0038 問合番号) = 前の依頼が届いていた可能性がある。
+  // 失敗扱いで送り直すと二重の集荷になりうる。成功でも失敗でもなく「結果不明」にして運営が確かめる (自動で再送しない)。
+  const dupCheck = duplicateHit(check, detail)
+  if (dupCheck) {
+    const reason = `確認機能で ${dupCheck}。前の依頼が届いている可能性があるため発行していません`
     await finish("unknown", { error: reason, resultCodes: responseCodes(check) })
     await alertUnknown(deps, ref, requestId, reason)
     return { outcome: "unknown", requestId, reason }
@@ -274,8 +313,9 @@ export async function sendBizLogiPickup(
 
   const resErrors = responseErrors(res)
   const number = res.details[0]?.shippingNumbers[0] ?? null
-  if (codesOf(res).includes(NUMBER_DUPLICATE)) {
-    const reason = `発行依頼で ${NUMBER_DUPLICATE} (問合番号 ${detail.shippingNumber ?? "-"} の重複)。成功とは扱いません。前の依頼が届いている可能性があるので、利用実績・追跡・世田谷営業所で確かめてから記録してください`
+  const dupIssue = duplicateHit(res, detail)
+  if (dupIssue) {
+    const reason = `発行依頼で ${dupIssue}。成功とは扱いません。前の依頼が届いている可能性があるので、利用実績・追跡・世田谷営業所で確かめてから記録してください`
     await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
     await alertUnknown(deps, ref, requestId, reason)
     return { outcome: "unknown", requestId, reason }
@@ -323,6 +363,21 @@ export async function sendBizLogiPickup(
 /** 範囲外・桁数・値なし (E1-0207/0204/0205) で佐川が番号を受け付けなかったら、その番号を使わなくして運営へ知らせる。 */
 async function retireIfNumberRejected(deps: BizLogiSendDeps, detail: ShippingDetail, res: ShippingResponse, stage: string): Promise<void> {
   if (!detail.shippingNumber) return
+  if (codesOf(res).includes(NUMBER_NOT_ENABLED)) {
+    // 顧客コードで顧客側採番が使えない = 設定の誤り。番号は使わなくしない (佐川に登録なし・送れる状態になれば同じ番号で送る)
+    try {
+      await deps.alert({
+        subject: `【要確認】Biz-Logi で顧客側採番が使えません (${NUMBER_NOT_ENABLED})`,
+        lines: [
+          `番号: ${detail.shippingNumber} (${stage})`,
+          "この顧客コードでは顧客側採番が有効になっていません。SG に確かめるか、BIZLOGI_NUMBERING を外してシステム採番 (標準) に戻してください。",
+        ],
+      })
+    } catch {
+      /* 通知の失敗は送信の結果を変えない */
+    }
+    return
+  }
   const hit = codesOf(res).find((c) => NUMBER_RETIRE.includes(c))
   if (!hit) return
   try {
