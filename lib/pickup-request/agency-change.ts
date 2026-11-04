@@ -80,6 +80,62 @@ export async function submitAgencyChange(i: {
   return { ok: false, status: 400, code: "INVALID", message: i.en ? "The change couldn't be accepted. Please check the input." : `変更を受け付けられませんでした (${r.reason})` }
 }
 
+/**
+ * 代理店の変更 (日程・個数・代表者名) を1つのトランザクションで反映する (sql/076 agency_change_atomic)。
+ * 対象区間の直接反映 / 変更申請と、予約の全区間の代表者名 (区間ごとに直接か申請か) をまとめて行い、
+ * 途中で失敗したら全部取り消す (部分更新を残さない)。
+ *   locked     … 対象区間が手配済み (発行済み等) で変えられない
+ *   pickupLock … 直接反映しようとした区間に同時に集荷依頼が入った (もう一度操作すると申請になる)
+ *   rejected   … 変更申請を受け付けられない (処理中の申請がある等)。code / message は submitAgencyChange と同じ
+ */
+export type AtomicChangeResult =
+  | { ok: true; directLegs: number; requestedLegs: number; changeIds: string[] }
+  | { ok: false; kind: "locked" }
+  | { ok: false; kind: "pickupLock" }
+  | { ok: false; kind: "rejected"; status: number; code: string; message: string }
+  | { ok: false; kind: "error"; message: string }
+
+export async function applyAgencyChangeAtomic(
+  sb: SupabaseClient,
+  i: {
+    shipmentId: string
+    legPatch?: Record<string, unknown>
+    legKind?: "dates" | "count" | null
+    legRequestFields?: Record<string, unknown> | null
+    rep?: { representative: string; recipient?: string } | null
+    reason: string
+    agencyName: string
+    actor: string
+    en: boolean
+  },
+): Promise<AtomicChangeResult> {
+  const { data, error } = await sb.rpc("agency_change_atomic", {
+    p_shipment_id: i.shipmentId,
+    p_leg_patch: i.legPatch ?? {},
+    p_leg_kind: i.legKind ?? null,
+    p_leg_request_fields: i.legRequestFields ?? null,
+    p_rep: i.rep ?? null,
+    p_reason: i.reason,
+    p_agency: i.agencyName,
+    p_actor: i.actor,
+  })
+  if (error) {
+    const msg = error.message ?? ""
+    if (isPickupLockError(msg)) return { ok: false, kind: "pickupLock" }
+    const m = /agency_change:([a-z_]+)/.exec(msg)
+    if (m?.[1] === "locked") return { ok: false, kind: "locked" }
+    if (m) {
+      const r = m[1]
+      const hit = AGENCY_REASON[r] ?? (r.startsWith("request_") ? AGENCY_REASON_DEFAULT : null)
+      if (hit) return { ok: false, kind: "rejected", status: 409, code: r.toUpperCase(), message: i.en ? hit.en : hit.ja }
+      return { ok: false, kind: "rejected", status: 400, code: "INVALID", message: i.en ? "The change couldn't be accepted. Please check the input." : `変更を受け付けられませんでした (${r})` }
+    }
+    return { ok: false, kind: "error", message: msg }
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as { direct_legs?: number; requested_legs?: number; change_ids?: string[] } | null
+  return { ok: true, directLegs: row?.direct_legs ?? 0, requestedLegs: row?.requested_legs ?? 0, changeIds: row?.change_ids ?? [] }
+}
+
 const LOCK_FIELD_JA: Record<string, string> = {
   shipment_date: "集荷日", expected_arrival: "お届け日", delivery_time: "配達時間帯", suitcase_count: "個数",
   from_hotel: "発送元ホテル", from_hotel_ja: "発送元ホテル", from_place_id: "発送元ホテル", from_city: "発送元ホテル",

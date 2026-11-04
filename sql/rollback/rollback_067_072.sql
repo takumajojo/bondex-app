@@ -1,7 +1,7 @@
 -- 段階A〜C と B2C 締切 (sql/067〜072) の本番適用の切り戻し (緊急時のみ・承認のうえで実行)。未実行。
 -- 前提: 先に sql/rollback/pause_pickup_lock.sql (ロック無効・集荷依頼の記録を停止) → アプリを統合前のデプロイへ戻す
 --       (Vercel の Instant Rollback)。古いアプリは pickup_requests・変更申請の新しい列・施設台帳を使わない。
--- 戻す順番は適用の逆: 072 (pause_pickup_lock) → 070 → 071 → 068 → 069 → 067。
+-- 戻す順番は適用の逆: 072 (pause_pickup_lock) → 070 → 076 → 075 → 071 → 068 → 069 → 067。
 -- B2C の土台 (sql/061・062) はここでは消さない (B2C は機能フラグで閉じる。061・062 の切り戻しは B2C 側の手順)。
 -- データは消す前に *_rollback_backup に写す (後で調べる・やり直すため)。
 
@@ -36,6 +36,18 @@ alter table public.shipments disable trigger shipments_pickup_lock;
 -- ── 070: 変更受付締切を元の値に戻す
 update public.shipments s set change_deadline_at = b.change_deadline_at
   from public.change_deadline_backup_070 b where b.shipment_id = s.id;
+
+-- ── 076: 代理店の変更の一括反映 (古いアプリは使わない)
+drop function if exists public.agency_change_atomic(uuid, jsonb, text, jsonb, jsonb, text, text, text);
+
+-- ── 075: 集荷依頼の監視の通知済みの記録 (写してから消す)
+do $$ begin
+  if to_regclass('public.pickup_watch_alerts') is not null then
+    execute 'create table if not exists public.pickup_watch_alerts_rollback_backup as select * from public.pickup_watch_alerts';
+  end if;
+end $$;
+drop function if exists public.pickup_watch_claim(text[]);
+drop table if exists public.pickup_watch_alerts;
 
 -- ── 071: B2C の確定・取消を sql/062_b2c_stage4.sql の版に戻し、取消申請の関数を消す
 --         (071 の版は pickup_requests を参照するので、067 を消す前に戻す)
@@ -225,4 +237,5 @@ commit;
 select 'triggers' k, count(*) from pg_trigger where tgname in ('shipments_pickup_lock', 'shipment_change_requests_guard')
 union all select 'pickup_requests table', count(*) from information_schema.tables where table_name = 'pickup_requests'
 union all select 'scr new columns', count(*) from information_schema.columns where table_name = 'shipment_change_requests' and column_name in ('kind', 'stage')
-union all select 'b2c_request_cancel', count(*) from pg_proc where proname = 'b2c_request_cancel';
+union all select 'b2c_request_cancel', count(*) from pg_proc where proname = 'b2c_request_cancel'
+union all select 'agency_change_atomic / pickup_watch_claim', count(*) from pg_proc where proname in ('agency_change_atomic', 'pickup_watch_claim');

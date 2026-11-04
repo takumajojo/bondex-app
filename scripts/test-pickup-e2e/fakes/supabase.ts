@@ -28,6 +28,7 @@ export async function initSchema(repo: string) {
   // 本番移行の最後の段 (ロック有効化・集荷依頼の記録の再開)。068 はロックを無効で作るので、ここで有効にする
   await db.exec(readFileSync(`${repo}/sql/072_enable_pickup_lock.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/075_pickup_watch_alerts.sql`, "utf8"))
+  await db.exec(readFileSync(`${repo}/sql/076_agency_change_atomic.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)

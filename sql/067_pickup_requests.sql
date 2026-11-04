@@ -187,7 +187,8 @@ begin
     return query select false, null::uuid, 'tracking_number_exists'::text, null::jsonb;
     return;
   end if;
-  -- Biz-Logi は当面 1〜19個の通常配送だけ (2026-11-04 谷口さん)。20個以上は佐川へ事前連絡が必要なため
+  -- BondEx の当面の運用ルール: Biz-Logi は 1〜19個の通常配送だけ (2026-11-04 谷口さん。佐川 API の上限ではない =
+  -- 佐川の個口数は2桁まで)。20個以上は佐川へ事前連絡が必要なため
   -- BondEx で確認して手動手配する。団体 (booking_type='group') も手動。手動 (Excel) の記録には影響しない。
   if p_channel = 'bizlogi' and coalesce(s.suitcase_count, 0) >= 20 then
     return query select false, null::uuid, 'too_many_pieces'::text, null::jsonb;
