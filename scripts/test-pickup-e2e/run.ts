@@ -32,6 +32,8 @@ const mock = {
   mode: "ok" as Mode, checks: 0, issues: 0, seq: 0, lastIssueXml: "", lastCheckXml: "",
   /** 利用実績参照 API (riyoujisseki) が返す発行数 */
   usageCount: 0,
+  /** Google の場所の照会の途中に差し込む処理 (送信時の読み直しから確保までの間の変更の再現・1回だけ) */
+  duringPlaces: null as null | (() => Promise<void>),
   /** 重複の模擬で返すコード */
   dupCode: "E1-0002",
   /** 発行依頼の直前に差し込む処理 (送信中の変更の再現) */
@@ -89,6 +91,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return new Response(`<?xml version="1.0" encoding="UTF-8"?><riyouJissekiResponse><customerId>mockcustomer</customerId><startDate>x</startDate><endDate>x</endDate><count>${mock.usageCount}</count><resultCode>S0-0001</resultCode></riyouJissekiResponse>`)
   }
   if (url.includes("maps.googleapis.com/maps/api/place/details/json")) {
+    if (mock.duringPlaces) {
+      const f = mock.duringPlaces
+      mock.duringPlaces = null
+      await f()
+    }
     const id = new URL(url).searchParams.get("place_id") ?? ""
     const p = PLACES[id]
     return new Response(JSON.stringify(p ? { result: { ...p, address_components: [] } } : {}))
@@ -1470,6 +1477,132 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(p0.assigned_number ?? null, null, "台帳に番号があっても、システム採番で送った依頼には番号を付けない")
     assert.match(p0.shipping_number, /^1\d{11}$/)
     setNumbering(base)
+  })
+
+  console.log("16. 送信前の安全チェック (予約と送信内容の一致・2026-11-04 監査)")
+  const { normalizeBanchi } = await import("../../lib/jp-address")
+  const safety = await import("../../lib/pickup-request/send-safety")
+  const blockedBeforeSagawa = async (leg: string, pattern: RegExp, label: string) => {
+    const c0 = mock.checks, i0 = mock.issues
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    assert.equal(pv.body.ok, false, `${label}: ${JSON.stringify(pv.body)}`)
+    assert.match(JSON.stringify(pv.body.errors), pattern, label)
+    assert.equal(mock.checks, c0, `${label}: 佐川へは確認機能も送らない`)
+    assert.equal(mock.issues, i0)
+    assert.equal((await reqs(leg)).length, 0, `${label}: 記録なし`)
+  }
+  await test("H1 ホテルの場所 ID が無い区間は送らない (名前で検索して1件目を使う推測をしない)", async () => {
+    const legF = await newLeg({ from_place_id: null })
+    await blockedBeforeSagawa(legF, /場所 \(Google の場所 ID\) が予約に登録されていません/, "発送元")
+    const legT = await newLeg({ to_place_id: null })
+    await blockedBeforeSagawa(legT, /場所 \(Google の場所 ID\) が予約に登録されていません/, "到着先")
+  })
+  await test("D1/D2 配達予定日が集荷日と同じ・前なら送らない (以前は配達日を黙って外していた)", async () => {
+    await blockedBeforeSagawa(await newLeg({ expected_arrival: jst(3) }), /配達予定日 .* が集荷日 .* 以前です/, "同じ日")
+    await blockedBeforeSagawa(await newLeg({ expected_arrival: jst(2) }), /配達予定日 .* が集荷日 .* 以前です/, "前の日")
+  })
+  await test("日程: 集荷日が集荷元のチェックイン日より前・配達日が配送先のチェックアウト日より後なら送らない", async () => {
+    await blockedBeforeSagawa(await newLeg({ origin_check_in: jst(4) }), /集荷元ホテルのチェックイン日/, "集荷元チェックイン")
+    await blockedBeforeSagawa(await newLeg({ to_check_out: jst(3) }), /配送先ホテルのチェックアウト日/, "配送先チェックアウト")
+  })
+  await test("日程: 集荷日がチェックアウト日と違う・配達日がチェックイン日より後は止めない (正当な運用)", async () => {
+    const leg = await newLeg({ origin_check_in: jst(1), from_check_in: jst(2), to_check_out: jst(9) })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+    assert.deepEqual(pv.body.confirmations, [])
+  })
+  await test("日程: 配達日が配送先のチェックイン日より前なら、運営の明示の確認が無いと送れない", async () => {
+    const leg = await newLeg({ from_check_in: jst(5) })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+    const confs = pv.body.confirmations as Array<{ code: string }>
+    assert.deepEqual(confs.map((c) => c.code), ["delivery_before_dest_checkin"])
+    const i0 = mock.issues
+    const base = { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true }
+    const s1 = await call("POST", "/api/operator/pickup-request", base)
+    assert.equal(s1.status, 409)
+    assert.match(String(s1.body.reason), /確認が必要な項目/)
+    assert.equal(mock.issues, i0)
+    assert.equal((await reqs(leg)).length, 0)
+    const s2 = await call("POST", "/api/operator/pickup-request", { ...base, acknowledged: ["delivery_before_dest_checkin"] })
+    assert.equal(s2.status, 200, JSON.stringify(s2.body))
+    assert.equal(mock.issues, i0 + 1)
+  })
+  await test("確認画面の後に予約が変わったら、電文に出ない項目 (予約名) でも確認は無効・送らない", async () => {
+    const leg = await newLeg({ booking_name: "Original Booking" })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    await db.query(`update shipments set booking_name='Changed Booking' where id=$1`, [leg])
+    const i0 = mock.issues
+    const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
+    assert.equal(s1.status, 409)
+    assert.match(String(s1.body.reason), /確認は無効/)
+    assert.equal(mock.issues, i0)
+  })
+  await test("確認画面の後に代表者名が変わったら送らない", async () => {
+    const leg = await newLeg()
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    await db.query(`update shipments set representative='OTHER GUEST' where id=$1`, [leg])
+    const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
+    assert.equal(s1.status, 409)
+    assert.equal((await reqs(leg)).length, 0)
+  })
+  await test("N1 送信ボタンの後・確保の前に代表者名・ツアー番号が変わったら送らない (確保の後に読み直して照合・依頼は無効)", async () => {
+    for (const [col, val] of [["representative", "SWAPPED GUEST"], ["tour_number", "T-999"]] as const) {
+      const leg = await newLeg()
+      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+      const c0 = mock.checks, i0 = mock.issues
+      mock.duringPlaces = async () => void (await db.query(`update shipments set ${col}=$2 where id=$1`, [leg, val]))
+      const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true })
+      mock.duringPlaces = null
+      assert.equal(s1.status, 409, `${col}: ${JSON.stringify(s1.body)}`)
+      assert.match(String(s1.body.reason), new RegExp(`区間が変わりました .*${col}`), col)
+      assert.equal(mock.checks, c0, `${col}: 佐川へは何も送らない`)
+      assert.equal(mock.issues, i0)
+      const r = await reqs(leg)
+      assert.equal(r.length, 1)
+      assert.equal(r[0].state, "void", `${col}: 確保した依頼は無効にする (有効な依頼として残らない)`)
+    }
+  })
+  await test("住所: 長音「ー」は書き換えない (数字の間のハイフンの打ち間違いだけ直す)", async () => {
+    assert.equal(normalizeBanchi("ドーム前1丁目2番3号"), "ドーム前1-2-3")
+    assert.equal(normalizeBanchi("センタービル1ー2"), "センタービル1-2")
+    assert.equal(normalizeBanchi("銀座６丁目１２−１５"), "銀座6-12-15")
+  })
+  await test("二重の検査: 電文の日付・個数・時間帯・管理番号・宛名が予約と1つでも違えば検出 (時差による日付のずれを含む)", async () => {
+    const leg = await newLeg({ delivery_time: "14-16" })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+    const row = await ship(leg)
+    const detail = pv.body.detail as Record<string, unknown> & { shukaIrai: Record<string, unknown> }
+    const input = { origin: pv.body.origin, destination: pv.body.destination, guestName: "TEST GUEST" } as never
+    assert.deepEqual(safety.verifyDetailAgainstRow(row, input, detail as never, { guestOverridden: false }), [], "そのままなら一致")
+    const prevDay = (y: string) => { const d = new Date(Date.UTC(+y.slice(0, 4), +y.slice(4, 6) - 1, +y.slice(6, 8)) - 86_400_000); return d.toISOString().slice(0, 10).replace(/-/g, "") }
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ["発送日が1日ずれる (UTC 変換)", { shippingDate: prevDay(String(detail.shippingDate)) }],
+      ["配達日が1日ずれる", { shiteiDate: prevDay(String(detail.shiteiDate)) }],
+      ["個数", { haisoKosu: 3 }],
+      ["時間帯", { shiteiTimeCode: "16" }],
+      ["管理番号", { userManageNumber: "BDXOTHERL1" }],
+      ["宛名", { otodokeNm: ["別のホテル 気付", "TEST GUEST様"] }],
+      ["住所の欠け", { otodokeAdd: ["京都府京都市下京区"] }],
+    ]
+    for (const [label, patch] of cases) {
+      assert.ok(safety.verifyDetailAgainstRow(row, input, { ...detail, ...patch } as never, { guestOverridden: false }).length > 0, label)
+    }
+    assert.ok(safety.verifyDetailAgainstRow(row, input, { ...detail, shukaIrai: { ...detail.shukaIrai, shukaIraiShiteiDate: "20000101" } } as never, { guestOverridden: false }).length > 0, "集荷指定日")
+  })
+  await test("確認画面に予約の登録内容 (正本) と Google の名称・住所 (整える前) を返す", async () => {
+    const leg = await newLeg({ tour_number: "T-123" })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+    const reg = pv.body.registered as Record<string, unknown>
+    assert.equal(reg.fromHotel, "Test Hotel Tokyo")
+    assert.equal(reg.guestName, "TEST GUEST")
+    assert.equal(reg.pickupDate, jst(3))
+    assert.equal(reg.deliveryDate, jst(4))
+    assert.equal(reg.tourNumber, "T-123")
+    const src = pv.body.sources as Record<string, Record<string, unknown>>
+    assert.equal(src.origin.placeName, "テストホテル東京")
+    assert.match(String(src.destination.placeAddress), /東塩小路町901/)
   })
 
   console.log("9. 大量予約・同時実行 (PGlite・参考値)")

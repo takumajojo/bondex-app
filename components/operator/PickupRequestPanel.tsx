@@ -93,8 +93,52 @@ interface Preview {
   environment?: string
   origin?: { name: string; postalCode: string; address: string; tel: string }
   destination?: { name: string; postalCode: string; address: string; tel: string }
-  detail?: { haisoKosu: number; userManageNumber: string; shippingDate: string; shiteiDate?: string; kiji?: string[] }
+  detail?: {
+    haisoKosu: number
+    userManageNumber: string
+    shippingDate: string
+    shiteiDate?: string
+    shiteiTimeCode?: string
+    kiji?: string[]
+    otodokeNm?: string[]
+    otodokeAdd?: string[]
+    otodokeYubin?: string
+    otodokeTel?: string
+    irai?: { nm: string[]; add: string[]; yubin: string; tel: string }
+    shukaIrai?: { shukaIraiShiteiDate?: string }
+  }
+  /** 予約の登録内容 (正本)。送る内容と並べて出す */
+  registered?: {
+    legRef: string
+    fromHotel: string
+    fromHotelJa: string | null
+    toHotel: string
+    toHotelJa: string | null
+    guestName: string
+    pickupDate: string
+    deliveryDate: string | null
+    deliveryTime: string | null
+    suitcaseCount: number | null
+    tourNumber: string | null
+    originCheckIn: string | null
+    destCheckIn: string | null
+    destCheckOut: string | null
+  }
+  /** Google の場所 (整える前の名称・住所)。個人宅は placeName が null */
+  sources?: Record<"origin" | "destination", { registeredName: string; registeredNameJa: string | null; placeName: string | null; placeAddress: string | null }>
+  /** 運営が明示的に確認しないと送れない項目 */
+  confirmations?: Array<{ code: string; message: string }>
 }
+
+/** 送る前に運営が項目ごとに確かめる欄 (すべて確かめるまで送信ボタンを押せない)。 */
+const CHECK_ITEMS = [
+  { key: "origin", label: "集荷ホテル (登録名と送る名称・住所が同じホテル)" },
+  { key: "destination", label: "お届けホテル (登録名と送る名称・住所が同じホテル)" },
+  { key: "dates", label: "集荷日・配達日・時間帯" },
+  { key: "pieces", label: "個数・宛名の旅行者名" },
+] as const
+
+const ymdLabel = (v?: string | null) => (v ? (/^\d{8}$/.test(v) ? `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}` : v.slice(0, 10)) : "—")
 
 const fmt = (iso: string | null | undefined) => {
   if (!iso) return "—"
@@ -130,6 +174,8 @@ export default function PickupRequestPanel({
   const [busy, setBusy] = useState("")
   const [preview, setPreview] = useState<Preview | null>(null)
   const [confirmNoManual, setConfirmNoManual] = useState(false)
+  // 確認画面の項目ごとの確認と、運営の明示の確認 (confirmations)。新しい確認をするたびに外す
+  const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [number, setNumber] = useState("")
   const [note, setNote] = useState("")
   const [usage, setUsage] = useState<string>("")
@@ -211,14 +257,22 @@ export default function PickupRequestPanel({
     const pv = r.d as Preview
     setPreview(pv)
     setConfirmNoManual(false)
+    setChecked({})
     // 宛名が収まらないエラーなら、佐川向けの名称の入力欄を開く
     if (!pv.ok && (pv.errors ?? []).some((e) => /宛名|Nm1/.test(e))) setShowNames(true)
   }
 
+  const allChecked =
+    !!preview?.ok &&
+    CHECK_ITEMS.every((c) => checked[c.key]) &&
+    (preview.confirmations ?? []).every((c) => checked[`ack:${c.code}`])
+
   const send = async () => {
     if (needActor() || !preview?.fingerprint) return
     if (!confirmNoManual) return setError("佐川指定 Excel で依頼していないことを確認してください")
-    const r = await post("send", { action: "bizlogi_send", shipmentId, fingerprint: preview.fingerprint, actor, confirmNoManual: true, overrides })
+    if (!allChecked) return setError("登録内容と送信内容を、項目ごとに確認してください")
+    const acknowledged = (preview.confirmations ?? []).map((c) => c.code)
+    const r = await post("send", { action: "bizlogi_send", shipmentId, fingerprint: preview.fingerprint, actor, confirmNoManual: true, overrides, acknowledged })
     if (!r) return
     const d = r.d as { outcome?: string; shippingNumber?: string; errors?: string[]; reason?: string; error?: string }
     if (d.outcome === "accepted") return done(`集荷依頼を受け付けました。問合番号 ${d.shippingNumber}`)
@@ -336,19 +390,37 @@ export default function PickupRequestPanel({
                 </ul>
               ) : (
                 <>
-                  <p>集荷先: {preview.origin?.name}　〒{preview.origin?.postalCode} {preview.origin?.address}</p>
-                  <p>お届け先: {preview.destination?.name}　〒{preview.destination?.postalCode} {preview.destination?.address}（{preview.destination?.tel}）</p>
-                  <p>
-                    個数 {preview.detail?.haisoKosu}・集荷日 {preview.detail?.shippingDate}
-                    {preview.detail?.shiteiDate ? `・配達指定日 ${preview.detail.shiteiDate}` : ""}・管理番号 {preview.detail?.userManageNumber}
-                  </p>
+                  <SendComparison preview={preview} />
+                  {(preview.confirmations ?? []).length > 0 && (
+                    <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-2">
+                      {(preview.confirmations ?? []).map((c) => (
+                        <label key={c.code} className="flex items-start gap-2 text-amber-800">
+                          <input type="checkbox" checked={!!checked[`ack:${c.code}`]} onChange={(e) => setChecked((v) => ({ ...v, [`ack:${c.code}`]: e.target.checked }))} className="mt-0.5" />
+                          <span>{c.message}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-0.5">
+                    <p className="text-[11px] text-muted-foreground">登録内容と送信内容を見比べて、項目ごとに確認してください（違いがあれば送らずに予約を直してください。システムは推測で直しません）</p>
+                    {CHECK_ITEMS.map((c) => (
+                      <label key={c.key} className="flex items-start gap-2">
+                        <input type="checkbox" checked={!!checked[c.key]} onChange={(e) => setChecked((v) => ({ ...v, [c.key]: e.target.checked }))} className="mt-0.5" />
+                        <span>{c.label}</span>
+                      </label>
+                    ))}
+                  </div>
                   {preview.cutoffAt && <p className="text-muted-foreground">締め: {fmt(preview.cutoffAt)}（集荷前日 20:00）</p>}
                   {(preview.warnings ?? []).length > 0 && <p className="text-amber-700">注意: {preview.warnings!.join(" / ")}</p>}
                   <label className="flex items-start gap-2">
                     <input type="checkbox" checked={confirmNoManual} onChange={(e) => setConfirmNoManual(e.target.checked)} className="mt-0.5" />
                     <span>この区間は佐川指定 Excel（世田谷営業所への手動依頼）で依頼していません</span>
                   </label>
-                  <B k="send" label="Biz-Logi で集荷依頼を送信（取消は API でできません）" cls={danger} onClick={send} />
+                  {allChecked && confirmNoManual ? (
+                    <B k="send" label="Biz-Logi で集荷依頼を送信（取消は API でできません）" cls={danger} onClick={send} />
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">すべての確認にチェックすると、送信ボタンが出ます</p>
+                  )}
                 </>
               )}
             </div>
@@ -693,5 +765,47 @@ function AfterAcceptChange({
         </ul>
       )}
     </div>
+  )
+}
+
+/** 予約の登録内容 (正本) と、佐川へ送る電文を項目ごとに並べる (2026-11-04 監査: 運営が目で確かめられるように)。 */
+function SendComparison({ preview }: { preview: Preview }) {
+  const reg = preview.registered
+  const d = preview.detail
+  const src = preview.sources
+  const slotLabel: Record<string, string> = { "00": "指定なし", "01": "午前中", "12": "12-14時", "14": "14-16時", "16": "16-18時", "18": "18-20時", "04": "18-21時", "19": "19-21時" }
+  const rows: Array<[string, string, string]> = [
+    ["集荷ホテル", [reg?.fromHotel, reg?.fromHotelJa].filter(Boolean).join(" / "), `${src?.origin.placeName ?? "（個人宅）"}${src?.origin.placeAddress ? `\nGoogle の住所: ${src.origin.placeAddress}` : ""}`],
+    ["集荷先の宛名・住所", "—", `${(d?.irai?.nm ?? []).join(" / ")}\n〒${d?.irai?.yubin ?? ""} ${(d?.irai?.add ?? []).join(" ")}\n電話 ${d?.irai?.tel ?? ""}（BondEx の荷物連絡先）`],
+    ["お届けホテル", [reg?.toHotel, reg?.toHotelJa].filter(Boolean).join(" / "), `${src?.destination.placeName ?? "（個人宅）"}${src?.destination.placeAddress ? `\nGoogle の住所: ${src.destination.placeAddress}` : ""}`],
+    ["お届け先の宛名・住所", "—", `${(d?.otodokeNm ?? []).join(" / ")}\n〒${d?.otodokeYubin ?? ""} ${(d?.otodokeAdd ?? []).join(" ")}\n電話 ${d?.otodokeTel ?? ""}`],
+    ["旅行者名", reg?.guestName ?? "—", (d?.otodokeNm ?? [])[1] ?? "—"],
+    ["集荷日", ymdLabel(reg?.pickupDate), `${ymdLabel(d?.shippingDate)}（集荷指定日 ${ymdLabel(d?.shukaIrai?.shukaIraiShiteiDate)}）`],
+    ["配達日", ymdLabel(reg?.deliveryDate), ymdLabel(d?.shiteiDate)],
+    ["配達時間帯", reg?.deliveryTime ?? "指定なし", d?.shiteiTimeCode ? (slotLabel[d.shiteiTimeCode] ?? d.shiteiTimeCode) : "指定なし"],
+    ["個数", String(reg?.suitcaseCount ?? "—"), String(d?.haisoKosu ?? "—")],
+    ["区間・管理番号", reg?.legRef ?? "—", d?.userManageNumber ?? "—"],
+    ["記事", reg?.tourNumber ? `ツアー ${reg.tourNumber}` : "—", (d?.kiji ?? []).join(" / ")],
+    ["宿泊 (参考)", `集荷元チェックイン ${ymdLabel(reg?.originCheckIn)}・お届け先チェックイン ${ymdLabel(reg?.destCheckIn)}・チェックアウト ${ymdLabel(reg?.destCheckOut)}`, "（送らない）"],
+  ]
+  return (
+    <table className="w-full border-collapse text-[11px]">
+      <thead>
+        <tr className="bg-slate-50 text-left">
+          <th className="border border-slate-200 px-1.5 py-1">項目</th>
+          <th className="border border-slate-200 px-1.5 py-1">予約の登録内容</th>
+          <th className="border border-slate-200 px-1.5 py-1">佐川へ送る内容</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([k, a, b]) => (
+          <tr key={k} className="align-top">
+            <td className="whitespace-nowrap border border-slate-200 px-1.5 py-1 font-medium">{k}</td>
+            <td className="whitespace-pre-line border border-slate-200 px-1.5 py-1">{a}</td>
+            <td className="whitespace-pre-line border border-slate-200 px-1.5 py-1">{b}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }

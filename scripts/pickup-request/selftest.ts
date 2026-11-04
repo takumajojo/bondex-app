@@ -172,7 +172,10 @@ async function main() {
     check("記事欄は承認済み Excel と同じ内容", JSON.stringify(i.notes) === JSON.stringify(["BondEx手荷物配送", "品名 スーツケース", "荷物連絡先BondEx", "03-0000-0000", "ツアー4091471 14-16時"]))
   }
   const noArrival = await buildLegInput({ ...ROW, expected_arrival: ROW.shipment_date }, ENV)
-  check("配達希望日が発送日で埋められているときは配達指定日を送らない", noArrival.ok && noArrival.input.deliveryDate === undefined)
+  // 2026-11-04 方針変更: 配達日を黙って外さない。予約の値をそのまま渡し、矛盾は send-safety の scheduleCheck が止める
+  check("配達予定日が集荷日と同じでも黙って外さない (予約の値のまま・判定は送信前の安全チェック)", noArrival.ok && noArrival.input.deliveryDate === ROW.shipment_date)
+  const { scheduleCheck } = await import("../../lib/pickup-request/send-safety")
+  check("配達予定日が集荷日以前なら送信前の安全チェックで止める", scheduleCheck({ ...ROW, expected_arrival: ROW.shipment_date }).errors.length === 1)
   const noGuest = await buildLegInput({ ...ROW, representative: null }, ENV)
   check("旅行者名が無ければエラー (推測で埋めない)", !noGuest.ok)
   const noPlace = await buildLegInput(ROW, { ...ENV, fetchPlace: async () => null })

@@ -34,7 +34,8 @@ export const maxDuration = 60
  *
  *   GET  ?shipmentId=…                 → 区間の集荷依頼の記録と、Biz-Logi が使えるか
  *   POST { action: "bizlogi_preview", shipmentId }                         確認機能 (無課金) で送信内容を確認
- *   POST { action: "bizlogi_send", shipmentId, fingerprint, actor, confirmNoManual: true }  集荷依頼を送信
+ *   POST { action: "bizlogi_send", shipmentId, fingerprint, actor, confirmNoManual: true, acknowledged?: string[] }  集荷依頼を送信
+ *        送信時に DB から区間を読み直し、予約と電文の一致・日程を確かめ直す。確認画面の後に予約が変わっていれば止める
  *   POST { action: "manual_mark", shipmentId, actor, note? }               佐川指定 Excel で依頼したことを記録
  *   POST { action: "resolve", requestId, resolveAction, actor, shippingNumber?, note? }  運営の確認結果を記録
  *   受付後の変更 (ホテル・問い合わせ番号。佐川の回答前は区間の情報を変えない):
@@ -234,7 +235,8 @@ export async function POST(req: NextRequest) {
       }
       const fingerprint = typeof body.fingerprint === "string" ? body.fingerprint : ""
       if (!fingerprint) return NextResponse.json({ error: "先に送信内容の確認をしてください" }, { status: 400 })
-      const outcome = await sendForShipment(row, { actor, expectedFingerprint: fingerprint, overrides: cleanOverrides(body.overrides) }, store)
+      const acknowledged = Array.isArray(body.acknowledged) ? body.acknowledged.filter((v: unknown): v is string => typeof v === "string").slice(0, 20) : []
+      const outcome = await sendForShipment(row, { actor, expectedFingerprint: fingerprint, overrides: cleanOverrides(body.overrides), acknowledged }, store)
       const status = outcome.outcome === "accepted" ? 200 : outcome.outcome === "blocked" ? 409 : outcome.outcome === "failed" ? 422 : 202
       return NextResponse.json(outcome, { status })
     }

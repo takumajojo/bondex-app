@@ -38,10 +38,16 @@ export interface PickupShipmentRow {
   to_place_id: string | null
   to_residence: unknown
   tracking_numbers: unknown
+  /** 集荷元ホテルのチェックイン日 (任意)。 */
+  origin_check_in?: string | null
+  /** 配送先ホテルのチェックイン日 (列名は from_ だが中身は配送先・lib/shipments-db.ts)。 */
+  from_check_in?: string | null
+  /** 配送先ホテルのチェックアウト日 (任意)。 */
+  to_check_out?: string | null
 }
 
 export const PICKUP_SHIPMENT_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers"
+  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out"
 
 export interface LegInputEnv {
   kokyakuCode: string
@@ -55,7 +61,20 @@ export interface LegInputEnv {
 /** Google Places 1回の照会の時間制限。送信処理全体を API ルートの上限 (60秒) に収めるため (監査 P1-4)。 */
 export const PLACES_TIMEOUT_MS = 8_000
 
-export type LegInputResult = { ok: true; input: PickupLegInput } | { ok: false; errors: string[] }
+/** 確認画面に出す、Google の住所 (整える前) と送る住所。ホテルの同一性を運営が目で確かめるため。 */
+export interface PartySource {
+  /** 予約に登録された名称 (英語・日本語) */
+  registeredName: string
+  registeredNameJa: string | null
+  /** Google の場所の名称と住所 (整える前)。個人宅は null */
+  placeName: string | null
+  placeAddress: string | null
+  placeId: string | null
+}
+
+export type LegInputResult =
+  | { ok: true; input: PickupLegInput; sources: { origin: PartySource; destination: PartySource }; guestOverridden: boolean }
+  | { ok: false; errors: string[] }
 
 /**
  * 佐川の宛名欄 (25文字×2行) に収まらないとき、運営が確認画面で入力する佐川向けの名称 (監査 P1-7)。
@@ -114,12 +133,16 @@ async function hotelParty(
   placeId: string | null,
   env: LegInputEnv,
   label: string,
-): Promise<{ ok: true; party: PickupHotel; phone: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; party: PickupHotel; phone: string; source: PartySource } | { ok: false; error: string }> {
+  // ホテルは場所の ID だけで特定する。名前での検索 (候補の1件目を採用) は推測になるので、Biz-Logi では使わない (2026-11-04 監査 H1)
+  if (!placeId) {
+    return { ok: false, error: `${label}: 「${nameJa || name}」はホテルの場所 (Google の場所 ID) が予約に登録されていません。名前からの推測はしません。予約のホテルを候補から選び直してから確認してください` }
+  }
   if (!env.placesKey) return { ok: false, error: `${label}: GOOGLE_MAPS_API_KEY が未設定のため住所を解決できません` }
   const fetchPlace = env.fetchPlace ?? fetchHotelPlaceDetailsJa
   let d: Awaited<ReturnType<typeof fetchHotelPlaceDetailsJa>>
   try {
-    d = await fetchPlace(name, env.placesKey, placeId ?? undefined, { timeoutMs: PLACES_TIMEOUT_MS })
+    d = await fetchPlace(name, env.placesKey, placeId, { timeoutMs: PLACES_TIMEOUT_MS })
   } catch (e) {
     return { ok: false, error: `${label}: 住所の照会が完了しませんでした (${e instanceof Error ? e.name : "error"})。時間をおいて再度確認してください` }
   }
@@ -152,6 +175,7 @@ async function hotelParty(
       tel: phone,
     },
     phone,
+    source: { registeredName: name, registeredNameJa: nameJa, placeName: d.name || null, placeAddress: d.formattedAddress, placeId },
   }
 }
 
@@ -184,12 +208,13 @@ export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv, ov
 
   const fromRes = cleanResidence(row.from_residence)
   const toRes = cleanResidence(row.to_residence)
+  const residenceSource = (name: string): PartySource => ({ registeredName: name, registeredNameJa: null, placeName: null, placeAddress: null, placeId: null })
   const [from, to] = await Promise.all([
     fromRes
-      ? Promise.resolve({ ok: true as const, party: residenceParty(fromRes, env.contactPhone), phone: env.contactPhone })
+      ? Promise.resolve({ ok: true as const, party: residenceParty(fromRes, env.contactPhone), phone: env.contactPhone, source: residenceSource(row.from_hotel) })
       : hotelParty(row.from_hotel, row.from_hotel_ja, row.from_place_id, env, "発送元"),
     toRes
-      ? Promise.resolve({ ok: true as const, party: residenceParty(toRes, env.contactPhone), phone: env.contactPhone })
+      ? Promise.resolve({ ok: true as const, party: residenceParty(toRes, env.contactPhone), phone: env.contactPhone, source: residenceSource(row.to_hotel) })
       : hotelParty(row.to_hotel, row.to_hotel_ja, row.to_place_id, env, "到着先"),
   ])
   if (!from.ok) errors.push(from.error)
@@ -198,6 +223,8 @@ export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv, ov
   if (row.delivery_time && !BONDEX_SLOT_TO_SHITEI_TIME[row.delivery_time]) {
     errors.push(`配達時間帯 ${row.delivery_time} を佐川のコードへ変換できません`)
   }
+  // 配達予定日は予約の値をそのまま送る。集荷日以前など矛盾があれば、黙って外さずに止める (send-safety の scheduleCheck)
+  if (!row.expected_arrival) errors.push("予約に配達予定日がありません")
   if (errors.length || !from.ok || !to.ok) return { ok: false, errors }
 
   return {
@@ -213,11 +240,13 @@ export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv, ov
       pickupDate: row.shipment_date,
       // 集荷時間帯は指定しない (Biz-Logi のコードに Excel の 11-12時 に当たる枠が無いため)
       pickupTimeCode: "00",
-      // expected_arrival は配達希望日が無いと発送日で埋められている (create/route.ts)。その場合は指定しない。
-      deliveryDate: row.expected_arrival && row.expected_arrival > row.shipment_date ? row.expected_arrival : undefined,
+      // 予約の配達予定日をそのまま送る (以前は集荷日以前なら黙って外していた。矛盾は scheduleCheck が止める・2026-11-04 監査 D1/D2)
+      deliveryDate: row.expected_arrival ?? undefined,
       deliverySlot: row.delivery_time ?? undefined,
       notes: pickupNotes(row, env.contactPhone),
       weight: null,
     },
+    sources: { origin: from.source, destination: to.source },
+    guestOverridden: !!overrides.guestName,
   }
 }
