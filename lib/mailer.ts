@@ -24,6 +24,8 @@ export interface SendResult {
   uncertain?: boolean
   /** 相手が返した HTTP / SMTP の応答の番号（分かる時） */
   status?: number
+  /** Resend のエラーの名前（例: invalid_idempotent_request・concurrent_idempotent_requests） */
+  code?: string
 }
 
 function smtpConfigured(): boolean {
@@ -127,8 +129,16 @@ async function sendViaResend(opts: {
     if (!res.ok) {
       const body = await res.text().catch(() => "")
       console.error("[mailer] Resend 送信失敗:", opts.to, res.status, body.slice(0, 300))
-      // 5xx・409（同じ冪等キーの要求が処理中）は届いたか分からない。429・その他の 4xx は送られていない。
-      return { sent: false, via: "resend", error: `resend ${res.status}`, status: res.status, uncertain: res.status >= 500 || res.status === 409 }
+      let code: string | undefined
+      try {
+        code = (JSON.parse(body) as { name?: string }).name
+      } catch {
+        /* 本文が JSON でない */
+      }
+      // 5xx・409 は届いたか分からない。409 の concurrent_idempotent_requests は同じキーの要求が処理中（後で再試行してよい）、
+      // invalid_idempotent_request は同じキーが違う内容で使用済み（前の要求が処理済み。再試行しても直らない）。
+      // 429・その他の 4xx は送られていない。https://resend.com/docs/dashboard/emails/idempotency-keys（2026-11-04 確認）
+      return { sent: false, via: "resend", error: `resend ${res.status}${code ? ` ${code}` : ""}`, status: res.status, code, uncertain: res.status >= 500 || res.status === 409 }
     }
     return { sent: true, via: "resend" }
   } catch (e) {

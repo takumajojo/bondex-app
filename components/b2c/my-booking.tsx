@@ -52,7 +52,7 @@ const PAY: Record<Lang, Record<MyBookingView["payment"], string>> = {
     card_registered_not_charged: "カード登録済み・まだ請求していません（集荷の後に請求します）",
     charge_scheduled: "集荷を確認しました。まもなく請求します",
     charged: "お支払い済み",
-    charge_failed: "お支払いを完了できませんでした。BondEx からご案内します",
+    charge_failed: "お支払いを完了できませんでした。下のボタンからお支払いください",
     refunded: "返金しました",
     not_charged_cancelled: "取消のため請求はありません",
   },
@@ -61,7 +61,7 @@ const PAY: Record<Lang, Record<MyBookingView["payment"], string>> = {
     card_registered_not_charged: "Card registered — not charged yet (we charge after pickup)",
     charge_scheduled: "Pickup confirmed — payment will be processed shortly",
     charged: "Paid",
-    charge_failed: "Payment could not be completed. BondEx will contact you",
+    charge_failed: "Payment could not be completed. Please pay with the button below",
     refunded: "Refunded",
     not_charged_cancelled: "Cancelled — no charge",
   },
@@ -150,6 +150,16 @@ export function B2cMyBooking({ token, view, initialLang, supportEmail }: { token
         {v.stage === "cancelled" && v.cancelReason ? <p className="mt-2 text-sm">{CANCEL_REASON[lang][v.cancelReason] ?? ""}</p> : null}
       </section>
 
+      {v.payNeeded ? (
+        <section className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-50" data-my-pay-banner>
+          <p className="font-semibold">{lang === "ja" ? "お支払いの手続きが必要です" : "Payment needed"}</p>
+          <p className="mt-1 leading-relaxed">{lang === "ja" ? "ご登録のカードでお支払いができませんでした。本人認証または別のカードでお支払いください。" : "We could not take the payment with your registered card. Please confirm it or pay with another card."}</p>
+          <a className="mt-3 block rounded-xl bg-foreground px-3 py-3 text-center font-semibold text-background" href={`/my/${token}/pay${lang === "ja" ? "?lang=ja" : ""}`}>
+            {lang === "ja" ? "お支払いのページへ" : "Go to payment"}
+          </a>
+        </section>
+      ) : null}
+
       <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4 text-sm shadow-sm">
         <div>
           <p className="text-xs text-muted-foreground">{t.pickup}</p>
@@ -174,6 +184,11 @@ export function B2cMyBooking({ token, view, initialLang, supportEmail }: { token
         <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>{t.total}</span><span className="tabular-nums">{yen(v.totalGrossYen)}</span></div>
         <p className="pt-2 text-xs text-muted-foreground">{t.payment}</p>
         <p data-my-payment={v.payment}>{PAY[lang][v.payment]}</p>
+        {v.payNeeded ? (
+          <a data-my-pay-link className="mt-2 block rounded-xl bg-foreground px-3 py-3 text-center font-semibold text-background" href={`/my/${token}/pay${lang === "ja" ? "?lang=ja" : ""}`}>
+            {lang === "ja" ? "お支払いのページへ" : "Go to payment"}
+          </a>
+        ) : null}
       </section>
 
       {showGuide ? (

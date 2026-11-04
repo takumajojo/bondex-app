@@ -12,6 +12,9 @@
 | 取消 | 旅行者の取消・ホテルが断った・確認の期限切れ・カードの入力の放置・運営の取消（`b2c_cancel_order`） | 予約が cancelled | あり | `bondex_b2c_cancelled` |
 | 前日のリマインド | 集荷日の前日 18:00 以降 | confirmed・集荷前・集荷日が翌日 | あり | `bondex_b2c_pickup_tomorrow` |
 | 当日のリマインド | 集荷日の 8:00〜11:00 | confirmed・集荷前・集荷日が当日・11:00 前 | あり | `bondex_b2c_pickup_today` |
+| 支払が必要（Stage 5） | 集荷の後の請求の失敗の時・1日後・3日後・7日後 | その請求が failed / requires_action のまま | あり | `bondex_b2c_payment_required`（承認まで送らない） |
+| 支払の完了（Stage 5） | 請求の成功の時 | その請求が成功 | あり | `bondex_b2c_payment_received`（同上） |
+| 返金の完了（Stage 5） | 返金の成功の時 | その返金が成功 | あり | `bondex_b2c_refund_issued`（同上） |
 
 - 言語は予約の言語（日本語で予約した人は日本語、英語の人は英語）。WhatsApp の言語コードは `ja` と `en_US`。
 - 確認待ちの通知では「確定」を約束しない。確定の通知はホテルの条件を満たしてからだけ。
@@ -52,6 +55,32 @@
 
 - ja: `{{1}} 様　本日は BondEx の集荷日です（受付番号 {{2}}）。11:00 までに {{3}} のフロントへお預けください。フロント向けの案内: {{4}}`
 - en_US: `Hi {{1}}, today is your BondEx pickup day (request {{2}}). Please leave your bags at the front desk of {{3}} by 11:00. Note for the front desk: {{4}}`
+
+### 支払・返金（Stage 5・2026-11-04 追加）
+
+承認の前は WhatsApp では送らない（本番は `B2C_WHATSAPP_LIVE=true` まで、支払・返金の通知はメールだけを積む。`lib/b2c/charge-service.ts` の `enqueuePaymentNotice`）。試験（sandbox）は文面の確認のため両方を作る。本番の公開の条件の変更は別の承認。
+
+Meta の申請の設定（3つ共通）: カテゴリー **Utility**、言語 **Japanese（ja）** と **English (US)（en_US）**、ヘッダー・フッター・ボタンなし（本文だけ。URL は本文の差し込み値）、見本の値は試験のダミー（山田 花子・100001・¥10,956・`https://bondex.express/my/xxxxxxxx/pay`）。
+
+#### bondex_b2c_payment_required（支払が必要）
+差し込み: 1 お名前／2 受付番号／3 額（税込）／4 支払のページの URL
+
+- ja: `{{1}} 様　BondEx のお荷物を佐川急便が集荷しました（受付番号 {{2}}）。ご登録のカードで {{3}}（税込）のお支払いができませんでした。こちらから本人認証または別のカードでお支払いください: {{4}}　このリンクはお客様専用です。`
+- en_US: `Hi {{1}}, Sagawa has picked up your BondEx bags (request {{2}}). We could not take the payment of {{3}} (tax included) with your registered card. Please confirm the payment or use another card here: {{4}} This link is only for you.`
+
+#### bondex_b2c_payment_received（支払の完了）
+差し込み: 1 お名前／2 受付番号／3 額（税込）
+
+- ja: `{{1}} 様　BondEx のお支払い {{3}}（税込）を受け付けました（受付番号 {{2}}）。ありがとうございます。`
+- en_US: `Hi {{1}}, we received your BondEx payment of {{3}} (tax included) for request {{2}}. Thank you.`
+
+#### bondex_b2c_refund_issued（返金の完了）
+差し込み: 1 お名前／2 受付番号／3 額（税込）
+
+- ja: `{{1}} 様　BondEx のご予約（受付番号 {{2}}）について、{{3}}（税込）をご利用のカードに返金しました。明細に反映されるまで数日から数週間かかることがあります。`
+- en_US: `Hi {{1}}, we have refunded {{3}} (tax included) to your card for BondEx request {{2}}. It can take several days to a few weeks to appear on your statement.`
+
+メールの文面（件名・本文）は `lib/b2c/notify-templates.ts` の `payment_action_required` / `payment_received` / `refund_issued`。支払の案内は失敗の時と、1日後・3日後・7日後（`enqueueCollectionReminders`）。支払の後・回収不能の後は、送る直前の確認で送らない。
 
 ## 3. 公開の前に必要なこと
 
@@ -95,7 +124,7 @@ DB の一意の制約（dedupe_key）は「同じ通知を二度積まない」�
 
 | 送信手段 | 冪等キー | 届いたか分からない時 |
 |---|---|---|
-| メール（Resend） | あり（24時間。dedupe_key を使う） | 同じ文面・同じキーで自動で再試行。届いていれば Resend が 1通にまとめるので、旅行者に 2通届かない。最初の送信から 23時間を過ぎたら自動では再試行しない |
+| メール（Resend） | あり（24時間。dedupe_key を使う） | 同じ文面・同じキーで自動で再試行。届いていれば Resend が 1通にまとめるので、旅行者に 2通届かない。最初の送信から 23時間を過ぎたら自動では再試行しない 。Resend の 409 は 2種類を分ける（公式の文書で確認 2026-11-04）: `concurrent_idempotent_requests`（同じキーが処理中）→ 待って再試行、`invalid_idempotent_request`（同じキーが違う内容で使用済み＝前の要求が処理済み）→ 自動で再送せず unknown |
 | メール（SMTP だけ） | なし | 自動で再送しない。unknown にして運営が照合 |
 | WhatsApp | なし | 自動で再送しない。unknown にして運営が照合（同じ内容はメールでも届いている） |
 
