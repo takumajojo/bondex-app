@@ -15,7 +15,8 @@
  *   unknown にして運営が照合する（lib/b2c/outbox-ops.ts）。DB の一意の制約だけでは外への二重送信は防げないため。
  * - failed・unknown・expired と滞留は運営に知らせる（checkB2cOutboxHealth）。
  * - 外部に送るのは B2C_NOTIFY_LIVE=true の時だけ。それ以外は sandbox（文面を記録するだけで、何も送らない。運営への知らせも
- *   ログだけ）。WhatsApp は加えて B2C_WHATSAPP_LIVE=true（Meta のテンプレートの承認の後）。
+ *   ログだけ）。WhatsApp は加えて B2C_WHATSAPP_LIVE=true（Meta のテンプレートの承認の後）。それまでは WhatsApp の通知を
+ *   送らずに片付け（whatsapp_disabled）、メールだけで運用する（阪急向け Beta はメールだけで開始・2026-11-04 承認）。
  */
 import { getSupabase } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
@@ -55,6 +56,11 @@ export interface B2cTransport {
   whatsapp(to: string, template: string, languageCode: "ja" | "en_US", params: string[]): Promise<SendOutcome>
   /** 同じ冪等キーで送り直しても相手が 1通にまとめるか（チャネルごと）。無ければ冪等でないとみなす */
   idempotent?: { email: boolean; whatsapp: boolean }
+  /**
+   * WhatsApp で送るか。false の間（Meta のテンプレートの承認の前・メールだけの Beta）は、WhatsApp の通知を送らずに
+   * 「送らない（whatsapp_disabled）」として片付ける（失敗・運営への知らせにしない）。無ければ送る。
+   */
+  whatsappEnabled?: boolean
 }
 
 /** 何も送らず、送ったことにする（文面は outbox の rendered に残る）。ローカル・試験の環境の既定。 */
@@ -112,6 +118,9 @@ export const liveTransport: B2cTransport = {
   },
   get idempotent() {
     return { email: !!process.env.RESEND_API_KEY, whatsapp: false }
+  },
+  get whatsappEnabled() {
+    return b2cWhatsAppLive()
   },
 }
 
@@ -380,6 +389,13 @@ async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, se
     return
   }
   const o = order as OrderForNotify
+  // メールだけの運用（WhatsApp のテンプレートの承認の前）: WhatsApp は送らずに片付ける。失敗・運営への知らせにしない
+  // （全予約で「送れなかった」の知らせが出て、本当のメールの失敗が埋もれないように）。承認の後に B2C_WHATSAPP_LIVE=true で送る。
+  if (row.channel === "whatsapp" && transport.whatsappEnabled === false) {
+    await sb.from("b2c_outbox").update({ status: "cancelled", locked_at: null, last_error: "whatsapp_disabled" }).eq("id", row.id).eq("status", "sending")
+    res.skipped++
+    return
+  }
   const notOk = notifyEligibility(row.kind, o, (ship?.status as string) ?? null, now, ref)
   if (notOk) {
     // 予約の状態が変わった → cancelled。時刻の条件（当日 11:00 を過ぎた・日付が合わない）→ expired（運営に知らせる）
