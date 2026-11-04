@@ -38,6 +38,8 @@ export interface MyBookingView {
   canCancel: boolean
   cancelDeadline: string
   trackingNumbers: string[]
+  /** 支払のリンクで払う必要がある（集荷の後の請求ができなかった）。Stage 5 */
+  payNeeded: boolean
 }
 
 interface Snap {
@@ -80,11 +82,12 @@ export async function loadMyBooking(token: unknown, now: Date = new Date()): Pro
   else if (shipStatus === "failed") stage = "problem"
   else stage = "confirmed"
 
-  const statuses = (pays ?? []).map((p) => p.status as string)
+  // 取り消した請求（集荷の確認の取消・運営の中止）は表示に使わない
+  const statuses = (pays ?? []).map((p) => p.status as string).filter((st) => st !== "cancelled")
   let payment: MyPaymentStage
   if (statuses.includes("refunded") || statuses.includes("partially_refunded")) payment = "refunded"
   else if (statuses.includes("succeeded")) payment = "charged"
-  else if (statuses.some((s) => ["failed", "requires_action"].includes(s))) payment = "charge_failed"
+  else if (statuses.some((s) => ["failed", "requires_action", "uncollectible"].includes(s))) payment = "charge_failed"
   else if (statuses.length) payment = "charge_scheduled"
   else if (o.status === "cancelled") payment = "not_charged_cancelled"
   else if (o.card_status === "registered") payment = "card_registered_not_charged"
@@ -116,6 +119,7 @@ export async function loadMyBooking(token: unknown, now: Date = new Date()): Pro
     canCancel: cancellableStage && now < cutoff,
     cancelDeadline: cutoff.toISOString(),
     trackingNumbers: Array.isArray(ship?.tracking_numbers) ? (ship!.tracking_numbers as string[]) : [],
+    payNeeded: statuses.some((s) => ["failed", "requires_action", "uncollectible"].includes(s)),
   }
 }
 

@@ -34,5 +34,8 @@ echo "== sql/073_b2c_outbox_hardening.sql (2回・再実行できること)"
 echo "== 062 → 073 をもう一度（073 の状態 expired / unknown の行があっても 062 を再実行できること）"
 "${PSQL[@]}" < sql/062_b2c_stage4.sql
 "${PSQL[@]}" < sql/073_b2c_outbox_hardening.sql
+echo "== sql/074_b2c_stage5_payments.sql (2回・再実行できること)"
+"${PSQL[@]}" < sql/074_b2c_stage5_payments.sql
+"${PSQL[@]}" < sql/074_b2c_stage5_payments.sql
 echo "== verify"
 "${PSQL[@]}" < scripts/test-b2c/db/verify_061.sql
