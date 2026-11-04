@@ -37,7 +37,7 @@ interface SagawaPickupTask {
   fromHotelJa: string | null
   shipmentDate: string
   suitcaseCount?: number
-  /** Biz-Logi で送れない理由 (20個以上・団体)。手動 (Excel) で手配する */
+  /** Biz-Logi で送らない理由 (BondEx の当面の運用ルール: 20個以上・団体)。手動 (Excel) で手配する */
   manualOnlyReason?: string | null
   lastFailure?: { error: string | null; at: string } | null
   /** overdue=当日以前 / due=明日発送 (今日20時締め) / upcoming=2日後以降 */

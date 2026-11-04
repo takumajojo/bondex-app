@@ -73,7 +73,7 @@ export interface SagawaPickupTask {
   /** overdue=当日以前 (締め超過) / due=明日発送 (今日20時が締め) / upcoming=2日後以降 */
   urgency: PickupUrgency
   cutoffAt: string | null
-  /** Biz-Logi で送れない理由 (20個以上・団体)。null は送れる。手動 (Excel) では依頼できる。 */
+  /** Biz-Logi で送らない理由 (BondEx の当面の運用ルール: 20個以上・団体。佐川 API の上限ではない)。null は送れる。手動 (Excel) では依頼できる。 */
   manualOnlyReason?: string | null
   /**
    * 最後の依頼が佐川に断られた (failed = エラーコードの応答・佐川に登録なし)。未依頼と区別して表示する

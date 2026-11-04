@@ -273,7 +273,7 @@ export function claimReasonJa(reason: string): string {
     case "tracking_number_exists":
       return "佐川の問合番号が入力済みです"
     case "too_many_pieces":
-      return "20個以上のため Biz-Logi では送りません。佐川へ事前連絡のうえ手動 (Excel) で手配してください"
+      return "20個以上のため Biz-Logi では送りません (BondEx の当面の運用ルール。佐川 API の上限ではありません)。佐川へ事前連絡のうえ手動 (Excel) で手配してください"
     case "group_booking":
       return "団体の予約は Biz-Logi では送りません。手動 (Excel) で手配してください"
     case "shipment_not_found":

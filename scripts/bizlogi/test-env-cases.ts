@@ -151,7 +151,8 @@ async function main() {
 
   if (only.has("40")) {
     console.log("\n■ T2 40個口")
-    console.log("  BondEx の決まり: Biz-Logi は1〜19個だけ (20個以上は佐川へ事前連絡のうえ手動 Excel・2026-11-04 谷口さん)")
+    console.log("  BondEx の当面の運用ルール: Biz-Logi で送るのは1〜19個だけ (20個以上は佐川へ事前連絡のうえ手動 Excel・2026-11-04 谷口さん)")
+    console.log("  ※ 佐川 API の上限ではない (個口数は2桁 = 99個まで・100個で E1-0004)。40個口は佐川側では受け付けられる想定で、下の台本で確かめる")
     console.log("  期待 (アプリの経路): 送らずに止める (blocked)・DB に記録なし / 期待 (佐川側の確認・test-env.ts --step=confirm --pieces=40): S0-0001・発行なら問合番号1つ")
     const row = await leg({ from_place_id: "sg-kyoto", to_place_id: "sg-osaka", suitcase_count: 40 })
     const r = await run(row, client)
