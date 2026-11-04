@@ -509,6 +509,24 @@ create or replace function public.b2c_unpaid_summary() returns jsonb language sq
     from public.b2c_payments where status in ('failed', 'requires_action', 'uncollectible')
 $$;
 
+-- 15. B2C の区間の代理店名・種別・予約は変えない（Stage 6 の監査）--------------------------------------------
+--     B2B の運営の画面（区間の編集・訂正）で代理店名を変えると、その代理店の月次の請求に B2C の区間が入り、
+--     旅行者のカードの請求と二重になる。アプリの判定（isB2cShipmentRow）に加えて DB でも止める。
+create or replace function public.b2c_shipments_guard() returns trigger language plpgsql as $$
+begin
+  if old.channel = 'b2c' and (new.agency is distinct from old.agency or new.channel is distinct from old.channel
+                              or new.b2c_order_id is distinct from old.b2c_order_id) then
+    raise exception 'b2c_shipment_locked: B2C の区間の代理店名・種別・予約は変えられません';
+  end if;
+  if old.channel = 'b2b' and new.channel = 'b2c' then
+    raise exception 'b2c_shipment_locked: B2B の区間を B2C にはできません';
+  end if;
+  return new;
+end $$;
+drop trigger if exists b2c_shipments_guard on public.shipments;
+create trigger b2c_shipments_guard before update of agency, channel, b2c_order_id on public.shipments
+  for each row execute function public.b2c_shipments_guard();
+
 -- 権限: サーバー（service_role）だけ ------------------------------------------------------
 do $$
 declare f text;

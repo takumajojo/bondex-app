@@ -1,3 +1,4 @@
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .maybeSingle()
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
   if (!ship) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
+  // B2C のホテルの変更は Phase 1A では「取消＋新しい予約」（B2C_MVP_SCHEMA_v1.md 6章）。ここで変えると予約と食い違う
+  if (isB2cShipmentRow(ship)) return NextResponse.json({ error: "旅行者の直接の予約（B2C）の区間は、この画面では変えられません。運営の B2C の画面（/operator/b2c）で扱ってください。" }, { status: 409 })
 
   // 物理ゲート (override 不可)
   const tracking = (ship.tracking_numbers as string[] | null) ?? []

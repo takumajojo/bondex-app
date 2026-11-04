@@ -1,3 +1,4 @@
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const shipment = await getShipment(shipmentId)
   if (!shipment) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
+  if (isB2cShipmentRow(shipment)) return NextResponse.json({ error: "旅行者の直接の予約（B2C）の区間は、この画面では変えられません。運営の B2C の画面（/operator/b2c）で扱ってください。" }, { status: 409 })
   if (shipment.status === "cancelled") {
     return NextResponse.json({ error: "取り消し済みの予約は訂正できません。" }, { status: 409 })
   }
