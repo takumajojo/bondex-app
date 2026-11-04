@@ -106,7 +106,7 @@ const bulk = (o: Ord, kind: string, ch: string, prefix: string, n: number, ageMi
 
 async function main() {
   // 前の実行の試験の行の名前をずらす（DB を作り直さずに続けて実行しても、同じ dedupe_key がぶつからないように）
-  sql(`update b2c_outbox set dedupe_key = 'prev' || id || '#' || dedupe_key where dedupe_key ~ '^(backlog|blockfail|good|hang-mail|hang-wa|dbfail-mail|dbfail-wa|dbfail-smtp|prefail|stale-[a-e]|flap|stuck|stuck-rem|race):' or dedupe_key in ('ok-eve','exp-day','exp-eve','exp-conf','exp-day2')`)
+  sql(`update b2c_outbox set dedupe_key = 'prev' || id || '#' || dedupe_key where dedupe_key ~ '^(idem409|backlog|blockfail|good|hang-mail|hang-wa|dbfail-mail|dbfail-wa|dbfail-smtp|prefail|stale-[a-e]|flap|stuck|stuck-rem|race):' or dedupe_key in ('ok-eve','exp-day','exp-eve','exp-conf','exp-day2')`)
   const place = async (q: string) => (await http("POST", "/api/b2c/places", { token: TOK, query: q, lang: "en" })).json.candidates[0].placeId as string
   TOKYO = await place("Keio Plaza Hotel Tokyo"); KYOTO = await place("Hotel Granvia Kyoto")
   for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
@@ -336,6 +336,14 @@ async function main() {
   isolate()
   const t = await http("POST", "/api/b2c/cron/tick", {}, { authorization: `Bearer ${process.env.CRON_SECRET}` })
   ok("200・errors なし・outbox に batches / expired / unknown / health", t.status === 200 && Array.isArray(t.json.errors) && t.json.errors.length === 0 && typeof t.json.outbox.expired === "number" && typeof t.json.outbox.unknown === "number" && t.json.outbox.health?.health?.pending_total !== undefined, t.json)
+
+  console.log("O16 Resend の 409 invalid_idempotent_request（同じキーが違う内容で使用済み）→ 自動で再送せず unknown")
+  isolate(); alerts.length = 0
+  bulk(C, "booking_confirmed", "email", "idem409:", 1, 5)
+  const p409 = new FakeProvider({ email: true, whatsapp: false }, () => ({ deliver: false, out: { ok: false, provider: "fake", error: "resend 409 invalid_idempotent_request", uncertain: true, noAutoRetry: true } }))
+  await processB2cOutbox(p409.transport(), NOON_BEFORE, { alert })
+  await processB2cOutbox(p409.transport(), plus(NOON_BEFORE, 30), { alert })
+  ok("冪等な手段でも 409 invalid_idempotent_request は unknown・呼び出し 1回", st("idem409:1").startsWith("unknown|1|uncertain:resend 409 invalid_idempotent_request") && p409.callsFor("idem409:") === 1, st("idem409:1"))
 
   console.log("O15 外部への送信")
   ok("外に送った通知は 0件（試験は偽の送信手段・sandbox だけ）", sql("select count(*) from b2c_outbox where provider is not null and provider not in ('sandbox','test','fake','email','whatsapp')") === "0" && sql("select count(*) from b2c_outbox where provider in ('resend','smtp')") === "0")

@@ -1,3 +1,4 @@
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
@@ -118,6 +119,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const shipment = await getShipment(shipmentId)
   if (!shipment) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
+  // B2C の区間: 問い合わせ番号の記入だけ許す（代理店名を変えると代理店の請求に入る・代表者名は旅行者の予約と食い違う）
+  if (isB2cShipmentRow(shipment) && (hasAgency || hasRepresentative)) {
+    return NextResponse.json({ error: "旅行者の直接の予約（B2C）の区間は、この画面では変えられません。運営の B2C の画面（/operator/b2c）で扱ってください。" }, { status: 409 })
+  }
 
   // 代理店名は agencies マスタに存在する名前のみ許可 (請求突合の保護)。
   if (hasAgency) {

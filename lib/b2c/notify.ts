@@ -46,6 +46,8 @@ export interface SendOutcome {
   permanent?: boolean
   /** 届いたか分からない（時間切れ・切断・相手の 5xx・例外）。ok=false の時だけ意味がある */
   uncertain?: boolean
+  /** 届いたか分からないが、同じキーで送り直しても直らない（Resend の invalid_idempotent_request）。自動で再送せず運営の照合へ */
+  noAutoRetry?: boolean
 }
 
 export interface B2cTransport {
@@ -73,7 +75,7 @@ export const liveTransport: B2cTransport = {
     if (r.sent) return { ok: true, provider: r.via ?? "email" }
     const st = r.status ?? 0
     const permanent = !r.uncertain && (!r.via || (r.via === "resend" && st >= 400 && st < 500 && st !== 429 && st !== 409) || (r.via === "smtp" && st >= 500))
-    return { ok: false, provider: r.via ?? "email", error: r.error ?? "not_sent", permanent, uncertain: !!r.uncertain }
+    return { ok: false, provider: r.via ?? "email", error: r.error ?? "not_sent", permanent, uncertain: !!r.uncertain, noAutoRetry: r.code === "invalid_idempotent_request" }
   },
   async whatsapp(to, template, languageCode, params) {
     if (!b2cWhatsAppLive()) return { ok: false, provider: "whatsapp", error: "whatsapp_not_enabled", permanent: true }
@@ -155,8 +157,18 @@ function addDays(ymd: string, n: number): string {
 }
 
 /** この通知を今送ってよいか（予約の今の状態で判断）。だめなら理由。 */
-export function notifyEligibility(kind: B2cNotifyKind, o: Pick<OrderForNotify, "status" | "pickup_date">, shipmentStatus: string | null, now: Date): string | null {
+export function notifyEligibility(kind: B2cNotifyKind, o: Pick<OrderForNotify, "status" | "pickup_date">, shipmentStatus: string | null, now: Date, ref: RefState | null = null): string | null {
   switch (kind) {
+    // 支払・返金の通知（Stage 5）: 予約ではなく、その請求・返金の今の状態で判断する（支払の後は案内を送らない）
+    case "payment_action_required":
+      if (!ref?.paymentStatus) return "payment_missing"
+      return ["failed", "requires_action"].includes(ref.paymentStatus) ? null : `payment_${ref.paymentStatus}`
+    case "payment_received":
+      if (!ref?.paymentStatus) return "payment_missing"
+      return ["succeeded", "partially_refunded", "refunded"].includes(ref.paymentStatus) ? null : `payment_${ref.paymentStatus}`
+    case "refund_issued":
+      if (!ref?.refundStatus) return "refund_missing"
+      return ref.refundStatus === "succeeded" ? null : `refund_${ref.refundStatus}`
     case "booking_confirmed":
       return o.status === "confirmed" || o.status === "completed" ? null : `order_${o.status}`
     case "awaiting_hotel":
@@ -176,7 +188,14 @@ export function notifyEligibility(kind: B2cNotifyKind, o: Pick<OrderForNotify, "
   }
 }
 
-function dataOf(o: OrderForNotify): B2cNotifyData {
+/** 支払・返金の通知の材料（b2c_outbox.ref_id の請求・返金） */
+export interface RefState {
+  paymentStatus?: string
+  refundStatus?: string
+  amountYen?: number
+}
+
+function dataOf(o: OrderForNotify, ref: RefState | null = null): B2cNotifyData {
   const token = b2cAccessToken(o.id)
   const base = (process.env.B2C_SITE_URL || "https://bondex.express").replace(/\/+$/, "")
   return {
@@ -194,6 +213,8 @@ function dataOf(o: OrderForNotify): B2cNotifyData {
     cancelReason: (o.cancel_reason as B2cCancelReason | null) ?? null,
     myBookingUrl: b2cMyBookingUrl(o.id, o.language === "ja" ? "ja" : "en"),
     frontDeskUrl: `${base}/my/${token}/frontdesk`,
+    amountYen: ref?.amountYen ?? null,
+    payUrl: `${base}/my/${token}/pay${o.language === "ja" ? "?lang=ja" : ""}`,
   }
 }
 
@@ -254,6 +275,7 @@ interface OutboxRow {
   first_send_at: string | null
   expires_at: string | null
   priority: number
+  ref_id: string | null
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -339,14 +361,26 @@ async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, se
     .eq("id", row.order_id)
     .maybeSingle()
   const { data: ship, error: sErr } = order ? await sb.from("shipments").select("status").eq("b2c_order_id", row.order_id).maybeSingle() : { data: null, error: null }
-  if (oErr || sErr || !order) {
+  // 支払・返金の通知は、その請求・返金の今の状態を読む
+  let ref: RefState | null = null
+  let refErr = false
+  if (row.ref_id && (row.kind === "payment_action_required" || row.kind === "payment_received")) {
+    const { data: pay, error } = await sb.from("b2c_payments").select("status, amount_yen").eq("id", row.ref_id).maybeSingle()
+    refErr = !!error
+    ref = pay ? { paymentStatus: pay.status as string, amountYen: pay.amount_yen as number } : {}
+  } else if (row.ref_id && row.kind === "refund_issued") {
+    const { data: rf, error } = await sb.from("b2c_refunds").select("status, amount_yen").eq("id", row.ref_id).maybeSingle()
+    refErr = !!error
+    ref = rf ? { refundStatus: rf.status as string, amountYen: rf.amount_yen as number } : {}
+  }
+  if (oErr || sErr || refErr || !order) {
     // 予約を読めない（DB の一時的な障害）: 送らずに 1分後に回す（試行の回数には数えない）
     await sb.from("b2c_outbox").update({ status: "pending", locked_at: null, last_error: "order_unreadable", next_attempt_at: new Date(now.getTime() + 60_000).toISOString() }).eq("id", row.id).eq("status", "sending")
     res.retried++
     return
   }
   const o = order as OrderForNotify
-  const notOk = notifyEligibility(row.kind, o, (ship?.status as string) ?? null, now)
+  const notOk = notifyEligibility(row.kind, o, (ship?.status as string) ?? null, now, ref)
   if (notOk) {
     // 予約の状態が変わった → cancelled。時刻の条件（当日 11:00 を過ぎた・日付が合わない）→ expired（運営に知らせる）
     const timing = notOk === "too_late" || notOk === "date_mismatch"
@@ -357,7 +391,7 @@ async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, se
   }
 
   // 文面: 前の試行で記録した文面があれば同じものを送る（冪等キーで再送する時に、相手が同じ要求と見なすため）
-  const data = dataOf(o)
+  const data = dataOf(o, ref)
   let rendered: Record<string, unknown>
   if (row.rendered && typeof row.rendered === "object" && Object.keys(row.rendered).length) rendered = row.rendered
   else if (row.channel === "email") {
@@ -397,7 +431,7 @@ async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, se
     patch = { status: "sent", sent_at: nowIso, locked_at: null, last_error: null, provider: out.provider, provider_message_id: out.messageId ?? null }
   } else if (out.uncertain) {
     const inWindow = now.getTime() - new Date(firstSendAt).getTime() < IDEMPOTENT_WINDOW_MS
-    if (idem && inWindow && attempts < B2C_OUTBOX_MAX_ATTEMPTS) {
+    if (idem && inWindow && attempts < B2C_OUTBOX_MAX_ATTEMPTS && !out.noAutoRetry) {
       // 冪等な手段: 同じ文面・同じ冪等キーで再試行（届いていれば相手が 1通にまとめる）
       outcome = "retry"
       patch = { status: "pending", locked_at: null, send_started_at: null, last_error: `uncertain:${out.error ?? ""}`.slice(0, 300), provider: out.provider, next_attempt_at: new Date(now.getTime() + backoffMs(attempts)).toISOString() }

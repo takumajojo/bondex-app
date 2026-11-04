@@ -9,7 +9,16 @@
  */
 import { SUPPORT_EMAIL } from "@/lib/contact-links"
 
-export type B2cNotifyKind = "booking_confirmed" | "awaiting_hotel" | "cancelled" | "reminder_eve" | "reminder_day"
+export type B2cNotifyKind =
+  | "booking_confirmed"
+  | "awaiting_hotel"
+  | "cancelled"
+  | "reminder_eve"
+  | "reminder_day"
+  // Stage 5: 集荷の後の請求
+  | "payment_action_required"
+  | "payment_received"
+  | "refund_issued"
 export type B2cCancelReason = "guest" | "hotel_refused" | "hotel_unsupported" | "confirmation_timeout" | "card_timeout" | "ops"
 export type Lang = "ja" | "en"
 
@@ -27,6 +36,10 @@ export interface B2cNotifyData {
   cancelReason: B2cCancelReason | null
   myBookingUrl: string
   frontDeskUrl: string
+  /** 支払・返金の通知の額（税込） */
+  amountYen?: number | null
+  /** 支払のリンク（My Booking と同じ秘密のリンク） */
+  payUrl?: string
 }
 
 export interface RenderedEmail {
@@ -166,6 +179,41 @@ export function renderEmail(kind: B2cNotifyKind, d: B2cNotifyData): RenderedEmai
         subject: ja ? `【BondEx】本日は集荷日です・11:00 までにフロントへ（受付番号 ${n}）` : `BondEx: Pickup today — front desk by 11:00 (request ${n})`,
         text: [hello, "", ja ? "本日は集荷日です。11:00 までに、お荷物をホテルのフロントに預けてください。" : "Today is your pickup day. Please leave your bags at the front desk by 11:00.", "", ...pickupSteps(d), "", ...footer(d, "view")].join("\n"),
       }
+    case "payment_action_required": {
+      const amt = yen(d.amountYen ?? 0)
+      return {
+        subject: ja ? `【BondEx】お支払いの手続きをお願いします（受付番号 ${n}）` : `BondEx: Action needed to complete your payment (request ${n})`,
+        text: [
+          hello, "",
+          ja
+            ? `佐川急便がお荷物を集荷しました。ご登録のカードで ${amt}（税込）のお支払いができませんでした（カード会社による認証が必要、またはカードがご利用いただけない状態です）。`
+            : `Sagawa has picked up your bags. We could not complete the payment of ${amt} (tax included) with your registered card (your card issuer needs you to confirm it, or the card cannot be used).`,
+          ja ? "下のリンクから、本人認証または別のカードでお支払いください。お荷物の配送は続けています。" : "Please use the link below to confirm the payment or pay with another card. Your bags are still being delivered.",
+          "",
+          ja ? `お支払いのページ: ${d.payUrl}` : `Payment page: ${d.payUrl}`,
+          ja ? "このリンクはお客様専用です。他の方に共有しないでください。" : "This link is only for you. Please do not share it.",
+          "", ja ? `受付番号: ${n}` : `Request number: ${n}`, "", ...footer(d, "none"),
+        ].join("\n"),
+      }
+    }
+    case "payment_received":
+      return {
+        subject: ja ? `【BondEx】お支払いを受け付けました（受付番号 ${n}）` : `BondEx: Payment received (request ${n})`,
+        text: [
+          hello, "",
+          ja ? `佐川急便の集荷の後に、${yen(d.amountYen ?? 0)}（税込）をご登録のカードで受け付けました。ありがとうございます。` : `After Sagawa picked up your bags, we received ${yen(d.amountYen ?? 0)} (tax included) with your card. Thank you.`,
+          "", ja ? `受付番号: ${n}` : `Request number: ${n}`, "", ...footer(d, "view"),
+        ].join("\n"),
+      }
+    case "refund_issued":
+      return {
+        subject: ja ? `【BondEx】返金しました（受付番号 ${n}）` : `BondEx: Refund issued (request ${n})`,
+        text: [
+          hello, "",
+          ja ? `${yen(d.amountYen ?? 0)}（税込）をご利用のカードに返金しました。カード会社によって、明細に反映されるまで数日から数週間かかります。` : `We have refunded ${yen(d.amountYen ?? 0)} (tax included) to your card. Depending on your card issuer, it can take several days to a few weeks to appear on your statement.`,
+          "", ja ? `受付番号: ${n}` : `Request number: ${n}`, "", ...footer(d, "view"),
+        ].join("\n"),
+      }
   }
 }
 
@@ -185,5 +233,11 @@ export function renderWhatsApp(kind: B2cNotifyKind, d: B2cNotifyData): RenderedW
       return { template: "bondex_b2c_pickup_tomorrow", languageCode, params: [d.guestName, n, p, d.originName, d.frontDeskUrl] }
     case "reminder_day":
       return { template: "bondex_b2c_pickup_today", languageCode, params: [d.guestName, n, d.originName, d.frontDeskUrl] }
+    case "payment_action_required":
+      return { template: "bondex_b2c_payment_required", languageCode, params: [d.guestName, n, yen(d.amountYen ?? 0), d.payUrl ?? d.myBookingUrl] }
+    case "payment_received":
+      return { template: "bondex_b2c_payment_received", languageCode, params: [d.guestName, n, yen(d.amountYen ?? 0)] }
+    case "refund_issued":
+      return { template: "bondex_b2c_refund_issued", languageCode, params: [d.guestName, n, yen(d.amountYen ?? 0)] }
   }
 }
