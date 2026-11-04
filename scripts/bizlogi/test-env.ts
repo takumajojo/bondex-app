@@ -45,7 +45,10 @@ function log(entry: Record<string, unknown>) {
 
 function loadTestEnv(): Record<string, string> {
   const env: Record<string, string> = {}
-  const text = readFileSync(new URL("../../.env.bizlogi-test.local", import.meta.url), "utf8")
+  // --env-file=<パス> で別の作業コピーにある接続情報を指定できる (ファイル名は .env.bizlogi-test.local に限る)
+  const file = args.get("env-file") ?? new URL("../../.env.bizlogi-test.local", import.meta.url).pathname
+  if (!file.endsWith("/.env.bizlogi-test.local")) throw new Error("--env-file は .env.bizlogi-test.local だけを指定できます")
+  const text = readFileSync(file, "utf8")
   for (const line of text.split("\n")) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim())
     if (m) env[m[1]] = m[2]
