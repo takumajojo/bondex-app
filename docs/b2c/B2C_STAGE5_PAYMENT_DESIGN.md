@@ -151,7 +151,7 @@ processing を取る（条件付きの更新。1つの処理だけ）
 - **支払のリンク**: `https://…/my/<秘密の token>/pay`（Stage 4 の My Booking と同じ秘密のリンク。検索に載せない）。開いた時にサーバーで請求の状態を確かめ、支払が必要な時だけ Stripe の画面（PaymentElement）を出す。金額はサーバーの値。日本語・英語。
 - **案内の送信**: Stage 4 の送信待ち（`b2c_outbox`）で、メールと WhatsApp。新しい種類 `payment_action_required`（支払が必要）、`payment_received`（支払の受領）、`refund_issued`（返金）。再送の案内は 1日目・3日目・7日目（同じ請求に同じ案内は dedupe で 1回）。
 - **運営の要対応**: `failed`・`requires_action`・`unknown`・`on_hold`・`uncollectible`・7日以上の未収を一覧に出す。
-- **未収の上限（計画 9章）**: 未収（`failed`・`requires_action` が 3日以上）が 5件になったら、新しい予約の受付を自動で止める（既存の予約の集荷・請求・回収は続ける）。
+- **未収の上限（計画 5章・2026-11-04 Stage 6 で訂正）**: 未回収の請求（`failed`・`requires_action`・`uncollectible`）が 2件、または合計 3万円（税込）になったら、新しい予約の受付を自動で止める（既存の予約の集荷・請求・回収は続ける。`B2C_UNPAID_MAX_COUNT`・`B2C_UNPAID_MAX_YEN`）。
 
 ---
 

@@ -99,7 +99,7 @@ export async function loadB2cOrderDetail(orderNumber: number) {
   if (!o) return null
   const id = o.id as string
   const [ship, conf, pays, outbox, events] = await Promise.all([
-    sb.from("shipments").select("id, status, tracking_numbers, picked_up_at, suitcase_count").eq("b2c_order_id", id).maybeSingle(),
+    sb.from("shipments").select("id, status, tracking_numbers, tracking_detail, picked_up_at, suitcase_count").eq("b2c_order_id", id).maybeSingle(),
     sb.from("b2c_pickup_confirmations").select("id, operator_email, evidence_type, evidence_ref, booked_pieces, accepted_pieces, reason, confirmed_at, revoked_at, revoked_by, revoke_reason").eq("order_id", id).order("confirmed_at"),
     sb.from("b2c_payments").select("id, kind, status, amount_yen, pieces, refunded_yen, hold_reason, last_error_code, scheduled_at, succeeded_at, first_failed_at, stripe_payment_intent_id, checks_overridden, override_by, override_reason, created_at").eq("order_id", id).order("created_at"),
     sb.from("b2c_outbox").select("id, kind, channel, status, attempts, last_error, sent_at, created_at").eq("order_id", id).order("id"),

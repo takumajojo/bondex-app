@@ -245,7 +245,9 @@ declare
   o public.b2c_orders%rowtype;
   c public.b2c_pickup_confirmations%rowtype;
   s public.shipments%rowtype;
-  n_track int;
+  n_num  int;
+  n_cnt  int;
+  carrier int;
 begin
   select * into o from public.b2c_orders where id = p.order_id;
   if o.status not in ('confirmed', 'completed') then return 'order_' || o.status; end if;
@@ -255,10 +257,16 @@ begin
   if not found or c.revoked_at is not null then return 'pickup_revoked'; end if;
   select * into s from public.shipments where id = c.shipment_id;
   if s.status not in ('picked_up', 'in_transit', 'delivered') then return 'shipment_' || s.status; end if;
-  -- 佐川の追跡と矛盾しないこと（追跡番号があれば、その数が受託の個数と同じ）
-  if jsonb_typeof(s.tracking_numbers) = 'array' then n_track := jsonb_array_length(s.tracking_numbers); else n_track := 0; end if;
-  if n_track > 0 and n_track <> c.accepted_pieces and not ('tracking_piece_mismatch' = any(p.checks_overridden)) then
-    return 'tracking_piece_mismatch';
+  -- 佐川の正式な個数と矛盾しないこと。
+  -- 佐川は複数個口でも問い合わせ番号は 1つ（マスター 31・33）なので、追跡番号の数は個数ではない。
+  -- 正式な個数はお荷物問い合わせ API の detail_info.number（マスター 45・93）で、追跡の同期が
+  -- shipments.tracking_detail[].pieceCount に入れる（feat/sagawa-tracking-api）。全番号の個数がそろった時だけ合計と比べる。
+  select count(*), count(d -> 'pieceCount'), coalesce(sum((d ->> 'pieceCount')::int), 0)
+    into n_num, n_cnt, carrier
+    from jsonb_array_elements(case when jsonb_typeof(s.tracking_detail) = 'array' then s.tracking_detail else '[]'::jsonb end) d
+   where jsonb_typeof(d -> 'pieceCount') = 'number' or d -> 'pieceCount' is null;
+  if n_num > 0 and n_cnt = n_num and carrier <> c.accepted_pieces and not ('carrier_piece_mismatch' = any(p.checks_overridden)) then
+    return 'carrier_piece_mismatch';
   end if;
   -- 金額は料金の控え（予約の時の 1個あたりの税抜の単価）と個数から
   if p.unit_net_yen is distinct from o.unit_net_yen or p.pieces is null or p.pieces < 1 then return 'amount_mismatch'; end if;
@@ -319,7 +327,7 @@ begin
 end $$;
 
 -- 10. 止めた請求の扱い（運営）-------------------------------------------------------------
---     解除できる理由は「運営が根拠を確かめれば請求してよいもの」だけ（個数の違い・追跡の個数の食い違い）。
+--     解除できる理由は「運営が根拠を確かめれば請求してよいもの」だけ（予約との個数の違い・佐川の正式な個数との食い違い）。
 --     予約の取消・集荷の確認の取消・区間の取消・カードなし・金額の不一致・他の請求の処理中は解除できない。
 --     戻り値: released / cancelled / not_found / not_on_hold / not_overridable / invalid_input
 create or replace function public.b2c_resolve_charge_hold(
@@ -336,7 +344,7 @@ begin
   if not found then return 'not_found'; end if;
   if p.status <> 'on_hold' then return 'not_on_hold'; end if;
   if p_action = 'release' then
-    if p.hold_reason not in ('pieces_mismatch', 'tracking_piece_mismatch') then return 'not_overridable'; end if;
+    if p.hold_reason not in ('pieces_mismatch', 'carrier_piece_mismatch') then return 'not_overridable'; end if;
     update public.b2c_payments set status = 'scheduled', scheduled_at = greatest(scheduled_at, p_now),
            checks_overridden = array(select distinct unnest(checks_overridden || array[p.hold_reason])),
            override_by = p_operator_email, override_reason = btrim(p_reason), hold_reason = null
@@ -389,7 +397,7 @@ begin
     insert into public.b2c_payments(order_id, kind, charge_key, amount_yen, pieces, unit_net_yen, status, scheduled_at,
                                     pickup_confirmation_id, created_by, checks_overridden)
     values (o.id, 'extra', 'extra:' || o.id::text || ':' || (n_extra + 1), amt, diff, o.unit_net_yen, 'scheduled', p_now + p_grace,
-            b.pickup_confirmation_id, p_operator_email, array['tracking_piece_mismatch'])
+            b.pickup_confirmation_id, p_operator_email, array['carrier_piece_mismatch'])
     returning * into x;
   else
     amt := public.b2c_amount_for(o.unit_net_yen, billed) - public.b2c_amount_for(o.unit_net_yen, p_actual_pieces);
@@ -492,10 +500,13 @@ begin
   return 'marked';
 end $$;
 
--- 14. 未収の数（3日以上の支払待ち + 回収不能）。新しい予約の受付を止める判断に使う -------------------------
-create or replace function public.b2c_unpaid_count(p_now timestamptz default now()) returns int language sql stable as $$
-  select count(*)::int from public.b2c_payments
-   where (status in ('failed', 'requires_action') and first_failed_at < p_now - interval '3 days') or status = 'uncollectible'
+-- 14. 未収（新しい予約の受付を止める判断。B2C_PHASE1A_BETA_PLAN.md 5章: 未回収の請求が 2件、または合計 3万円で停止）--------
+--     未回収 = 請求が失敗・本人認証待ち（failed / requires_action）と、回収不能（uncollectible）。失敗した時点から数える。
+--     戻り値: {"count": 件数, "amount_yen": 合計（税込）}
+drop function if exists public.b2c_unpaid_count(timestamptz);
+create or replace function public.b2c_unpaid_summary() returns jsonb language sql stable as $$
+  select jsonb_build_object('count', count(*)::int, 'amount_yen', coalesce(sum(amount_yen), 0)::int)
+    from public.b2c_payments where status in ('failed', 'requires_action', 'uncollectible')
 $$;
 
 -- 権限: サーバー（service_role）だけ ------------------------------------------------------
@@ -514,7 +525,7 @@ begin
     'b2c_request_refund(uuid, int, text, text, text)',
     'b2c_apply_refund_result(uuid, text, text, text)',
     'b2c_mark_uncollectible(uuid, text, text, text, timestamptz)',
-    'b2c_unpaid_count(timestamptz)'
+    'b2c_unpaid_summary()'
   ] loop
     execute format('revoke execute on function public.%s from public', f);
     if exists (select 1 from pg_roles where rolname = 'anon') then

@@ -28,7 +28,7 @@ const dt = (v: unknown) => (v ? new Date(String(v)).toLocaleString("ja-JP", { ti
 
 const HOLD: Record<string, string> = {
   pieces_mismatch: "予約と受託の個数が違う（根拠を確かめて確定）",
-  tracking_piece_mismatch: "追跡番号の数が受託の個数と違う",
+  carrier_piece_mismatch: "佐川の正式な個数（お荷物問い合わせ）が受託の個数と違う",
   pickup_revoked: "集荷の確認が取り消された",
   amount_mismatch: "金額が料金の控えと違う",
   no_card: "カードが無い",
@@ -195,7 +195,7 @@ export default function OperatorB2cPage() {
           <Section title="止めた請求（運営の確認待ち）" rows={todo.heldCharges} empty="ありません" render={(r) => (<>
             <span>{orderBtn(r)} {yen(r.amountYen)}（{String(r.pieces)}個）: {HOLD[String(r.holdReason)] ?? String(r.holdReason)}</span>
             <span className="flex gap-1">
-              {["pieces_mismatch", "tracking_piece_mismatch"].includes(String(r.holdReason)) ? (
+              {["pieces_mismatch", "carrier_piece_mismatch"].includes(String(r.holdReason)) ? (
                 <Button size="sm" onClick={() => setAction({ title: "この内容で請求する", path: P, body: { action: "release_hold", paymentId: r.paymentId }, summary: `受付番号 ${r.orderNumber}: ${yen(r.amountYen)}（${r.pieces}個）を請求します。理由: ${HOLD[String(r.holdReason)] ?? r.holdReason}` })}>請求する</Button>
               ) : null}
               <Button size="sm" variant="outline" onClick={() => setAction({ title: "請求をやめる", path: P, body: { action: "cancel_hold", paymentId: r.paymentId }, summary: `受付番号 ${r.orderNumber}: この請求（${yen(r.amountYen)}）をやめます` })}>やめる</Button>
@@ -232,7 +232,7 @@ export default function OperatorB2cPage() {
         <section className="space-y-3 rounded-xl border p-4 text-sm" data-ops-order={String(o.order_number)}>
           <h2 className="text-lg font-semibold">受付番号 {String(o.order_number)}（{String(o.status)}）</h2>
           <p>{String(o.guest_name)} / {String(o.origin)} → {String(o.dest)} / 集荷 {String(o.pickup_date)} / 予約 {String(o.pieces)}個 / {yen(o.total_gross_yen)} / カード {String(o.card_status)}</p>
-          <p>配送: {String((detail!.shipment as Row | null)?.status ?? "-")} / 追跡番号 {JSON.stringify((detail!.shipment as Row | null)?.tracking_numbers ?? [])}</p>
+          <p>配送: {String((detail!.shipment as Row | null)?.status ?? "-")} / 問い合わせ番号 {JSON.stringify((detail!.shipment as Row | null)?.tracking_numbers ?? [])}（複数個口でも 1つ） / 佐川の正式な個数 {String((((detail!.shipment as Row | null)?.tracking_detail as Array<{ pieceCount?: number }> | undefined) ?? []).map((d) => d.pieceCount ?? "?").join("+") || "未取得")}</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => setAction({ title: "集荷を確認する", path: P, body: { action: "confirm_pickup", orderNumber: o.order_number }, fields: [ev, evRef, { key: "acceptedPieces", label: `佐川が受託した個数（予約 ${o.pieces}個）`, type: "number" }], summary: "集荷済みにし、30分後に受託の個数で請求します" })}>集荷を確認</Button>
             <Button size="sm" variant="outline" onClick={() => setAction({ title: "集荷の確認を取り消す（30分以内）", path: P, body: { action: "revoke_pickup", orderNumber: o.order_number }, summary: "集荷の確認を取り消し、請求をやめます" })}>集荷の確認を取消</Button>

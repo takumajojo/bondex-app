@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { b2cGuard, b2cUnavailable, str, stay } from "@/lib/b2c/api-common"
-import { getSupabase } from "@/lib/supabase"
+import { b2cUnpaidPause } from "@/lib/b2c/unpaid-gate"
 import { createB2cDraftOrder } from "@/lib/b2c/booking-service"
 
 export const runtime = "nodejs"
@@ -8,20 +8,16 @@ export const runtime = "nodejs"
 /**
  * POST /api/b2c/orders — 予約の下書きを作る（カード登録の前。Stage 3 でカード登録に進む）。
  * 画面から来た料金・ホテル・日付は使わず、サーバーで計算し直してから保存する。
- * 未収（3日以上の支払待ち＋回収不能）が B2C_UNPAID_LIMIT（既定 5）件以上の間は、新しい予約を受け付けない
- * （Phase 1A 計画 9章。既存の予約の集荷・請求・回収は続ける）。
+ * 未回収の請求が 2件、または合計 3万円に達している間は、新しい予約を受け付けない（lib/b2c/unpaid-gate.ts。
+ * B2C_PHASE1A_BETA_PLAN.md 5章。既存の予約の集荷・請求・回収は続ける）。
  */
 export async function POST(req: NextRequest) {
   const g = await b2cGuard(req, "b2c-orders")
   if (!g.ok) return g.res
-  const sb = getSupabase()
-  const { data: unpaid, error: unpaidErr } = sb ? await sb.rpc("b2c_unpaid_count", {}) : { data: null, error: { message: "db" } }
-  if (unpaidErr) return b2cUnavailable()
-  const unpaidLimit = Number(process.env.B2C_UNPAID_LIMIT ?? 5)
-  if (Number(unpaid) >= (Number.isFinite(unpaidLimit) && unpaidLimit > 0 ? unpaidLimit : 5)) {
-    console.error(`[b2c/orders] 新しい予約を止めています: 未収 ${unpaid}件（上限 ${unpaidLimit}）`)
-    return NextResponse.json({ ok: false, error: "booking_closed", errors: ["booking_closed"] }, { status: 503 })
-  }
+  // 未収による新規受付の停止（既存の予約の集荷・請求・回収は止めない）
+  const paused = await b2cUnpaidPause()
+  if (paused === "db_error") return b2cUnavailable()
+  if (paused) return NextResponse.json({ ok: false, error: "booking_closed", errors: ["booking_closed"] }, { status: 503 })
   const b = g.body
   const r = await createB2cDraftOrder(
     g.entry,
