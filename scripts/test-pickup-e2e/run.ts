@@ -1558,6 +1558,26 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(s2.status, 200, JSON.stringify(s2.body))
     assert.equal(mock.issues, i0 + 1)
   })
+  await test("日程: 2区間目の集荷日が集荷元ホテルのチェックアウト日 (前の区間の配送先チェックアウト日) より後なら、明示の確認が無いと送れない", async () => {
+    const leg0 = await newLeg({ to_check_out: jst(3) })
+    const b = (await ship(leg0)).booking_id
+    const later = await newLeg({ booking_id: b, leg_index: 1, shipment_date: jst(5), expected_arrival: jst(6), from_hotel: "Test Hotel Kyoto", from_place_id: "p-to", to_hotel: "Test Hotel Tokyo", to_place_id: "p-from" })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: later })
+    assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+    assert.deepEqual((pv.body.confirmations as Array<{ code: string }>).map((c) => c.code), ["pickup_after_origin_checkout"])
+    const i0 = mock.issues
+    const base = { action: "bizlogi_send", shipmentId: later, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true }
+    assert.equal((await call("POST", "/api/operator/pickup-request", base)).status, 409)
+    assert.equal(mock.issues, i0)
+    const ok = await call("POST", "/api/operator/pickup-request", { ...base, acknowledged: ["pickup_after_origin_checkout"] })
+    assert.equal(ok.status, 200, JSON.stringify(ok.body))
+    // チェックアウト日当日・前日の集荷は確認不要 (正当な運用)
+    const b2 = (await ship(await newLeg({ to_check_out: jst(5) }))).booking_id
+    const same = await newLeg({ booking_id: b2, leg_index: 1, shipment_date: jst(5), expected_arrival: jst(6), from_hotel: "Test Hotel Kyoto", from_place_id: "p-to", to_hotel: "Test Hotel Tokyo", to_place_id: "p-from" })
+    const pv2 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: same })
+    assert.equal(pv2.body.ok, true, JSON.stringify(pv2.body))
+    assert.deepEqual(pv2.body.confirmations, [])
+  })
   await test("確認画面の後に予約が変わったら、電文に出ない項目 (予約名) でも確認は無効・送らない", async () => {
     const leg = await newLeg({ booking_name: "Original Booking" })
     const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
