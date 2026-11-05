@@ -23,7 +23,7 @@ import { planReconcile, type ExistingGroup } from "@/lib/sagawa-bulk/reconcile"
 import { canClaimNotify, notifyKeyHash, NOTIFY_LEASE_MS, type NotifyRow } from "@/lib/sagawa-bulk/notify"
 import { sagawaBulkAlertEnabled, sagawaBulkEmailEnabled } from "@/lib/sagawa-bulk/flag"
 import { cronBearerAuthorized } from "@/lib/sagawa-bulk/auth"
-import { dryRunBulkAlert } from "@/lib/sagawa-bulk/db"
+import { dryRunBulkAlert, recomputeSafe } from "@/lib/sagawa-bulk/db"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 // 条件付き UPDATE (claimBulkNotify の .or() フィルタ) を忠実に模す in-memory 1行モデル。
@@ -628,6 +628,130 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     assert.equal(cronBearerAuthorized(`Bearer ${secret}x`, secret), false) // トークン不一致
     assert.equal(cronBearerAuthorized(`bearer ${secret}`, secret), false)  // 大文字小文字も区別
     assert.equal(cronBearerAuthorized(`Basic ${secret}`, secret), false)   // 別スキーム
+  }],
+
+  // ── Track A 実運用シナリオ (指示のケース1-10を明示的に固定) ──
+  ["ケース1: 単独20個 → 大口 (佐川事前連絡が必要=is_bulk)・重複ではない", () => {
+    const g = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 20 })], TODAY)
+    assert.equal(g.length, 1)
+    assert.equal(g[0].is_bulk, true)       // 大口=佐川への事前連絡が必要
+    assert.equal(g[0].is_duplicate, false) // 単独予約=重複ではない
+    assert.equal(g[0].booking_count, 1)
+  }],
+  ["ケース2: 同一ホテル同日 12個+8個 → 大口かつ重複・予約別の個数を独立保持", () => {
+    const g = computeBulkGroups([
+      leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 12 }),
+      leg({ shipment_id: "s2", booking_id: "BDX-B", suitcase_count: 8 }),
+    ], TODAY)[0]
+    assert.equal(g.is_bulk, true)       // 合計20=大口
+    assert.equal(g.is_duplicate, true)  // distinct予約2=重複
+    assert.equal(g.total_pieces, 20)
+    assert.equal(g.booking_count, 2)
+    // 予約別の個数は合算しても独立保持 (members に 12 と 8 が別々に残る)。
+    const pieces = g.members.map((m) => m.pieces).sort((a, b) => a - b)
+    assert.deepEqual(pieces, [8, 12])
+  }],
+  ["ケース3: 同一ホテル同日 3個+4個 → 重複のみ (佐川大口事前連絡は不要=is_bulk:false)", () => {
+    const g = computeBulkGroups([
+      leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 3 }),
+      leg({ shipment_id: "s2", booking_id: "BDX-B", suitcase_count: 4 }),
+    ], TODAY)[0]
+    assert.equal(g.is_duplicate, true)
+    assert.equal(g.is_bulk, false) // 合計7<20 → 大口事前連絡は不要 (メール対象外・画面注意喚起のみ)
+  }],
+  ["ケース4: 連絡済み20個→25個 → 再連絡が必要・以前の個数(20)を保持・変更内容(+5)を確認可能", () => {
+    const before = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 20 })], TODAY)[0]
+    const snap = snapshotOf(before)                 // 連絡時点のスナップショット=20個を保持
+    const after = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 25 })], TODAY)[0]
+    const c = classifyChange(snap, after)
+    assert.equal(c.material, true)                  // 再連絡が必要
+    assert.equal(c.increase, true)
+    assert.equal(c.pieceDelta, 5)                   // Operatorで +5 の変更を確認できる
+    // reconcile でも needs_reconfirm に遷移し、以前の連絡 (notified) を巻き戻さない。
+    const plan = planReconcile([after], [existingFrom(before, "notified", true)])
+    assert.equal(plan.groups[0].nextStatus, "needs_reconfirm")
+    assert.ok(plan.groups[0].events.some((e) => e.kind === "increased"))
+  }],
+  ["ケース5: 同日・別ホテルへ変更 → 旧集荷単位から離脱・新ホテルで再判定・旧履歴は削除しない(cleared)", () => {
+    const beforeA = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", from_place_id: "PID1", suitcase_count: 20 })], TODAY)[0]
+    // s1 が同日・別ホテル(PID2)へ移動。旧ホテル(PID1)には現メンバーが残らない。
+    const afterB = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", from_place_id: "PID2", suitcase_count: 20 })], TODAY)
+    const plan = planReconcile(afterB, [existingFrom(beforeA, "notified", true)])
+    // 新ホテル(PID2)=新規の大口として再判定。
+    const neu = plan.groups.find((g) => g.hotel_key.includes("PID2"))
+    assert.ok(neu && neu.isNew && neu.nextStatus === "pending")
+    // 旧ホテル(PID1)=クリア。履歴(行)は削除せず status=cleared で残す。
+    assert.equal(plan.clears.length, 1)
+    assert.ok(plan.clears[0].id.includes("PID1")) // existingFrom の id は "G-"+hotel_key+"@"+date
+    assert.equal(plan.clears[0].event.kind, "cleared")
+  }],
+  ["ケース6: 20個予約がキャンセル → アクティブな大口を解除(cleared)・履歴は保持", () => {
+    const before = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 20 })], TODAY)[0]
+    // キャンセルは computeBulkGroups から除外される → 現在のアクティブ集荷単位は空。
+    const afterCancelled = computeBulkGroups([leg({ shipment_id: "s1", booking_id: "BDX-A", suitcase_count: 20, status: "cancelled" })], TODAY)
+    assert.equal(afterCancelled.length, 0)
+    const plan = planReconcile(afterCancelled, [existingFrom(before, "notified", true)])
+    assert.equal(plan.clears.length, 1)                       // アクティブ解除
+    assert.equal(plan.clears[0].event.kind, "cleared")        // 履歴イベントは残す
+  }],
+  ["ケース7: 同一ホテル A社30個+B社20個 → 合計50の大口かつ重複・予約別内訳保持・自動統合しない", () => {
+    const g = computeBulkGroups([
+      leg({ shipment_id: "s1", booking_id: "BDX-A", agency: "A社", from_place_id: "PID1", suitcase_count: 30 }),
+      leg({ shipment_id: "s2", booking_id: "BDX-B", agency: "B社", from_place_id: "PID1", suitcase_count: 20 }),
+    ], TODAY)[0]
+    assert.equal(g.total_pieces, 50)
+    assert.equal(g.is_bulk, true)
+    assert.equal(g.is_duplicate, true)
+    assert.equal(g.agency_count, 2)
+    assert.equal(g.booking_count, 2)
+    // 予約別の個数・代理店・予約番号を独立保持 (按分も自動統合もしない)。
+    const byBooking = new Map(g.members.map((m) => [m.booking_id, m]))
+    assert.equal(byBooking.get("BDX-A")!.pieces, 30)
+    assert.equal(byBooking.get("BDX-A")!.agency, "A社")
+    assert.equal(byBooking.get("BDX-B")!.pieces, 20)
+    assert.equal(byBooking.get("BDX-B")!.agency, "B社")
+  }],
+  ["ケース8: 表記揺れ → place_id一致のみ自動統合・名称のみ(不確実)は別キー=Operator確認・誤集計しない", () => {
+    // 確実なホテルID(place_id)が一致 → 同一集荷単位に統合。
+    const merged = computeBulkGroups([
+      leg({ shipment_id: "s1", booking_id: "BDX-A", from_place_id: "PID1", from_hotel_ja: "パレスホテル東京", suitcase_count: 12 }),
+      leg({ shipment_id: "s2", booking_id: "BDX-B", from_place_id: "PID1", from_hotel_ja: "Palace Hotel", suitcase_count: 8 }),
+    ], TODAY)
+    assert.equal(merged.length, 1)
+    assert.equal(merged[0].total_pieces, 20)
+    assert.equal(merged[0].confident, true) // place_id ベース=高信頼
+    // place_id なし・名称だけ違う → 別キー=自動統合しない (誤集計を避ける)。
+    const split = computeBulkGroups([
+      leg({ shipment_id: "s3", booking_id: "BDX-C", from_place_id: null, from_hotel_ja: "パレスホテル東京", suitcase_count: 12 }),
+      leg({ shipment_id: "s4", booking_id: "BDX-D", from_place_id: null, from_hotel_ja: "パレスホテル", suitcase_count: 8 }),
+    ], TODAY)
+    assert.equal(split.length, 0) // 別キー扱いで各<20・単独予約 → グループ化しない
+  }],
+  ["再集計失敗時の復旧: recomputeSafe は DB エラーでも throw せず復帰 (cron を落とさない・次回再試行)", async () => {
+    // loadActiveLegs の読み取りが error を返す fake → recomputeBulkPickups は throw するが、
+    // recomputeSafe が握りつぶして void 復帰する (呼び出し元の予約フロー/cron を壊さない)。
+    const failingSb = {
+      from: () => {
+        const q: Record<string, unknown> = {}
+        for (const m of ["select", "not", "gte", "in", "is", "neq", "eq", "order"]) q[m] = () => q
+        q.then = (resolve: (v: { data: null; error: { message: string } }) => unknown) =>
+          Promise.resolve({ data: null, error: { message: "boom (simulated DB failure)" } }).then(resolve)
+        return q
+      },
+    } as unknown as SupabaseClient
+    await recomputeSafe(failingSb, TODAY) // throw しなければ復旧成功 (assert は例外が出ないこと)
+  }],
+  ["ケース10: 検知ON・メールOFF → 再集計/表示ロジックは動作し、メール送信経路に入らない(claimしない)", () => {
+    // メール送信は is_bulk かつ emailEnabled の両方成立時のみ (cron route の分岐)。
+    // 検知のみONではメールフラグが false → 送信もclaimも発生しない。
+    withEnv({ SAGAWA_BULK_ALERT_ENABLED: "true", SAGAWA_BULK_EMAIL_ENABLED: undefined }, () => {
+      assert.equal(sagawaBulkAlertEnabled(), true)   // 検知は動作
+      assert.equal(sagawaBulkEmailEnabled(), false)  // メールは送らない (送信経路ガード)
+    })
+    // 検知自体は純粋ロジックで動く (フラグに依存しない集計)。
+    const g = computeBulkGroups([leg({ shipment_id: "s1", suitcase_count: 20 })], TODAY)
+    assert.equal(g.length, 1)
+    assert.equal(g[0].is_bulk, true)
   }],
 ]
 
