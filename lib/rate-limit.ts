@@ -47,6 +47,14 @@ const SCOPE_CLASS: Record<string, keyof typeof LIMIT_CLASS> = {
   "group-share-view": "strict",
   howto: "strict",
   "demo-voucher": "strict",
+  // B2C の旅行者の予約（入口の token で自己認証。docs/b2c/B2C_MVP_SCHEMA_v1.md）
+  "b2c-entry": "strict",
+  "b2c-orders": "strict",
+  "b2c-places": "heavy", // Google の有料の API を呼ぶので、検索の一般より絞る
+  "b2c-quote": "normal",
+  "b2c-my": "normal", // My Booking の取消（秘密の token で自己認証）
+  "b2c-ops": "normal", // 運営のホテルの確認の結果（個人のパスキーのセッション）
+  "b2c-card": "normal", // カード登録の開始・状態の照合（予約番号＋秘密の token で自己認証。画面が数秒おきに照合する）
   // ── 検索・オートコンプリート (search) ──
   "places-search": "search",
   "agency-places-search": "search",

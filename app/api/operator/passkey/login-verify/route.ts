@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       .eq("credential_id", cred.credential_id)
   }
 
-  const token = await issueOperatorSession()
+  const token = await issueOperatorSession(cred.credential_id)
   if (!token) {
     return NextResponse.json({ error: "OPERATOR_PASSWORD not configured" }, { status: 503 })
   }

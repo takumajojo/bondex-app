@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase"
+import { B2C_AGENCY_NAME } from "@/lib/b2c/b2b-guard"
 import type { ResidenceAddress } from "@/lib/residence"
 import { changeDeadlineAt } from "./change-deadline"
 import { LABEL_MAIL_ENABLED } from "./label-delivery"
@@ -32,7 +33,7 @@ export interface ShipmentRecord {
   group_name: string | null
   shipment_date: string  // YYYY-MM-DD
   expected_arrival: string | null
-  /** 変更受付締切 = 発送日の2営業日前 18:00 JST (lib/change-deadline.ts が発送日から算出・保存)。 */
+  /** 変更受付締切 = 発送日の前日 17:00 JST (lib/change-deadline.ts が発送日から算出・保存)。 */
   change_deadline_at: string | null
   from_hotel: string
   from_city: string | null
@@ -346,6 +347,9 @@ export async function listHotelContactDue(todayYmd: string): Promise<HotelContac
   }
   const out: HotelContactDueRow[] = []
   for (const r of (data ?? []) as Record<string, unknown>[]) {
+    // B2C の区間はホテルの確認を B2C の流れ（b2c_hotel_acceptances・施設の確認）で行うので、B2B のホテル連絡の催促に出さない。
+    // channel の列が無い DB（B2C の表の適用前）でも動くよう、代理店名で判定する（lib/b2c/b2b-guard.ts）。
+    if (r.agency === B2C_AGENCY_NAME) continue
     if (!hotelContactApplies(r.status as string)) continue
     const target = (r.note_target as string) || "to"
     const applies = applicableRoutes(

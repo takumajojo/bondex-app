@@ -8,6 +8,7 @@ import {
   type ShipmentRecord,
 } from "@/lib/shipments-db"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { isB2cPaymentIntent } from "@/lib/b2c/charge-service"
 
 export const runtime = "nodejs"
 
@@ -60,6 +61,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid signature" }, { status: 400 })
   }
 
+  // B2C（旅行者の直接の予約）の請求の通知は、B2C 専用の受信口（/api/b2c/stripe/webhook）が処理する。
+  // ここで B2B の区間を探して見つからず 500 を返し続けないよう、DB の B2C の請求の記録と照らして一致したものだけ除く
+  // （metadata だけでは判断しない。B2C の表が無い DB・読めない時は除かず、今までどおり B2B として処理する）。
+  if (await isB2cPaymentIntent(b2cPaymentIntentOf(event), b2cMetadataOf(event))) {
+    return NextResponse.json({ received: true, ignored: "b2c" }, { status: 200 })
+  }
+
   try {
     switch (event.type) {
       case "charge.refunded":
@@ -91,6 +99,27 @@ export async function POST(req: NextRequest) {
 }
 
 // --- helpers ---------------------------------------------------------------
+
+/** B2C の振り分けに使う PaymentIntent の ID（返金・係争・決済の失敗の通知だけ。他は null） */
+function b2cPaymentIntentOf(event: Stripe.Event): string | null {
+  switch (event.type) {
+    case "charge.refunded":
+      return piIdOf((event.data.object as Stripe.Charge).payment_intent)
+    case "charge.dispute.created":
+      return piIdOf((event.data.object as Stripe.Dispute).payment_intent)
+    case "payment_intent.payment_failed":
+      return (event.data.object as Stripe.PaymentIntent).id
+    default:
+      return null
+  }
+}
+
+function b2cMetadataOf(event: Stripe.Event): Record<string, string> | null {
+  if (event.type === "payment_intent.payment_failed" || event.type === "charge.refunded") {
+    return ((event.data.object as Stripe.PaymentIntent | Stripe.Charge).metadata ?? null) as Record<string, string> | null
+  }
+  return null
+}
 
 function piIdOf(v: string | { id: string } | null | undefined): string | null {
   if (!v) return null

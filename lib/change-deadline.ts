@@ -1,29 +1,25 @@
 /**
  * 配送依頼の「変更受付締切」(change_deadline_at) の算出。
  *
- * 谷口さん決定 (2026-09-14): 既存のホテル連絡締切と同じ算出関数を再利用し、
- * 締切系は営業日関数1本に統一する。
- *   change_deadline_at = businessDaysBefore(shipment_date, HOTEL_CONTACT_LEAD_BUSINESS_DAYS) の日付 + 18:00 JST
- * ここで HOTEL_CONTACT_LEAD_BUSINESS_DAYS = 2 (発送日の2営業日前・土日祝を除外)。
- * 18:00 JST = 09:00 UTC なので、返り値 (timestamptz) は「その日付 T09:00:00Z」。
+ * 谷口さん決定 (2026-11-03): B2B・B2C とも「発送日の前日 17:00 JST」に統一する。
+ * 日程・個数・代表者名の変更 (lib/agency-self-service.ts の selfServiceCutoffAt) と同じ時刻で、
+ * ホテル変更もこの時刻で締める。(旧: 発送日の2営業日前 18:00。2026-09-14 決定)
+ * 17:00 JST = 08:00 UTC なので、返り値 (timestamptz) は「前日の日付 T08:00:00Z」。
+ *
+ * ホテルへの連絡期限 (lib/hotel-notification.ts の発送2営業日前) は別の基準で、変えない。
+ * 締切の直前にホテルが変わった区間は、ホテル連絡のアラートで「至急」として扱われる。
  *
  * 発送日が変わらなければ不変。発送日が変わったときのみ再計算する。
  */
 
-import { businessDaysBefore } from "./business-days"
-import { HOTEL_CONTACT_LEAD_BUSINESS_DAYS } from "./hotel-notification"
-
-/** 締切の時刻 (JST 18:00) を UTC で表したもの。JST = UTC+9 → 09:00Z。 */
-const DEADLINE_UTC_TIME = "T09:00:00.000Z"
+import { selfServiceCutoffAt } from "./agency-self-service"
 
 /**
  * 発送日 (YYYY-MM-DD) から変更受付締切を ISO(UTC) 文字列で返す。
  * shipment_date が空/不正なら null。
  */
 export function changeDeadlineAt(shipmentDate: string | null | undefined): string | null {
-  const date = businessDaysBefore((shipmentDate || "").trim(), HOTEL_CONTACT_LEAD_BUSINESS_DAYS)
-  if (!date) return null
-  return `${date}${DEADLINE_UTC_TIME}`
+  return selfServiceCutoffAt(shipmentDate)
 }
 
 /** 残り48時間を切っているか (警告色の判定に使う)。now は既定で現在時刻。 */

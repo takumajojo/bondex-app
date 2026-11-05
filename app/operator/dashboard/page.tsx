@@ -1639,7 +1639,7 @@ export default function DashboardPage() {
                           )
                         })()}
                       </td>
-                      {/* 変更締切 (発送日の2営業日前 18:00 JST・48h切ったら警告色) */}
+                      {/* 変更締切 (発送日の前日 17:00 JST・48h切ったら警告色) */}
                       <td className="p-3 align-top">
                         {(() => {
                           const over = isChangeDeadlinePassed(it.change_deadline_at)

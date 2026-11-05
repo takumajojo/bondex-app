@@ -1,10 +1,9 @@
 import React from "react"
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import Script from 'next/script'
 import { ConsentBanner } from '@/components/consent-banner'
-import { HubSpotTracking } from '@/components/hubspot-tracking'
+import { ThirdPartyAnalytics } from '@/components/third-party-analytics'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -188,15 +187,8 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         {children}
         <ConsentBanner />
-        <HubSpotTracking />
-        <Analytics />
-        <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-          strategy="afterInteractive"
-        />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`gtag('config', '${GA_MEASUREMENT_ID}');`}
-        </Script>
+        {/* 計測は旅行者の秘密のリンク（/my/・/book/）では読み込まない（URL の token を外部に渡さない） */}
+        <ThirdPartyAnalytics gaMeasurementId={GA_MEASUREMENT_ID} />
       </body>
     </html>
   )

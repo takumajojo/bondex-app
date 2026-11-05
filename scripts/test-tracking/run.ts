@@ -7,6 +7,22 @@ process.env.TRACKING_SYNC_PAUSED = "false" // 停止スイッチは env が優�
 process.env.CRON_SECRET = "test-secret"
 process.env.SHIPANDCO_API_KEY = "x"
 
+// 照会の方針（lib/tracking/poll-policy.ts）は JST 21:00〜翌 8:00 は照会しない（夜間のガード）。
+// 試験の結果が実行する時刻で変わらないよう、試験の中の「今」を JST の昼（2026-09-30 12:00 JST）に固定する。
+// （2026-11-03 B2C Stage 2 で判明: 夜間に実行すると定時の 4件が「照会しない」で失敗していた。コードの不具合ではない）
+{
+  const RealDate = Date
+  const FIXED = new RealDate("2026-09-30T03:00:00Z").getTime()
+  class FixedDate extends RealDate {
+    constructor(...args: ConstructorParameters<typeof Date> | []) {
+      if (args.length === 0) super(FIXED)
+      else super(...(args as ConstructorParameters<typeof Date>))
+    }
+    static now() { return FIXED }
+  }
+  globalThis.Date = FixedDate as unknown as DateConstructor
+}
+
 import assert from "node:assert/strict"
 import { NextRequest } from "next/server"
 import { S, reset, called } from "./fakes/state"

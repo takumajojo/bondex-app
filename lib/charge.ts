@@ -12,6 +12,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { buildChargeInvoice } from "@/lib/invoice-build"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { grossOf } from "@/lib/tax"
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 
 /**
  * 集荷完了時のカード課金 (海外/法人=Stripe 1件ごと課金モデル)。
@@ -55,6 +56,12 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
   try {
     const shipment = await getShipment(shipmentId)
     if (!shipment) return { charged: false, skipped: true, reason: "shipment_not_found" }
+
+    // B2C の区間は B2B の課金に入れない (B2C は b2c_payments が正本。docs/b2c/B2C_MVP_SCHEMA_v1.md 5章)。
+    // 課金の合図の 4経路 (追跡の同期・照合・運営の手動の状態変更・再試行) はすべてこの関数を通る。
+    if (isB2cShipmentRow(shipment)) {
+      return { charged: false, skipped: true, reason: "b2c_channel" }
+    }
 
     // 既に課金済みなら何もしない (二重課金防止)
     if (shipment.charged_at) {

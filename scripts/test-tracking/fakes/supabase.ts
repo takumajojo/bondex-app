@@ -28,6 +28,11 @@ class Builder {
     this.filters.push((r) => r[col] === val)
     return this
   }
+  is(col: string, val: unknown) {
+    if (this.table === "shipments") S.lastShipmentQuery.push(["is", col, val])
+    this.filters.push((r) => (val === null ? r[col] === null || r[col] === undefined : r[col] === val))
+    return this
+  }
   order() { return this }
   limit() { return this }
   private single = false

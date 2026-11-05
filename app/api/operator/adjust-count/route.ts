@@ -1,3 +1,4 @@
+import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
 
   const shipment = await getShipment(id)
   if (!shipment) return NextResponse.json({ error: "shipment not found" }, { status: 404 })
+  // B2C の個数の違いは集荷の確認（受託の個数）と個数の訂正（/operator/b2c）で扱う。ここで変える・取り消すと予約と請求が食い違う
+  if (isB2cShipmentRow(shipment)) return NextResponse.json({ error: "旅行者の直接の予約（B2C）の区間は、この画面では変えられません。運営の B2C の画面（/operator/b2c）で扱ってください。" }, { status: 409 })
 
   // 代理店の契約単価・連絡先をまとめて取得。単価は発行時 (shipandco/create) と同じ resolveUnitPriceYen で
   // 解決し、個数是正でも代理店別単価が効くようにする (旧: 4,980 固定で、契約単価を設定した代理店の是正後
