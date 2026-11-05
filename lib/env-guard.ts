@@ -78,6 +78,18 @@ export function stagingGuardViolations(env: Env = process.env): string[] {
     if (has(k)) v.push(`${k}: 試験環境では設定しない`)
   }
   if (isTrue("B2C_WHATSAPP_LIVE")) v.push("B2C_WHATSAPP_LIVE: 試験環境では ON にしない")
+  // メールの送信の鍵は、本番の名前（RESEND_API_KEY・SMTP_*）では入れない（本番の鍵の流用を防ぐ）。
+  // 社内の宛先だけの実送信（2026-11-06・lib/mailer.ts stagingInternalSendAllowed）は、staging 専用の鍵 STAGING_RESEND_API_KEY だけで行う
+  for (const k of ["RESEND_API_KEY", "SMTP_HOST", "SMTP_USER", "SMTP_PASS"]) {
+    if (has(k)) v.push(`${k}: 試験環境では設定しない（社内への送信は STAGING_RESEND_API_KEY）`)
+  }
+  if (has("STAGING_MAIL_SEND")) {
+    if (env.STAGING_MAIL_SEND !== "internal") v.push("STAGING_MAIL_SEND: internal 以外は使わない")
+    if (!/^re_[A-Za-z0-9_]{8,}$/.test(env.STAGING_RESEND_API_KEY ?? "")) v.push("STAGING_RESEND_API_KEY: Resend の staging 専用の鍵（re_…）が要る")
+    const list = (env.OPERATOR_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean)
+    if (list.length === 0) v.push("OPERATOR_EMAILS: 社内への送信の宛先を明示する（既定のアドレスには送らない）")
+    else if (!list.every((e) => /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/.test(e))) v.push("OPERATOR_EMAILS: メールアドレスの形でない値がある")
+  }
 
   // 配送の外部: Ship&co・Biz-Logi・Google Drive・自動の発行は無し
   for (const k of ["SHIPANDCO_API_KEY", "GOOGLE_DRIVE_SA_KEY", "BIZLOGI_BASE_URL", "BIZLOGI_CUSTOMER_ID", "BIZLOGI_LOGIN_PASSWORD"]) {

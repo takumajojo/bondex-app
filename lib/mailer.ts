@@ -32,6 +32,41 @@ function smtpConfigured(): boolean {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
 }
 
+// ── 試験環境（BONDEX_ENV=staging）の送信の制限（2026-11-06・谷口さん決定「社内だけ実送信」）──
+// staging では、既定ですべて記録だけ（送らない）。次の全部を満たす時だけ、実際に送る:
+//   STAGING_MAIL_SEND=internal・staging 専用の鍵 STAGING_RESEND_API_KEY・宛先（to と bcc の全部）が OPERATOR_EMAILS に明示されている
+// 旅行者・代理店・ホテルの宛先は OPERATOR_EMAILS に無いので、記録だけになる。
+// 同じ確かめを、送信の最後の段（sendViaResend）でもう一度行う。staging では SMTP と本番の名前の鍵（RESEND_API_KEY）は使わない。
+// 本番（BONDEX_ENV が staging でない）の動きは変わらない。
+const isStaging = () => process.env.BONDEX_ENV === "staging"
+
+/** staging で実際に送ってよい宛先（OPERATOR_EMAILS を明示した時だけ。lib/operator-webauthn.ts の既定のアドレスは使わない） */
+export function stagingInternalRecipients(): string[] {
+  return (process.env.OPERATOR_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/.test(e))
+}
+
+function recipientsOf(opts: { to: string; bcc?: string | string[] }): string[] {
+  const bcc = opts.bcc ? (Array.isArray(opts.bcc) ? opts.bcc : [opts.bcc]) : []
+  return [...opts.to.split(","), ...bcc].map((e) => e.trim().toLowerCase()).filter(Boolean)
+}
+
+/** staging で、このメールを実際に送ってよいか（宛先が 1つでも社内の一覧に無ければ送らない） */
+export function stagingInternalSendAllowed(opts: { to: string; bcc?: string | string[] }): boolean {
+  if (!isStaging() || process.env.STAGING_MAIL_SEND !== "internal") return false
+  if (!/^re_[A-Za-z0-9_]{8,}$/.test(process.env.STAGING_RESEND_API_KEY ?? "")) return false
+  const allow = stagingInternalRecipients()
+  const rcpt = recipientsOf(opts)
+  return allow.length > 0 && rcpt.length > 0 && rcpt.every((r) => allow.includes(r))
+}
+
+/** ログに出す件名（認証コード・受付番号・問い合わせ番号・名前を出さない: 4桁以上の数字とかっこの中を伏せる） */
+export function logSafeSubject(subject: string): string {
+  return subject.replace(/（[^）]*）|\([^)]*\)/g, "（…）").replace(/\d{4,}/g, "####").slice(0, 80)
+}
+
 async function sendViaSmtp(opts: {
   to: string
   subject: string
@@ -43,6 +78,8 @@ async function sendViaSmtp(opts: {
   idempotencyKey?: string // SMTP は冪等キー非対応。型整合のため受けるだけ (使わない)。
   timeoutMs?: number
 }): Promise<SendResult> {
+  // staging では SMTP で送らない（最後の段の関所）
+  if (isStaging()) return { sent: false, error: "staging_smtp_blocked" }
   const host = process.env.SMTP_HOST!
   const user = process.env.SMTP_USER!
   const pass = process.env.SMTP_PASS!
@@ -97,9 +134,12 @@ async function sendViaResend(opts: {
   idempotencyKey?: string
   timeoutMs?: number
 }): Promise<SendResult> {
-  const key = process.env.RESEND_API_KEY!
+  // staging の最後の段の関所: 宛先がすべて社内の一覧にある時だけ、staging 専用の鍵で送る（本番の名前の鍵は使わない）
+  const staging = isStaging()
+  if (staging && !stagingInternalSendAllowed(opts)) return { sent: false, error: "staging_recipient_blocked" }
+  const key = staging ? process.env.STAGING_RESEND_API_KEY! : process.env.RESEND_API_KEY!
   // 既定は support@bondex.express (Resend で bondex.express を認証済みが前提)。ALERT_FROM_EMAIL で上書き可。
-  const from = process.env.ALERT_FROM_EMAIL || "BondEx <support@bondex.express>"
+  const from = (staging ? process.env.STAGING_MAIL_FROM : process.env.ALERT_FROM_EMAIL) || "BondEx <support@bondex.express>"
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -116,7 +156,7 @@ async function sendViaResend(opts: {
         to: [opts.to],
         bcc: opts.bcc ? (Array.isArray(opts.bcc) ? opts.bcc : [opts.bcc]) : undefined,
         reply_to: opts.replyTo,
-        subject: opts.subject,
+        subject: staging ? `[STAGING] ${opts.subject}` : opts.subject,
         text: opts.text,
         html: opts.html,
         attachments: opts.attachments?.map((a) => ({
@@ -173,12 +213,15 @@ export async function sendMail(opts: {
 
   // 結合テスト用: MAIL_TEST_CAPTURE=1 のときは実送信せず、送信内容を記録して成功を返す
   // (本番では未設定。顧客へ実送信せずに完了メール/冪等キー/再送フローを検証するため)。
-  if (process.env.MAIL_TEST_CAPTURE === "1") {
+  // staging は MAIL_TEST_CAPTURE に関わらず、社内の宛先だけの実送信を除いて記録だけ
+  const stagingSend = stagingInternalSendAllowed(opts)
+  if ((process.env.MAIL_TEST_CAPTURE === "1" || isStaging()) && !stagingSend) {
     const g = globalThis as unknown as { __capturedMails?: Array<Record<string, unknown>> }
     g.__capturedMails = g.__capturedMails ?? []
     g.__capturedMails.push({ to: opts.to, subject: opts.subject, idempotencyKey: opts.idempotencyKey, bcc: opts.bcc })
     // staging（Vercel）ではプロセスが要求ごとに変わるので、記録をログにも残す（宛先はドメインだけ・本文は出さない）
-    console.log(`[mail-capture] to=*@${(opts.to.split("@")[1] ?? "?").trim()} subject=${opts.subject}`)
+    // 件名は伏せた形だけ（認証コード・受付番号を出さない）
+    console.log(`[mail-capture] to=*@${(opts.to.split("@")[1] ?? "?").trim()} subject=${logSafeSubject(opts.subject)}`)
     return { sent: true, via: "resend" }
   }
 
@@ -201,6 +244,12 @@ export async function sendMail(opts: {
   // 差出人を support@bondex.express に統一するため Resend を優先する。
   // (Gmail SMTP は認証アカウント=taniguchi@ に差出人を書き換えるため、顧客向けには不適。)
   // Resend 未設定なら従来どおり SMTP。Resend 失敗時は取りこぼし防止に SMTP へフォールバック。
+  if (stagingSend) {
+    // staging の社内への実送信: Resend（staging 専用の鍵）だけ・別の手段で送り直さない
+    const r = await sendViaResend({ ...opts, timeoutMs: opts.timeoutMs ?? 15_000 })
+    console.log(`[mail-staging-send] to=*@${(opts.to.split("@")[1] ?? "?").trim()} subject=${logSafeSubject(opts.subject)} sent=${r.sent}${r.sent ? "" : ` error=${String(r.error ?? "").slice(0, 80)}`}`)
+    return r
+  }
   if (opts.strict) {
     if (process.env.RESEND_API_KEY) return sendViaResend({ ...opts, timeoutMs: opts.timeoutMs ?? 15_000 })
     if (smtpConfigured()) return sendViaSmtp({ ...opts, timeoutMs: opts.timeoutMs ?? 15_000 })
