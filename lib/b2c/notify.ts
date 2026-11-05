@@ -22,6 +22,7 @@ import { getSupabase } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
 import { sendOpsAlert, opsAlertConfigured, type OpsAlertInput, type OpsAlertResult } from "@/lib/ops-alert"
 import { b2cAccessToken, b2cMyBookingUrl } from "./access-token"
+import { safeLog, generateLogId } from "@/lib/safe-log"
 import { renderEmail, renderWhatsApp, type B2cCancelReason, type B2cNotifyData, type B2cNotifyKind, type Lang } from "./notify-templates"
 
 export const B2C_OUTBOX_MAX_ATTEMPTS = 6
@@ -256,7 +257,8 @@ export type B2cAlertFn = (input: OpsAlertInput) => Promise<OpsAlertResult>
 export function b2cOpsAlert(): B2cAlertFn {
   if (b2cNotifyLive()) return sendOpsAlert
   return async (input) => {
-    console.error(`[b2c-ops-alert:sandbox] ${input.subject} :: ${input.lines.join(" | ")}`)
+    // 件名・本文は出さない（lib/safe-log.ts）。起点の ID・予約の ID だけ
+    safeLog({ kind: "ops_alert_sandbox", source: input.source, id: generateLogId(), ref: input.refs, outcome: "skipped" })
     return { emailSent: false, slackSent: false, errors: [], sandbox: true } as OpsAlertResult
   }
 }
@@ -533,7 +535,7 @@ export async function checkB2cOutboxHealth(now: Date = new Date(), alert: B2cAle
       lines.push(`■ ${st}（${ps.length}件）: ${PROBLEM_TEXT[st]}`)
       for (const p of ps) lines.push(`  受付番号 ${num.get(p.order_id as string) ?? "?"} / ${p.kind} / ${p.channel} / 試行 ${p.attempts}回 / ${String(p.last_error ?? "").slice(0, 120)} / outbox#${p.id}`)
     }
-    const r = await alert({ subject: `【B2C 通知】要確認 ${probs.length}件（届いたか不明・送信失敗・期限切れ）`, lines, agencyEmail: null })
+    const r = await alert({ subject: `【B2C 通知】要確認 ${probs.length}件（届いたか不明・送信失敗・期限切れ）`, lines, agencyEmail: null, source: "b2c.outbox-problems", refs: probs.map((p) => `outbox-${p.id}`) })
     if (delivered(r)) {
       await sb.from("b2c_outbox").update({ ops_alerted_at: now.toISOString() }).in("id", probs.map((p) => p.id as number))
       out.problemsAlerted = probs.length
@@ -547,6 +549,7 @@ export async function checkB2cOutboxHealth(now: Date = new Date(), alert: B2cAle
     const { data: gate } = await sb.rpc("b2c_ops_alert_gate_try", { p_key: "b2c_outbox_backlog", p_now: now.toISOString(), p_every: "60 minutes" })
     if (gate === true) {
       const r = await alert({
+        source: "b2c.outbox-backlog",
         subject: `【B2C 通知】送信待ちが滞留しています（${health.overdue_15m}件が 15分以上遅れ）`,
         lines: [
           `送信待ち: ${health.pending_total}件 / 15分以上遅れ: ${health.overdue_15m}件 / 最も古い遅れ: ${health.oldest_overdue_min}分`,

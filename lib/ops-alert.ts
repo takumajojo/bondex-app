@@ -15,6 +15,7 @@
 
 import { sendMail, mailerConfigured } from "./mailer"
 import { opsRecipients } from "./ops-recipients"
+import { safeLog, generateLogId, errorTypeOf } from "./safe-log"
 
 export interface OpsAlertInput {
   subject: string
@@ -25,6 +26,12 @@ export interface OpsAlertInput {
   /** 代理店宛だけ別文面にする場合 (英語代理店への英語アラート等)。未指定は subject/lines を共用。 */
   agencySubject?: string
   agencyLines?: string[]
+  /**
+   * ログに残す起点の固定の ID（例: "cron.sync-tracking"）と、予約・区間の ID（DB の値）。2026-11-06。
+   * ログには件名・本文を出さないので、運営はこの ID と時刻で運営の画面から中身を確かめる（lib/safe-log.ts）。
+   */
+  source?: string
+  refs?: string[]
 }
 
 export interface OpsAlertResult {
@@ -43,7 +50,8 @@ async function sendViaSlack(webhookUrl: string, subject: string, lines: string[]
     if (!res.ok) return `Slack HTTP ${res.status}`
     return null
   } catch (err) {
-    return err instanceof Error ? err.message : String(err)
+    // 例外の全文は返さない（種類だけ）
+    return `Slack ${errorTypeOf(err)}`
   }
 }
 
@@ -68,7 +76,8 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
     for (const tgt of targets) {
       const r = await sendMail({ to: tgt.to, subject: tgt.subject, text: tgt.text })
       if (r.sent) anySent = true
-      else result.errors.push(`email(${tgt.to}): ${r.error}`)
+      // 宛先のアドレスは出さない（運営か代理店かだけ）。r.error は lib/mailer.ts で番号・種類だけの形にしてある
+      else result.errors.push(`email(${tgt.to === input.agencyEmail ? "agency" : "ops"}): ${r.error}`)
     }
     result.emailSent = anySent
   }
@@ -83,8 +92,18 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
   if (!mailerConfigured() && !slackUrl) {
     result.errors.push("no channel configured (SMTP / RESEND_API_KEY / SLACK_WEBHOOK_URL all unset)")
   }
-  // 取りこぼし防止: チャンネル成否に関わらず必ずログにも残す
-  console.error(`[ops-alert] ${input.subject} :: ${input.lines.join(" | ")}`)
+  // 取りこぼし防止: チャンネルの成否に関わらず、必ずログにも残す。件名・本文は個人情報を含むので出さない（2026-11-06）。
+  // 起点の ID・予約の ID・時刻・送れたか（メール・Slack）だけ。どちらにも届かなかった時は error で出る
+  const delivered = result.emailSent || result.slackSent
+  safeLog({
+    kind: "ops_alert",
+    source: input.source,
+    id: generateLogId(),
+    ref: input.refs,
+    outcome: delivered ? "ok" : "failed",
+    error: delivered ? (result.errors.length ? "partial" : undefined) : !mailerConfigured() && !slackUrl ? "config_missing" : "unknown",
+    sent: (result.emailSent ? 1 : 0) + (result.slackSent ? 1 : 0),
+  })
   return result
 }
 

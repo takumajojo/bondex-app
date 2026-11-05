@@ -4,7 +4,7 @@
  *   実行: npx tsx --tsconfig scripts/test-b2c/tsconfig.json scripts/test-staging-guard/mail-send.ts
  */
 import assert from "node:assert/strict"
-import { sendMail, logSafeSubject } from "@/lib/mailer"
+import { sendMail } from "@/lib/mailer"
 import { stagingGuardViolations, STAGING_SUPABASE_REF } from "@/lib/env-guard"
 
 let passed = 0
@@ -36,7 +36,7 @@ const logs: string[] = []
 const realLog = console.log
 console.log = (...a: unknown[]) => {
   const line = a.map(String).join(" ")
-  if (line.startsWith("[mail-")) logs.push(line)
+  if (line.startsWith("[safe-log]")) logs.push(line)
   else realLog(...a)
 }
 const captured = () => ((globalThis as unknown as { __capturedMails?: unknown[] }).__capturedMails ?? []).length
@@ -163,14 +163,14 @@ async function main() {
     setEnv(STAGING_ON)
     await mail(OPS)
     assert.equal(logs.length, 1)
-    assert.ok(logs[0].startsWith("[mail-staging-send]") && logs[0].includes("sent=true"), logs[0])
+    assert.ok(logs[0].includes('"kind":"mail_staging_send"') && logs[0].includes('"outcome":"ok"'), logs[0])
     assert.ok(!logs[0].includes("482913") && !logs[0].includes("ops-a") && !logs[0].includes(STG_KEY), logs[0])
   })
-  await t("件名の受付番号・問い合わせ番号・かっこの中の名前を伏せる", async () => {
-    assert.equal(logSafeSubject("【BondEx】ご予約が確定しました（受付番号 B2C-20261106-0001）"), "【BondEx】ご予約が確定しました（…）")
-    assert.equal(logSafeSubject("【BondEx】集荷完了　BDX-1-L1（Taro Yamada）"), "【BondEx】集荷完了　BDX-1-L1（…）")
-    assert.equal(logSafeSubject("追跡 123456789012"), "追跡 ####")
-    assert.equal(logSafeSubject("【監視】定期の処理が止まっています（b2c-tick）"), "【監視】定期の処理が止まっています（…）")
+  await t("ログに件名を出さない（ホテル名がかっこの外にある件名でも）", async () => {
+    setEnv({ ...STAGING_ON, STAGING_MAIL_SEND: "" })
+    await mail(TRAVELER, { subject: "【集荷漏れの可能性】BDX-1-L1 テストホテル新宿" })
+    assert.equal(logs.length, 1)
+    assert.ok(!logs[0].includes("テストホテル") && !logs[0].includes("集荷漏れ") && !logs[0].includes("guest"), logs[0])
   })
 
   console.log("本番（BONDEX_ENV が staging でない）の動きは変わらない")

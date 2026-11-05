@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase"
 import { sendWhatsAppText, verifyWhatsAppSignature } from "@/lib/whatsapp"
 import { extractQuery, lookupShipmentByQuery, buildTrackingReply } from "@/lib/whatsapp-tracking"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { safeLog, errorTypeOf } from "@/lib/safe-log"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -108,16 +109,19 @@ export async function POST(req: NextRequest) {
               const rows = await lookupShipmentByQuery(sb, query)
               reply = rows.length > 0 ? buildTrackingReply(rows) : REPLY_NOT_FOUND
             } catch (e) {
-              console.error("[whatsapp-webhook] lookup failed:", e instanceof Error ? e.message : e)
+              // 問い合わせの文（旅行者の入力）がエラーに入ることがあるので、種類だけ（lib/safe-log.ts）
+              safeLog({ kind: "whatsapp_webhook", source: "whatsapp.lookup", outcome: "failed", error: errorTypeOf(e) })
               reply = REPLY_DB_ERROR
             }
           }
 
           const r = await sendWhatsAppText(from, reply)
           if (!r.ok) {
-            console.error("[whatsapp-webhook] reply send failed:", r.error)
+            // 応答の本文・電話番号は出さない。宛先・本文は運営への通知の中だけ（ログには出ない）
+            safeLog({ kind: "whatsapp_webhook", source: "whatsapp.reply", via: "whatsapp", to: "traveler", outcome: "failed", error: "unknown" })
             // 送信失敗は Slack/メールへ通知 (best-effort)。
             await sendOpsAlert({
+              source: "whatsapp.reply-failed",
               subject: "【WhatsApp】自動返信の送信に失敗",
               lines: [`宛先: ${from}`, `本文: ${text.slice(0, 80)}`, `理由: ${r.error ?? "unknown"}`],
             }).catch(() => {})
@@ -127,7 +131,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ success: true })
   } catch (e) {
-    console.error("[whatsapp-webhook] error:", e instanceof Error ? e.message : e)
+    safeLog({ kind: "whatsapp_webhook", source: "whatsapp.handler", outcome: "failed", error: errorTypeOf(e) })
     // Meta の再送ストームを避けるため 200 で返す (処理側で握る)。
     return NextResponse.json({ success: false })
   }

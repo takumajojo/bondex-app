@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { sendMail } from "@/lib/mailer"
+import { safeLog } from "@/lib/safe-log"
 
 const SITE_URL = "https://bondex.express"
 const SUPPORT = "support@bondex.express"
@@ -236,10 +237,16 @@ export async function inviteAgencyUser(
     replyTo: SUPPORT,
   })
   if (!sent.sent) {
-    // 招待リンク(action_link)はパスワード設定可能な強力なマジックリンク。APIレスポンスには返さず、
-    // サーバログにのみ残す(招待者による乗っ取り余地の排除)。運営はメール設定を直して再送する。
-    console.error(`[agency-contacts] 招待メール送信失敗 ${email}: ${sent.error} / action_link(未送信)=${actionLink}`)
-    return { ok: true, invited: true, error: "招待ユーザーは作成しましたが、招待メールの送信に失敗しました。メール設定を確認して再度お試しください。" }
+    // 招待リンク(action_link)はパスワードを設定できる強力なマジックリンク。API の応答にもログにも出さない
+    // (2026-11-06: 以前はログに残していた。ログを読める人が代理店のアカウントを乗っ取れるため廃止。lib/safe-log.ts)。
+    // 届かなかった時は、招待された人が /agency/login の「パスワードをお忘れですか？」から自分で設定する
+    // (もう一度招待すると、既存の利用者として「アクセスできるようになりました」の案内メールが届く)。
+    safeLog({ kind: "agency_invite_mail", source: "agency.invite", ref: agencyId, outcome: sent.uncertain ? "unknown" : "failed", error: sent.via === "resend" && sent.status ? "http_error" : "unknown", http: sent.via === "resend" ? sent.status : undefined, via: sent.via })
+    return {
+      ok: true,
+      invited: true,
+      error: "招待ユーザーは作成しましたが、招待メールの送信に失敗しました。メール設定を確認してから、同じアドレスでもう一度招待してください（ログイン画面の「パスワードをお忘れですか？」から設定するよう案内が届きます）。",
+    }
   }
   return { ok: true, invited: true }
 }

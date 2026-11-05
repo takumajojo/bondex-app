@@ -7,6 +7,7 @@
 
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import type { TrackingProvider, TrackingResult } from "./types"
+import { safeLog, errorTypeOf } from "@/lib/safe-log"
 
 const SHIPANDCO_BASE = "https://api.shipandco.com/v1"
 const SHIPANDCO_TIMEOUT_MS = 10_000
@@ -175,21 +176,19 @@ async function fetchTracking(
         } catch {
           /* 本文が JSON でなくても 429 の事実は変わらない */
         }
-        console.error(`[sync-tracking] Ship&co 429 rate limit for ${carrier}/${trackingNumber} (code: ${errorCode ?? "unknown"})`)
+        // 問い合わせ番号は出さない（区間とその配送先に結び付くため）。運営は区間の画面の「照会の上限」の印で確かめる
+        safeLog({ kind: "shipandco_tracking", source: `tracking.${String(carrier).toLowerCase().replace(/[^a-z0-9]/g, "")}`, outcome: "failed", error: "http_error", http: 429 })
         // errorCode は既定で TRACKING_LIMIT_EXCEEDED に畳まず、そのまま返す。
         // 429 には (a) 番号あたり15回上限=TRACKING_LIMIT_EXCEEDED(恒久) と (b) 一般レート制限(一時的) の
         // 2種がある。呼び出し側(cron/reconcile)が両者を区別し、(b)で番号を恒久除外しないようにする。
         return { data: null, rateLimited: true, errorCode }
       }
-      console.error(
-        `[cron/sync-tracking] Ship&co tracking HTTP ${res.status} for ${carrier}/${trackingNumber}`,
-      )
+      safeLog({ kind: "shipandco_tracking", source: `tracking.${String(carrier).toLowerCase().replace(/[^a-z0-9]/g, "")}`, outcome: "failed", error: "http_error", http: res.status })
       return { data: null, rateLimited: false }
     }
     return { data: (await res.json()) as TrackingResponse, rateLimited: false }
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    console.error(`[cron/sync-tracking] Ship&co call failed for ${carrier}/${trackingNumber}: ${reason}`)
+    safeLog({ kind: "shipandco_tracking", source: `tracking.${String(carrier).toLowerCase().replace(/[^a-z0-9]/g, "")}`, outcome: "unknown", error: errorTypeOf(err) })
     return { data: null, rateLimited: false }
   } finally {
     clearTimeout(timer)

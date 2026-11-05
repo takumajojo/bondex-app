@@ -14,6 +14,7 @@
 // env / 宛先が無ければ静かにスキップ ({sent:false})。絶対に throw しない (本処理を止めない)。
 
 import { getSupabase } from "./supabase"
+import { safeLog, errorTypeOf } from "@/lib/safe-log"
 
 export interface AgencyPushResult {
   whatsapp: boolean
@@ -70,12 +71,13 @@ async function sendWhatsAppTemplate(
       }),
     })
     if (!res.ok) {
-      console.error("[agency-push] WhatsApp HTTP", res.status, (await res.text()).slice(0, 300))
+      // 応答の本文（宛先の電話番号・メッセージが入ることがある）は出さない。HTTP の番号だけ（lib/safe-log.ts）
+      safeLog({ kind: "agency_push", via: "whatsapp", to: "agency", outcome: "failed", error: "http_error", http: res.status })
       return false
     }
     return true
   } catch (e) {
-    console.error("[agency-push] WhatsApp error:", e instanceof Error ? e.message : e)
+    safeLog({ kind: "agency_push", via: "whatsapp", to: "agency", outcome: "unknown", error: errorTypeOf(e) })
     return false
   }
 }
@@ -90,12 +92,12 @@ async function sendLine(userId: string, text: string): Promise<boolean> {
       body: JSON.stringify({ to: userId, messages: [{ type: "text", text: text.slice(0, 4900) }] }),
     })
     if (!res.ok) {
-      console.error("[agency-push] LINE HTTP", res.status, (await res.text()).slice(0, 200))
+      safeLog({ kind: "agency_push", via: "line", to: "agency", outcome: "failed", error: "http_error", http: res.status })
       return false
     }
     return true
   } catch (e) {
-    console.error("[agency-push] LINE error:", e instanceof Error ? e.message : e)
+    safeLog({ kind: "agency_push", via: "line", to: "agency", outcome: "unknown", error: errorTypeOf(e) })
     return false
   }
 }
@@ -131,7 +133,7 @@ export async function pushToAgency(
       result.line = await sendLine(ag.notify_line_user_id as string, en ? input.textEn : input.textJa)
     }
   } catch (e) {
-    console.error("[agency-push] unexpected:", e instanceof Error ? e.message : e)
+    safeLog({ kind: "agency_push", source: "agency-push.unexpected", outcome: "failed", error: errorTypeOf(e) })
   }
   return result
 }

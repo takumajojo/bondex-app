@@ -46,8 +46,8 @@ staging の環境変数（S2。値は staging だけのもの。本番の値は�
 | V1 | 個人パスキーでのログイン（Vercel の上） | staging の `/operator/login` でパスキー登録 → メールのコード（記録から読む）→ ログイン | `/operator/b2c` が開ける。共有パスワードでは `/operator/b2c` の操作が 403 |
 | V2 | B2C の個人情報の制限 | 試験の予約（ダミーの名前）を 1件作る → 共有パスワード・Bearer・個人パスキーで `/api/shipments`・`/api/operator/report?format=csv`・`/api/operator/today-todo`・`/api/shipments?search=<名前>` を呼ぶ | 共有パスワード・Bearer の応答の本文にダミーの名前が無い・検索で当たらない。個人パスキーでは出る。B2B の代表者名は全員に出る |
 | V3 | Stripe テストモードの Webhook | テストのカード（`4242…`・3D セキュア `4000 0027 6000 3184`）で登録 → 集荷の確認 → 30分後の請求 | Webhook の署名の確認が通る・請求が 1回だけ・DB と Stripe が 1対1 |
-| V4 | 決済の結果不明の運営への通知 | DB で試験の請求を `unknown` にする（staging だけ）→ `/api/b2c/cron/tick` を呼ぶ | `[mail-capture] … subject=【B2C 請求】要確認` が 1回。もう一度呼んでも出ない。状態を `on_hold` に変えると再び 1回。本文に名前・メール・秘密のリンクが無い。請求の行・Stripe の PaymentIntent が増えない |
-| V5 | 定期の処理の実行・停止の検知 | `/api/b2c/cron/tick` を呼ぶ → `cron_heartbeats` に記録。35分呼ばずに `/api/cron/heartbeat-check` を呼ぶ | 記録があり、35分後は 503 と `【監視】定期の処理が止まっている…` が 1回 |
+| V4 | 決済の結果不明の運営への通知 | DB で試験の請求を `unknown` にする（staging だけ）→ `/api/b2c/cron/tick` を呼ぶ | ログに `[safe-log]` の `"kind":"ops_alert_sandbox","source":"b2c.charge-watch"` が 1回（件名・本文はログに出ない。中身は運営の画面 /operator/b2c）。もう一度呼んでも出ない。状態を `on_hold` に変えると再び 1回。本文に名前・メール・秘密のリンクが無い。請求の行・Stripe の PaymentIntent が増えない |
+| V5 | 定期の処理の実行・停止の検知 | `/api/b2c/cron/tick` を呼ぶ → `cron_heartbeats` に記録。35分呼ばずに `/api/cron/heartbeat-check` を呼ぶ | 記録があり、35分後は 503 と、ログに `"source":"cron.heartbeat-check"` の通知が 1回 |
 | V6 | 未集荷の通知（G19） | 追跡を止めた状態（`TRACKING_SYNC_PAUSED=true`）で、集荷日を過ぎた試験の区間を作る → `/api/cron/pickup-watch` を呼ぶ | 区間ごとに 1回だけ通知。追跡を止めていても出る |
 | V7 | B2B と B2C の分離 | B2B の試験の予約（代理店のログイン）と B2C の予約を並べる | 代理店の画面に B2C は出ない。団体の割引が B2C の料金に効かない。B2B の課金の入口は B2C の区間を課金しない |
 

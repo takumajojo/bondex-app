@@ -10,6 +10,7 @@
  */
 
 import { sendMail, mailerConfigured, type MailAttachment } from "./mailer"
+import { safeLog, generateLogId } from "./safe-log"
 import { estimateBookingTotals, GROUP_DISCOUNT, type BookingAmount, type BookingType } from "./pricing"
 
 /**
@@ -348,9 +349,13 @@ export async function sendBookingRequestEmail(
   attachments?: MailAttachment[],
 ): Promise<{ sent: boolean; error?: string }> {
   const { subject, text, html } = renderBookingRequestEmail(input)
-  // 取りこぼし防止でログには必ず残す
-  console.error(`[agency-notify] ${subject} :: ${text.replace(/\n/g, " | ")}`)
-  if (!mailerConfigured()) return { sent: false, error: "mailer unset" }
+  // ログには件名・本文（旅行者の名前・ホテル・日付）を出さない（2026-11-06・lib/safe-log.ts）。
+  // 依頼の中身は送る前に DB（shipments・booking_requests）に保存済みなので、運営は予約の ID で運営の画面から確かめる
+  const logId = generateLogId()
+  if (!mailerConfigured()) {
+    safeLog({ kind: "agency_booking_request_mail", source: "agency.booking", id: logId, ref: input.bookingId, outcome: "failed", error: "config_missing" })
+    return { sent: false, error: "mailer unset" }
+  }
 
   const recipients: string[] = []
   if (input.agencyEmail) recipients.push(input.agencyEmail)
@@ -362,7 +367,18 @@ export async function sendBookingRequestEmail(
   for (const to of recipients) {
     const r = await sendMail({ to, subject, text, html, attachments, replyTo: "support@bondex.express" })
     if (r.sent) anySent = true
-    else errs.push(`${to}: ${r.error}`)
+    // 宛先のアドレスは出さない（代理店か運営かだけ）
+    else errs.push(`${to === input.agencyEmail ? "agency" : "ops"}: ${r.error}`)
   }
+  safeLog({
+    kind: "agency_booking_request_mail",
+    source: "agency.booking",
+    id: logId,
+    ref: input.bookingId,
+    outcome: anySent ? "ok" : "failed",
+    error: anySent ? (errs.length ? "partial" : undefined) : "unknown",
+    count: recipients.length,
+    sent: recipients.length - errs.length,
+  })
   return anySent ? { sent: true } : { sent: false, error: errs.join("; ") }
 }

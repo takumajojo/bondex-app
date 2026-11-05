@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
       const v = await loadMyBooking(body.token)
       if (r === "cancel_requested" && v) {
         await sendOpsAlert({
+          source: "b2c.guest-cancel-requested",
+          refs: [`order-${v.orderNumber}`],
           subject: `【B2C 取消申請・集荷依頼済み】受付番号 ${v.orderNumber}（集荷 ${v.pickupDate}）`,
           lines: [
             `集荷元: ${v.origin.name}`, `配送先: ${v.dest.name}`,
@@ -53,6 +55,8 @@ export async function POST(req: NextRequest) {
       const s = b2cStripeConfig()
       if (s.ok && o?.stripe_payment_method_id) await s.config.stripe.paymentMethods.detach(o.stripe_payment_method_id as string).catch(() => undefined)
       await sendOpsAlert({
+        source: "b2c.guest-cancel",
+        refs: [`order-${v.orderNumber}`],
         subject: `【B2C 旅行者の取消】受付番号 ${v.orderNumber}（集荷 ${v.pickupDate}）`,
         lines: [`集荷元: ${v.origin.name}`, `配送先: ${v.dest.name}`, "→ ホテル・佐川に連絡済みなら取消を連絡してください。請求は発生しません。"],
         agencyEmail: null,
