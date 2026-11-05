@@ -84,6 +84,33 @@ export async function removeAgencyEmail(
   return { ok: true }
 }
 
+/**
+ * 主メール(contact_email)を変更する(運営専用の想定)。
+ *  - 主メールは通知の主宛先であり請求書の宛先でもあるため、変更すると宛先が切り替わる。
+ *  - 旧主メールは宛先から外れる(追加には自動で残さない)。必要なら呼び出し側で addAgencyEmail する。
+ *  - 新主メールが「追加」に登録済みなら重複解消のため削除する。
+ *  - ログインは user_agencies 側なので本変更の影響を受けない。
+ */
+export async function setAgencyPrimaryEmail(
+  sb: SupabaseClient,
+  agencyId: string,
+  emailRaw: string,
+): Promise<{ ok: boolean; error?: string; unchanged?: boolean }> {
+  const email = normalizeEmail(emailRaw)
+  if (!isValidEmail(email)) return { ok: false, error: "メールアドレスの形式が正しくありません" }
+
+  const { data: ag, error: agErr } = await sb.from("agencies").select("contact_email").eq("id", agencyId).maybeSingle()
+  if (agErr) return { ok: false, error: agErr.message }
+  const current = normalizeEmail((ag?.contact_email as string | null) ?? "")
+  if (current === email) return { ok: true, unchanged: true }
+
+  const { error: upErr } = await sb.from("agencies").update({ contact_email: email }).eq("id", agencyId)
+  if (upErr) return { ok: false, error: upErr.message }
+  // 新主メールが追加側に二重で残らないよう削除(追加メールは normalizeEmail 済みの小文字保存)。
+  await sb.from("agency_emails").delete().eq("agency_id", agencyId).eq("email", email)
+  return { ok: true }
+}
+
 /** 通知の宛先(主+追加)を重複排除して返す。agency 名から解決。無ければ空配列。 */
 export async function agencyRecipientEmails(sb: SupabaseClient, agencyName: string | null | undefined): Promise<string[]> {
   const name = (agencyName ?? "").trim()

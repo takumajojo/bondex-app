@@ -40,7 +40,7 @@ export default function OperatorAgencyContactsPage() {
         <ArrowLeft className="h-4 w-4" /> 代理店一覧へ戻る
       </Link>
       <h1 className="text-xl font-bold text-gray-900">代理店の連絡先・ユーザー管理</h1>
-      <p className="mt-1 text-sm text-gray-500">通知メールの追加宛先と、ポータルにログインできるユーザーを管理します。</p>
+      <p className="mt-1 text-sm text-gray-500">主メール・通知メールの追加宛先と、ポータルにログインできるユーザーを管理します。</p>
 
       {error && <div className="mt-4 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{error}</div>}
 
@@ -62,7 +62,7 @@ export default function OperatorAgencyContactsPage() {
       {selected && (
         <div className="mt-8 rounded-lg border border-gray-200 p-5">
           <div className="text-sm font-semibold text-gray-900 mb-4">{selectedName}</div>
-          <AgencyContactsPanel key={selected} apiBase={`/api/operator/agencies/${selected}/contacts`} />
+          <AgencyContactsPanel key={selected} apiBase={`/api/operator/agencies/${selected}/contacts`} allowPrimaryEdit />
         </div>
       )}
     </div>
