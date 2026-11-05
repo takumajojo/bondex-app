@@ -10,7 +10,7 @@
 //      通知の基盤の方針と同じ。記録は console.error と戻り値の unknown）
 // 条件（今までの追跡の定時処理と同じ・変えていない）:
 //   - 状態が requested・pending・issued（集荷の前）の区間。取消（cancelled）・集荷の後は対象外
-//   - 集荷日が今日（日本時間）より前なら、時刻に関わらず対象
+//   - 集荷日が今日（日本時間）より前なら、時刻に関わらず対象（ただし PICKUP_MISS_LOOKBACK_DAYS 日より前は対象外）
 //   - 集荷日が今日なら、日本時間 18:00 以降だけ対象（集荷は日中に来るため）
 //   - 宛先: 運営（ops-alert）＋代理店の主メール（あれば。英語の代理店には英語の文）。旅行者の予約（B2C・代理店名 BondEx Direct）は代理店が無いので運営だけ
 // 課金には関わらない（B2C の請求は運営の集荷の確認の後にしか作られない）。
@@ -21,6 +21,12 @@ import { endpointLabel } from "@/lib/residence"
 const JST_MS = 9 * 3600 * 1000
 export const PICKUP_MISS_SAME_DAY_FROM_HOUR_JST = 18
 export const PICKUP_MISS_STATUSES = ["requested", "pending", "issued"] as const
+/**
+ * さかのぼる日数（2026-11-06 監査）。集荷日がこれより古い区間は通知しない。
+ * 追跡の一時停止の間に集荷前のまま残った古い区間（実際は配達済みのものを含む）に、初回の実行で一斉に
+ * 運営と代理店の主メールへ「集荷漏れの可能性」を送らないため。古い区間は運営の画面で確かめる。
+ */
+export const PICKUP_MISS_LOOKBACK_DAYS = 3
 
 interface MissRow {
   id: string
@@ -62,11 +68,13 @@ export async function alertPickupMisses(
   now: Date = new Date(),
 ): Promise<PickupMissResult> {
   const today = new Date(now.getTime() + JST_MS).toISOString().slice(0, 10)
+  const since = new Date(Date.parse(`${today}T00:00:00Z`) - PICKUP_MISS_LOOKBACK_DAYS * 86400_000).toISOString().slice(0, 10)
   const { data, error } = await sb
     .from("shipments")
     .select("id, booking_id, leg_index, agency, representative, recipient, shipment_date, status, from_hotel, from_residence, to_hotel, to_residence, tracking_numbers")
     .in("status", [...PICKUP_MISS_STATUSES])
     .lte("shipment_date", today)
+    .gte("shipment_date", since)
     .is("pickup_alert_sent_at", null)
     .limit(500)
   if (error) throw new Error(`未集荷の対象の読み込みに失敗: ${error.message}`)

@@ -51,7 +51,15 @@ export async function loadB2cTodo(now: Date = new Date()) {
     .limit(300)
   const dueIds = (due ?? []).map((o) => o.id as string)
   const { data: ships } = dueIds.length ? await sb.from("shipments").select("b2c_order_id, status").in("b2c_order_id", dueIds) : { data: [] }
-  const pre = new Set((ships ?? []).filter((s) => ["requested", "pending", "issued"].includes(s.status as string)).map((s) => s.b2c_order_id as string))
+  // 集荷の確認待ち: 集荷の前の区間に加え、追跡の同期が先に集荷済み以降に進めた区間（sql/082 で確認できる）も、
+  // 基本料金の請求の行がまだ無い（または取り消した）予約は一覧に出す（出さないと請求されないまま埋もれる）
+  const { data: basePays } = dueIds.length ? await sb.from("b2c_payments").select("order_id, status").eq("kind", "base").in("order_id", dueIds) : { data: [] }
+  const billed = new Set((basePays ?? []).filter((p) => p.status !== "cancelled").map((p) => p.order_id as string))
+  const pre = new Set(
+    (ships ?? [])
+      .filter((s) => ["requested", "pending", "issued", "picked_up", "in_transit", "delivered"].includes(s.status as string) && !billed.has(s.b2c_order_id as string))
+      .map((s) => s.b2c_order_id as string),
+  )
   const { data: awaiting } = await sb.from("b2c_orders").select("order_number, confirmation_due_at, confirmation_mode").eq("status", "awaiting_hotel_confirmation").order("confirmation_due_at").limit(100)
 
   const ids = [...new Set((pays ?? []).map((p) => p.order_id as string))]

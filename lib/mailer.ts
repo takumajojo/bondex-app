@@ -45,13 +45,19 @@ const isStaging = () => process.env.BONDEX_ENV === "staging"
 export function stagingInternalRecipients(): string[] {
   return (process.env.OPERATOR_EMAILS ?? "")
     .split(",")
-    .map((e) => e.trim().toLowerCase())
+    .map((e) => e.trim())
+    .filter((e) => PRINTABLE_ASCII.test(e))
+    .map((e) => e.toLowerCase())
     .filter((e) => /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/.test(e))
 }
 
+/** 印字できる ASCII だけ（toLowerCase で ASCII に化ける文字（ケルビン記号 K → k 等）で一覧の宛先に見せかけさせない。2026-11-06 監査） */
+const PRINTABLE_ASCII = /^[\x21-\x7e]+$/
+
 function recipientsOf(opts: { to: string; bcc?: string | string[] }): string[] {
   const bcc = opts.bcc ? (Array.isArray(opts.bcc) ? opts.bcc : [opts.bcc]) : []
-  return [...opts.to.split(","), ...bcc].map((e) => e.trim().toLowerCase()).filter(Boolean)
+  // ASCII でない宛先は小文字にする前に印を付けて、一覧と一致させない（送らない側に倒す）
+  return [...opts.to.split(","), ...bcc].map((e) => e.trim()).filter(Boolean).map((e) => (PRINTABLE_ASCII.test(e) ? e.toLowerCase() : `\u0000non-ascii:${e}`))
 }
 
 /** staging で、このメールを実際に送ってよいか（宛先が 1つでも社内の一覧に無ければ送らない） */
