@@ -13,13 +13,16 @@
  *   - 番号入力時の即時照会（lib/tracking/reconcile）
  * をスキップする。
  *
- * 佐川の追跡は 2026-10-24 に復旧（谷口さんへのヒアリング）。既定を再開（false）に戻した。
- * 再度停止が必要になったら、環境変数 TRACKING_SYNC_PAUSED=true を設定する（env が優先）か、
- * このファイルの既定を true に戻す（コード変更＋再デプロイ）。
+ * 佐川の追跡は 2026-10-24 に復旧し #83 で再開（既定 false）したが、再開後に 15分毎 cron が
+ * 同一番号を照会し続け、Ship&co の「追跡番号あたり 15 回」の上限（429 TRACKING_LIMIT_EXCEEDED）
+ * を超過した（2026-10-26 診断モードで確定）。恒久対策（照会頻度の適正化・429 の記録/表示・
+ * 番号ごとの照会回数管理）が入るまで、既定を再び停止（true）に戻し、自動照会で上限を
+ * 使い切るのを止める。
+ * 再開時は 環境変数 TRACKING_SYNC_PAUSED=false を設定する（env が優先）か、既定を false に戻す。
  *
  * ※ app/api/operator/track-test（手動の追跡テスト）は、停止対象から除外している（復旧確認用）。
  */
 export const TRACKING_SYNC_PAUSED: boolean =
   process.env.TRACKING_SYNC_PAUSED != null
     ? process.env.TRACKING_SYNC_PAUSED.toLowerCase() === "true"
-    : false
+    : true
