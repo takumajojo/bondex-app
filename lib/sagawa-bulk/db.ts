@@ -8,12 +8,18 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import {
   computeBulkGroups,
   snapshotOf,
+  classifyChange,
+  urgencyOf,
   type BulkLeg,
   type BulkGroupComputed,
   type BulkSnapshot,
+  type BulkUrgency,
+  type NotifyKind,
 } from "./core"
 import { planReconcile, type ExistingGroup, type GroupPlan } from "./reconcile"
 import { canClaimNotify, notifyKeyHash, NOTIFY_LEASE_MS, type NotifyRow } from "./notify"
+import { sagawaBulkAlertEnabled, sagawaBulkEmailEnabled } from "./flag"
+import { opsRecipients } from "@/lib/ops-recipients"
 
 const ACTIVE_EXCLUDE = ["cancelled", "picked_up", "in_transit", "delivered"]
 
@@ -184,6 +190,89 @@ export async function recomputeSafe(sb: SupabaseClient, todayYmd: string): Promi
     await recomputeBulkPickups(sb, todayYmd)
   } catch (e) {
     console.error("[sagawa-bulk] recomputeSafe failed (ignored):", e instanceof Error ? e.message : e)
+  }
+}
+
+export interface BulkDryRunGroup {
+  hotel_key: string
+  pickup_date: string
+  hotel_label: string
+  confident: boolean
+  total_pieces: number
+  booking_count: number
+  leg_count: number
+  agency_count: number
+  is_bulk: boolean
+  is_duplicate: boolean
+  urgency: BulkUrgency
+  /** もしメール送信が ON なら送られる種別と理由 (null = 送信対象外 = 重複のみ等)。 */
+  would_notify: { kind: NotifyKind; reason: "initial" | "change" } | null
+}
+
+export interface BulkDryRun {
+  today: string
+  alert_enabled: boolean        // SAGAWA_BULK_ALERT_ENABLED
+  email_enabled: boolean        // SAGAWA_BULK_ALERT_ENABLED && SAGAWA_BULK_EMAIL_ENABLED
+  recipients_count: number      // opsRecipients().length (実アドレスは返さない)
+  recipients_present: boolean   // 宛先が1件以上設定されているか
+  groups_total: number
+  bulk_count: number            // 大口 (20個以上)
+  duplicate_count: number       // 同一ホテル同日の重複 (予約2件以上)
+  both_count: number            // 大口かつ重複
+  initial_notify_candidates: number   // 初回通知候補 (大口・未連絡)
+  rechange_notify_candidates: number  // 再通知候補 (連絡済み後に material 変更)
+  groups: BulkDryRunGroup[]
+}
+
+/**
+ * ドライラン: 現在の shipments から大口/重複を再計算し「もし送るなら」の候補を返す。
+ * 一切 DB に書き込まない (再集計・status・メンバー・送信済みフラグ notify_* / 通知 claim を変更しない)。メールも送らない。
+ * 送信先は件数と有無のみ返し、実アドレスは返さない。flag チェックは呼び出し側で行う前提 (関数自体は read 専用)。
+ */
+export async function dryRunBulkAlert(sb: SupabaseClient, todayYmd: string): Promise<BulkDryRun> {
+  const legs = await loadActiveLegs(sb, todayYmd)
+  const computed = computeBulkGroups(legs, todayYmd)
+  const existing = await loadExistingGroups(sb)
+  const byKey = new Map(existing.map((e) => [`${e.hotel_key}@${e.pickup_date}`, e]))
+
+  let bulk = 0, dup = 0, both = 0, initial = 0, rechange = 0
+  const groups: BulkDryRunGroup[] = computed.map((g) => {
+    const ex = byKey.get(`${g.hotel_key}@${g.pickup_date}`)
+    const urgency = urgencyOf(g.pickup_date, todayYmd)
+    let would: { kind: NotifyKind; reason: "initial" | "change" } | null = null
+    if (g.is_bulk) {
+      bulk++
+      const alreadyNotified = Boolean(ex && ex.status === "notified" && ex.notified_snapshot)
+      if (!alreadyNotified) {
+        const kind: NotifyKind =
+          urgency === "today" || urgency === "overdue" ? "day" : urgency === "tomorrow" ? "eve" : "initial"
+        would = { kind, reason: "initial" }
+        initial++
+      } else {
+        const ch = classifyChange(ex!.notified_snapshot as BulkSnapshot, g)
+        if (ch.material) { would = { kind: "change", reason: "change" }; rechange++ }
+      }
+    }
+    if (g.is_duplicate) dup++
+    if (g.is_bulk && g.is_duplicate) both++
+    return {
+      hotel_key: g.hotel_key, pickup_date: g.pickup_date, hotel_label: g.hotel_label, confident: g.confident,
+      total_pieces: g.total_pieces, booking_count: g.booking_count, leg_count: g.leg_count, agency_count: g.agency_count,
+      is_bulk: g.is_bulk, is_duplicate: g.is_duplicate, urgency, would_notify: would,
+    }
+  })
+
+  const recips = opsRecipients()
+  return {
+    today: todayYmd,
+    alert_enabled: sagawaBulkAlertEnabled(),
+    email_enabled: sagawaBulkEmailEnabled(),
+    recipients_count: recips.length,
+    recipients_present: recips.length > 0,
+    groups_total: computed.length,
+    bulk_count: bulk, duplicate_count: dup, both_count: both,
+    initial_notify_candidates: initial, rechange_notify_candidates: rechange,
+    groups,
   }
 }
 

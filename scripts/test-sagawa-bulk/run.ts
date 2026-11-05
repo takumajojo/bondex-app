@@ -21,6 +21,9 @@ import {
 } from "@/lib/sagawa-bulk/core"
 import { planReconcile, type ExistingGroup } from "@/lib/sagawa-bulk/reconcile"
 import { canClaimNotify, notifyKeyHash, NOTIFY_LEASE_MS, type NotifyRow } from "@/lib/sagawa-bulk/notify"
+import { sagawaBulkAlertEnabled, sagawaBulkEmailEnabled } from "@/lib/sagawa-bulk/flag"
+import { dryRunBulkAlert } from "@/lib/sagawa-bulk/db"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 // 条件付き UPDATE (claimBulkNotify の .or() フィルタ) を忠実に模す in-memory 1行モデル。
 // DB はこの判定をアトミック(直列)に行うため、canClaimNotify が true の時だけ claim が成立する。
@@ -61,7 +64,63 @@ const leg = (o: Partial<BulkLeg>): BulkLeg => ({
 })
 const groupByDate = (gs: BulkGroupComputed[], date = FUTURE) => gs.filter((g) => g.pickup_date === date)
 
-const tests: Array<[string, () => void]> = [
+// env を一時的に差し替えて関数を実行し、必ず元に戻す (フラグ判定テスト用)。
+function withEnv(vars: Record<string, string | undefined>, fn: () => void): void {
+  const prev: Record<string, string | undefined> = {}
+  for (const k of Object.keys(vars)) {
+    prev[k] = process.env[k]
+    if (vars[k] === undefined) delete process.env[k]
+    else process.env[k] = vars[k]
+  }
+  try { fn() } finally {
+    for (const k of Object.keys(vars)) {
+      if (prev[k] === undefined) delete process.env[k]
+      else process.env[k] = prev[k]
+    }
+  }
+}
+
+async function withEnvAsync(vars: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
+  const prev: Record<string, string | undefined> = {}
+  for (const k of Object.keys(vars)) {
+    prev[k] = process.env[k]
+    if (vars[k] === undefined) delete process.env[k]
+    else process.env[k] = vars[k]
+  }
+  try { await fn() } finally {
+    for (const k of Object.keys(vars)) {
+      if (prev[k] === undefined) delete process.env[k]
+      else process.env[k] = prev[k]
+    }
+  }
+}
+
+// dryRunBulkAlert が読む2テーブルだけを返す最小 fake。write 系 (insert/update/upsert/delete) が
+// 呼ばれたら throw = 「ドライランは一切書き込まない」ことをテストで保証する。
+function fakeSb(tables: Record<string, Record<string, unknown>[]>, onWrite: () => void): SupabaseClient {
+  const builder = (rows: Record<string, unknown>[]) => {
+    const q: Record<string, unknown> = {}
+    for (const m of ["select", "not", "gte", "in", "is", "neq", "eq", "order"]) q[m] = () => q
+    for (const w of ["insert", "update", "upsert", "delete"]) q[w] = () => { onWrite(); throw new Error(`dry-run は書き込み禁止: ${w}`) }
+    q.maybeSingle = () => Promise.resolve({ data: rows[0] ?? null, error: null })
+    q.single = () => Promise.resolve({ data: rows[0] ?? null, error: null })
+    q.then = (resolve: (v: { data: unknown; error: null }) => unknown, reject?: (e: unknown) => unknown) =>
+      Promise.resolve({ data: rows, error: null }).then(resolve, reject)
+    return q
+  }
+  return { from: (t: string) => builder(tables[t] ?? []) } as unknown as SupabaseClient
+}
+
+// shipments 行 (LEG_COLS 準拠)。dryRun は loadActiveLegs の status/日付フィルタを SQL 側ではなく
+// fake が素通しするため、ここでは computeBulkGroups が対象化する行だけを渡す。
+const shipRow = (o: Record<string, unknown>): Record<string, unknown> => ({
+  id: "s1", booking_id: "BDX-A", leg_index: 0, agency: "Ag1", status: "issued",
+  booking_type: "fit", suitcase_count: 1, shipment_date: FUTURE, pickup_time: null,
+  from_place_id: "PID1", from_hotel: "Hotel A", from_hotel_ja: "ホテルA",
+  from_prefecture: "東京都", from_city: "千代田区", from_residence: null, carrier: "sagawa", ...o,
+})
+
+const tests: Array<[string, () => void | Promise<void>]> = [
   // ── ホテルキー解決 (D3) ──
   ["resolveHotelKey: place_id ありは confident な pid キー", () => {
     const r = resolveHotelKey(leg({ from_place_id: "PID9" }))
@@ -429,12 +488,88 @@ const tests: Array<[string, () => void]> = [
     assert.equal(row.tryClaim(kh, t0 + NOTIFY_LEASE_MS + 1, "o3"), true) // lease切れ後は再claim可
     // ※実際の再送は同一 Resend Idempotency-Key のため Resend 側で重複排除される (SMTPフォールバック時を除く=残存制約)。
   }],
+
+  // ── 通知制御の2段階フラグ (検知 / メール送信) ──
+  ["フラグ分離: メール送信は検知ON かつ メールON の両方成立時のみ (既定OFF・検知のみONでは送らない)", () => {
+    withEnv({ SAGAWA_BULK_ALERT_ENABLED: undefined, SAGAWA_BULK_EMAIL_ENABLED: undefined }, () => {
+      assert.equal(sagawaBulkAlertEnabled(), false)
+      assert.equal(sagawaBulkEmailEnabled(), false)
+    })
+    withEnv({ SAGAWA_BULK_ALERT_ENABLED: "true", SAGAWA_BULK_EMAIL_ENABLED: undefined }, () => {
+      assert.equal(sagawaBulkAlertEnabled(), true)
+      assert.equal(sagawaBulkEmailEnabled(), false) // 検知のみON → メール不可
+    })
+    withEnv({ SAGAWA_BULK_ALERT_ENABLED: "true", SAGAWA_BULK_EMAIL_ENABLED: "true" }, () => {
+      assert.equal(sagawaBulkEmailEnabled(), true) // 両方ON → 送信可
+    })
+    withEnv({ SAGAWA_BULK_ALERT_ENABLED: "false", SAGAWA_BULK_EMAIL_ENABLED: "true" }, () => {
+      assert.equal(sagawaBulkEmailEnabled(), false) // 検知OFF ならメールもOFF
+    })
+  }],
+
+  // ── ドライラン (メール送信せず・DB書込せず候補を返す) ──
+  ["dryRun: 大口かつ重複を計数・初回通知候補を算出・一切書き込まない", async () => {
+    let wrote = false
+    const sb = fakeSb({
+      shipments: [
+        shipRow({ id: "s1", booking_id: "BDX-A", suitcase_count: 13 }),
+        shipRow({ id: "s2", booking_id: "BDX-B", suitcase_count: 12 }),
+      ],
+      sagawa_bulk_pickups: [],
+      sagawa_bulk_pickup_members: [],
+    }, () => { wrote = true })
+    const r = await dryRunBulkAlert(sb, TODAY)
+    assert.equal(wrote, false) // 書き込みゼロ
+    assert.equal(r.groups_total, 1)
+    assert.equal(r.bulk_count, 1)
+    assert.equal(r.duplicate_count, 1)
+    assert.equal(r.both_count, 1)
+    assert.equal(r.initial_notify_candidates, 1)
+    assert.equal(r.rechange_notify_candidates, 0)
+    assert.equal(r.groups[0].would_notify?.reason, "initial")
+  }],
+  ["dryRun: 連絡済み後に material 変更 → 再通知候補 (初回ではなく change)・書き込みなし", async () => {
+    const g20 = computeBulkGroups([leg({ shipment_id: "s1", suitcase_count: 20 })], TODAY)[0]
+    let wrote = false
+    const sb = fakeSb({
+      shipments: [shipRow({ id: "s1", booking_id: "BDX-A", suitcase_count: 30 })], // 20→30 (増加=material)
+      sagawa_bulk_pickups: [{
+        id: "G1", hotel_key: g20.hotel_key, pickup_date: g20.pickup_date, status: "notified",
+        member_hash: g20.member_hash, total_pieces: 20, notified_snapshot: snapshotOf(g20),
+      }],
+      sagawa_bulk_pickup_members: [],
+    }, () => { wrote = true })
+    const r = await dryRunBulkAlert(sb, TODAY)
+    assert.equal(wrote, false)
+    assert.equal(r.bulk_count, 1)
+    assert.equal(r.initial_notify_candidates, 0)
+    assert.equal(r.rechange_notify_candidates, 1)
+    assert.equal(r.groups[0].would_notify?.reason, "change")
+  }],
+  ["dryRun: 宛先件数は opsRecipients を反映 (ALERT_EMAIL 有無)・実アドレスは返さない / email_enabled はフラグ連動", async () => {
+    const sb = fakeSb({ shipments: [], sagawa_bulk_pickups: [], sagawa_bulk_pickup_members: [] }, () => {})
+    await withEnvAsync({ ALERT_EMAIL: undefined, SAGAWA_BULK_ALERT_ENABLED: "true", SAGAWA_BULK_EMAIL_ENABLED: undefined }, async () => {
+      const r = await dryRunBulkAlert(sb, TODAY)
+      assert.equal(r.recipients_count, 1)       // support@ のみ
+      assert.equal(r.recipients_present, true)
+      assert.equal(r.alert_enabled, true)
+      assert.equal(r.email_enabled, false)      // 検知のみON
+      assert.ok(!("recipients" in r))           // 実アドレスのフィールドは返さない
+    })
+    await withEnvAsync({ ALERT_EMAIL: "ops@example.com", SAGAWA_BULK_ALERT_ENABLED: "true", SAGAWA_BULK_EMAIL_ENABLED: "true" }, async () => {
+      const r = await dryRunBulkAlert(sb, TODAY)
+      assert.equal(r.recipients_count, 2)       // ALERT_EMAIL + support@
+      assert.equal(r.email_enabled, true)       // 両方ON
+    })
+  }],
 ]
 
-let failed = 0
-for (const [name, fn] of tests) {
-  try { fn(); console.log(`ok   ${name}`) }
-  catch (e) { failed++; console.log(`FAIL ${name}\n     ${e instanceof Error ? e.message : e}`) }
-}
-console.log(`\n${tests.length - failed}/${tests.length} passed`)
-process.exit(failed ? 1 : 0)
+;(async () => {
+  let failed = 0
+  for (const [name, fn] of tests) {
+    try { await fn(); console.log(`ok   ${name}`) }
+    catch (e) { failed++; console.log(`FAIL ${name}\n     ${e instanceof Error ? e.message : e}`) }
+  }
+  console.log(`\n${tests.length - failed}/${tests.length} passed`)
+  process.exit(failed ? 1 : 0)
+})()

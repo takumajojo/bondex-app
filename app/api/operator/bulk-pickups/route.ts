@@ -6,6 +6,7 @@ import {
   listBulkPickups,
   markBulkNotified,
   undoBulkNotified,
+  dryRunBulkAlert,
 } from "@/lib/sagawa-bulk/db"
 import { urgencyOf } from "@/lib/sagawa-bulk/core"
 
@@ -29,6 +30,13 @@ export async function GET(req: NextRequest) {
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ enabled, groups: [] })
   const today = todayJstYmd()
+
+  // ドライラン: メールを送らず・送信済みフラグ/claim を変更せず、候補と宛先設定状況を返す (read 専用)。
+  if (req.nextUrl.searchParams.get("preview") === "1") {
+    const preview = await dryRunBulkAlert(sb, today)
+    return NextResponse.json({ enabled, preview })
+  }
+
   const id = req.nextUrl.searchParams.get("id")
 
   if (id) {
