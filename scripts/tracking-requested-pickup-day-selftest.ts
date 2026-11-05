@@ -20,6 +20,7 @@ import type { TrackingProvider, TrackingResult } from "../lib/tracking/types"
 
 type Row = Record<string, unknown>
 type Store = { shipments: Row[]; agencies: Row[]; agency_emails: Row[] }
+const AGENCY_EMAIL = "ops@test.example"
 
 function match(rows: Row[], filters: Array<[string, string, unknown]>): Row[] {
   return rows.filter((r) =>
@@ -135,11 +136,16 @@ async function main() {
     await reconcileTrackingNow(sb, "s1", prov("picked_up", { collectedAt: "2026-11-07T03:10:00Z" }))
     check(`[${startStatus}] 集荷を検知 → picked_up`, S().status === "picked_up", `status=${S().status}`)
     check(`[${startStatus}] picked_up_at に佐川の集荷時刻`, S().picked_up_at === "2026-11-07T03:10:00Z")
-    check(`[${startStatus}] 代理店へ集荷メール1通`, caps().length === 1 && /集荷|picked/i.test(String(caps()[0]?.subject ?? "")), JSON.stringify(caps().map((c) => c.subject)))
+    // 代理店宛てだけを数える。社内への通知（lib/notify.ts の support@・ALERT_EMAIL 宛ての「集荷完了」）は本番でも送るので、別に確かめる
+    // （2026-11-06: MAIL_TEST_CAPTURE=1 を「送れる」と扱うようにした後〔lib/mailer.ts mailerConfigured〕、試験でも社内への通知が記録されるようになった）
+    const toAgency = () => caps().filter((c) => c.to === AGENCY_EMAIL)
+    const toOthers = () => caps().filter((c) => c.to !== AGENCY_EMAIL)
+    check(`[${startStatus}] 代理店へ集荷メール1通`, toAgency().length === 1 && /集荷|picked/i.test(String(toAgency()[0]?.subject ?? "")), JSON.stringify(caps().map((c) => c.subject)))
+    check(`[${startStatus}] 社内への集荷完了の通知は社内の宛先だけ（代理店には 1通だけ）`, toOthers().length >= 1 && toOthers().every((c) => /集荷完了/.test(String(c.subject ?? ""))), JSON.stringify(toOthers().map((c) => c.subject)))
 
     resetCaps()
     await reconcileTrackingNow(sb, "s1", prov("delivered", { deliveredAt: "2026-11-08T05:00:00Z" }))
-    check(`[${startStatus}] 配達完了 → delivered・完了メール1通・冪等キー`, S().status === "delivered" && caps().length === 1 && String(caps()[0]?.idempotencyKey ?? "").startsWith("delivered-BDX-PUDAY-L1"))
+    check(`[${startStatus}] 配達完了 → delivered・完了メール1通・冪等キー`, S().status === "delivered" && toAgency().length === 1 && String(toAgency()[0]?.idempotencyKey ?? "").startsWith("delivered-BDX-PUDAY-L1"), JSON.stringify(caps().map((c) => [c.to === AGENCY_EMAIL ? "agency" : "internal", c.subject])))
     check(`[${startStatus}] delivered_at・delivered_notified_at を記録`, S().delivered_at === "2026-11-08T05:00:00Z" && S().delivered_notified_at != null)
   }
 
