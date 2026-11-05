@@ -54,10 +54,15 @@ export interface PickupShipmentRow {
   to_prefecture?: string | null
   /** 'b2b' | 'b2c' (sql/061)。 */
   channel?: string | null
+  /**
+   * 「集荷手配 (佐川) 済み」の印 (sql/038)。sql/067 の後は依頼の記録と一緒にしか付かないが、移行中の古いアプリ・
+   * 直接の書き込みでは記録なしで付く。印があって記録が無い区間は Excel で依頼済みの可能性があるので送らない (2026-11-06 監査)。
+   */
+  pickup_requested_at?: string | null
 }
 
 export const PICKUP_SHIPMENT_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out, from_prefecture, to_prefecture, origin_check_out, channel"
+  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out, from_prefecture, to_prefecture, origin_check_out, channel, pickup_requested_at"
 
 export interface LegInputEnv {
   kokyakuCode: string

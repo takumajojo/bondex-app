@@ -38,6 +38,9 @@ const mock = {
   dupCode: "E1-0002",
   /** 発行依頼の直前に差し込む処理 (送信中の変更の再現) */
   beforeIssue: null as null | (() => Promise<void>),
+  /** 監査 (2026-11-06): 発行依頼・確認機能の応答を差し替える (HTTP 500・429・接続拒否・壊れた XML など)。null なら通常どおり */
+  issueResponder: null as null | ((body: string) => Promise<Response> | Response),
+  checkResponder: null as null | ((body: string) => Promise<Response> | Response),
 }
 const tag = (xml: string, t: string) => new RegExp(`<${t}>([^<]*)</${t}>`).exec(xml)?.[1] ?? ""
 function shippingXml(body: string, opts: { ok: boolean; number?: string | null; prid?: string | null; codes?: string[] }) {
@@ -59,6 +62,11 @@ const PLACES: Record<string, { name: string; formatted_address: string; internat
   // 配送日数 2日の組 (札幌)・日数が表に無い組 (函館)
   "p-far": { name: "テストホテル札幌", formatted_address: "日本、〒060-0001 北海道札幌市中央区北一条西2丁目1番地", international_phone_number: "+81 11-111-2222" },
   "p-unk": { name: "テストホテル函館", formatted_address: "日本、〒040-0001 北海道函館市五稜郭町1番1号", international_phone_number: "+81 138-11-2222" },
+  // 監査 (2026-11-06): 番地の無い住所・記号と全角を含む名称と住所・京都の通り名・同じ県の別のホテル (同名の別の支店の代わり)
+  "p-nostreet": { name: "テストホテル番地なし", formatted_address: "日本、〒160-0023 東京都新宿区", international_phone_number: "+81 3-1111-5555" },
+  "p-special": { name: "ホテル&スパ<東京>\"新宿\"", formatted_address: "日本、〒160-0023 東京都新宿区西新宿２丁目２−１\n", international_phone_number: "+81 3-1111-6666" },
+  "p-kyoto-route": { name: "テストホテル烏丸", formatted_address: "日本、〒600-8216 京都府京都市下京区烏丸通塩小路下る東塩小路町721-1", international_phone_number: "+81 75-333-5555" },
+  "p-branch2": { name: "テストホテル東京 新宿南口", formatted_address: "日本、〒160-0023 東京都新宿区西新宿1丁目1番1号", international_phone_number: "+81 3-2222-1111" },
 }
 const realFetch = globalThis.fetch
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -70,6 +78,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       if (mock.beforeIssue) await mock.beforeIssue()
       mock.issues++
       mock.lastIssueXml = body
+      if (mock.issueResponder) return mock.issueResponder(body)
       if (mock.mode === "issue-network-error") throw new TypeError("fetch failed (模擬: 通信断)")
       if (mock.mode === "issue-error-code") return new Response(shippingXml(body, { ok: false, codes: ["E2-0004"] }))
       if (mock.mode === "issue-no-number") return new Response(shippingXml(body, { ok: true, prid: `P-${mock.issues}`, number: null }))
@@ -86,6 +95,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     }
     mock.checks++
     mock.lastCheckXml = body
+    if (mock.checkResponder) return mock.checkResponder(body)
     if (mock.mode === "check-network-error") {
       const e = new Error("This operation was aborted")
       e.name = "AbortError"
@@ -133,7 +143,7 @@ async function test(name: string, fn: () => Promise<void>) {
 const jst = (offset: number) => new Date(Date.now() + 9 * 3600 * 1000 + offset * 86_400_000).toISOString().slice(0, 10)
 let legSeq = 0
 /** 架空の場所の都道府県 (上の PLACES の住所と同じ)。 */
-const PLACE_PREF: Record<string, string> = { "p-from": "東京都", "p-to": "京都府", "p-to2": "大阪府", "p-bldg": "東京都", "p-long": "東京都", "p-far": "北海道", "p-unk": "北海道" }
+const PLACE_PREF: Record<string, string> = { "p-from": "東京都", "p-to": "京都府", "p-to2": "大阪府", "p-bldg": "東京都", "p-long": "東京都", "p-far": "北海道", "p-unk": "北海道", "p-nostreet": "東京都", "p-special": "東京都", "p-kyoto-route": "京都府", "p-branch2": "東京都" }
 
 async function newLeg(over: Record<string, unknown> = {}): Promise<string> {
   legSeq++
@@ -1763,6 +1773,354 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const src = pv.body.sources as Record<string, Record<string, unknown>>
     assert.equal(src.origin.placeName, "テストホテル東京")
     assert.match(String(src.destination.placeAddress), /東塩小路町901/)
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 監査 2026-11-06 (集荷依頼の経路の本番前監査・audit/pickup-1106)。
+  // 「未対策」と書いた試験は、今の (危ない) 振る舞いを記録するもの。直したら期待値を反転させる。
+  console.log("A1. 監査: 送信前のデータの整合 (入れ替え・別のホテル・住所の欠け・記号・京都・長い名前・確認後の変更)")
+  const sendWith = (id: string, fingerprint: unknown, extra: Record<string, unknown> = {}) =>
+    call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: id, fingerprint, actor: "谷口", confirmNoManual: true, ...extra })
+  await test("監査 A1-1 発送元と到着先の入れ替え: 予約の都道府県が元のままなら、都道府県の照合で止まる", async () => {
+    const i0 = mock.issues
+    const leg = await newLeg({ from_place_id: "p-to", to_place_id: "p-from", from_prefecture: "東京都", to_prefecture: "京都府" })
+    const p = await pv(leg)
+    assert.notEqual(p.body.ok, true)
+    assert.match(JSON.stringify(p.body), /予約の都道府県 \(東京都\)/)
+    assert.equal(mock.issues, i0)
+  })
+  await test("監査 A1-2 [検出できない・記録] 予約ごと入れ替わっている (名称・場所・都道府県とも逆) と、そのまま送れる (予約が正本・照合の相手が無い)", async () => {
+    const leg = await newLeg({ from_hotel: "Test Hotel Kyoto", from_place_id: "p-to", to_hotel: "Test Hotel Tokyo", to_place_id: "p-from" })
+    const p = await pv(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    assert.match(String((p.body.origin as { address: string }).address), /^京都府/)
+  })
+  await test("監査 A1-3 [検出できない・記録] 同じ県の別のホテル (同名の別の支店) の場所 ID: 登録名と Google の名称が違っても止めない。確認画面に両方を並べるだけ", async () => {
+    const leg = await newLeg({ from_hotel: "Test Hotel Tokyo", from_hotel_ja: "テストホテル東京", from_place_id: "p-branch2" })
+    const p = await pv(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    const src = p.body.sources as { origin: { registeredNameJa: string; placeName: string } }
+    assert.equal(src.origin.registeredNameJa, "テストホテル東京")
+    assert.equal(src.origin.placeName, "テストホテル東京 新宿南口", "運営の目視だけが頼り")
+  })
+  await test("監査 A1-4 [未対策 P2] 番地の無い住所 (都道府県+市区町村だけ) でも止めずに送れる", async () => {
+    const leg = await newLeg({ from_hotel: "No Street", from_place_id: "p-nostreet" })
+    const p = await pv(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    assert.equal((p.body.origin as { address: string }).address, "東京都新宿区")
+  })
+  await test("監査 A1-5 [未対策 P2] 個人宅の住所の番地 (street) が空でも止めずに送れる", async () => {
+    const leg = await newLeg({ from_place_id: null, from_prefecture: null, from_residence: { name: "Guest House A", zip: "1600023", prefecture: "東京都", city: "新宿区", street: "", building: "" } })
+    const p = await pv(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    assert.equal((p.body.origin as { address: string }).address, "東京都新宿区")
+  })
+  await test("監査 A1-6 記号・全角・改行: & < > \" は XML で正しく逃がし、全角数字・全角ハイフンは半角に、改行は消して送る", async () => {
+    const leg = await newLeg({ from_hotel: "Hotel & Spa", from_place_id: "p-special" })
+    const { pv: p, send } = await previewAndSend(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    assert.equal(send?.status, 200, JSON.stringify(send?.body))
+    const xml = mock.lastIssueXml
+    assert.ok(!xml.includes("<東京>"), "生の < > を電文に入れない")
+    assert.match(xml, /ホテル&amp;スパ&lt;東京&gt;/)
+    const irai = tag(xml, "iraiAdd1") + tag(xml, "iraiAdd2") + tag(xml, "iraiAdd3")
+    assert.equal(irai.replace(/\s/g, ""), "東京都新宿区西新宿2-2-1")
+  })
+  await test("監査 A1-7 京都の通り名: 通り名 (烏丸通塩小路下る) を外して「町名+番地」で送る (規則による変換・郵便番号は Google のまま)", async () => {
+    const leg = await newLeg({ to_hotel: "Test Hotel Karasuma", to_place_id: "p-kyoto-route" })
+    const { pv: p, send } = await previewAndSend(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    assert.equal((p.body.destination as { address: string }).address, "京都府京都市下京区東塩小路町721-1")
+    assert.equal(send?.status, 200)
+    assert.equal(tag(mock.lastIssueXml, "otodokeYubin"), "6008216")
+  })
+  await test("監査 A1-8 長い外国の旅行者名: 2行に収まらなければ止め (切り詰めない)、運営の指定名で送れる。指定名は記録に残る", async () => {
+    const long = "Maximiliano Alessandro Bartholomew-Fitzgerald Montgomery"
+    const leg = await newLeg({ representative: long })
+    const p = await pv(leg)
+    assert.notEqual(p.body.ok, true)
+    assert.match(JSON.stringify(p.body), /宛名/)
+    const ov = { guestName: "M A B-FITZGERALD" }
+    const { send } = await previewAndSend(leg, "谷口", ov)
+    assert.equal(send?.status, 200, JSON.stringify(send?.body))
+    assert.match(String((await reqs(leg))[0].note), /旅行者「M A B-FITZGERALD」/)
+  })
+  await test("監査 A1-9 [未検証・記録] JIS 外の文字 (ü・é・ễ) を含む旅行者名もそのまま送る (佐川側の扱いはテスト環境で未確認)", async () => {
+    const leg = await newLeg({ representative: "José Müller Nguyễn" })
+    const { send } = await previewAndSend(leg)
+    assert.equal(send?.status, 200, JSON.stringify(send?.body))
+    assert.match(mock.lastIssueXml, /José Müller Nguyễn様/)
+  })
+  await test("監査 A1-10 確認画面の後に個数・集荷日・配達日が変わったら送らない (通信なし・記録なし)", async () => {
+    for (const [col, val] of [["suitcase_count", 3], ["shipment_date", jst(4)], ["expected_arrival", jst(6)]] as const) {
+      const leg = await newLeg()
+      const p = await pv(leg)
+      assert.equal(p.body.ok, true)
+      await db.query(`update shipments set ${col}=$2 where id=$1`, [leg, val])
+      const i0 = mock.issues, c0 = mock.checks
+      const s = await sendWith(leg, p.body.fingerprint)
+      assert.equal(s.status, 409, `${col}: ${JSON.stringify(s.body)}`)
+      assert.equal(mock.issues + mock.checks, i0 + c0, col)
+      assert.equal((await reqs(leg)).length, 0, col)
+    }
+  })
+  await test("監査 A1-11 確認画面の後に到着ホテル (場所 ID) が変わったら送らない", async () => {
+    const leg = await newLeg()
+    const p = await pv(leg)
+    await db.query(`update shipments set to_place_id='p-to2', to_hotel='Test Hotel Osaka', to_prefecture='大阪府' where id=$1`, [leg])
+    const i0 = mock.issues
+    const s = await sendWith(leg, p.body.fingerprint)
+    assert.equal(s.status, 409)
+    assert.equal(mock.issues, i0)
+  })
+  await test("監査 A1-12 取消の申請 (requested) が処理中なら止める", async () => {
+    const leg = await newLeg()
+    const s0 = await ship(leg)
+    await db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                    values ($1, $2, 0, 'agency', 'T', '{}', '{}', '取消', 'cancel', 'requested')`, [leg, s0.booking_id])
+    const p = await pv(leg)
+    assert.notEqual(p.body.ok, true)
+    assert.match(JSON.stringify(p.body), /処理中の変更・取消の申請/)
+  })
+  await test("監査 A1-13 [未対策 P2] 申請の確認 (送信前) と確保の間に申請が入ると、そのまま送る (確保の後に申請を読み直していない)", async () => {
+    const leg = await newLeg()
+    const s0 = await ship(leg)
+    const p = await pv(leg)
+    let injected = false
+    hooks.beforeRpc = (name) => {
+      if (name === "claim_pickup_request" && !injected) {
+        injected = true
+        void db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                       values ($1, $2, 0, 'agency', 'T', '{"shipment_date":"2099-01-01"}', '{}', '締切後の変更', 'dates', 'requested')`, [leg, s0.booking_id])
+      }
+    }
+    const s = await sendWith(leg, p.body.fingerprint)
+    hooks.beforeRpc = null
+    assert.ok(injected)
+    const open = (await db.query(`select count(*)::int n from shipment_change_requests where shipment_id=$1 and stage='requested'`, [leg])).rows[0].n
+    assert.equal(open, 1, "申請は入っている")
+    assert.equal(s.status, 200, `今は送ってしまう: ${JSON.stringify(s.body)}`)
+  })
+
+  console.log("A2. 監査: 二重依頼の防止 (API・同時実行)")
+  await test("監査 A2-1 送信成功の直後に同じ指紋で送信をもう一度 (連打・画面の更新) → 409・通信なし・記録1件", async () => {
+    const leg = await newLeg()
+    const { pv: p, send } = await previewAndSend(leg)
+    assert.equal(send?.status, 200)
+    const i0 = mock.issues, c0 = mock.checks
+    for (let k = 0; k < 3; k++) assert.equal((await sendWith(leg, p.body.fingerprint)).status, 409)
+    assert.equal(mock.issues + mock.checks, i0 + c0)
+    assert.equal((await reqs(leg)).length, 1)
+  })
+  await test("監査 A2-2 [修正済み P1] 「集荷手配済み」の印だけ (記録なし・移行中の古いアプリが付けた) の区間は、確認も送信も止める", async () => {
+    const leg = await newLeg()
+    await db.query(`update shipments set pickup_requested_at = now() where id=$1`, [leg]) // 古いアプリの sagawa-pickup と同じ書き込み
+    const i0 = mock.issues, c0 = mock.checks
+    const p = await pv(leg)
+    assert.notEqual(p.body.ok, true, JSON.stringify(p.body))
+    assert.match(JSON.stringify(p.body), /集荷手配 \(佐川\) 済み」の印/)
+    const s = await sendWith(leg, "x")
+    assert.notEqual(s.status, 200)
+    assert.equal(mock.issues + mock.checks, i0 + c0, "佐川へは何も送らない")
+    assert.equal((await reqs(leg)).length, 0)
+    // 「Excel で依頼済み」を記録 → 取り消し (依頼なしを確認) で印が外れ、送れるようになる
+    assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口" })).status, 200)
+    assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "谷口", undo: true })).status, 200)
+    assert.equal((await ship(leg)).pickup_requested_at, null)
+    const again = await previewAndSend(leg)
+    assert.equal(again.send?.status, 200, JSON.stringify(again.send?.body ?? again.pv.body))
+  })
+  await test("監査 A2-3 [修正済み P1] Excel の照合: 印だけの区間は、他の区間に記録があっても NG (以前は記録が1件でもあると印を見なかった)", async () => {
+    const marked = await newLeg()
+    await db.query(`update shipments set pickup_requested_at = now() where id=$1`, [marked])
+    const legs = (await db.query(`select id, booking_id, leg_index, status, tracking_numbers, pickup_requested_at from shipments where id=$1`, [marked])).rows
+    const requests = (await db.query(`select * from pickup_requests limit 5`)).rows
+    assert.ok(requests.length > 0)
+    const l = legs[0]
+    const v = excelMod.checkExcelRows([`${l.booking_id}-L${l.leg_index + 1}`], legs, requests)
+    assert.equal(v[0].ok, false, JSON.stringify(v))
+  })
+  await test("監査 A2-4 取消済みの区間は確認・送信とも止める (確認の後に取消されても送らない)", async () => {
+    const c = await newLeg({ status: "cancelled" })
+    const i0 = mock.issues, c0 = mock.checks
+    assert.notEqual((await pv(c)).body.ok, true)
+    const leg = await newLeg()
+    const p = await pv(leg)
+    await db.query(`update shipments set status='cancelled' where id=$1`, [leg])
+    const c1 = mock.checks
+    assert.equal((await sendWith(leg, p.body.fingerprint)).status, 409)
+    assert.equal(mock.issues, i0)
+    assert.equal(mock.checks, c1, "取消の後は確認機能も送らない")
+    assert.ok(c1 >= c0)
+  })
+  await test("監査 A2-5 同じ予約の2区間を同時に送る → それぞれ1回ずつ・管理番号は区間ごとに別", async () => {
+    const l0 = await newLeg()
+    const b = (await ship(l0)).booking_id
+    const l1 = await newLeg({ booking_id: b, leg_index: 1, shipment_date: jst(5), expected_arrival: jst(6), from_hotel: "Test Hotel Kyoto", from_place_id: "p-to", to_hotel: "Test Hotel Osaka", to_place_id: "p-to2" })
+    const [p0, p1] = await Promise.all([pv(l0), pv(l1)])
+    assert.equal(p0.body.ok, true, JSON.stringify(p0.body))
+    assert.equal(p1.body.ok, true, JSON.stringify(p1.body))
+    const i0 = mock.issues
+    const [s0, s1] = await Promise.all([sendWith(l0, p0.body.fingerprint), sendWith(l1, p1.body.fingerprint)])
+    assert.equal(s0.status, 200, JSON.stringify(s0.body))
+    assert.equal(s1.status, 200, JSON.stringify(s1.body))
+    assert.equal(mock.issues, i0 + 2)
+    const [r0, r1] = [(await reqs(l0))[0], (await reqs(l1))[0]]
+    assert.notEqual(r0.user_manage_number, r1.user_manage_number)
+    assert.notEqual(r0.shipping_number, r1.shipping_number)
+  })
+  await test("監査 A2-6 [未対策 P2] 結果不明の区間に2人が同時に結果を記録 (受付済み・依頼なし) → 両方通り、記録は「無効」・区間には番号が残る (番号があるので再送は止まる)", async () => {
+    const leg = await newLeg()
+    mock.mode = "issue-network-error"
+    await previewAndSend(leg)
+    mock.mode = "ok"
+    const rid = (await reqs(leg))[0].id
+    const acc = CUSTOMER ? {} : { shippingNumber: "100000888881" }
+    const [a, b] = await Promise.all([
+      call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "担当A", note: "世田谷に確認", ...acc }),
+      call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_none", actor: "担当B", note: "世田谷に確認・依頼なし" }),
+    ])
+    // 画面の判定 (受付済みは「依頼なし」にできない) は読んだ時点の状態で行い、DB の遷移元に accepted を含めて渡すため、
+    // 先に受付済みになっても「依頼なし」が通る (読んでから書くまでの間の食い違い)
+    assert.equal(a.status, 200, JSON.stringify(a.body))
+    assert.equal(b.status, 200, JSON.stringify(b.body))
+    const r = (await reqs(leg))[0]
+    assert.equal(r.state, "void", "受付済みと確認した記録が無効になる")
+    assert.equal((await ship(leg)).tracking_numbers.length, 1, "区間には番号が残る")
+    assert.equal((await pv(leg)).body.ok, false, "番号があるので Biz-Logi では送らない")
+    const t = await todo()
+    assert.ok(t.attention.some((x: { shipmentId: string; kind: string }) => x.shipmentId === leg && x.kind === "record_missing"), "要確認 (記録漏れ) に出る")
+  })
+  await test("監査 A2-7 結果不明の区間: 別の担当者の送信・Excel 記録はできない。メモ無しの「依頼なし」も拒否", async () => {
+    const leg = await newLeg()
+    mock.mode = "issue-network-error"
+    await previewAndSend(leg, "担当A")
+    mock.mode = "ok"
+    const i0 = mock.issues
+    assert.equal((await sendWith(leg, "x", { actor: "担当B" })).status, 409)
+    assert.equal((await call("POST", "/api/operator/sagawa-pickup", { shipmentId: leg, actor: "担当B" })).body.alreadyRecorded, true)
+    const rid = (await reqs(leg))[0].id
+    assert.equal((await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_none", actor: "担当B" })).status, 409)
+    assert.equal(mock.issues, i0)
+    assert.equal((await reqs(leg))[0].state, "unknown")
+  })
+  await test("監査 A2-8 [未対策 P2] 結果不明を受付済みにするとき、別の区間で使っている問合番号でも記録できてしまう (システム採番)", async () => {
+    const legX = await newLeg()
+    const sx = await previewAndSend(legX)
+    const numX = String(sx.send?.body.shippingNumber)
+    const legY = await newLeg()
+    mock.mode = "issue-network-error"
+    await previewAndSend(legY)
+    mock.mode = "ok"
+    const rid = (await reqs(legY))[0].id
+    const r = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: rid, resolveAction: "confirm_accepted", actor: "谷口", shippingNumber: numX, note: "番号の写し間違い" })
+    if (CUSTOMER) {
+      assert.equal(r.status, 409, "顧客側採番では送った番号以外は記録できない")
+    } else {
+      assert.equal(r.status, 200, `今は通ってしまう: ${JSON.stringify(r.body)}`)
+      assert.deepEqual((await ship(legY)).tracking_numbers, [numX], "2つの区間に同じ番号")
+      assert.deepEqual((await ship(legX)).tracking_numbers, [numX])
+    }
+  })
+  await test("監査 A2-9 発行依頼で佐川は受け付けたが、その直後に処理が落ちた (応答を受け取れない) → 結果不明・自動再送なし・再送も拒否", async () => {
+    const leg = await newLeg()
+    mock.issueResponder = () => {
+      mock.seq++ // 佐川側では受付済み (番号を使った) とする
+      throw new TypeError("fetch failed (模擬: 受付後に接続が切れた)")
+    }
+    const i0 = mock.issues
+    const { send } = await previewAndSend(leg)
+    mock.issueResponder = null
+    assert.equal(send?.body.outcome, "unknown")
+    assert.equal(mock.issues, i0 + 1)
+    assert.equal((await sendWith(leg, "x")).status, 409)
+    assert.equal(mock.issues, i0 + 1)
+  })
+
+  console.log("A3. 監査: 模擬 Biz-Logi の障害 (自動再送なし・結果不明は止める・運営に見える)")
+  const issueCase = async (label: string, responder: (body: string) => Response | Promise<Response>, expect: "unknown" | "failed") => {
+    const leg = await newLeg()
+    mock.issueResponder = responder
+    const i0 = mock.issues, a0 = sentAlerts.length
+    const { send } = await previewAndSend(leg)
+    mock.issueResponder = null
+    assert.equal(send?.body.outcome, expect, `${label}: ${JSON.stringify(send?.body)}`)
+    assert.equal(mock.issues, i0 + 1, `${label}: 発行依頼は1回だけ (自動再送なし)`)
+    const r = (await reqs(leg))[0]
+    assert.equal(r.state, expect, label)
+    if (expect === "unknown") {
+      assert.equal(sentAlerts.length, a0 + 1, `${label}: 運営へ通知`)
+      assert.equal((await pv(leg)).status, 409, `${label}: 再操作も拒否`)
+      const t = await todo()
+      assert.ok(t.attention.some((x: { shipmentId: string; kind: string }) => x.shipmentId === leg && x.kind === "unknown"), `${label}: 要確認に出る`)
+    }
+    assert.equal(mock.issues, i0 + 1)
+    return { leg, r }
+  }
+  const netErr = (code: string, msg: string) => {
+    const e = new TypeError("fetch failed") as TypeError & { cause?: unknown }
+    e.cause = Object.assign(new Error(msg), { code })
+    throw e
+  }
+  await test("監査 A3-1 発行依頼で HTTP 500 → 結果不明", async () => { await issueCase("500", () => new Response("<html>Internal Server Error</html>", { status: 500 }), "unknown") })
+  await test("監査 A3-2 発行依頼で HTTP 429 → 結果不明 (送り直さない)", async () => { await issueCase("429", () => new Response("Too Many Requests", { status: 429 }), "unknown") })
+  await test("監査 A3-3 発行依頼で接続拒否 (ECONNREFUSED) → 結果不明 (届いていないはずでも、送り直さない側に倒す)", async () => { await issueCase("refused", () => netErr("ECONNREFUSED", "connect ECONNREFUSED 203.0.113.1:443"), "unknown") })
+  await test("監査 A3-4 発行依頼で名前解決の失敗 (ENOTFOUND) → 結果不明", async () => { await issueCase("dns", () => netErr("ENOTFOUND", "getaddrinfo ENOTFOUND mock-bizlogi.invalid"), "unknown") })
+  await test("監査 A3-5 発行依頼で TLS の失敗 (証明書) → 結果不明", async () => { await issueCase("tls", () => netErr("CERT_HAS_EXPIRED", "certificate has expired"), "unknown") })
+  await test("監査 A3-6 発行依頼の応答が途中で切れた XML → 結果不明", async () => { await issueCase("truncated", (b) => new Response(shippingXml(b, { ok: true, prid: "P-T", number: "100000999991" }).slice(0, 200)), "unknown") })
+  await test("監査 A3-7 発行依頼の応答が XML でない (HTML の保守画面・HTTP 200) → 結果不明", async () => { await issueCase("html", () => new Response("<html><body>maintenance</body></html>"), "unknown") })
+  await test("監査 A3-8 正常コードで発行受付IDが無い → 結果不明", async () => { await issueCase("no-prid", (b) => new Response(shippingXml(b, { ok: true, prid: null, number: "100000999992" })), "unknown") })
+  await test("監査 A3-9 正常コードで問合番号も発行受付IDも無い → 結果不明", async () => { await issueCase("empty", (b) => new Response(shippingXml(b, { ok: true, prid: null, number: null })), "unknown") })
+  await test("監査 A3-10 [修正済み P1] エラーコードなのに発行受付ID・問合番号が書かれた応答 → 失敗 (再送可) にせず結果不明", async () => {
+    await issueCase("err+trace", (b) => new Response(shippingXml(b, { ok: false, prid: "P-E", number: "100000999993", codes: ["E2-0004"] })), "unknown")
+  })
+  await test("監査 A3-11 [修正済み P1] 処理結果コードが空の応答 → 失敗にせず結果不明", async () => {
+    await issueCase("empty-code", () => new Response(`<?xml version="1.0" encoding="UTF-8"?><shippingResponse><resultCode></resultCode></shippingResponse>`), "unknown")
+  })
+  await test("監査 A3-12 [修正済み P1] 未定義のエラーコード (E9-9999) → 失敗にせず結果不明", async () => {
+    await issueCase("undefined-code", (b) => new Response(shippingXml(b, { ok: false, codes: ["E9-9999"] })), "unknown")
+  })
+  await test("監査 A3-13 定義済みのエラーコードだけで痕跡が無い → 失敗 (課金なし・直して送れる)", async () => {
+    await issueCase("clean-error", (b) => new Response(shippingXml(b, { ok: false, codes: ["E2-0004"] })), "failed")
+  })
+  await test("監査 A3-14 [未対策 P2] 1個口なのに問合番号が2つ返る → 1つ目だけを保存して受付済みにする (2つ目は捨てる)", async () => {
+    const leg = await newLeg({ suitcase_count: 1 })
+    mock.issueResponder = (b) => new Response(shippingXml(b, { ok: true, prid: "P-M", number: "100000999994" }).replace("</shippingNumberList>", "<shippingNumber>100000999995</shippingNumber></shippingNumberList>"))
+    const { send } = await previewAndSend(leg)
+    mock.issueResponder = null
+    if (CUSTOMER) {
+      assert.equal(send?.body.outcome, "unknown", "顧客側採番では番号が違うので結果不明")
+    } else {
+      assert.equal(send?.body.outcome, "accepted", JSON.stringify(send?.body))
+      assert.deepEqual((await ship(leg)).tracking_numbers, ["100000999994"])
+    }
+  })
+  await test("監査 A3-15 [未対策 P3] 応答の管理番号が送った区間と違っても照合せずに受付済みにする", async () => {
+    const leg = await newLeg()
+    mock.issueResponder = (b) => new Response(shippingXml(b, { ok: true, prid: "P-X", number: CUSTOMER ? tag(b, "shippingNumber") : "100000999996" }).replace(/<userManageNumber>[^<]*<\/userManageNumber>/, "<userManageNumber>BDXOTHER99L1</userManageNumber>"))
+    const { send } = await previewAndSend(leg)
+    mock.issueResponder = null
+    assert.equal(send?.body.outcome, "accepted", JSON.stringify(send?.body))
+  })
+  await test("監査 A3-16 確認機能で HTTP 500・429・壊れた XML → 失敗 (発行依頼は送らない)・直して送れる", async () => {
+    for (const r of [() => new Response("x", { status: 500 }), () => new Response("x", { status: 429 }), () => new Response("<shippingResponse><resultCode>S0-0001")]) {
+      const leg = await newLeg()
+      const p = await pv(leg)
+      assert.equal(p.body.ok, true)
+      mock.checkResponder = r
+      const i0 = mock.issues
+      const s = await sendWith(leg, p.body.fingerprint)
+      mock.checkResponder = null
+      assert.equal(s.body.outcome, "failed", JSON.stringify(s.body))
+      assert.equal(mock.issues, i0)
+      const again = await previewAndSend(leg)
+      assert.equal(again.send?.status, 200)
+    }
+  })
+  await test("監査 A3-17 結果不明の記録・通知・応答に Biz-Logi のパスワードが出ない", async () => {
+    const { r } = await issueCase("pw", () => new Response("<html>err</html>", { status: 500 }), "unknown")
+    const all = JSON.stringify(r) + JSON.stringify(sentAlerts.slice(-3))
+    assert.ok(!all.includes("mock-password"))
   })
 
   console.log("9. 大量予約・同時実行 (PGlite・参考値)")

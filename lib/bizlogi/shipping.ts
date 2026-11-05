@@ -389,6 +389,11 @@ export interface ShippingResponse {
   ok: boolean
   /** 発行受付ID (発行依頼かつ全件正常のときのみ)。これが返った時点で課金対象。 */
   printRequestId: string | null
+  /**
+   * 応答に書かれていた発行受付ID (エラーでもそのまま)。printRequestId は正常時だけ採用するが、
+   * エラーの応答に発行受付IDが書かれていたら「発行されていない」と言い切れないため、送信側の判定で使う (2026-11-06 監査)。
+   */
+  rawPrintRequestId?: string | null
   details: ShippingDetailResult[]
 }
 
@@ -417,6 +422,7 @@ export function parseShippingResponse(xml: string): ShippingResponse {
     // 仕様書のエラー例には発行受付IDが残っているが、仕様上はエラー時に発行されない。
     // 失敗を「発行済み」と取り違えないよう、正常時だけ採用する。
     printRequestId: ok ? childText(root, "printRequestId") || null : null,
+    rawPrintRequestId: childText(root, "printRequestId") || null,
     details,
   }
 }

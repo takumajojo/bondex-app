@@ -102,6 +102,11 @@ function precheck(row: PickupShipmentRow, now: Date): string[] {
   if (!elig.ok) errors.push(elig.reason)
   if (row.status === "cancelled") errors.push("この区間は取消済みです")
   if (legTrackingNumbers(row).length > 0) errors.push("佐川の問合番号が入力済みです (佐川側に依頼があります)")
+  // 有効な依頼の記録が無いのに「集荷手配済み」の印だけがある = 記録の無い手動 (Excel) の依頼の可能性 (2026-11-06 監査)。
+  // 有効な記録がある区間は確保 (claim) で止まるので、ここに来るのは記録が無い区間だけ
+  if (row.pickup_requested_at) {
+    errors.push("「集荷手配 (佐川) 済み」の印が付いていますが、集荷依頼の記録がありません (移行中などに Excel で依頼した可能性)。佐川 (世田谷営業所) に依頼の有無を確かめ、依頼済みなら「Excel で依頼済み」を記録してください (Biz-Logi では送りません)。依頼が無いと確かめた場合は、「Excel で依頼済み」を記録してから取り消すと印が外れ、送れるようになります")
+  }
   if (pickupRequestClosed(row.shipment_date, now)) {
     errors.push("集荷依頼の締め (集荷前日 20:00) を過ぎています。世田谷営業所へ相談してください")
   }
@@ -464,8 +469,23 @@ export async function sendBizLogiPickup(
       return { outcome: "unknown", requestId, reason }
     }
   }
+  // 明確な失敗と言えるのは、エラーコードが返り、応答のどこにも発行の痕跡 (発行受付ID・問合番号) が無く、
+  // 返ったコードがすべて定義済みのときだけ (2026-11-06 監査)。以前は解析の段階で発行受付IDを捨てていたため、
+  // 「エラーコード + 発行受付ID・問合番号あり」の応答や、空・未定義のコードの応答も failed (= 再送できる) になっていた
+  const traces = [
+    res.rawPrintRequestId ? `発行受付ID ${res.rawPrintRequestId}` : "",
+    ...res.details.flatMap((d) => d.shippingNumbers).map((n) => `問合番号 ${n}`),
+  ].filter(Boolean)
+  const allCodes = [res.result, ...res.details.flatMap((d) => d.resultCodes)]
+  const undefinedCodes = allCodes.filter((c) => !c.code || c.unknown).map((c) => c.code || "(空)")
+  if (resErrors.length && (traces.length || undefinedCodes.length)) {
+    const reason = `発行依頼の応答がエラーですが、${traces.length ? `発行の痕跡 (${traces.join("・")}) があります` : `未定義のコード (${undefinedCodes.join("・")}) を含みます`}。佐川に登録されていないとは言い切れないため、失敗にせず結果不明で止めます (${resErrors.join(" / ")})`
+    await finish("unknown", { error: reason, resultCodes: responseCodes(res) })
+    await alertUnknown(deps, ref, requestId, reason)
+    return { outcome: "unknown", requestId, reason }
+  }
   if (resErrors.length && !res.printRequestId) {
-    // 明確な失敗: エラーコードがあり発行受付IDが無い = 課金なし・佐川に登録なし
+    // 明確な失敗: 定義済みのエラーコードがあり、発行受付IDも問合番号も無い = 課金なし・佐川に登録なし
     await retireIfNumberRejected(deps, detail, res, "発行依頼")
     await finish("failed", { error: resErrors.join(" / "), resultCodes: responseCodes(res) })
     return { outcome: "failed", requestId, errors: resErrors }
