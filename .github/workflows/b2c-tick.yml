@@ -1,0 +1,36 @@
+name: B2C tick (manual)
+
+# B2C の定期の処理 (/api/b2c/cron/tick) を手で1回呼ぶ (2026-11-07 監査 B-07)。
+# 定時の実行は Supabase の pg_cron (sql/ops/b2c_tick_cron.sql・5分おき) で行う。GitHub Actions の schedule は
+# 実測で 2〜6時間おきに間引かれるので、ここには schedule を書かない (sync-tracking.yml と同じ考え方)。
+# pg_cron が止まった時の一時的な代わり・登録の前後の確かめに使う。
+# 二重に動いても、エンドポイントの acquireCronLock("b2c-tick") で 2本目は何もしない。
+#
+# 事前設定: Repository Secrets の CRON_SECRET (Vercel Production と同じ値)。秘密はログに出さない。
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: b2c-tick
+  cancel-in-progress: false
+
+jobs:
+  b2c-tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx B2C tick endpoint once
+        run: |
+          # --max-time は maxDuration(120s) + 余裕。失敗しても自動で呼び直さない (結果は応答と heartbeat で確かめる)
+          response=$(curl -s -w "\n%{http_code}" --max-time 150 -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" -d '{}' \
+            https://bondex.express/api/b2c/cron/tick)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "$body"
+          if [ -z "$http_code" ] || [ "$http_code" = "000" ] || [ "$http_code" -ge 400 ]; then
+            echo "::error::b2c-tick failed (HTTP $http_code)"
+            exit 1
+          fi
