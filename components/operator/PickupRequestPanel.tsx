@@ -470,7 +470,7 @@ export default function PickupRequestPanel({
               placeholder={live.channel === "bizlogi" ? (live.assigned_number ? `送った番号 ${live.assigned_number}（空欄ならこの番号で記録）` : "佐川の問合番号（必須）") : "佐川の問合番号（分かれば）"}
               className="w-44 rounded border border-border px-2 py-1 font-mono text-[12px]"
             />
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="確認メモ（誰に確認したか等）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="確認メモ（依頼なしなら必須：相手・日時・回答）" className="w-56 rounded border border-border px-2 py-1 text-[12px]" />
           </div>
           <div className="flex flex-wrap gap-2">
             <B k="confirm_accepted" label="佐川で依頼済みと確認" cls={primary} onClick={() => resolve("confirm_accepted", "依頼済みとして記録しました", { withNumber: true })} />

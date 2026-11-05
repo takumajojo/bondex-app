@@ -667,6 +667,30 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(mock.issues, i0)
     assert.equal((await reqs(legH)).length, 1)
   })
+  await test("依頼前の区間に処理中の変更・取消の申請があれば、確認も送信もしない (旧い内容で依頼しない)", async () => {
+    const leg = await newLeg()
+    const s = await ship(leg)
+    const open = async (kind: string, stage: string) =>
+      (await db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                       values ($1, $2, 0, 'agency', 'T', '{"shipment_date":"2099-01-01"}', '{}', '締切後の変更', $3, $4) returning id`, [leg, s.booking_id, kind, stage])).rows[0].id as string
+    const i0 = mock.issues
+    for (const [kind, stage] of [["dates", "requested"], ["count", "approved"], ["fields", "requested"], ["cancel", "contacted"]]) {
+      const id = await open(kind, stage)
+      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+      assert.notEqual(pv.body.ok, true, `${kind}・${stage}: 確認で止める`)
+      assert.match(JSON.stringify(pv.body), /処理中の変更・取消の申請/)
+      const send = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: "x", actor: "谷口", confirmNoManual: true })
+      assert.notEqual(send.status, 200, `${kind}・${stage}: 送信も止める`)
+      await db.query(`delete from shipment_change_requests where id = $1`, [id]) // 試験では片付けを簡単にする (段階の遷移は別の試験で確かめる)
+    }
+    // 運営の訂正の記録 (correction) は処理中の申請として扱わない
+    await db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                    values ($1, $2, 0, 'operator', 'T', '{}', '{}', '訂正', 'correction', 'approved')`, [leg, s.booking_id])
+    assert.equal(mock.issues, i0, "佐川へは何も送っていない")
+    assert.equal((await reqs(leg)).length, 0, "依頼の記録も作らない")
+    const { send } = await previewAndSend(leg)
+    assert.equal(send?.status, 200, "申請が片付けば送れる")
+  })
   await test("佐川が承認 (番号維持) → 反映: ホテル更新・履歴保存・番号そのまま・要確認に出ない", async () => {
     const id = (await changes(legH))[0].id
     assert.equal((await change({ action: "change_step", changeId: id, step: "approve", note: "佐川: 変更可・番号そのまま", numberPolicy: "kept", newNumber: "123" })).status, 409, "維持なのに新番号は不可")
@@ -1533,6 +1557,26 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const s2 = await call("POST", "/api/operator/pickup-request", { ...base, acknowledged: ["delivery_before_dest_checkin"] })
     assert.equal(s2.status, 200, JSON.stringify(s2.body))
     assert.equal(mock.issues, i0 + 1)
+  })
+  await test("日程: 2区間目の集荷日が集荷元ホテルのチェックアウト日 (前の区間の配送先チェックアウト日) より後なら、明示の確認が無いと送れない", async () => {
+    const leg0 = await newLeg({ to_check_out: jst(3) })
+    const b = (await ship(leg0)).booking_id
+    const later = await newLeg({ booking_id: b, leg_index: 1, shipment_date: jst(5), expected_arrival: jst(6), from_hotel: "Test Hotel Kyoto", from_place_id: "p-to", to_hotel: "Test Hotel Tokyo", to_place_id: "p-from" })
+    const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: later })
+    assert.equal(pv.body.ok, true, JSON.stringify(pv.body))
+    assert.deepEqual((pv.body.confirmations as Array<{ code: string }>).map((c) => c.code), ["pickup_after_origin_checkout"])
+    const i0 = mock.issues
+    const base = { action: "bizlogi_send", shipmentId: later, fingerprint: pv.body.fingerprint, actor: "谷口", confirmNoManual: true }
+    assert.equal((await call("POST", "/api/operator/pickup-request", base)).status, 409)
+    assert.equal(mock.issues, i0)
+    const ok = await call("POST", "/api/operator/pickup-request", { ...base, acknowledged: ["pickup_after_origin_checkout"] })
+    assert.equal(ok.status, 200, JSON.stringify(ok.body))
+    // チェックアウト日当日・前日の集荷は確認不要 (正当な運用)
+    const b2 = (await ship(await newLeg({ to_check_out: jst(5) }))).booking_id
+    const same = await newLeg({ booking_id: b2, leg_index: 1, shipment_date: jst(5), expected_arrival: jst(6), from_hotel: "Test Hotel Kyoto", from_place_id: "p-to", to_hotel: "Test Hotel Tokyo", to_place_id: "p-from" })
+    const pv2 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: same })
+    assert.equal(pv2.body.ok, true, JSON.stringify(pv2.body))
+    assert.deepEqual(pv2.body.confirmations, [])
   })
   await test("確認画面の後に予約が変わったら、電文に出ない項目 (予約名) でも確認は無効・送らない", async () => {
     const leg = await newLeg({ booking_name: "Original Booking" })

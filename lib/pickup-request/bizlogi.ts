@@ -101,6 +101,22 @@ function precheck(row: PickupShipmentRow, now: Date): string[] {
   return errors
 }
 
+/**
+ * 進行中の変更・取消の申請があれば送らない (締切後の申請は承認まで区間に反映されず、旧い内容で佐川へ依頼してしまう)。
+ * 読めなければ送らない (分からないまま送らない)。store に読み方が無い (模擬) ときは判定しない。
+ */
+async function openChangeErrors(row: PickupShipmentRow, store: PickupStore | undefined): Promise<string[]> {
+  if (!store?.openChanges) return []
+  let open
+  try {
+    open = await store.openChanges(row.id)
+  } catch (e) {
+    return [`変更・取消の申請を確かめられませんでした (送りません): ${e instanceof Error ? e.message : String(e)}`]
+  }
+  if (!open.length) return []
+  return [`この区間に処理中の変更・取消の申請があります (${open.map((c) => `${c.kind}・${c.stage}`).join(" / ")})。申請を処理してから、もう一度確認してください`]
+}
+
 function buildDetail(input: PickupLegInput): { detail?: ShippingDetail; errors: string[] } {
   const built = buildPickupDetail(input)
   if (!built.ok) return { errors: built.issues.map((i) => `${i.field}: ${i.message}`) }
@@ -181,6 +197,7 @@ export async function previewBizLogiPickup(
 ): Promise<PreviewResult> {
   const now = deps.now?.() ?? new Date()
   const errors = precheck(row, now)
+  errors.push(...(await openChangeErrors(row, deps.store)))
   const { detail, errors: buildErrors } = buildDetail(input)
   errors.push(...buildErrors)
   if (errors.length || !detail) return { ok: false, errors }
@@ -228,6 +245,7 @@ export async function sendBizLogiPickup(
   const now = deps.now?.() ?? new Date()
   const ref = legRef(row)
   const pre = precheck(row, now)
+  pre.push(...(await openChangeErrors(row, deps.store)))
   if (pre.length) return { outcome: "blocked", reason: pre.join(" / ") }
   const { detail, errors } = buildDetail(input)
   if (!detail) return { outcome: "blocked", reason: errors.join(" / ") }
