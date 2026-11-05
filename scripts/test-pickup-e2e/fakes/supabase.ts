@@ -30,6 +30,8 @@ export async function initSchema(repo: string) {
   await db.exec(readFileSync(`${repo}/sql/075_pickup_watch_alerts.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/076_agency_change_atomic.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/078_pickup_customer_numbering.sql`, "utf8"))
+  // 佐川の配送日数の表 (送信前の配送日数の照合で読む・2026-11-06)
+  await db.exec(readFileSync(`${repo}/sql/058_sagawa_lead_times.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)

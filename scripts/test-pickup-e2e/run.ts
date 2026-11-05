@@ -52,6 +52,13 @@ const PLACES: Record<string, { name: string; formatted_address: string; internat
   "p-from": { name: "テストホテル東京", formatted_address: "日本、〒160-0023 東京都新宿区西新宿2丁目2番1号", international_phone_number: "+81 3-1111-2222" },
   "p-to": { name: "テストホテル京都", formatted_address: "日本、〒600-8216 京都府京都市下京区東塩小路町901", international_phone_number: "+81 75-333-4444" },
   "p-to2": { name: "テストホテル大阪", formatted_address: "日本、〒530-0001 大阪府大阪市北区梅田3丁目1番1号", international_phone_number: "+81 6-5555-6666" },
+  // 番地の後ろに空白と建物名・階が続く住所 (以前は最初の空白より後ろを黙って捨てていた)
+  "p-bldg": { name: "テストホテル新宿", formatted_address: "日本、〒160-0023 東京都新宿区西新宿2丁目2番1号 新宿テストタワー 3階", international_phone_number: "+81 3-1111-3333" },
+  // 佐川の住所欄 (25文字×3行) に収まらない住所
+  "p-long": { name: "テストホテル長住所", formatted_address: "日本、〒160-0023 東京都新宿区西新宿2丁目2番1号 とてもながいなまえのテスト複合施設ビルディング本館北ウイング高層階エグゼクティブフロア受付カウンター前", international_phone_number: "+81 3-1111-4444" },
+  // 配送日数 2日の組 (札幌)・日数が表に無い組 (函館)
+  "p-far": { name: "テストホテル札幌", formatted_address: "日本、〒060-0001 北海道札幌市中央区北一条西2丁目1番地", international_phone_number: "+81 11-111-2222" },
+  "p-unk": { name: "テストホテル函館", formatted_address: "日本、〒040-0001 北海道函館市五稜郭町1番1号", international_phone_number: "+81 138-11-2222" },
 }
 const realFetch = globalThis.fetch
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -125,6 +132,9 @@ async function test(name: string, fn: () => Promise<void>) {
 
 const jst = (offset: number) => new Date(Date.now() + 9 * 3600 * 1000 + offset * 86_400_000).toISOString().slice(0, 10)
 let legSeq = 0
+/** 架空の場所の都道府県 (上の PLACES の住所と同じ)。 */
+const PLACE_PREF: Record<string, string> = { "p-from": "東京都", "p-to": "京都府", "p-to2": "大阪府", "p-bldg": "東京都", "p-long": "東京都", "p-far": "北海道", "p-unk": "北海道" }
+
 async function newLeg(over: Record<string, unknown> = {}): Promise<string> {
   legSeq++
   const row = {
@@ -132,6 +142,10 @@ async function newLeg(over: Record<string, unknown> = {}): Promise<string> {
     from_hotel: "Test Hotel Tokyo", from_place_id: "p-from", to_hotel: "Test Hotel Kyoto", to_place_id: "p-to",
     suitcase_count: 2, delivery_time: "14-16", ...over,
   }
+  // 予約の都道府県は、選んだホテルの場所の住所に合わせる (送信前に Google の住所の都道府県と照合するため・2026-11-06)
+  const rowAny = row as Record<string, unknown>
+  if (!("from_prefecture" in over)) rowAny.from_prefecture = PLACE_PREF[String(rowAny.from_place_id)] ?? null
+  if (!("to_prefecture" in over)) rowAny.to_prefecture = PLACE_PREF[String(rowAny.to_place_id)] ?? null
   const cols = Object.keys(row)
   const r = await db.query(`insert into shipments (${cols.join(",")}) values (${cols.map((_, i) => `$${i + 1}`).join(",")}) returning id`, Object.values(row))
   return r.rows[0].id as string
@@ -167,6 +181,11 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
   // 顧客側採番 (E2E_NUMBERING=customer) のときだけ番号範囲を登録する (架空・試験専用。SG の範囲ではない)。
   // 既定 (システム採番) では範囲を登録しない = 範囲が未設定でもシステム採番で送れることを全体で確かめる
   if (CUSTOMER) await insertMockRange()
+  // 佐川の配送日数 (架空の場所の郵便番号の組・1日)。表に無い組は「分からない」= 送らない
+  for (const f of ["1600023", "6008216", "5300001"]) for (const t of ["1600023", "6008216", "5300001"]) {
+    if (f !== t) await db.query(`insert into sagawa_lead_times (from_zip, to_zip, days, source) values ($1, $2, 1, 'manual')`, [f, t])
+  }
+  await db.query(`insert into sagawa_lead_times (from_zip, to_zip, days, source) values ('1600023', '0600001', 2, 'manual')`)
   pickupRoute = await import("../../app/api/operator/pickup-request/route")
   sagawaRoute = await import("../../app/api/operator/sagawa-pickup/route")
   todoMod = await import("../../lib/pickup-request/todo")
@@ -1577,6 +1596,67 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const pv2 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: same })
     assert.equal(pv2.body.ok, true, JSON.stringify(pv2.body))
     assert.deepEqual(pv2.body.confirmations, [])
+  })
+  // ── 2026-11-06 本番前の安全対策: 都道府県の照合・住所を切り捨てない・配送日数
+  const pv = async (id: string) => call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: id })
+  await test("都道府県: 予約の都道府県と Google の住所の都道府県が違えば、確認も送信もしない (推測で直さない)", async () => {
+    const i0 = mock.issues
+    const wrong = await newLeg({ from_prefecture: "神奈川県" })
+    const p1 = await pv(wrong)
+    assert.notEqual(p1.body.ok, true)
+    assert.match(JSON.stringify(p1.body), /予約の都道府県 \(神奈川県\)/)
+    const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: wrong, fingerprint: "x", actor: "谷口", confirmNoManual: true })
+    assert.notEqual(s1.status, 200)
+    const toWrong = await newLeg({ to_prefecture: "大阪府" })
+    assert.match(JSON.stringify((await pv(toWrong)).body), /到着先: 予約の都道府県 \(大阪府\)/)
+    const missing = await newLeg({ from_prefecture: null })
+    assert.match(JSON.stringify((await pv(missing)).body), /都道府県が登録されていません/)
+    assert.equal(mock.issues, i0, "佐川へは何も送っていない")
+    assert.equal((await db.query(`select count(*)::int as n from pickup_requests where shipment_id = any($1::uuid[])`, [[wrong, toWrong, missing]])).rows[0].n, 0)
+  })
+  await test("住所: 番地の後ろの空白以降 (建物名・階) を捨てずに送る / 欄に収まらない住所は切り詰めずに止める", async () => {
+    const leg = await newLeg({ from_hotel: "Test Hotel Shinjuku", from_place_id: "p-bldg" })
+    const p = await pv(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    const add = JSON.stringify(p.body.origin)
+    assert.match(add, /西新宿2-2-1 新宿テストタワー 3階/, add)
+    const { send } = await previewAndSend(leg)
+    assert.equal(send?.status, 200)
+    const irai = tag(mock.lastIssueXml, "iraiAdd1") + tag(mock.lastIssueXml, "iraiAdd2") + tag(mock.lastIssueXml, "iraiAdd3")
+    assert.match(irai.replace(/[\s　]/g, ""), /新宿テストタワー3階/, `送った住所: ${irai}`)
+    const i0 = mock.issues
+    const long = await newLeg({ from_hotel: "Test Hotel Long", from_place_id: "p-long" })
+    const pl = await pv(long)
+    assert.notEqual(pl.body.ok, true)
+    assert.match(JSON.stringify(pl.body), /25文字×3行に収まりません/)
+    assert.equal(mock.issues, i0)
+  })
+  await test("配送日数: 予約の配達予定日が佐川の最短到着日より前、または日数が分からなければ送らない", async () => {
+    const i0 = mock.issues
+    const short = await newLeg({ to_hotel: "Test Hotel Sapporo", to_place_id: "p-far", shipment_date: jst(3), expected_arrival: jst(4) })
+    const p1 = await pv(short)
+    assert.notEqual(p1.body.ok, true)
+    assert.match(JSON.stringify(p1.body), /佐川の最短到着日 \(.{10}・集荷日 .{10} から 2日\) より前/)
+    const s1 = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: short, fingerprint: "x", actor: "谷口", confirmNoManual: true })
+    assert.notEqual(s1.status, 200)
+    const unknown = await newLeg({ to_hotel: "Test Hotel Hakodate", to_place_id: "p-unk", shipment_date: jst(3), expected_arrival: jst(9) })
+    assert.match(JSON.stringify((await pv(unknown)).body), /佐川の配送日数を確認できません/)
+    assert.equal(mock.issues, i0, "佐川へは何も送っていない")
+    const enough = await newLeg({ to_hotel: "Test Hotel Sapporo", to_place_id: "p-far", shipment_date: jst(3), expected_arrival: jst(5) })
+    const { send } = await previewAndSend(enough)
+    assert.equal(send?.status, 200, "最短到着日以降なら送れる")
+  })
+  await test("配送日数: 確認画面の後に日数の記録が消えたら (送信時は保存済みの日数だけを使う)、送信で止める", async () => {
+    const leg = await newLeg({ to_hotel: "Test Hotel Sapporo", to_place_id: "p-far", shipment_date: jst(3), expected_arrival: jst(5) })
+    const p = await pv(leg)
+    assert.equal(p.body.ok, true, JSON.stringify(p.body))
+    await db.query(`delete from sagawa_lead_times where from_zip='1600023' and to_zip='0600001'`)
+    const i0 = mock.issues
+    const s = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: p.body.fingerprint, actor: "谷口", confirmNoManual: true })
+    assert.notEqual(s.status, 200)
+    assert.match(JSON.stringify(s.body), /配送日数を確認できません/)
+    assert.equal(mock.issues, i0)
+    await db.query(`insert into sagawa_lead_times (from_zip, to_zip, days, source) values ('1600023', '0600001', 2, 'manual')`)
   })
   await test("確認画面の後に予約が変わったら、電文に出ない項目 (予約名) でも確認は無効・送らない", async () => {
     const leg = await newLeg({ booking_name: "Original Booking" })

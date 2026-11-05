@@ -1,6 +1,7 @@
 // 運営画面の操作 (手動依頼の記録・運営の確認結果の記録) と、Biz-Logi 送信の組み立て。
 // API ルートから呼ぶ。送信そのものの手順は ./bizlogi.ts。
 
+import { resolveSagawaLeadTime } from "@/lib/sagawa-lead-time"
 import { getSupabase } from "@/lib/supabase"
 import { bizLogiConfigFromEnv, BizLogiClient, BizLogiConfigError } from "@/lib/bizlogi/client"
 import { sendOpsAlert } from "@/lib/ops-alert"
@@ -55,6 +56,15 @@ export const BIZLOGI_CALL_TIMEOUT_MS = 20_000
 const TEST_ENV_IN_APP_REASON =
   "BIZLOGI_ENV=test のためアプリからは送信しません (テスト環境の試験は scripts/bizlogi/test-env.ts で行います)"
 
+/**
+ * 佐川の配送日数 (lib/sagawa-lead-time.ts の既存の決まり: 郵便番号の組 → 営業所の組 → 佐川のサイト)。
+ * 確認画面では佐川のサイトへの照会も許して保存する。送信では保存済みの日数だけを使う (送信の時に外へ照会しない)。
+ */
+async function sagawaLeadTimeDays(fromZip: string, toZip: string, phase: "preview" | "send"): Promise<number | null> {
+  const lt = await resolveSagawaLeadTime(fromZip, toZip, { allowLive: phase === "preview" })
+  return lt?.days ?? null
+}
+
 function clientAndEnv() {
   const cfg = { ...bizLogiConfigFromEnv(), timeoutMs: BIZLOGI_CALL_TIMEOUT_MS }
   if (cfg.environment !== "production") throw new BizLogiConfigError(TEST_ENV_IN_APP_REASON)
@@ -73,7 +83,7 @@ export async function previewForShipment(
   const res = await previewBizLogiPickup(
     row,
     built.input,
-    { client, store: supabasePickupStore(), environment: cfg.environment, numbering: cfg.numbering },
+    { client, store: supabasePickupStore(), environment: cfg.environment, numbering: cfg.numbering, leadTimeDays: sagawaLeadTimeDays },
     { guestOverridden: built.guestOverridden },
   )
   return { ...res, origin: built.input.origin, destination: built.input.destination, sources: built.sources, registered: registeredLeg(row) }
@@ -131,6 +141,7 @@ export async function sendForShipment(
     reloadRow: () => loadPickupShipment(row.id),
     environment: cfg.environment,
     numbering: cfg.numbering,
+    leadTimeDays: sagawaLeadTimeDays,
     alert: (input) => sendOpsAlert(input),
   })
 }

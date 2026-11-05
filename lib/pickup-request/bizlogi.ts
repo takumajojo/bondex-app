@@ -24,6 +24,7 @@ import { legRef, type PickupShipmentRow } from "./leg-input"
 import { PickupStoreError, type PickupStore } from "./store"
 import { bizlogiEligibility } from "./eligibility"
 import { pickupSnapshot, snapshotChanges } from "./snapshot"
+import { earliestArrivalYmd } from "@/lib/sagawa-lead-time"
 import { scheduleCheck, sourceChanges, sourceFingerprint, verifyDetailAgainstRow, type SafetyConfirmation } from "./send-safety"
 
 export interface BizLogiSendDeps {
@@ -38,6 +39,12 @@ export interface BizLogiSendDeps {
   numbering?: "customer" | "system"
   now?: () => Date
   newOwner?: () => string
+  /**
+   * 佐川の配送日数 (暦日) を郵便番号の組で返す。分からなければ null (= 送らない)。2026-11-06 監査: 予約の配達予定日が
+   * 佐川の最短到着日より前なら送らない。確認画面 (preview) では佐川のサイトへの照会も許し、送信 (send) では保存済みの日数だけを使う。
+   * アプリ (service.ts) は必ず渡す。
+   */
+  leadTimeDays?: (fromZip: string, toZip: string, phase: "preview" | "send") => Promise<number | null>
   /**
    * 確保の直後に DB から区間を読み直す (2026-11-04 監査 N1)。確認画面の後・確保までの間に、電文に効く予約の項目が
    * 1つでも変わっていれば送らない。アプリ (service.ts) は必ず渡す。
@@ -117,6 +124,37 @@ async function openChangeErrors(row: PickupShipmentRow, store: PickupStore | und
   return [`この区間に処理中の変更・取消の申請があります (${open.map((c) => `${c.kind}・${c.stage}`).join(" / ")})。申請を処理してから、もう一度確認してください`]
 }
 
+/**
+ * 佐川の配送日数と予約の日程の照合 (既存の日数の決まり lib/sagawa-lead-time.ts を使う)。
+ * 日数が分からない・最短到着日より前の配達予定日なら送らない (推測で「届く」と判断しない)。
+ */
+async function leadTimeErrors(
+  row: PickupShipmentRow,
+  input: PickupLegInput,
+  leadTimeDays: BizLogiSendDeps["leadTimeDays"],
+  phase: "preview" | "send",
+): Promise<string[]> {
+  if (!leadTimeDays) return []
+  const pickup = (row.shipment_date ?? "").slice(0, 10)
+  const arrival = (row.expected_arrival ?? "").slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(pickup) || !/^\d{4}-\d{2}-\d{2}$/.test(arrival)) return [] // 日付の欠けは scheduleCheck が止める
+  let days: number | null
+  try {
+    days = await leadTimeDays(input.origin.postalCode, input.destination.postalCode, phase)
+  } catch (e) {
+    return [`佐川の配送日数を確かめられませんでした (送りません): ${e instanceof Error ? e.message : String(e)}`]
+  }
+  if (days == null) {
+    return [`佐川の配送日数を確認できません (〒${input.origin.postalCode} → 〒${input.destination.postalCode})。届く日が分からないまま送らないため、予約画面で配送日数を照会してから、もう一度確認してください`]
+  }
+  const earliest = earliestArrivalYmd(pickup, days)
+  if (!earliest) return [`佐川の最短到着日を計算できません (集荷日 ${pickup})`]
+  if (arrival < earliest) {
+    return [`予約の配達予定日 (${arrival}) が、佐川の最短到着日 (${earliest}・集荷日 ${pickup} から ${days}日) より前です。予約を確認して直してください (自動では直しません)`]
+  }
+  return []
+}
+
 function buildDetail(input: PickupLegInput): { detail?: ShippingDetail; errors: string[] } {
   const built = buildPickupDetail(input)
   if (!built.ok) return { errors: built.issues.map((i) => `${i.field}: ${i.message}`) }
@@ -192,7 +230,7 @@ const codesOf = (res: ShippingResponse) => [res.result, ...res.details.flatMap((
 export async function previewBizLogiPickup(
   row: PickupShipmentRow,
   input: PickupLegInput,
-  deps: Pick<BizLogiSendDeps, "client" | "now" | "numbering"> & { store?: PickupStore; environment?: "test" | "production" },
+  deps: Pick<BizLogiSendDeps, "client" | "now" | "numbering" | "leadTimeDays"> & { store?: PickupStore; environment?: "test" | "production" },
   ctx: SafetyContext = {},
 ): Promise<PreviewResult> {
   const now = deps.now?.() ?? new Date()
@@ -203,6 +241,8 @@ export async function previewBizLogiPickup(
   if (errors.length || !detail) return { ok: false, errors }
   const safety = safetyCheck(row, input, detail, ctx)
   if (safety.errors.length) return { ok: false, errors: safety.errors }
+  const leadErrors = await leadTimeErrors(row, input, deps.leadTimeDays, "preview")
+  if (leadErrors.length) return { ok: false, errors: leadErrors }
   const numErr = await attachNumber(row, detail, deps)
   if (numErr) return { ok: false, errors: [numErr] }
   let res: ShippingResponse
@@ -255,6 +295,8 @@ export async function sendBizLogiPickup(
   // 送信時点の DB の予約 (呼び出し元が読み直した行) で、予約との一致と日程をもう一度確かめる
   const safety = safetyCheck(row, input, detail, opts)
   if (safety.errors.length) return { outcome: "blocked", reason: safety.errors.join(" / ") }
+  const leadErrors = await leadTimeErrors(row, input, deps.leadTimeDays, "send")
+  if (leadErrors.length) return { outcome: "blocked", reason: leadErrors.join(" / ") }
   const missingAck = safety.confirmations.filter((c) => !(opts.acknowledged ?? []).includes(c.code))
   if (missingAck.length) {
     return { outcome: "blocked", reason: `確認画面で確認が必要な項目があります: ${missingAck.map((c) => c.message).join(" / ")}` }
