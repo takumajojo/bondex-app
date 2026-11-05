@@ -42,7 +42,7 @@ export interface PickupTodoLeg {
 }
 
 export const PICKUP_TODO_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, representative, tour_number, from_hotel, from_hotel_ja, from_residence, suitcase_count, tracking_numbers, booking_type, from_place_id, to_hotel, to_place_id, to_residence, expected_arrival, delivery_time"
+  "id, booking_id, leg_index, status, carrier, shipment_date, representative, tour_number, from_hotel, from_hotel_ja, from_residence, suitcase_count, tracking_numbers, booking_type, from_place_id, to_hotel, to_place_id, to_residence, expected_arrival, delivery_time, channel, from_prefecture, to_prefecture, origin_check_out"
 
 export type PickupUrgency = "overdue" | "due" | "upcoming"
 export type AttentionKind =

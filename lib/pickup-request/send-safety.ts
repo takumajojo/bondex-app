@@ -45,6 +45,11 @@ export function scheduleCheck(row: PickupShipmentRow): { errors: string[]; confi
   if (destOut && arrival > destOut) {
     errors.push(`配達予定日 (${arrival}) が配送先ホテルのチェックアウト日 (${destOut}) より後です。予約を確認してください`)
   }
+  // B2C の区間は予約の控えに集荷元のチェックアウト日がある。無い・壊れていれば送らない (確定は通しても集荷依頼は通さない)
+  const b2cOut = dateOnly(row.origin_check_out)
+  if (row.channel === "b2c" && (!b2cOut || Number.isNaN(Date.parse(b2cOut)))) {
+    errors.push("B2C の予約に集荷元ホテルのチェックアウト日が無い (または正しくない) ため送りません。予約を確認してください")
+  }
   const originOut = dateOnly(row.origin_check_out)
   if (originOut && pickup > originOut) {
     confirmations.push({

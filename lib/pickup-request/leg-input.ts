@@ -52,10 +52,12 @@ export interface PickupShipmentRow {
   /** 予約に登録された発送元・到着ホテルの都道府県 (代理店の入力時に保存)。Google の住所の都道府県と一致しなければ送らない。 */
   from_prefecture?: string | null
   to_prefecture?: string | null
+  /** 'b2b' | 'b2c' (sql/061)。 */
+  channel?: string | null
 }
 
 export const PICKUP_SHIPMENT_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out, from_prefecture, to_prefecture"
+  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out, from_prefecture, to_prefecture, origin_check_out, channel"
 
 export interface LegInputEnv {
   kokyakuCode: string

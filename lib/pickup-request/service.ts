@@ -20,7 +20,8 @@ export async function loadPickupShipment(shipmentId: string): Promise<PickupShip
   if (error) throw new Error(`区間を読めません: ${error.message}`)
   const row = (data as unknown as PickupShipmentRow | null) ?? null
   // 2区間目以降: 1つ前の区間の配送先 = この区間の集荷元ホテル。そのチェックアウト日を集荷日の確かめに使う
-  if (row && row.leg_index > 0) {
+  // B2C は区間自身の値 (予約の控えから sql/081 で写す) を使い、前の区間からは補わない
+  if (row && row.leg_index > 0 && row.channel !== "b2c" && !row.origin_check_out) {
     const prev = await sb.from("shipments").select("to_check_out").eq("booking_id", row.booking_id).eq("leg_index", row.leg_index - 1).maybeSingle()
     if (prev.error) throw new Error(`前の区間を読めません: ${prev.error.message}`)
     row.origin_check_out = (prev.data as { to_check_out?: string | null } | null)?.to_check_out ?? null
