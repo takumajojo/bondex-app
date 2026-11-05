@@ -41,19 +41,24 @@ export async function sendWhatsAppText(
 }
 
 /**
- * Webhook POST の署名を検証する。
- *   - WHATSAPP_APP_SECRET 未設定 → null (検証しない = ローカルcurlテスト用)。
- *   - 設定あり → 一致で true / 不一致で false。
+ * Webhook POST の署名を検証する (Meta の仕様: X-Hub-Signature-256 = "sha256=" + 受信した本文のバイト列の
+ * HMAC-SHA256 (鍵 = App Secret) の16進)。本文は受け取ったバイト列そのもので計算する (文字列にして
+ * 作り直すと、エスケープや改行の違いで一致しなくなる・改ざんを見逃す)。
+ *   - WHATSAPP_APP_SECRET 未設定 → false (検証できないものは受け付けない。2026-11-07 監査 B-11。
+ *     以前は「未設定なら検証しない」だったため、鍵を入れ忘れると誰でも送れた)
+ *   - 署名が無い・形式が違う・一致しない → false / 一致 → true
  */
 export function verifyWhatsAppSignature(
-  rawBody: string,
+  rawBody: Buffer | string,
   signatureHeader: string | null,
-): boolean | null {
+): boolean {
   const secret = process.env.WHATSAPP_APP_SECRET
-  if (!secret) return null
+  if (!secret) return false
   if (!signatureHeader) return false
-  const expected = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex")
-  const a = Buffer.from(signatureHeader)
-  const b = Buffer.from(expected)
-  return a.length === b.length && crypto.timingSafeEqual(a, b)
+  const m = /^sha256=([0-9a-fA-F]{64})$/.exec(signatureHeader.trim())
+  if (!m) return false
+  const body = typeof rawBody === "string" ? Buffer.from(rawBody, "utf8") : rawBody
+  const expected = crypto.createHmac("sha256", secret).update(body).digest()
+  const got = Buffer.from(m[1], "hex")
+  return got.length === expected.length && crypto.timingSafeEqual(got, expected)
 }

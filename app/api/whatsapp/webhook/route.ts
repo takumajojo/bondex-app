@@ -16,7 +16,7 @@ export const maxDuration = 20
  *
  * 公開エンドポイント (middleware の PUBLIC_EXACT)。認証は
  *   - GET  : WHATSAPP_WEBHOOK_TOKEN 照合
- *   - POST : X-Hub-Signature-256 を WHATSAPP_APP_SECRET で署名検証
+ *   - POST : X-Hub-Signature-256 を WHATSAPP_APP_SECRET で署名検証 (鍵が未設定なら全件 401)
  * で担保する。返信送出は既存の WHATSAPP_CLOUD_TOKEN / WHATSAPP_PHONE_NUMBER_ID を流用。
  */
 
@@ -53,15 +53,19 @@ interface WaMessage {
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.text()
-  if (raw.length > MAX_BODY_BYTES) {
+  const bytes = Buffer.from(await req.arrayBuffer())
+  if (bytes.length > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "payload too large" }, { status: 413 })
   }
-  // 署名検証 (App Secret 設定時のみ。未設定=ローカルテスト用に検証しない)。
-  const sig = verifyWhatsAppSignature(raw, req.headers.get("x-hub-signature-256"))
-  if (sig === false) {
+  // 署名検証 (受け取ったバイト列のまま)。鍵が未設定・署名なし・不一致 (本文の改ざんを含む) はすべて拒否し、
+  // 本文を読まない・返信しない・DB に書かない (2026-11-07 監査 B-11)
+  if (!process.env.WHATSAPP_APP_SECRET) {
+    safeLog({ kind: "whatsapp_webhook", source: "whatsapp.signature", outcome: "failed", error: "config_missing" })
+  }
+  if (!verifyWhatsAppSignature(bytes, req.headers.get("x-hub-signature-256"))) {
     return NextResponse.json({ error: "invalid signature" }, { status: 401 })
   }
+  const raw = bytes.toString("utf8")
 
   let payload: unknown
   try {

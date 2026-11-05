@@ -15,7 +15,7 @@
 | `WHATSAPP_CLOUD_TOKEN` | 返信の送信（System User 永続トークン） | 設定済み |
 | `WHATSAPP_PHONE_NUMBER_ID` | 送信元番号ID | 設定済み |
 | `WHATSAPP_WEBHOOK_TOKEN` | GET 検証トークン（任意のランダム文字列） | Meta と同じ値を入れる |
-| `WHATSAPP_APP_SECRET` | POST の署名検証（Meta アプリの App Secret） | 未設定だと署名検証をスキップ（本番は必須） |
+| `WHATSAPP_APP_SECRET` | POST の署名検証（Meta アプリの App Secret） | **必須。未設定だと POST はすべて 401**（2026-11-07 監査 B-11。以前は未設定だと検証をスキップしていた） |
 
 ## DB migration
 
@@ -38,13 +38,15 @@ curl -s "http://localhost:3000/api/whatsapp/webhook?hub.mode=subscribe&hub.chall
 # 期待: test_challenge_123
 ```
 
-**2. メッセージ受信（POST）** — 署名検証は `WHATSAPP_APP_SECRET` 未設定ならスキップ:
+**2. メッセージ受信（POST）** — 署名は必須（Meta の仕様: `X-Hub-Signature-256: sha256=<本文のバイト列の HMAC-SHA256（鍵 = App Secret）の16進>`）。
+ローカルで試すときは、手元の試験用の鍵で署名を作って付ける（本番の App Secret を手元のコマンドに書かない）:
 ```bash
-curl -s -X POST "http://localhost:3000/api/whatsapp/webhook" \
-  -H "Content-Type: application/json" \
-  -d '{"entry":[{"changes":[{"value":{"contacts":[{"wa_id":"819000000000"}],"messages":[{"from":"819000000000","id":"wamid.test1","type":"text","text":{"body":"BDX-7Q2KPG"}}]}}]}]}'
-# 期待: {"success":true}  (返信は WHATSAPP_CLOUD_TOKEN 設定時のみ実送信)
+BODY='{"entry":[{"changes":[{"value":{"contacts":[{"wa_id":"819000000000"}],"messages":[{"from":"819000000000","id":"wamid.test1","type":"text","text":{"body":"BDX-7Q2KPG"}}]}}]}]}'
+SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$WHATSAPP_APP_SECRET" -hex | sed 's/^.* //')"
+curl -s -X POST "http://localhost:3000/api/whatsapp/webhook" -H "Content-Type: application/json" -H "X-Hub-Signature-256: $SIG" --data-binary "$BODY"
+# 期待: {"success":true}  (返信は WHATSAPP_CLOUD_TOKEN 設定時のみ実送信)。署名なし・不一致・鍵の未設定は 401
 ```
+自動の試験: `npm run test:whatsapp-signature`（外へは送らない）。
 
 **3. 重複メッセージ（べき等性）** — 同じ `id` で2回 POST → 2回目は返信をスキップ
 （`whatsapp_processed` の unique 制約で検知）。
