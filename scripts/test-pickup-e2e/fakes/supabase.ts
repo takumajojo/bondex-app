@@ -30,6 +30,12 @@ export async function initSchema(repo: string) {
   await db.exec(readFileSync(`${repo}/sql/075_pickup_watch_alerts.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/076_agency_change_atomic.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/078_pickup_customer_numbering.sql`, "utf8"))
+  // B2C の区間の見分け (本番は sql/061 で足す列。B2B のコードは読まない)
+  await db.exec(`alter table shipments add column if not exists channel text not null default 'b2b'`)
+  // 集荷元のチェックアウト日 (本番は sql/054 が未適用のため、sql/081 で足す想定)
+  await db.exec(`alter table shipments add column if not exists origin_check_out date`)
+  // 佐川の配送日数の表 (送信前の配送日数の照合で読む・2026-11-06)
+  await db.exec(readFileSync(`${repo}/sql/058_sagawa_lead_times.sql`, "utf8"))
 }
 
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)

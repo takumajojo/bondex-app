@@ -94,6 +94,7 @@ const ROW: PickupShipmentRow = {
   representative: "SMITH JOHN", booking_name: null, tour_number: "4091471", suitcase_count: 2,
   from_hotel: "Hotel A", from_hotel_ja: null, from_place_id: "pa", from_residence: null,
   to_hotel: "Hotel B", to_hotel_ja: null, to_place_id: "pb", to_residence: null, tracking_numbers: null,
+  from_prefecture: "東京都", to_prefecture: "京都府",
 }
 
 const place = (name: string, addr: string, phone: string): HotelPlaceDetails => ({
@@ -185,6 +186,29 @@ async function main() {
     ENV,
   )
   check("個人宅は入力住所から組み立て、電話は BondEx の連絡先", res.ok && res.input.origin.address === "東京都渋谷区神南1-2-3" && res.input.origin.tel === ENV.contactPhone)
+  const wrongPref = await buildLegInput({ ...ROW, to_prefecture: "大阪府" }, ENV)
+  check("予約の都道府県と Google の住所の都道府県が違えば止める (直さない)", !wrongPref.ok && /到着先: 予約の都道府県 \(大阪府\)/.test(wrongPref.errors.join(" ")))
+  const noPref = await buildLegInput({ ...ROW, from_prefecture: null }, ENV)
+  check("予約に都道府県が無ければ照合できないので止める", !noPref.ok && /都道府県が登録されていません/.test(noPref.errors.join(" ")))
+  const withBldg = await buildLegInput(ROW, { ...ENV, fetchPlace: async (_n, _k, placeId) => (placeId === "pa" ? place("ホテルエー東京", "日本、〒160-0023 東京都新宿区西新宿2丁目2番1号 テストタワー 3階", "+81 3-1111-2222") : place("ホテルビー京都", "日本、〒600-8216 京都府京都市下京区東塩小路町901", "+81 75-333-4444")) })
+  check("番地の後ろの空白以降 (建物名・階) を捨てない", withBldg.ok && withBldg.input.origin.address === "東京都新宿区西新宿2-2-1 テストタワー 3階", withBldg.ok ? withBldg.input.origin.address : withBldg.errors)
+  {
+    const { bizlogiEligibility } = await import("../../lib/pickup-request/eligibility")
+    const { scheduleCheck } = await import("../../lib/pickup-request/send-safety")
+    const b2c = { ...ROW, channel: "b2c", origin_check_out: null as string | null }
+    check("B2C: 集荷元のチェックアウト日が無ければ対象外 (理由つき)", !bizlogiEligibility(b2c).ok && /チェックアウト日/.test((bizlogiEligibility(b2c) as { reason: string }).reason))
+    check("B2C: 壊れた日付も対象外", !bizlogiEligibility({ ...b2c, origin_check_out: "2026-13-45" }).ok)
+    check("B2C: 送信前の日程の判定でも止める", scheduleCheck(b2c).errors.some((e) => /チェックアウト日/.test(e)))
+    check("B2C: 壊れた日付は送信前の判定でも止める", scheduleCheck({ ...b2c, origin_check_out: "2026-13-45" }).errors.some((e) => /チェックアウト日/.test(e)))
+    check("B2C: チェックアウト日がそろえば対象", bizlogiEligibility({ ...b2c, origin_check_out: "2026-11-07" }).ok && scheduleCheck({ ...b2c, origin_check_out: "2026-11-07" }).errors.length === 0)
+    check("B2B: チェックアウト日が無くても止めない", bizlogiEligibility({ ...ROW, origin_check_out: null }).ok && scheduleCheck({ ...ROW, origin_check_out: null }).errors.length === 0)
+    check("都道府県が空なら対象外 (押す前から理由が出る)", !bizlogiEligibility({ ...ROW, to_prefecture: "" }).ok)
+    check("個人宅の側は都道府県の列を見ない", bizlogiEligibility({ ...ROW, from_prefecture: null, from_residence: { zip: "1500041" } }).ok)
+    const st = new MemoryStore()
+    const { client } = makeClient(async () => okResponse())
+    const r = await sendBizLogiPickup(b2c, (built as Extract<typeof built, { ok: true }>).input, { actor: "谷口", expectedFingerprint: "x" }, { store: st, client, environment: "test", now: () => NOW, alert: async () => undefined })
+    check("B2C: チェックアウト日が無い区間は送信も止める (確保もしない)", r.outcome === "blocked" && st.rows.length === 0)
+  }
   check("記事欄は17文字以内に収める", pickupNotes({ tour_number: "1234567890123456789", delivery_time: null }, "x")[4].length <= 17)
 
   if (!built.ok) throw new Error("前提の変換に失敗")

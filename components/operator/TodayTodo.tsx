@@ -64,6 +64,7 @@ const ATTENTION_LABEL: Record<string, string> = {
   record_missing: "問合番号はあるが依頼の記録なし（Excel で重ねて依頼しない）",
   hotel_change_requested: "受付後の変更を登録済み・世田谷へ未連絡",
   hotel_change_approved: "佐川が変更を承認・BondEx へ未反映",
+  b2c_missing_fields: "B2C の予約の都道府県・チェックアウト日が空（集荷依頼済み・予約を確かめて直す）",
 }
 
 interface TodoData {

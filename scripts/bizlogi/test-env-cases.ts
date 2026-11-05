@@ -63,6 +63,8 @@ const PLACES: Record<string, HotelPlaceDetails> = {
 }
 const fetchPlace = (async (_name: string, _key: string, placeId?: string) => PLACES[placeId ?? ""] ?? null) as never
 
+const prefOf = (placeId: string) => /〒[\d-]+ (東京都|北海道|京都府|大阪府|.{2,3}県)/.exec(PLACES[placeId]?.formattedAddress ?? "")?.[1] ?? null
+
 let seq = 0
 async function leg(over: Partial<PickupShipmentRow> & { from_place_id: string; to_place_id: string }): Promise<PickupShipmentRow> {
   seq++
@@ -71,10 +73,12 @@ async function leg(over: Partial<PickupShipmentRow> & { from_place_id: string; t
     booking_id: `BDXT${stamp}${seq}`, leg_index: 0, status: "requested", carrier: "sagawa", shipment_date: jst(2), expected_arrival: jst(3),
     delivery_time: null, representative: "TEST GUEST", booking_name: null, tour_number: null, suitcase_count: 1, booking_type: "fit",
     from_hotel: PLACES[over.from_place_id]?.name ?? "テスト", from_hotel_ja: null, from_residence: null,
+    // 予約の都道府県は選んだ場所の住所に合わせる (送信前に Google の住所と照合する・2026-11-06)
+    from_prefecture: prefOf(over.from_place_id), to_prefecture: prefOf(over.to_place_id),
     to_hotel: PLACES[over.to_place_id]?.name ?? "テスト", to_hotel_ja: null, to_residence: null, tracking_numbers: [],
     ...over,
   }
-  const cols = ["booking_id", "leg_index", "status", "carrier", "shipment_date", "expected_arrival", "representative", "suitcase_count", "booking_type", "from_hotel", "from_place_id", "to_hotel", "to_place_id"]
+  const cols = ["booking_id", "leg_index", "status", "carrier", "shipment_date", "expected_arrival", "representative", "suitcase_count", "booking_type", "from_hotel", "from_place_id", "to_hotel", "to_place_id", "from_prefecture", "to_prefecture"]
   const r = await db.query(`insert into shipments (${cols.join(",")}) values (${cols.map((_, i) => `$${i + 1}`).join(",")}) returning id`, cols.map((c) => (row as Record<string, unknown>)[c]))
   return { ...(row as PickupShipmentRow), id: r.rows[0].id }
 }

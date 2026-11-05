@@ -49,10 +49,15 @@ export interface PickupShipmentRow {
    * (shipments.origin_check_out はどこからも書かれない) ため、同じ予約の1つ前の区間の配送先チェックアウト日を使う。
    */
   origin_check_out?: string | null
+  /** 予約に登録された発送元・到着ホテルの都道府県 (代理店の入力時に保存)。Google の住所の都道府県と一致しなければ送らない。 */
+  from_prefecture?: string | null
+  to_prefecture?: string | null
+  /** 'b2b' | 'b2c' (sql/061)。 */
+  channel?: string | null
 }
 
 export const PICKUP_SHIPMENT_COLUMNS =
-  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out"
+  "id, booking_id, leg_index, status, carrier, shipment_date, expected_arrival, delivery_time, representative, booking_name, tour_number, suitcase_count, booking_type, from_hotel, from_hotel_ja, from_place_id, from_residence, to_hotel, to_hotel_ja, to_place_id, to_residence, tracking_numbers, origin_check_in, from_check_in, to_check_out, from_prefecture, to_prefecture, origin_check_out, channel"
 
 export interface LegInputEnv {
   kokyakuCode: string
@@ -138,6 +143,7 @@ async function hotelParty(
   placeId: string | null,
   env: LegInputEnv,
   label: string,
+  registeredPrefecture: string | null | undefined,
 ): Promise<{ ok: true; party: PickupHotel; phone: string; source: PartySource } | { ok: false; error: string }> {
   // ホテルは場所の ID だけで特定する。名前での検索 (候補の1件目を採用) は推測になるので、Biz-Logi では使わない (2026-11-04 監査 H1)
   if (!placeId) {
@@ -165,11 +171,22 @@ async function hotelParty(
   if (!zip || !prefecture || !cityWard) {
     return { ok: false, error: `${label}: 「${name}」の郵便番号・都道府県・市区町村を特定できませんでした (${d.formattedAddress})` }
   }
+  // 予約の都道府県と、Google の住所の都道府県が一致すること (場所 ID の選び違いで別の県へ依頼しない・2026-11-06)。
+  // 予約に都道府県が無ければ照合できないので送らない。推測では直さない
+  const regPref = (registeredPrefecture ?? "").normalize("NFKC").trim()
+  if (!regPref) {
+    return { ok: false, error: `${label}: 予約に「${nameJa || name}」の都道府県が登録されていません。Google の住所 (${prefecture}) と照合できないため送りません。予約のホテルを候補から選び直してください` }
+  }
+  if (regPref !== prefecture.normalize("NFKC").trim()) {
+    return { ok: false, error: `${label}: 予約の都道府県 (${regPref}) と、Google の場所の住所の都道府県 (${prefecture}・${d.formattedAddress}) が違います。別のホテルを選んでいる可能性があるため送りません。予約のホテルを確かめてください` }
+  }
   const hotelNameJa = (d.name || nameJa || name).trim()
   // 番地の後ろに付くホテル名・建物名は住所から外す (宛名側に「ホテル名 気付」で載せるため)
   let streetOnly = street
   if (d.name && streetOnly.includes(d.name)) streetOnly = streetOnly.split(d.name)[0].trim()
-  if (streetOnly.includes(" ")) streetOnly = streetOnly.split(/\s+/)[0]
+  // 空白の後ろ (番地の続き・建物名・階) は捨てない。以前は最初の空白より後ろを黙って捨てていた (2026-11-06 監査)。
+  // 佐川の住所欄 (25文字×3行) に収まらなければ、電文を組む段階 (buildPickupDetail) で止まる (切り詰めない)
+  streetOnly = streetOnly.replace(/[\s　]+/g, " ").trim()
   const phone = (d.internationalPhone || "").replace(/^\+81[\s-]?/, "0").replace(/[^\d-]/g, "")
   return {
     ok: true,
@@ -217,10 +234,10 @@ export async function buildLegInput(row: PickupShipmentRow, env: LegInputEnv, ov
   const [from, to] = await Promise.all([
     fromRes
       ? Promise.resolve({ ok: true as const, party: residenceParty(fromRes, env.contactPhone), phone: env.contactPhone, source: residenceSource(row.from_hotel) })
-      : hotelParty(row.from_hotel, row.from_hotel_ja, row.from_place_id, env, "発送元"),
+      : hotelParty(row.from_hotel, row.from_hotel_ja, row.from_place_id, env, "発送元", row.from_prefecture),
     toRes
       ? Promise.resolve({ ok: true as const, party: residenceParty(toRes, env.contactPhone), phone: env.contactPhone, source: residenceSource(row.to_hotel) })
-      : hotelParty(row.to_hotel, row.to_hotel_ja, row.to_place_id, env, "到着先"),
+      : hotelParty(row.to_hotel, row.to_hotel_ja, row.to_place_id, env, "到着先", row.to_prefecture),
   ])
   if (!from.ok) errors.push(from.error)
   if (!to.ok) errors.push(to.error)
