@@ -15,6 +15,7 @@ import { RESOLVE_TRANSITIONS, type ResolveAction } from "@/lib/pickup-request/st
 import { cleanOverrides } from "@/lib/pickup-request/leg-input"
 import { bizlogiEligibility } from "@/lib/pickup-request/eligibility"
 import { applyChangeWithEffects } from "@/lib/pickup-request/apply-effects"
+import { requireOperator, requireB2cOperatorIf, shipmentIsB2c } from "@/lib/operator-authz"
 import {
   createPickupChange,
   hotelChangeFields,
@@ -58,6 +59,9 @@ export async function GET(req: NextRequest) {
   if (!limit.ok) return limit.response
   const shipmentId = req.nextUrl.searchParams.get("shipmentId")?.trim() || ""
   if (!shipmentId) return NextResponse.json({ error: "shipmentId required" }, { status: 400 })
+  // ハンドラーでも認可（middleware だけに頼らない）。B2C の区間は個人のパスキーの運営者だけ（旅行者の名前・ホテルを返すため）
+  const authz = await requireB2cOperatorIf(req, await shipmentIsB2c(shipmentId))
+  if (authz.deny) return authz.deny
   try {
     const rows = await supabasePickupStore().listForShipments([shipmentId])
     const live = liveRequestByShipment(rows).get(shipmentId) ?? null
@@ -93,6 +97,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
   const action = typeof body.action === "string" ? body.action : ""
+
+  // ハンドラーでも認可（middleware だけに頼らない）。対象の区間が B2C なら個人のパスキーの運営者だけ
+  // （集荷依頼・取消や変更の申請と確定・結果の記録は、旅行者の予約の取消・請求に関わるため）。
+  {
+    const target = await pickupTargetShipmentId(body)
+    const authz = target === null ? { deny: await requireOperator(req) } : await requireB2cOperatorIf(req, await shipmentIsB2c(target))
+    if (authz.deny) return authz.deny
+  }
 
   try {
     const store = supabasePickupStore()
@@ -246,4 +258,23 @@ export async function POST(req: NextRequest) {
     const status = e instanceof PickupStoreError ? 503 : 500
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status })
   }
+}
+
+/** 操作の対象の区間（shipmentId・変更申請の changeId・集荷依頼の requestId から）。対象が無い操作は null。 */
+async function pickupTargetShipmentId(body: Record<string, unknown>): Promise<string | null> {
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
+  const direct = str(body.shipmentId)
+  if (direct) return direct
+  const sb = getSupabase()
+  const changeId = str(body.changeId)
+  if (changeId && sb) {
+    const { data } = await sb.from("shipment_change_requests").select("shipment_id").eq("id", changeId).maybeSingle()
+    return (data?.shipment_id as string | undefined) ?? changeId
+  }
+  const requestId = str(body.requestId)
+  if (requestId && sb) {
+    const { data } = await sb.from("pickup_requests").select("shipment_id").eq("id", requestId).maybeSingle()
+    return (data?.shipment_id as string | undefined) ?? requestId
+  }
+  return null
 }

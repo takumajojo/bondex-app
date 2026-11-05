@@ -84,10 +84,12 @@ async function http(method: string, path: string, body?: unknown, headers: Recor
   return { status: r.status, json, text }
 }
 let ipC = 0
+// 集荷依頼の操作は運営のハンドラーでも認可する（B2C の区間は個人のパスキーの運営者だけ・lib/operator-authz.ts）
+let opCookieHeader = ""
 let pickupRoute: any
 async function pickupCall(body: unknown) {
   ipC++
-  const req = new NextRequest("http://localhost/api/operator/pickup-request", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `10.7.0.${ipC % 250}` }, body: JSON.stringify(body) })
+  const req = new NextRequest("http://localhost/api/operator/pickup-request", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `10.7.0.${ipC % 250}`, cookie: opCookieHeader }, body: JSON.stringify(body) })
   const res = await pickupRoute.POST(req)
   return { status: res.status as number, body: (await res.json()) as Record<string, any> }
 }
@@ -116,6 +118,7 @@ async function main() {
   sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-30'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-b1-000000000001', '\\x00', 'ops-b1@example.invalid') on conflict do nothing")
   const op = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession("e2e-cred-b1-000000000001")}` }
+  opCookieHeader = op.cookie
 
   const STAY = { origin: { checkIn: "2026-11-15", checkOut: "2026-11-17" }, dest: { checkIn: "2026-11-17", checkOut: "2026-11-21" } }
   async function book(lang: "ja" | "en", pieces = 2) {

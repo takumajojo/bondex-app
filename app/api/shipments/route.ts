@@ -19,6 +19,7 @@ import { notifyBondEx } from "@/lib/notify"
 import { alertSagawaCancel, alertSagawaChange } from "@/lib/sagawa-alert"
 import { pushToAgency } from "@/lib/agency-push"
 import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
+import { requireOperator, requireB2cOperatorIf, shipmentIsB2c } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
   try {
     const limit = rateLimit(req, "shipments-list")
     if (!limit.ok) return limit.response
+    const denied = await requireOperator(req) // ハンドラーでも認可（middleware だけに頼らない）
+    if (denied) return denied
 
     if (!isSupabaseConfigured()) {
       return NextResponse.json(
@@ -114,6 +117,12 @@ export async function PATCH(req: NextRequest) {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+  }
+  // ハンドラーでも認可（middleware だけに頼らない）。B2C の区間の状態・日程・個数の変更は個人のパスキーの運営者だけ
+  {
+    const targetId = typeof body.id === "string" ? body.id : ""
+    const authz = await requireB2cOperatorIf(req, targetId ? await shipmentIsB2c(targetId) : false)
+    if (authz.deny) return authz.deny
   }
 
   // ホテル連絡(申し送り/確認連絡)の完了フラグ (両ルート・id 単位の即時トグル)。
@@ -403,6 +412,8 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const limit = rateLimit(req, "shipments-delete")
   if (!limit.ok) return limit.response
+  const denied = await requireOperator(req) // ハンドラーでも認可（B2C の予約は BDX- の番号でないので、ここでは消せない）
+  if (denied) return denied
 
   let body: { bookingId?: unknown; confirm?: unknown }
   try {

@@ -12,6 +12,7 @@ import { loadPickupShipment, recordManualFromTrackingNumber } from "@/lib/pickup
 import { supabasePickupStore, liveRequestByShipment, isPickupTableMissing } from "@/lib/pickup-request/store"
 import { alertTrackingNumberChanged } from "@/lib/sagawa-alert"
 import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
+import { requireB2cOperatorIf, shipmentIsB2c } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 20
@@ -44,6 +45,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params
   const shipmentId = (id || "").trim()
   if (!shipmentId) return NextResponse.json({ error: "shipment id required" }, { status: 400 })
+  // ハンドラーでも認可（middleware だけに頼らない）。B2C の区間（問い合わせ番号など）は個人のパスキーの運営者だけ
+  {
+    const authz = await requireB2cOperatorIf(req, await shipmentIsB2c(shipmentId))
+    if (authz.deny) return authz.deny
+  }
 
   let body: { agency?: unknown; tracking?: unknown; representative?: unknown }
   try {

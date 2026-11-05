@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
   const limit = rateLimit(req, "b2c-ops")
   if (!limit.ok) return limit.response
   if (!(await verifyOperatorSession(req.cookies.get(OPERATOR_SESSION_COOKIE)?.value))) return NextResponse.json({ ok: false, error: "operator_login_required" }, { status: 401 })
+  // 一覧は旅行者の名前・額を返すので、個人のパスキーの運営者だけ（共有パスワード（v1）は不可・2026-11-05）
+  if (!(await resolveB2cOperator(req))) return NextResponse.json({ ok: false, error: "operator_passkey_required" }, { status: 403 })
   const n = req.nextUrl.searchParams.get("orderNumber")
   if (n) {
     if (!/^\d{1,9}$/.test(n)) return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 422 })
