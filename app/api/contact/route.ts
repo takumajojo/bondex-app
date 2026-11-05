@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
 import { notifyBondEx } from "@/lib/notify"
+import { safeLog } from "@/lib/safe-log"
 
 export const runtime = "nodejs"
 
@@ -97,7 +98,8 @@ async function notify(input: {
       input.message,
     ].join("\n"),
   })
-  if (!r.sent) console.log("[contact] 通知メール未送信:", r.error, "(DB保存済み)")
+  // 問い合わせは DB（contact_inquiries）に保存済み。ログには結果だけ（lib/safe-log.ts）
+  if (!r.sent) safeLog({ kind: "contact_inquiry", source: "contact.notify-mail", outcome: r.uncertain ? "unknown" : "failed", error: "unknown", via: r.via })
 
   // 社内通知(Slack集約)
   await notifyBondEx({
@@ -176,7 +178,8 @@ export async function POST(req: NextRequest) {
         .gte("created_at", since)
         .limit(100)
       if (Array.isArray(recent) && recent.some((r) => normalizeEmail(s((r as { email?: string }).email)) === normalizedEmail)) {
-        console.log("[contact] 直近の連投 (正規化メール一致) — 破棄:", normalizedEmail)
+        // メールアドレスは出さない
+        safeLog({ kind: "contact_inquiry", source: "contact.duplicate", outcome: "skipped" })
         return dropSilently()
       }
     } catch {
@@ -195,7 +198,8 @@ export async function POST(req: NextRequest) {
       console.error("[contact] Supabase insert 失敗:", error.message)
     }
   } else {
-    console.log("[contact] Supabase 未設定 — 受信内容:", { company, name, email })
+    // 会社・名前・メールアドレスは出さない（開発の環境で DB が無い時だけ通る）
+    safeLog({ kind: "contact_inquiry", source: "contact.no-db", outcome: "skipped", error: "config_missing" })
   }
 
   // 2) 通知メール (best-effort)

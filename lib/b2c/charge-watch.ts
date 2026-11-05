@@ -130,7 +130,7 @@ export async function watchB2cCharges(now: Date = new Date(), alert: B2cAlertFn 
 
   let r: Awaited<ReturnType<B2cAlertFn>>
   try {
-    r = await alert({ subject, lines, agencyEmail: null })
+    r = await alert({ subject, lines, agencyEmail: null, source: "b2c.charge-watch", refs: claimed.map((i) => i.paymentId) })
   } catch (e) {
     // 送ったか分からない: 門は戻さない（送り直さない）
     console.error("[b2c-charge-watch] alert result unknown", e)

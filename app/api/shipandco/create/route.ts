@@ -20,6 +20,7 @@ import { sagawaLeadTimeViolation, type RouteLeadTime } from "@/lib/lead-time-che
 import { legTrackingNumbers, reissueBlocked } from "@/lib/shipment-reissue"
 import { normalizeBanchi, stripKyotoRouteName } from "@/lib/jp-address"
 import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
+import { safeLog } from "@/lib/safe-log"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -277,12 +278,7 @@ async function resolveYamatoAddress(
   const parsed = parseJpAddressString(formattedAddress)
   let { zip, prefecture, cityWard, street } = parsed
 
-  // Vercel ログ用 — Google から受け取った生の formatted_address と分解結果
-  console.log("[shipandco] parseJpAddressString", {
-    hotelName,
-    formattedAddress,
-    parsed: { zip, prefecture, cityWard, street },
-  })
+  // ホテル名・住所はログに出さない（2026-11-06・lib/safe-log.ts）。失敗した時だけ、どの欄が取れなかったかを下で記録する
 
   // フォールバック: 個別 component から補完 (formatted_address が無いケース)
   if (!zip) zip = pickComponent(components, "postal_code").replace(/-/g, "")
@@ -300,12 +296,8 @@ async function resolveYamatoAddress(
 
   // ヤマトに不完全な住所を送らない (EF011022 への確実な事前ガード)
   if (!cityWard) {
-    console.warn("[shipandco] cityWard derivation failed", {
-      hotelName,
-      formattedAddress,
-      prefecture,
-      street,
-    })
+    // 住所・ホテル名は出さない。郵便番号・都道府県・番地が取れたかの数だけ（運営には 400 でホテル名の修正を促す）
+    safeLog({ kind: "shipandco_address", source: "shipandco.parse-address", outcome: "failed", error: "invalid_response", count: [zip, prefecture, street].filter(Boolean).length })
     return null
   }
 
@@ -785,13 +777,8 @@ export async function POST(req: NextRequest) {
       : resolveYamatoAddress(toHotel, toRecipientName, placesKey, false, toPlaceId, carrier.id),                     // お届け先: 会社=ホテル / 宛名=宿泊者名
   ])
 
-  // 解決結果を Vercel ログに残す (再発時の根本特定用) — 全フィールドを出力する
-  console.log("[shipandco] resolved addresses", {
-    fromHotel,
-    toHotel,
-    from: fromAddr,
-    to: toAddr,
-  })
+  // 解決した住所は出さない（2026-11-06・lib/safe-log.ts）。解決できたか（発送元・配送先の数）だけ
+  safeLog({ kind: "shipandco_address", source: "shipandco.resolve", ref: bookingId || undefined, outcome: fromAddr && toAddr ? "ok" : "failed", error: fromAddr && toAddr ? undefined : "invalid_response", count: [fromAddr, toAddr].filter(Boolean).length })
 
   // 住所解決失敗時 — ヤマトに不完全な住所を送らずに 400 で早期エラー.
   // 操作員にホテル名の修正を促す (例: "Ace hotel kyoto" → 正式な "Ace Hotel Kyoto").
@@ -957,8 +944,7 @@ export async function POST(req: NextRequest) {
     ],
   }
 
-  // POC デバッグ用: payload を console に出す (Vercel の Functions ログで確認可)
-  console.log("[shipandco] payload:", JSON.stringify(payload, null, 2))
+  // 送るデータ（氏名・電話・住所）はログに出さない（2026-11-06・lib/safe-log.ts）
 
   try {
     const res = await fetch(`${SHIPANDCO_BASE}/shipments`, {
@@ -1018,6 +1004,9 @@ export async function POST(req: NextRequest) {
       )
       // 課金済みラベルなのにDB無記録=孤児。ダッシュボードにも追跡にも出ないので即アラート。
       await sendOpsAlert({
+        // 追跡番号・ラベルの URL は通知の本文にだけ（ログには出さない）。届かなかった時は Ship&co の画面で予約の番号から探す
+        source: "shipandco.db-save-failed",
+        refs: [`${baseRecord.booking_id}-L${legIndex + 1}`],
         subject: `【緊急】発行済みラベルのDB保存失敗（要手動リカバリ）: ${baseRecord.booking_id}-L${legIndex + 1}`,
         lines: [
           "送り状は発行済み（LIVE時は課金・取消不可の可能性）ですが、DBに保存できませんでした。",

@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
   if (allowed) {
     const r = await sendMail({
       to: email,
-      subject: `【BondEx 運営】認証コード ${code}`,
+      // 件名にはコードを入れない（ロック画面の通知・メールの一覧・ログに出るため。2026-11-06）。コードは本文にだけ
+      subject: "【BondEx 運営】ログイン認証コードのお知らせ",
       text: [
         "BondEx 管理画面の端末登録用の認証コードです。",
         "",

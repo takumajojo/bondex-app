@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer"
 import { BONDEX_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "./email-logo"
+import { safeLog, errorTypeOf } from "./safe-log"
 
 // 送信手段の共通ヘルパー。優先順位:
 //  1) SMTP (SMTP_HOST/USER/PASS 設定時)。既存の jojo-tokyo.com(Google) 等から送れる。
@@ -62,10 +63,6 @@ export function stagingInternalSendAllowed(opts: { to: string; bcc?: string | st
   return allow.length > 0 && rcpt.length > 0 && rcpt.every((r) => allow.includes(r))
 }
 
-/** ログに出す件名（認証コード・受付番号・問い合わせ番号・名前を出さない: 4桁以上の数字とかっこの中を伏せる） */
-export function logSafeSubject(subject: string): string {
-  return subject.replace(/（[^）]*）|\([^)]*\)/g, "（…）").replace(/\d{4,}/g, "####").slice(0, 80)
-}
 
 async function sendViaSmtp(opts: {
   to: string
@@ -114,12 +111,13 @@ async function sendViaSmtp(opts: {
     })
     return { sent: true, via: "smtp" }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "smtp error"
-    console.error("[mailer] SMTP 送信失敗:", opts.to, msg)
     // 接続・認証・宛先の段階で止まった、またはサーバーが明確に断った → 送れていない。それ以外（切断・時間切れ）は不明。
     const err = e as { code?: string; responseCode?: number }
     const notSent = typeof err.responseCode === "number" || ["EAUTH", "EENVELOPE", "EDNS", "ECONNECTION", "ETLS"].includes(err.code ?? "")
-    return { sent: false, via: "smtp", error: msg, uncertain: !notSent, status: err.responseCode }
+    // エラーの全文（SMTP の応答に宛先のアドレスが入ることがある）は、ログにも戻り値にも入れない。番号・種類だけ（lib/safe-log.ts）
+    safeLog({ kind: "mail_send", via: "smtp", outcome: notSent ? "failed" : "unknown", error: errorTypeOf(e) })
+    const safeCode = typeof err.responseCode === "number" ? String(err.responseCode) : /^[A-Z][A-Z0-9_]{1,23}$/.test(err.code ?? "") ? err.code : "error"
+    return { sent: false, via: "smtp", error: `smtp ${safeCode}`, uncertain: !notSent, status: err.responseCode }
   }
 }
 
@@ -168,13 +166,15 @@ async function sendViaResend(opts: {
     })
     if (!res.ok) {
       const body = await res.text().catch(() => "")
-      console.error("[mailer] Resend 送信失敗:", opts.to, res.status, body.slice(0, 300))
       let code: string | undefined
       try {
-        code = (JSON.parse(body) as { name?: string }).name
+        const name = (JSON.parse(body) as { name?: string }).name
+        // エラーの名前（例: validation_error）だけを使う。本文（message）は宛先のアドレスが入ることがあるので使わない
+        code = typeof name === "string" && /^[a-z_]{1,48}$/.test(name) ? name : undefined
       } catch {
         /* 本文が JSON でない */
       }
+      safeLog({ kind: staging ? "mail_staging_send" : "mail_send", via: "resend", outcome: res.status >= 500 || res.status === 409 ? "unknown" : "failed", error: "http_error", http: res.status })
       // 5xx・409 は届いたか分からない。409 の concurrent_idempotent_requests は同じキーの要求が処理中（後で再試行してよい）、
       // invalid_idempotent_request は同じキーが違う内容で使用済み（前の要求が処理済み。再試行しても直らない）。
       // 429・その他の 4xx は送られていない。https://resend.com/docs/dashboard/emails/idempotency-keys（2026-11-04 確認）
@@ -182,11 +182,12 @@ async function sendViaResend(opts: {
     }
     return { sent: true, via: "resend" }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "resend error"
-    console.error("[mailer] Resend 例外:", opts.to, msg)
     // 名前の解決・接続の拒否は送れていない。時間切れ・切断は届いたか分からない。
     const code = (e as { cause?: { code?: string } })?.cause?.code ?? ""
-    return { sent: false, via: "resend", error: msg, uncertain: !["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED"].includes(code) }
+    const notSent = ["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED"].includes(code)
+    const type = code ? errorTypeOf({ code }) : errorTypeOf(e)
+    safeLog({ kind: staging ? "mail_staging_send" : "mail_send", via: "resend", outcome: notSent ? "failed" : "unknown", error: type })
+    return { sent: false, via: "resend", error: `resend ${type}`, uncertain: !notSent }
   }
 }
 
@@ -218,10 +219,11 @@ export async function sendMail(opts: {
   if ((process.env.MAIL_TEST_CAPTURE === "1" || isStaging()) && !stagingSend) {
     const g = globalThis as unknown as { __capturedMails?: Array<Record<string, unknown>> }
     g.__capturedMails = g.__capturedMails ?? []
-    g.__capturedMails.push({ to: opts.to, subject: opts.subject, idempotencyKey: opts.idempotencyKey, bcc: opts.bcc })
-    // staging（Vercel）ではプロセスが要求ごとに変わるので、記録をログにも残す（宛先はドメインだけ・本文は出さない）
-    // 件名は伏せた形だけ（認証コード・受付番号を出さない）
-    console.log(`[mail-capture] to=*@${(opts.to.split("@")[1] ?? "?").trim()} subject=${logSafeSubject(opts.subject)}`)
+    // 本文は試験の中で中身を確かめるためだけ（プロセスの中だけ・ログには出さない）
+    g.__capturedMails.push({ to: opts.to, subject: opts.subject, text: opts.text, idempotencyKey: opts.idempotencyKey, bcc: opts.bcc })
+    // staging（Vercel）ではプロセスが要求ごとに変わるので、記録したことをログにも残す。件名・本文・宛先は出さない（lib/safe-log.ts）。
+    // 中身の確認は、宛先の数と、呼び出し側の記録（B2C の送信待ちの表・運営の画面）で行う
+    safeLog({ kind: "mail_capture", outcome: "skipped", count: recipientsOf(opts).length })
     return { sent: true, via: "resend" }
   }
 
@@ -247,7 +249,7 @@ export async function sendMail(opts: {
   if (stagingSend) {
     // staging の社内への実送信: Resend（staging 専用の鍵）だけ・別の手段で送り直さない
     const r = await sendViaResend({ ...opts, timeoutMs: opts.timeoutMs ?? 15_000 })
-    console.log(`[mail-staging-send] to=*@${(opts.to.split("@")[1] ?? "?").trim()} subject=${logSafeSubject(opts.subject)} sent=${r.sent}${r.sent ? "" : ` error=${String(r.error ?? "").slice(0, 80)}`}`)
+    if (r.sent) safeLog({ kind: "mail_staging_send", via: "resend", outcome: "ok", to: "internal", count: recipientsOf(opts).length })
     return r
   }
   if (opts.strict) {

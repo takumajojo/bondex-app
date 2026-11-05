@@ -78,8 +78,7 @@ export const shipandcoDispatchProvider: DispatchProvider = {
   async postLabel(input: DispatchInput): Promise<DispatchResult> {
     const token = process.env.SHIPANDCO_API_KEY
     const payload = buildShipandcoPayload(input)
-    // POC デバッグ用: payload を console に出す (Vercel の Functions ログで確認可)
-    console.log("[shipandco] payload:", JSON.stringify(payload, null, 2))
+    // 送るデータ（氏名・電話・住所）はログに出さない（2026-11-06・lib/safe-log.ts）。中身は Ship&co の画面と DB の区間で確かめる
     if (!token) {
       return {
         ok: false,

@@ -142,7 +142,7 @@ export async function checkHeartbeats(alert: B2cAlertFn, now: Date = new Date(),
   )
   let r: Awaited<ReturnType<B2cAlertFn>>
   try {
-    r = await alert({ subject: `【監視】定期の処理が止まっているか、失敗が続いています（${claimed.map((p) => p.name).join("・")}）`, lines, agencyEmail: null })
+    r = await alert({ source: "cron.heartbeat-check", refs: claimed.map((p) => p.name), subject: `【監視】定期の処理が止まっているか、失敗が続いています（${claimed.map((p) => p.name).join("・")}）`, lines, agencyEmail: null })
   } catch (e) {
     console.error("[cron-heartbeat] alert result unknown", e)
     out.alerted = claimed.length // 送ったか分からない: 門は戻さない
