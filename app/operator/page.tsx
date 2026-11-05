@@ -1091,8 +1091,9 @@ export default function OperatorPage() {
         expectedArrival: s.expectedArrival,
         pickupTime: s.pickupTime || "",
         deliveryTime: s.deliveryTime || "",
-        from: { hotel: s.from.hotel, address: s.from.address, city: s.from.city, residence: s.from.residence ?? undefined },
-        to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city, residence: s.to.residence ?? undefined },
+        // placeId はサーバ側で英語のホテル名・住所を引くために渡す (バウチャーはお客様向け)
+        from: { hotel: s.from.hotel, address: s.from.address, city: s.from.city, residence: s.from.residence ?? undefined, placeId: s.from.placeId },
+        to: { hotel: s.to.hotel, address: s.to.address, city: s.to.city, residence: s.to.residence ?? undefined, placeId: s.to.placeId },
         recipient: s.recipient,
         suitcaseCount: s.suitcaseCount,
         specialNote: s.specialNote,
