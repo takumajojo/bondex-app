@@ -8,6 +8,7 @@
 import { getSupabase } from "@/lib/supabase"
 import { b2cCutoffAt } from "./bookability"
 import { sha256Hex, B2cDbUnavailable, B2C_DB_TIMEOUT_MS } from "./booking-service"
+import { scheduleBulkRecount } from "./bulk-recount"
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{32}$/
 
@@ -160,6 +161,7 @@ export async function cancelMyBooking(token: unknown, now: Date = new Date()): P
   if (!sb) throw new B2cDbUnavailable("not configured")
   const { data, error } = await sb.rpc("b2c_cancel_order", { p_order_id: v.orderId, p_reason: "guest", p_actor_type: "guest" })
   if (error) throw new B2cDbUnavailable("cancel")
+  if (data === "cancelled") scheduleBulkRecount(sb, "guest cancel") // 区間が取消になった時だけ（スイッチ OFF なら何もしない）
   if (data === "cancelled" || data === "already_cancelled" || data === "not_cancellable") return data
   if (data === "pickup_requested") {
     const { data: req, error: reqErr } = await sb.rpc("b2c_request_cancel", { p_order_id: v.orderId, p_actor_type: "guest" })

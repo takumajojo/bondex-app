@@ -14,6 +14,7 @@ import { sendBookingUpdateEmail } from "@/lib/booking-update-email"
 import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { b2cStripeConfig } from "@/lib/b2c/stripe"
 import { applyPickupChange, CHANGE_KIND_JA, type ChangeKind } from "./change"
+import { scheduleBulkRecount } from "@/lib/b2c/bulk-recount"
 
 export async function applyChangeWithEffects(
   changeId: string,
@@ -34,7 +35,11 @@ export async function applyChangeWithEffects(
   const patch: Record<string, unknown> = {}
   const ship = await getShipment(String(c.shipment_id))
   if (ship && isB2cShipmentRow(ship as never)) {
-    if (kind === "cancel") await detachB2cCard(String(c.shipment_id))
+    if (kind === "cancel") {
+      await detachB2cCard(String(c.shipment_id))
+      // 佐川の確認の後に B2C の取消が確定した: 大口集荷を集計し直す（スイッチ OFF なら何もしない）
+      scheduleBulkRecount(sb, "b2c cancel applied")
+    }
     if (typeof fields.shipment_date === "string") {
       const { error } = await sb.from("shipments").update({ change_deadline_at: changeDeadlineAt(fields.shipment_date) }).eq("id", String(c.shipment_id))
       if (error) console.error("[pickup-request] 申請反映後の付随更新に失敗", error.message)

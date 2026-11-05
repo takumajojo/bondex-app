@@ -8,6 +8,7 @@
  */
 import { getSupabase } from "@/lib/supabase"
 import type { B2cOperator } from "./operator-identity"
+import { scheduleBulkRecount } from "./bulk-recount"
 
 export interface HotelOpsResult {
   ok: boolean
@@ -34,6 +35,8 @@ async function confirmOrCancel(orderIds: string[], cancelReason: "hotel_refused"
       else out.stillWaiting.push(n)
     }
   }
+  // 確定・取消で区間が増減した時だけ、大口集荷を集計し直す（スイッチ OFF なら何もしない）
+  if (out.confirmed.length || out.cancelled.length) scheduleBulkRecount(sb, `hotel-ops confirmed=${out.confirmed.length} cancelled=${out.cancelled.length}`)
   return out
 }
 

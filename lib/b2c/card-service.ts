@@ -20,6 +20,7 @@ import { b2cCutoffAt, b2cCardWindowFits, B2C_CARD_WINDOW_MS } from "./bookabilit
 import { buildB2cQuote, sha256Hex, B2cDbUnavailable, B2C_DB_TIMEOUT_MS, type B2cEntry } from "./booking-service"
 import { B2C_STRIPE_CHANNEL } from "./stripe"
 import { B2C_CARD_CONSENT_VERSION } from "./legal-text"
+import { scheduleBulkRecount } from "./bulk-recount"
 
 /** カードの入力に使える時間。これを過ぎた card_pending の予約は枠を返す（expireStaleCardPending）。予約の画面と共通（bookability.ts）。 */
 export { B2C_CARD_WINDOW_MS } from "./bookability"
@@ -378,6 +379,8 @@ export async function finalizeB2cCard(stripe: Stripe, orderId: string, actor: "g
         return { ok: false, error: "server_error" }
       }
       order = (await loadOrderById(order.id)) ?? order
+      // 確定して区間ができた時だけ、同じホテル・同じ集荷日の大口集荷を集計し直す（スイッチ OFF なら何もしない）
+      if (order.status === "confirmed") scheduleBulkRecount(sb, `confirm ${order.order_number}`)
     }
     return { ok: true, view: viewOf(order, { card }) }
   }
