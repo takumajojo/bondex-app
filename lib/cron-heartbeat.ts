@@ -29,6 +29,8 @@ export interface WatchedJob {
   activeAt?: (now: Date) => boolean
   /** 見張る条件（例: スイッチが ON の時だけ） */
   enabled?: () => boolean
+  /** 一度も記録が無いことは問題にしない（見張りの見張り: 公開の直後、最初の 1回が来る前に誤って知らせないため） */
+  ignoreNeverRan?: boolean
   label: string
 }
 
@@ -55,6 +57,20 @@ export function watchedJobs(): WatchedJob[] {
   ]
 }
 
+/**
+ * 見張りの見張り（GitHub Actions が止まった・大きく遅れたことを、pg_cron で動く処理の側から見つける）。
+ * GitHub の schedule は実測で 2〜6時間おきに間引かれるので、基準は 8時間（HEARTBEAT_CHECK_STALE_MIN で変えられる）。
+ */
+export function watcherJob(): WatchedJob {
+  return {
+    name: "heartbeat-check",
+    label: "定期の処理の見張り（GitHub Actions → /api/cron/heartbeat-check）",
+    staleMin: Number(process.env.HEARTBEAT_CHECK_STALE_MIN ?? 480),
+    maxFailures: 3,
+    ignoreNeverRan: true,
+  }
+}
+
 export interface HeartbeatProblem {
   name: string
   label: string
@@ -77,6 +93,7 @@ export async function findHeartbeatProblems(now: Date = new Date(), jobs: Watche
     if (j.activeAt && !j.activeAt(now)) continue
     const r = byName.get(j.name)
     if (!r) {
+      if (j.ignoreNeverRan) continue
       out.push({ name: j.name, label: j.label, kind: "never_ran", detail: "実行の記録がありません（定期の処理が登録されていないか、一度も動いていません）" })
       continue
     }
@@ -112,7 +129,10 @@ export async function checkHeartbeats(alert: B2cAlertFn, now: Date = new Date(),
   }
   if (!claimed.length) return out
   const lines = [`検知の時刻: ${fmtJst(now.toISOString())}`]
-  for (const p of claimed) lines.push("", `■ ${p.label}`, `  ${p.detail}`)
+  for (const p of claimed) {
+    lines.push("", `■ ${p.label}`, `  ${p.detail}`)
+    if (p.name === "heartbeat-check") lines.push("  → GitHub の Actions の「Cron heartbeat check」の実行の記録と、リポジトリの Secrets の CRON_SECRET を確かめてください。止まっている間は、定期の処理の停止に気づけません。")
+  }
   lines.push(
     "",
     "→ 対応: pg_cron の登録（select * from cron.job）・Supabase の Vault の cron_secret・Vercel の応答（500・503）を確かめてください。",

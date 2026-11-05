@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { b2cStripeConfig } from "@/lib/b2c/stripe"
 import { expireStaleCardPending } from "@/lib/b2c/card-service"
-import { b2cNotifyLive, enqueueB2cReminders, expireB2cConfirmationTimeouts, processB2cOutbox } from "@/lib/b2c/notify"
+import { b2cNotifyLive, b2cOpsAlert, enqueueB2cReminders, expireB2cConfirmationTimeouts, processB2cOutbox } from "@/lib/b2c/notify"
 import { enqueueCollectionReminders, runB2cCharges } from "@/lib/b2c/charge-service"
 import { reconcileB2cRefunds } from "@/lib/b2c/refund-service"
 import { watchB2cCharges } from "@/lib/b2c/charge-watch"
-import { recordHeartbeat } from "@/lib/cron-heartbeat"
+import { checkHeartbeats, recordHeartbeat, watcherJob } from "@/lib/cron-heartbeat"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -58,12 +58,16 @@ export async function POST(req: NextRequest) {
     })
     const collection = await step("collection_reminders", () => enqueueCollectionReminders())
     const chargeWatch = await step("charge_watch", () => watchB2cCharges(new Date()))
+    // 見張りの見張り（GitHub Actions の見張りが止まっていないか。集荷の監視と同じ門なので重ねても 1回）。失敗は本来の処理の失敗に数えない
+    const watcher = await checkHeartbeats(b2cOpsAlert(), new Date(), [watcherJob()])
+      .then((r) => ({ problems: r.problems.length, alerted: r.alerted }))
+      .catch((e: unknown) => ({ note: e instanceof Error ? e.message : String(e) }))
     const outbox = await step("outbox", () => processB2cOutbox())
     const alertUndeliverable = b2cNotifyLive() && !!outbox?.health?.undeliverable
     // 最後の実行の記録（止まった・失敗が続くことを別の仕組みで見つける: /api/cron/heartbeat-check）
     await recordHeartbeat("b2c-tick", errors.length === 0 && !alertUndeliverable, errors.join(" / ") || (alertUndeliverable ? "ops_alert_undeliverable" : undefined))
     return NextResponse.json(
-      { ok: errors.length === 0 && !alertUndeliverable, cardExpiry, confirmationTimeouts, remindersQueued, charges, refunds, collection, chargeWatch, outbox, errors, alertUndeliverable },
+      { ok: errors.length === 0 && !alertUndeliverable, cardExpiry, confirmationTimeouts, remindersQueued, charges, refunds, collection, chargeWatch, watcher, outbox, errors, alertUndeliverable },
       { status: alertUndeliverable ? 503 : errors.length ? 500 : 200 },
     )
   } finally {

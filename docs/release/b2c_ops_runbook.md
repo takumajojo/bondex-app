@@ -45,3 +45,27 @@
 - 済（2026-11-05）: 請求の結果不明・保留・遅れ・停止を運営へ通知（`lib/b2c/charge-watch.ts`）。
 - 済（2026-11-05）: 定期の処理の停止・失敗の連続を、別の仕組み（GitHub Actions）から見張って通知（`lib/cron-heartbeat.ts`・sql/080・`.github/workflows/cron-heartbeat.yml`。schedule は main に入ってから動く）。
 - 【未決】当番・連絡の順番・阪急への連絡の担当。
+
+## 4. 監視の仕組みと、止まった時に何が起きるか（2026-11-05・単一障害点の調査）
+
+見張りは 2つの別の仕組みで、お互いを見張る。どちらも**読むだけ**で、請求・照合・Stripe には触れない（試験 `scripts/test-integ/charge-watch.ts` 12章でコードを確認）。
+二重請求・誤請求の防止は見張りに依らない（DB の一意の制約 `b2c_payments_one_base_per_order`・請求の確保の関数 `b2c_claim_charges`・Stripe の重複防止キー）。見張りが止まっても請求は誤らない。止まるのは「知らせ」だけ。
+
+| 仕組み | 動かすもの | 見張る相手 | 止まったと判断する時間 |
+|---|---|---|---|
+| A. pg_cron（Supabase） | 集荷の監視（10分おき・8〜23時）・B2C の定期の処理（数分おき） | B の見張りの最後の実行（`cron_heartbeats` の heartbeat-check） | 8時間（GitHub の間引き 2〜6時間を見込む・`HEARTBEAT_CHECK_STALE_MIN`） |
+| B. GitHub Actions（`.github/workflows/cron-heartbeat.yml`・1時間おき） | `/api/cron/heartbeat-check` | A の 2つの処理の最後の成功・失敗の連続、B2C の請求 | B2C 30分・集荷の監視 40分・3回続けて失敗 |
+
+| 止まったもの | 気づく仕組み | 知らせの経路 | 請求への影響 |
+|---|---|---|---|
+| pg_cron | B（最大で GitHub の遅れ＋1時間） | 運営へのメール・Slack ＋ GitHub の失敗の知らせ | 請求の処理も止まる（請求されないだけ。再開後に照合してから 1回ずつ） |
+| GitHub Actions | A（8時間） | 運営へのメール・Slack | なし |
+| Vercel（アプリ） | B の呼び出しが失敗 → GitHub の失敗の知らせ | GitHub のメール（アプリのメールは使えない） | 請求の処理も止まる |
+| Supabase | 同上（B が 503） | GitHub のメール | 請求の処理も止まる |
+| メールの送信（Resend・SMTP） | 送れなかった知らせは次の回に送り直す。B が 503 → GitHub のメール | Slack（設定時）・GitHub のメール | なし |
+| A と B が同時に | **自動では気づけない** | 0章の毎日の見回り（`cron_heartbeats`・GitHub の Actions の画面） | 請求の処理も止まる |
+
+残る単一障害点（受け入れて、毎日の見回りで補う）:
+- GitHub の失敗の知らせは、リポジトリの持ち主の GitHub の通知の設定（Actions の失敗をメールで受け取る）に依る。**公開の前に設定を確かめる**。
+- Slack を設定しなければ、運営への知らせはメールの 1経路だけ（`SLACK_WEBHOOK_URL` の設定を推奨）。
+- 公開の直後は B の記録が無いので、A は「見張りが止まった」を知らせない（誤報の防止）。**main に入った後の最初の 1回の実行を、GitHub の Actions の画面で確かめる**。
