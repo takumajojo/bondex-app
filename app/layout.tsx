@@ -18,6 +18,13 @@ const SITE_TITLE = 'BondEx（ボンデックス）｜旅行会社・DMC向け �
 const SITE_DESC =
   '旅行会社・DMC・ランドオペレーター向けの荷物配送手配代行。旅程を送るだけで、ホテル間配送の集荷・送り状・追跡・月次請求まで BondEx が対応。ホテルへの伝票依頼は不要で、手ぶら観光を旅行商品に組み込めます。'
 
+// SNS/チャット(WhatsApp 等)の共有プレビュー用の日英併記タイトル・説明。
+// SEO 用の <title>/description(= SITE_TITLE/SITE_DESC・日本語)は温存し、og/twitter だけ併記にする。
+const OG_TITLE =
+  'BondEx（ボンデックス）｜訪日旅行のホテル間荷物配送手配 / Hotel-to-Hotel Luggage Forwarding in Japan for Travel Agencies & DMCs'
+const OG_DESC =
+  '旅行会社・DMC・ランドオペレーター向けのホテル間荷物配送手配代行。旅程を送るだけで集荷・送り状・追跡・月次請求まで対応し、ホテルへの伝票依頼は不要です。 / BondEx arranges hotel-to-hotel luggage forwarding across Japan for travel agencies, DMCs and land operators — send the itinerary and we handle pickup, labels, tracking and monthly billing, with no shipping paperwork for hotels.'
+
 // 構造化データ (JSON-LD) — 同名多数 (塗料 Bondex 等) の中で「訪日旅行者向け
 // 手荷物ホテル間配送の取次サービス (株式会社JOJO)」という固有エンティティを
 // 検索エンジン/AIに明確化する。三宮 JOJO Nail で構造化データがエンティティ確立に
@@ -129,15 +136,15 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'BondEx',
-    title: SITE_TITLE,
-    description: SITE_DESC,
+    title: OG_TITLE,
+    description: OG_DESC,
     locale: 'ja_JP',
     images: [{ url: '/og-image.jpg?v=2', width: 1200, height: 630, alt: 'BondEx' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: SITE_TITLE,
-    description: SITE_DESC,
+    title: OG_TITLE,
+    description: OG_DESC,
     images: ['/og-image.jpg?v=2'],
   },
   icons: {
