@@ -9,7 +9,7 @@
 import Stripe from "stripe"
 import { getSupabase } from "@/lib/supabase"
 import { sha256Hex, B2cDbUnavailable, B2C_DB_TIMEOUT_MS } from "./booking-service"
-import { syncPaymentFromStripe } from "./charge-service"
+import { syncPaymentFromStripe, b2cCancelPending } from "./charge-service"
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{32}$/
 
@@ -59,6 +59,8 @@ export async function startPay(stripe: Stripe, token: unknown): Promise<PayView>
     if (pays.some((p) => ["succeeded", "partially_refunded", "refunded"].includes(p.status as string))) return { ...base, state: "paid" }
     return { ...base, state: "nothing_due" }
   }
+  // 取消の申請（佐川の確認待ち）が残っている間は、支払の画面を出さない（運営が申請の結果を確かめる。sql/082）
+  if (await b2cCancelPending(o.id)) return { ...base, state: "checking" }
   let pi = await stripe.paymentIntents.retrieve(due.stripe_payment_intent_id as string)
   if (pi.status === "succeeded") {
     await syncPaymentFromStripe(stripe, due.id as string)

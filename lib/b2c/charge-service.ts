@@ -177,6 +177,27 @@ async function findPaymentIntentsFor(stripe: Stripe, customer: string, chargeKey
 }
 
 /**
+ * 取消の申請（佐川の確認待ち）が残っているか。sql/082 の b2c_charge_check と同じ条件（kind=cancel・stage requested/contacted/approved）。
+ * 定期の処理の取り出し（DB で確認済み）以外の入口（照合・運営の再試行・支払のページ・回収の案内）で使う。読めなければ true（請求しない側に倒す）。
+ */
+export async function b2cCancelPending(orderId: string): Promise<boolean> {
+  const sb = getSupabase()
+  if (!sb) return true
+  const { data: ships, error } = await sb.from("shipments").select("id").eq("b2c_order_id", orderId)
+  if (error) return true
+  const ids = (ships ?? []).map((x) => x.id as string)
+  if (!ids.length) return false
+  const { count, error: e2 } = await sb
+    .from("shipment_change_requests")
+    .select("id", { count: "exact", head: true })
+    .in("shipment_id", ids)
+    .eq("kind", "cancel")
+    .in("stage", ["requested", "contacted", "approved"])
+  if (e2) return true
+  return (count ?? 0) > 0
+}
+
+/**
  * PaymentIntent を用意する（作成または既存のものを使う）。DB に ID を保存できたら、その ID を返す。
  * 同じ論理の請求で PaymentIntent を無条件に作り直さない。
  */
@@ -261,6 +282,12 @@ export async function processPayment(stripe: Stripe, row: PaymentRow, now: Date,
   const o = await loadOrder(row.order_id)
   if (!o) return markUnknown(row, "order_unreadable", now)
   let p = row
+  // 照合で取り出した行（作成・確定の途中で止まった）も、確定をまだ送っていなければ取消の申請を確かめる（送った後は結果の確認を優先）
+  if (allowConfirm && p.confirm_attempt === 0 && (await b2cCancelPending(p.order_id))) {
+    const ok = await updatePayment(p.id, { status: "on_hold", hold_reason: "cancel_pending", locked_by: null, locked_at: null }, ["processing", "unknown"])
+    if (ok) await event(p.order_id, "charge_on_hold", { payment_id: p.id, hold_reason: "cancel_pending" })
+    return ok ? "on_hold" : "unrecorded"
+  }
   let piId = p.stripe_payment_intent_id
   if (!piId) {
     if (!allowConfirm) {
@@ -362,9 +389,10 @@ export async function syncPaymentFromStripe(stripe: Stripe, paymentId: string, n
 }
 
 /** 運営の再試行（失敗した請求を、登録済みのカードでもう一度）。新しい試行の番号で確定する。同じ PaymentIntent。 */
-export async function retryChargeByOps(stripe: Stripe, paymentId: string, now: Date = new Date()): Promise<ChargeOutcome | "not_retryable"> {
+export async function retryChargeByOps(stripe: Stripe, paymentId: string, now: Date = new Date()): Promise<ChargeOutcome | "not_retryable" | "cancel_pending"> {
   const p = await loadPayment(paymentId)
   if (!p || p.status !== "failed" || !p.stripe_payment_intent_id) return "not_retryable"
+  if (await b2cCancelPending(p.order_id)) return "cancel_pending"
   const ok = await updatePayment(p.id, { status: "processing", locked_by: "ops", locked_at: now.toISOString(), confirm_attempt: p.confirm_attempt + 1, confirm_started_at: now.toISOString() }, ["failed"])
   if (!ok) return "not_retryable"
   const o = await loadOrder(p.order_id)
@@ -390,6 +418,7 @@ export async function enqueueCollectionReminders(now: Date = new Date()): Promis
     const days = (now.getTime() - new Date(p.first_failed_at as string).getTime()) / 86400_000
     const seq = days >= 7 ? 3 : days >= 3 ? 2 : days >= 1 ? 1 : 0
     if (seq === 0) continue
+    if (await b2cCancelPending(p.order_id as string)) continue // 取消の申請中は支払を促さない
     const { data: o } = await sb.from("b2c_orders").select("language").eq("id", p.order_id).maybeSingle()
     await enqueuePaymentNotice(p.order_id as string, (o?.language as "ja" | "en") ?? "en", "payment_action_required", p.id as string, seq)
     n++
