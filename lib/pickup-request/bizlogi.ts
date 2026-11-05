@@ -102,6 +102,11 @@ function precheck(row: PickupShipmentRow, now: Date): string[] {
   if (!elig.ok) errors.push(elig.reason)
   if (row.status === "cancelled") errors.push("この区間は取消済みです")
   if (legTrackingNumbers(row).length > 0) errors.push("佐川の問合番号が入力済みです (佐川側に依頼があります)")
+  // 有効な依頼の記録が無いのに「集荷手配済み」の印だけがある = 記録の無い手動 (Excel) の依頼の可能性 (2026-11-06 監査)。
+  // 有効な記録がある区間は確保 (claim) で止まるので、ここに来るのは記録が無い区間だけ
+  if (row.pickup_requested_at) {
+    errors.push("「集荷手配 (佐川) 済み」の印が付いていますが、集荷依頼の記録がありません (移行中などに Excel で依頼した可能性)。佐川 (世田谷営業所) に依頼の有無を確かめ、依頼済みなら「Excel で依頼済み」を記録してください (Biz-Logi では送りません)。依頼が無いと確かめた場合は、「Excel で依頼済み」を記録してから取り消すと印が外れ、送れるようになります")
+  }
   if (pickupRequestClosed(row.shipment_date, now)) {
     errors.push("集荷依頼の締め (集荷前日 20:00) を過ぎています。世田谷営業所へ相談してください")
   }

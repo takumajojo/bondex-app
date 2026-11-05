@@ -43,7 +43,8 @@ export function checkExcelRows(refs: string[], legs: ExcelCheckLeg[], requests: 
     if (legTrackingNumbers(leg).length > 0) return { ref, ok: false, reason: "佐川の問合番号が入力済み (依頼済み) です" }
     const live = requests.find((r) => r.shipment_id === leg.id && isLive(r.state))
     if (live) return { ref, ok: false, reason: `集荷依頼の記録があります (${live.channel}・${live.state})` }
-    if (requests.length === 0 && leg.pickup_requested_at) return { ref, ok: false, reason: "「依頼済み」の印が付いています" }
+    // 印は、記録の有無に関係なく見る (以前は記録が1件でもあると印を見ず、記録の無い印を見落としていた・2026-11-06 監査)
+    if (leg.pickup_requested_at) return { ref, ok: false, reason: "「依頼済み」の印が付いています" }
     return { ref, ok: true }
   })
 }
