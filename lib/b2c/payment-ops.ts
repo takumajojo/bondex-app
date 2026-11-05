@@ -55,6 +55,9 @@ export async function loadB2cTodo(now: Date = new Date()) {
   // 基本料金の請求の行がまだ無い（または取り消した）予約は一覧に出す（出さないと請求されないまま埋もれる）
   const { data: basePays } = dueIds.length ? await sb.from("b2c_payments").select("order_id, status").eq("kind", "base").in("order_id", dueIds) : { data: [] }
   const billed = new Set((basePays ?? []).filter((p) => p.status !== "cancelled").map((p) => p.order_id as string))
+  // 確認済み（取り消していない）の予約は出さない（運営が「請求をやめる」にした予約を、確認できないのに再び出さない）
+  const { data: confs } = dueIds.length ? await sb.from("b2c_pickup_confirmations").select("order_id").is("revoked_at", null).in("order_id", dueIds) : { data: [] }
+  for (const c of confs ?? []) billed.add(c.order_id as string)
   const pre = new Set(
     (ships ?? [])
       .filter((s) => ["requested", "pending", "issued", "picked_up", "in_transit", "delivered"].includes(s.status as string) && !billed.has(s.b2c_order_id as string))
@@ -177,7 +180,7 @@ export async function retryCharge(op: B2cOperator, stripe: Stripe, paymentId: st
   const { data: p } = await sb.from("b2c_payments").select("order_id").eq("id", paymentId).maybeSingle()
   if (!p) return { ok: false, error: "not_found" }
   const out = await retryChargeByOps(stripe, paymentId, now)
-  if (out === "not_retryable") return { ok: false, error: "not_retryable" }
+  if (out === "not_retryable" || out === "cancel_pending") return { ok: false, error: out }
   await sb.from("b2c_order_events").insert({ order_id: p.order_id, event: "charge_retried_by_ops", actor_type: "operator", operator_email: op.operatorEmail, credential_id: op.credentialId, reason, after_state: { payment_id: paymentId, outcome: out } })
   return { ok: true, result: out }
 }

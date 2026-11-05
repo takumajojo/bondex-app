@@ -1,21 +1,16 @@
--- B2C の定期の処理 (/api/b2c/cron/tick) の定時実行 (pg_cron)。**未実行・本番での登録は谷口さんの承認後** (2026-11-07 監査 B-07)。
--- 請求 (集荷確認の 30分後)・請求の見張り・結果不明の照合・返金の照合・リマインド・通知の送信待ち (outbox) は、すべてこの中で動く。
--- 登録しないと、B2C の請求も通知も一切動かない。
---
+-- B2C の定期の処理（/api/b2c/cron/tick）の定時実行 (pg_cron)。**未実行・本番での登録は谷口さんの承認後**（2026-11-06 監査 B-07）。
+-- staging には登録しない（staging の試験では手で呼ぶ: docs/release/staging_verification_plan_20261105.md の S4）。
+-- 中身: カードの入力の放置の取消・ホテルの確認の期限切れ・リマインド・集荷の後の請求（30分の後）・結果不明の照合・返金の照合・
+--       回収の案内・請求の見張り・通知の送信（app/api/b2c/cron/tick/route.ts）。
 -- 前提:
---   1. sql/080_cron_heartbeats.sql の適用 (実行の記録)。アプリのデプロイ (/api/b2c/cron/tick)。
---   2. Vault の "cron_secret" (sql/052 と同じ値 = Vercel の CRON_SECRET)。SQL・リポジトリに秘密を書かない。
---   3. 登録の時点では B2C_SCHEDULER_ENABLED を入れない (未設定の間、エンドポイントは何もせず {"skipped":"scheduler disabled"} を返すだけ)。
---      登録 → 応答が 200 で skipped になるのを確かめる → B2C_SCHEDULER_ENABLED=true を入れて再デプロイ、の順。
--- 間隔: 5分おき・終日 (請求・通知は夜も止めない。B2C の請求の判定は 30分の猶予の後なので 5分の遅れは問題にならない)。
--- 認証: Authorization: Bearer <cron_secret>。違えば 401 (route.ts)。
--- 重複実行の防止: net.http_post は応答を待たずに次の回へ進むので、前の回が終わる前に次が始まりうる。
---   エンドポイント側の acquireCronLock("b2c-tick") で 2本目は {"skipped":"already running"} になる (lib/cron-lock.ts)。
---   請求は請求の行の確保と Stripe の冪等キーで 1回だけ (lib/b2c/charge-service.ts)。
--- 停止の検知: 実行ごとに cron_heartbeats の "b2c-tick" を記録し、GitHub Actions の 1時間おきの見張り
---   (/api/cron/heartbeat-check・.github/workflows/cron-heartbeat.yml) が、B2C_SCHEDULER_ENABLED=true の間に
---   「一度も記録が無い」「30分 (B2C_TICK_STALE_MIN) を超えて成功が無い」「3回続けて失敗」を運営に知らせる (lib/cron-heartbeat.ts)。
---   pg_cron と見張りは別の仕組みなので、どちらか一方が止まってももう一方で気づける。
+--   1. sql/061〜082 の適用、アプリのデプロイ（/api/b2c/cron/tick）
+--   2. Vercel の B2C_SCHEDULER_ENABLED=true（false の間は呼ばれても {skipped:"scheduler disabled"} を返すだけ。先に登録しても無害）
+--   3. Vault の "cron_secret"（sql/052 と同じ。Vercel の CRON_SECRET と同じ値）
+-- 間隔: 5分おき・終日（請求は集荷の確認の 30分後。見張り lib/cron-heartbeat.ts の b2c-tick は 30分止まると運営に知らせる）。
+-- 二重起動: アプリ側の lib/cron-lock.ts（b2c-tick）と、請求の取り出しの for update skip locked・Stripe の冪等キーで止める。
+-- 失敗: 段階ごとに記録し 500 を返す → cron_heartbeats に失敗を記録 → 3回続けば運営に知らせる（/api/cron/heartbeat-check、
+--       GitHub Actions の cron-heartbeat.yml が 1時間おきに呼ぶ。こちらは main に入った後だけ動く）。
+-- 呼び出しは POST（route は POST だけ）。timeout は関数の maxDuration(120s)＋30s。
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 select cron.schedule(
@@ -24,19 +19,18 @@ select cron.schedule(
   $$
   select net.http_post(
     url := 'https://bondex.express/api/b2c/cron/tick',
-    headers := jsonb_build_object(
-      'Authorization',
-      'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'),
-      'Content-Type', 'application/json'
-    ),
     body := '{}'::jsonb,
-    timeout_milliseconds := 130000
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization',
+      'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
+    ),
+    timeout_milliseconds := 150000
   );
   $$
 );
--- 確認:     select jobid, jobname, schedule, active from cron.job where jobname = 'b2c-tick-5min';
+-- 確認:   select jobid, jobname, schedule, active from cron.job where jobname = 'b2c-tick-5min';
+-- 実行履歴: select * from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'b2c-tick-5min') order by start_time desc limit 10;
 -- HTTP結果: select id, status_code, left(content, 300), created from net._http_response order by created desc limit 10;
--- 実行記録: select name, last_ok_at, last_error_at, consecutive_failures from public.cron_heartbeats where name = 'b2c-tick';
--- 一時停止: select cron.alter_job((select jobid from cron.job where jobname = 'b2c-tick-5min'), active := false);
---           (または Vercel の B2C_SCHEDULER_ENABLED を外して再デプロイ。どちらも、止めている間の請求・通知は再開した回でまとめて処理する)
--- 止める:   select cron.unschedule('b2c-tick-5min');
+-- 止める:  select cron.unschedule('b2c-tick-5min');
+--   すぐ止めたい時は、Vercel の B2C_SCHEDULER_ENABLED を false にしても止まる（請求だけ止めるのは B2C_CHARGE_LIVE=false）。

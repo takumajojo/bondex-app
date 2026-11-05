@@ -1,6 +1,10 @@
 -- sql/082 を戻す: b2c_charge_check（079 の定義）・b2c_resolve_charge_hold・b2c_confirm_pickup・b2c_revoke_pickup・
 -- b2c_record_piece_correction（074 の定義）に戻す。表・データは変えない（082 は関数だけ）。
 -- 戻した後は、取消の申請中の予約も 30分後に請求され、追跡で先に集荷済みになった区間は集荷の確認ができなくなる。
+-- 順番（2026-11-06 試験済み: scripts/test-integ/sql082.sh の D）: rollback_082 → rollback_081 → rollback_067_072。
+-- 適用は逆: 081 → 082。082 は表・列・データを変えないので、082 だけを戻すこともできる。
+-- 戻す前に cancel_pending で止まった請求が残っていれば、戻した後は「解除」できない（「請求をやめる」だけ）。先に運営が片付ける:
+--   select id, order_id from b2c_payments where status = 'on_hold' and hold_reason = 'cancel_pending';
 
 do $migration_lock$
 declare

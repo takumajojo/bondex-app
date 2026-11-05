@@ -4,7 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { alertStaleSending, alertEveningPickupGaps } from "@/lib/pickup-request/watch"
 import { alertPickupMisses } from "@/lib/pickup-request/pickup-miss"
-import { checkHeartbeats, recordHeartbeat, watcherJob } from "@/lib/cron-heartbeat"
+import { checkHeartbeats, recordHeartbeat, watchedJobs, watcherJob } from "@/lib/cron-heartbeat"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -50,8 +50,10 @@ export async function GET(req: NextRequest) {
     // 未集荷（集荷漏れの可能性）: 追跡を止めていても通知する（G19。区間ごとに 1回だけ・lib/pickup-request/pickup-miss.ts）
     result.pickupMiss = await alertPickupMisses(sb, sendOpsAlert).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }))
     // 見張りの見張り: GitHub Actions の見張り（/api/cron/heartbeat-check）が 8時間以上動いていなければ知らせる（1時間に 1回）。
+    // B2C の定期の処理（b2c-tick・スイッチ ON の時だけ）も見る: GitHub の見張りは 2〜6時間おきに間引かれるので、
+    // pg_cron の別のジョブから 30分の停止に気づく（2026-11-06 監査 B-07。門は heartbeat-check と同じなので重ねても 1回）。
     // 失敗しても集荷の監視の結果には数えない（本来の処理を止めない）
-    result.watcher = await checkHeartbeats(sendOpsAlert, new Date(), [watcherJob()])
+    result.watcher = await checkHeartbeats(sendOpsAlert, new Date(), [watcherJob(), ...watchedJobs().filter((j) => j.name === "b2c-tick")])
       .then((r) => ({ problems: r.problems.length, alerted: r.alerted }))
       .catch((e: unknown) => ({ note: e instanceof Error ? e.message : String(e) }))
   } finally {

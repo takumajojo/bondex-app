@@ -55,6 +55,7 @@ const ERRORS: Record<string, string> = {
   too_early: "最初の失敗から 14日たっていません",
   not_unpaid: "未収の請求ではありません",
   not_retryable: "再試行できる状態ではありません",
+  cancel_pending: "取消の申請が佐川の確認待ちです（申請が却下・取り下げになってから再試行してください）",
   charge_not_live: "請求の実行が止まっています（B2C_CHARGE_LIVE）",
   expired: "期限を過ぎた通知は再送できません",
   invalid_state: "状態が変わっています。再読み込みしてください",
