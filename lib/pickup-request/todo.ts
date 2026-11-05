@@ -19,6 +19,11 @@ export const PICKUP_TODO_LOOKAHEAD_DAYS = 7
 
 export interface PickupTodoLeg {
   id: string
+  /** 'b2b' | 'b2c' (sql/061) */
+  channel?: string | null
+  from_prefecture?: string | null
+  to_prefecture?: string | null
+  origin_check_out?: string | null
   booking_id: string
   leg_index: number
   status: string
@@ -59,6 +64,11 @@ export type AttentionKind =
   | "hotel_change_requested"
   /** 受付後の変更を佐川が承認済みで、BondEx へ未反映 */
   | "hotel_change_approved"
+  /**
+   * 集荷依頼済みの B2C の区間で、予約の都道府県・集荷元のチェックアウト日が空 (sql/081 で埋められなかった区間など)。
+   * 送信前の照合ができない状態なので、運営が予約を確かめて直す (2026-11-06 谷口さん)
+   */
+  | "b2c_missing_fields"
 
 export interface SagawaPickupTask {
   shipmentId: string
@@ -241,6 +251,14 @@ export function buildPickupTodo(
       updatedAt: c.updated_at,
     })
   }
+  // 集荷依頼済みの B2C の区間で、予約の都道府県・チェックアウト日が空 (今日以降・取消以外)
+  for (const r of live.values()) {
+    const l = legById.get(r.shipment_id)
+    if (!l || l.channel !== "b2c" || l.status === "cancelled" || l.shipment_date < today) continue
+    const e = bizlogiEligibility(l)
+    if (e.ok) continue
+    attention.push({ ...base(l), kind: "b2c_missing_fields", requestId: r.id, channel: r.channel, state: r.state, shippingNumber: r.shipping_number, error: null, note: e.reason, updatedAt: r.updated_at })
+  }
   // 記録が無いのに佐川の番号がある区間 (今日以降・取消以外)
   for (const l of legs) {
     if (l.status === "cancelled" || live.has(l.id) || l.shipment_date < today) continue
@@ -256,6 +274,7 @@ export function buildPickupTodo(
     change_pending: 5,
     record_missing: 6,
     hotel_change_approved: 3,
+    b2c_missing_fields: 5,
     hotel_change_requested: 4,
   }
   attention.sort((a, b) => order[a.kind] - order[b.kind] || a.shipmentDate.localeCompare(b.shipmentDate))

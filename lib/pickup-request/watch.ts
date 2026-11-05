@@ -108,6 +108,7 @@ const ATTENTION_JA: Record<string, string> = {
   record_missing: "問合番号はあるが記録なし",
   hotel_change_requested: "変更申請が未連絡",
   hotel_change_approved: "佐川承認済みの変更が未反映",
+  b2c_missing_fields: "B2C の予約の都道府県・チェックアウト日が空",
 }
 
 /** まだ通知していない単位だけを返す (DB で記録)。記録できないときは全件を返す (通知の漏れより重複を選ぶ)。 */
