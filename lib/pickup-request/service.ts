@@ -17,7 +17,14 @@ export async function loadPickupShipment(shipmentId: string): Promise<PickupShip
   if (!sb) return null
   const { data, error } = await sb.from("shipments").select(PICKUP_SHIPMENT_COLUMNS).eq("id", shipmentId).maybeSingle()
   if (error) throw new Error(`区間を読めません: ${error.message}`)
-  return (data as unknown as PickupShipmentRow | null) ?? null
+  const row = (data as unknown as PickupShipmentRow | null) ?? null
+  // 2区間目以降: 1つ前の区間の配送先 = この区間の集荷元ホテル。そのチェックアウト日を集荷日の確かめに使う
+  if (row && row.leg_index > 0) {
+    const prev = await sb.from("shipments").select("to_check_out").eq("booking_id", row.booking_id).eq("leg_index", row.leg_index - 1).maybeSingle()
+    if (prev.error) throw new Error(`前の区間を読めません: ${prev.error.message}`)
+    row.origin_check_out = (prev.data as { to_check_out?: string | null } | null)?.to_check_out ?? null
+  }
+  return row
 }
 
 /** Biz-Logi から送れる状態か (設定が揃っているか)。理由も返す。秘密の値は返さない。 */
@@ -265,6 +272,11 @@ export async function resolvePickupRequest(
   if (!current) return { ok: false, reason: "集荷依頼の記録が見つかりません" }
   if (!t.from.includes(current.state)) {
     return { ok: false, reason: `現在の状態 (${current.state}) ではこの操作はできません` }
+  }
+  // 結果の分からない依頼を「依頼なし」にすると、また送れるようになる。前の依頼が佐川に届いていれば二重になるので、
+  // 佐川 (世田谷営業所・SG) に確かめた内容の記録を必須にする (2026-11-06 監査 項目9)
+  if (action === "confirm_none" && current.state !== "accepted" && !(input.note ?? "").trim()) {
+    return { ok: false, reason: "佐川 (世田谷営業所) に依頼が無いことを確かめた内容 (相手・日時・回答) を確認メモに入力してください" }
   }
   // 送信中の記録は、送信処理が動いている間は触らない (止まったと判断できる時間が経ってから)
   if (current.state === "sending" && now().getTime() - Date.parse(current.updated_at) < STALE_SENDING_MS) {

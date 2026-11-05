@@ -44,6 +44,11 @@ export interface PickupShipmentRow {
   from_check_in?: string | null
   /** 配送先ホテルのチェックアウト日 (任意)。 */
   to_check_out?: string | null
+  /**
+   * 集荷元ホテルのチェックアウト日 (任意・読み込み時に補う)。予約には集荷元のチェックアウト日の列が無い
+   * (shipments.origin_check_out はどこからも書かれない) ため、同じ予約の1つ前の区間の配送先チェックアウト日を使う。
+   */
+  origin_check_out?: string | null
 }
 
 export const PICKUP_SHIPMENT_COLUMNS =

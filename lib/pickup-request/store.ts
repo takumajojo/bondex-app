@@ -63,11 +63,19 @@ export interface PickupStore {
    * reason: existing / allocated / no_number_range / number_range_exhausted / leg_not_found
    */
   legNumber?(shipmentId: string, environment: "test" | "production"): Promise<{ ok: boolean; number: string | null; reason: string }>
+  /**
+   * 区間の進行中の変更・取消の申請 (sql/068 の stage が requested・contacted・approved。運営の訂正の記録 correction は除く)。
+   * 1件でもあれば Biz-Logi で送らない (申請が片付くまで区間は旧い内容のまま: 2026-11-06 監査 項目11)。
+   */
+  openChanges?(shipmentId: string): Promise<Array<{ id: string; kind: string; stage: string }>>
   /** 番号を使わなくする (範囲外・桁数の誤りで佐川が受け付けなかった)。次の送信は新しい番号になる。 */
   retireNumber?(number: string, reason: string): Promise<void>
   /** 顧客側採番で送る番号を依頼の記録に書く (送信中・未記録・区間の台帳の番号のときだけ。一度書いたら変わらない)。 */
   setAssignedNumber?(requestId: string, number: string): Promise<boolean>
 }
+
+/** 進行中の変更・取消の申請の段階 (sql/068 shipment_change_requests.stage)。 */
+export const OPEN_CHANGE_STAGES = ["requested", "contacted", "approved"] as const
 
 /** DB に届かなかった (例外・接続不可)。送信の前なら送らない、後なら結果不明として扱う。 */
 export class PickupStoreError extends Error {}
@@ -124,6 +132,16 @@ export function supabasePickupStore(): PickupStore {
       const { data, error } = await sb.from("pickup_requests").select("*").eq("id", id).maybeSingle()
       if (error) throw new PickupStoreError(`集荷依頼の読み込みに失敗しました: ${error.message}`)
       return (data as PickupRequestRow | null) ?? null
+    },
+    async openChanges(shipmentId) {
+      const { data, error } = await sb
+        .from("shipment_change_requests")
+        .select("id, kind, stage")
+        .eq("shipment_id", shipmentId)
+        .in("stage", OPEN_CHANGE_STAGES as unknown as string[])
+        .neq("kind", "correction")
+      if (error) throw new PickupStoreError(`変更・取消の申請の読み込みに失敗しました: ${error.message}`)
+      return (data ?? []) as Array<{ id: string; kind: string; stage: string }>
     },
     async legNumber(shipmentId, environment) {
       const { data, error } = await sb.rpc("pickup_leg_number", { p_shipment_id: shipmentId, p_environment: environment })

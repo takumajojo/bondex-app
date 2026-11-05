@@ -23,7 +23,8 @@ const dateOnly = (v: string | null | undefined) => (typeof v === "string" && /^\
  *   止める   : 集荷日・配達日が無い / 配達日が集荷日以前 / 集荷日が集荷元ホテルのチェックイン日より前 /
  *              配達日が配送先ホテルのチェックアウト日より後
  *   確認必須 : 配達日が配送先ホテルのチェックイン日より前 (ホテルが事前の受け取りを認めるかは予約の外の情報)
- *   判定しない: 集荷日とチェックアウト日の違い (チェックアウト前日に出す運用がある)・配達日がチェックイン日より後
+ *   確認必須 : 集荷日が集荷元ホテルのチェックアウト日より後 (旅行者が去った後もホテルが荷物を預かるかは予約の外の情報)
+ *   判定しない: 集荷日がチェックアウト日以前 (チェックアウト前日に出す運用がある)・配達日がチェックイン日より後
  */
 export function scheduleCheck(row: PickupShipmentRow): { errors: string[]; confirmations: SafetyConfirmation[] } {
   const errors: string[] = []
@@ -43,6 +44,13 @@ export function scheduleCheck(row: PickupShipmentRow): { errors: string[]; confi
   const destOut = dateOnly(row.to_check_out)
   if (destOut && arrival > destOut) {
     errors.push(`配達予定日 (${arrival}) が配送先ホテルのチェックアウト日 (${destOut}) より後です。予約を確認してください`)
+  }
+  const originOut = dateOnly(row.origin_check_out)
+  if (originOut && pickup > originOut) {
+    confirmations.push({
+      code: "pickup_after_origin_checkout",
+      message: `集荷日 (${pickup}) が集荷元ホテルのチェックアウト日 (${originOut}・前の区間の予約) より後です。チェックアウト後もホテルが荷物を預かることを確認済みの場合だけ送ってください`,
+    })
   }
   const destIn = dateOnly(row.from_check_in) // 列名は from_ だが中身は「配送先ホテルのチェックイン日」(lib/shipments-db.ts)
   if (destIn && arrival < destIn) {
