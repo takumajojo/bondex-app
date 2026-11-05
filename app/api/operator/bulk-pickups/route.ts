@@ -26,16 +26,21 @@ function todayJstYmd(): string {
 
 export async function GET(req: NextRequest) {
   const enabled = sagawaBulkAlertEnabled()
+
+  // 読み取り専用プレビュー (ドライラン): 検知フラグ OFF でも Operator 認証済みなら利用可。
+  // 本番機能を一切有効化せずに、対象集荷単位・大口/重複件数・初回/再通知候補・宛先設定状況だけを確認する。
+  // メール送信なし・送信済みフラグ/claim 変更なし・DB 書込なし (read 専用)。レスポンスの enabled で検知フラグ状態が分かる。
+  if (req.nextUrl.searchParams.get("preview") === "1") {
+    const sb = getSupabase()
+    if (!sb) return NextResponse.json({ enabled, preview: null })
+    const preview = await dryRunBulkAlert(sb, todayJstYmd())
+    return NextResponse.json({ enabled, preview })
+  }
+
   if (!enabled) return NextResponse.json({ enabled: false, groups: [] })
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ enabled, groups: [] })
   const today = todayJstYmd()
-
-  // ドライラン: メールを送らず・送信済みフラグ/claim を変更せず、候補と宛先設定状況を返す (read 専用)。
-  if (req.nextUrl.searchParams.get("preview") === "1") {
-    const preview = await dryRunBulkAlert(sb, today)
-    return NextResponse.json({ enabled, preview })
-  }
 
   const id = req.nextUrl.searchParams.get("id")
 

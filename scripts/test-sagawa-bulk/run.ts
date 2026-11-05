@@ -562,6 +562,28 @@ const tests: Array<[string, () => void | Promise<void>]> = [
       assert.equal(r.email_enabled, true)       // 両方ON
     })
   }],
+  ["dryRun: 検知フラグ OFF でも件数・候補を算出 (本番有効化なしで事前確認できる)・書き込みなし", async () => {
+    let wrote = false
+    const sb = fakeSb({
+      shipments: [
+        shipRow({ id: "s1", booking_id: "BDX-A", suitcase_count: 13 }),
+        shipRow({ id: "s2", booking_id: "BDX-B", suitcase_count: 12 }),
+      ],
+      sagawa_bulk_pickups: [],
+      sagawa_bulk_pickup_members: [],
+    }, () => { wrote = true })
+    // 検知フラグ・メールフラグとも未設定 (OFF)。dryRunBulkAlert はフラグに依存せず候補を計算し、状態は報告のみ。
+    await withEnvAsync({ SAGAWA_BULK_ALERT_ENABLED: undefined, SAGAWA_BULK_EMAIL_ENABLED: undefined }, async () => {
+      const r = await dryRunBulkAlert(sb, TODAY)
+      assert.equal(wrote, false)                 // 書き込みゼロ
+      assert.equal(r.alert_enabled, false)       // 検知OFF を正しく報告
+      assert.equal(r.email_enabled, false)
+      assert.equal(r.bulk_count, 1)              // OFF でも件数は算出される
+      assert.equal(r.duplicate_count, 1)
+      assert.equal(r.initial_notify_candidates, 1)
+      assert.equal(r.groups[0].would_notify?.reason, "initial") // 「有効化したら送る対象」を提示
+    })
+  }],
 ]
 
 ;(async () => {

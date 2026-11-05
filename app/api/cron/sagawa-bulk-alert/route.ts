@@ -39,16 +39,18 @@ function todayJstYmd(): string {
 
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
-  // 検知フラグ OFF の間は既存フローに一切触れない。
-  if (!sagawaBulkAlertEnabled()) return NextResponse.json({ ok: true, skipped: "flag off" })
 
-  // ドライラン: 再集計もメール送信もせず、候補と宛先設定状況を返すだけ (DB 書込・claim 変更なし)。
+  // ドライラン: 認証済み (CRON_SECRET) なら検知フラグの状態に関わらず、候補と宛先設定状況を返すだけ。
+  // 再集計もメール送信も DB 書込も claim 変更も行わない (read 専用)。本番を有効化せず事前確認できるようにする。
   if (req.nextUrl.searchParams.get("dryRun") === "1") {
     const sb = getSupabase()
     if (!sb) return NextResponse.json({ ok: true, dryRun: true, skipped: "supabase unavailable" })
     const preview = await dryRunBulkAlert(sb, todayJstYmd())
-    return NextResponse.json({ ok: true, dryRun: true, preview })
+    return NextResponse.json({ ok: true, dryRun: true, alertEnabled: sagawaBulkAlertEnabled(), preview })
   }
+
+  // 検知フラグ OFF の間は既存フローに一切触れない (通常の定期実行は flag off でスキップ)。
+  if (!sagawaBulkAlertEnabled()) return NextResponse.json({ ok: true, skipped: "flag off" })
 
   const lock = await acquireCronLock("sagawa-bulk-alert")
   if (!lock.ok) return NextResponse.json({ ok: true, skipped: "already running" })
