@@ -6,7 +6,7 @@
 #   3. 流す SQL の 1つ 1つの先頭で、同じ印を DB の中で確かめる（印が無ければそのトランザクションごと失敗）
 # 接続文字列は .env.staging.local の STAGING_DB_URL（Git に入らない）。画面にも記録にも出さない。
 # psql はローカルの Supabase の DB のコンテナの中のもの（PostgreSQL 17）を使う。
-# 使い方: bash scripts/staging/apply.sh [base|migrate|seed|verify|all]
+# 使い方: bash scripts/staging/apply.sh [base|migrate|080|seed|verify|all]（080 = 2026-11-05 の追加分だけ）
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 STAGING_REF=oeucjrmuigtfnwowvzwr
@@ -72,9 +72,19 @@ migrate() {
   run "2-6b 077" sql/077_operator_email_code_attempts.sql
   run "2-6c 078" sql/078_pickup_customer_numbering.sql
   run "2-6d 079" sql/079_b2c_legal_versions.sql
+  run "2-6e 080" sql/080_cron_heartbeats.sql
   echo "== （本番ではここでアプリを入れ替える）"
   run "4-1 072" sql/072_enable_pickup_lock.sql
   run "手順5 070" sql/070_change_deadline_1830.sql
+}
+
+# 2026-11-05 の追加分だけ（067〜079 を流し済みの staging に、定期の処理の記録の表を足す。追加だけ・何度流しても同じ）
+m080() {
+  run "2-6e 080" sql/080_cron_heartbeats.sql
+  echo "== 確認: 表と関数・匿名に権限が無いこと"
+  q -F ' | ' -c "select to_regclass('public.cron_heartbeats') is not null as table_ok,
+    has_function_privilege('anon', 'public.cron_heartbeat_record(text, boolean, text, timestamptz)', 'execute') as anon_can_exec,
+    has_table_privilege('anon', 'public.cron_heartbeats', 'select') as anon_can_read"
 }
 
 seed() {
@@ -104,9 +114,10 @@ marker
 case "${1:-all}" in
   base) base ;;
   migrate) migrate ;;
+  080) m080 ;;
   seed) seed ;;
   verify) verify ;;
   all) base; migrate; seed; verify ;;
-  *) echo "usage: $0 [base|migrate|seed|verify|all]"; exit 1 ;;
+  *) echo "usage: $0 [base|migrate|080|seed|verify|all]"; exit 1 ;;
 esac
 echo "== 完了"
