@@ -58,10 +58,11 @@ async function main() {
 
   console.log("2. 旅行者の予約（B2C）の区間")
   const E = leg("B2C-PM1", addDays(todayJst, -1), "issued", "BondEx Direct")
+  const paysBefore = sql(`select count(*) from b2c_payments`) // 他の試験が先に作った行に左右されないよう、通知の前後の差で見る
   await alertPickupMisses(sb, okSend, at("09:00"))
   const b2c = sent.find((s) => s.subject.includes("B2C-PM1"))
   ok("B2C の区間も通知・代理店の宛先は無い（運営だけ）", !!b2c && !b2c.agencyEmail, b2c)
-  ok("未集荷を理由に請求を作らない（B2C の請求の行 0）", sql(`select count(*) from b2c_payments`) === "0" && mark(E) !== "")
+  ok("未集荷を理由に請求を作らない（B2C の請求の行 0）", sql(`select count(*) from b2c_payments`) === paysBefore && mark(E) !== "")
 
   console.log("3. 同時に動く（pickup-watch と追跡の定時処理が重なる）")
   const G = leg("PM-CONC1", addDays(todayJst, -2), "issued", "PM Agency JA"), H = leg("PM-CONC2", addDays(todayJst, -2), "requested", "PM Agency JA")

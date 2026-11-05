@@ -76,6 +76,16 @@ async function main() {
     const r = await pay.POST(mk("/api/b2c/ops/payments", "POST", h, { action: "confirm_pickup", orderNumber: 0, evidenceType: "sagawa_tracking", evidenceRef: "x", acceptedPieces: 1, note: "authz" }))
     ok(`  ${cname} → ${b2cOk ? "通る（認可の先へ進む）" : "拒否"}`, passes(r.status) === b2cOk, r.status)
   }
+  console.log("区間が B2C か確かめられない時（DB の障害など・lib/operator-authz.ts requireB2cOperatorIf(null)）")
+  const { requireB2cOperatorIf, shipmentIsB2c } = await import("@/lib/operator-authz")
+  for (const [cname, h, , b2cOk] of callers) {
+    const { deny } = await requireB2cOperatorIf(mk("/x", "GET", h), null)
+    const st = deny?.status ?? 200
+    const want = b2cOk ? 200 : (h.cookie || h.authorization === "Bearer test-operator-password") ? 503 : 401
+    ok(`  ${cname} → ${want === 200 ? "通る" : want}`, st === want, st)
+  }
+  ok("区間の判定: B2B の区間は false・B2C の区間は true・無い区間は false", (await shipmentIsB2c(b2b)) === false && (await shipmentIsB2c(b2c)) === true && (await shipmentIsB2c("00000000-0000-0000-0000-000000000000")) === false)
+  ok("区間の判定: 形の正しくない ID（DB がエラーを返す）は確かめられない（null）", (await shipmentIsB2c("not-a-uuid")) === null)
   ok("B2C の区間には、拒否された呼び出しで集荷依頼の記録が作られていない（個人のパスキーの 1回だけ）", sql(`select count(*) from pickup_requests where shipment_id='${b2c}' and channel='manual'`) === "1")
   console.log(`${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

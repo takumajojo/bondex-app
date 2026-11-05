@@ -410,9 +410,11 @@ async function main() {
   ok("返金の記録に失敗 → 照合で同じ返金を使う（Stripe の返金は増えない）", (await stripe.refunds.list({ payment_intent: pay(x).split("|")[2] })).data.length === before && sql(`select status from b2c_refunds where id='${rid}'`) === "succeeded", [before, sql(`select status || '|' || coalesce(stripe_refund_id,'') from b2c_refunds where id='${rid}'`)])
 
   console.log("C14 運営の画面・権限")
-  const todo = await http("GET", "/api/b2c/ops/payments", undefined, v1Cookie)
-  ok("要対応の一覧（運営のログインで見られる）: 止めた請求・未収・通知", todo.status === 200 && Array.isArray(todo.json.todo.heldCharges) && Array.isArray(todo.json.todo.unpaid) && Array.isArray(todo.json.todo.notifications), todo.status)
-  const det = await http("GET", `/api/b2c/ops/payments?orderNumber=${x.n}`, undefined, v1Cookie)
+  // 2026-11-05: 一覧・詳細は旅行者の名前・額を返すので、個人のパスキーの運営者だけ（共有パスワード（v1）は 403）
+  ok("共有パスワード（v1）では一覧・詳細を見られない（403）", (await http("GET", "/api/b2c/ops/payments", undefined, v1Cookie)).status === 403 && (await http("GET", `/api/b2c/ops/payments?orderNumber=${x.n}`, undefined, v1Cookie)).status === 403)
+  const todo = await http("GET", "/api/b2c/ops/payments", undefined, opCookie)
+  ok("要対応の一覧（個人のパスキーの運営者が見られる）: 止めた請求・未収・通知", todo.status === 200 && Array.isArray(todo.json.todo.heldCharges) && Array.isArray(todo.json.todo.unpaid) && Array.isArray(todo.json.todo.notifications), todo.status)
+  const det = await http("GET", `/api/b2c/ops/payments?orderNumber=${x.n}`, undefined, opCookie)
   ok("予約の詳細: 集荷の確認・請求・返金・操作の履歴", det.status === 200 && det.json.detail.payments.length === 2 && det.json.detail.refunds.length >= 2 && det.json.detail.events.some((e: any) => e.event === "pickup_confirmed"))
   const page = await http("GET", "/operator/b2c", undefined, v1Cookie)
   // ローカルは OPERATOR_PASSWORD が無いので、既存の middleware が運営の画面を通す（本番は未設定なら 503・設定済みならログインへ）。

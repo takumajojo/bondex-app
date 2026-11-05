@@ -450,7 +450,10 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const done = { name: "mock", async fetchOne(_c: string, n: string) { return { number: n, noData: false, status: "delivered" as const, exception: null, deliveredAt: "2026-11-06T05:00:00Z" } } }
     await reconcileTrackingNow(sb as never, leg, done as never)
     assert.equal((await ship(leg)).status, "delivered")
-    assert.equal((g.__capturedMails ?? []).length, 1)
+    // 完了のメールは宛先ごとに 1通ずつ（代理店へ 1通・運営への通知 1通。運営への通知は本番と同じく送れる設定で数える・lib/mailer.ts mailerConfigured）
+    const doneMails = g.__capturedMails ?? []
+    assert.equal(doneMails.filter((m) => !/@bondex\.express$/.test(String(m.to))).length, 1, JSON.stringify(doneMails))
+    assert.equal(doneMails.filter((m) => /@bondex\.express$/.test(String(m.to))).length, 1, JSON.stringify(doneMails))
     // 集荷依頼の記録は受付済みのまま (配送状態とは独立)
     assert.equal((await reqs(leg))[0].state, "accepted")
   })
@@ -720,7 +723,7 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     const { reconcileTrackingNow } = await import("../../lib/tracking/reconcile")
     const { chargeCalls } = await import("./fakes/charge")
     const queried: string[] = []
-    const g = globalThis as unknown as { __capturedMails?: Array<{ subject?: string }> }
+    const g = globalThis as unknown as { __capturedMails?: Array<{ subject?: string; to?: unknown }> }
     g.__capturedMails = []
     const c0 = chargeCalls.filter((x) => x === legN).length
     const prov = { name: "mock", async fetchOne(_c: string, n: string) { queried.push(n); return { number: n, noData: false, status: "picked_up" as const, exception: null } } }
@@ -728,7 +731,10 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     await reconcileTrackingNow(sb as never, legN, prov as never)
     assert.ok(queried.length > 0 && queried.every((n) => n === "200000000001") && !queried.some((n) => n === oldN), JSON.stringify(queried))
     assert.equal((await ship(legN)).status, "picked_up")
-    assert.equal((g.__capturedMails ?? []).filter((m) => /集荷/.test(String(m.subject))).length, 1)
+    // 集荷のメールは 2回照会しても宛先ごとに 1通ずつ（代理店へ 1通・運営への通知 1通）
+    const pickMails = (g.__capturedMails ?? []).filter((m) => /集荷/.test(String(m.subject)))
+    assert.equal(pickMails.filter((m) => !/@bondex\.express$/.test(String(m.to))).length, 1, JSON.stringify(pickMails))
+    assert.equal(pickMails.filter((m) => /@bondex\.express$/.test(String(m.to))).length, 1, JSON.stringify(pickMails))
     assert.equal(chargeCalls.filter((x) => x === legN).length - c0, 1)
   })
   await test("佐川が変更不可と回答 → 区間の情報はそのまま・集荷依頼は受付済みに戻る", async () => {

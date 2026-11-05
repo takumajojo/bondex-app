@@ -32,11 +32,15 @@ export async function requireOperator(req: Req): Promise<NextResponse | null> {
  * B2C の区間が対象なら個人のパスキーの運営者だけを通す。
  * 戻り値: deny（拒否の応答）か、op（B2C の区間の時の運営者。B2C でなければ null）。
  */
-export async function requireB2cOperatorIf(req: Req, targetsB2c: boolean): Promise<{ deny: NextResponse | null; op: B2cOperator | null }> {
+export async function requireB2cOperatorIf(req: Req, targetsB2c: boolean | null): Promise<{ deny: NextResponse | null; op: B2cOperator | null }> {
   const base = await requireOperator(req)
   if (base) return { deny: base, op: null }
-  if (!targetsB2c) return { deny: null, op: null }
+  if (targetsB2c === false) return { deny: null, op: null }
   const op = await resolveB2cOperator(req)
+  if (!op && targetsB2c === null) {
+    // 区間を確かめられない（DB の障害など）: B2C かもしれないので、個人のパスキーの運営者以外は止める（理由をはっきり返す）
+    return { deny: NextResponse.json({ error: "shipment_check_unavailable", message: "区間を確認できないため、操作できません。少し待ってからもう一度お試しください。" }, { status: 503 }), op: null }
+  }
   if (!op) {
     return {
       deny: NextResponse.json(
@@ -49,14 +53,18 @@ export async function requireB2cOperatorIf(req: Req, targetsB2c: boolean): Promi
   return { deny: null, op }
 }
 
-/** 区間が旅行者の予約（B2C）のものか（DB の区間の行から判定。読めなければ安全側の true）。 */
-export async function shipmentIsB2c(shipmentId: string): Promise<boolean> {
+/**
+ * 区間が旅行者の予約（B2C）のものか。true / false / null（確かめられない: DB の障害など）。
+ * 行は全部の列で読む（B2C の列が無い古い DB でも、代理店名 BondEx Direct で判定できる・lib/b2c/b2b-guard.ts）。
+ */
+export async function shipmentIsB2c(shipmentId: string): Promise<boolean | null> {
   const { getSupabase } = await import("@/lib/supabase")
   const { isB2cShipmentRow } = await import("@/lib/b2c/b2b-guard")
   const sb = getSupabase()
-  if (!sb || !shipmentId) return true
-  const { data, error } = await sb.from("shipments").select("channel, b2c_order_id, agency").eq("id", shipmentId).maybeSingle()
-  if (error) return true
+  if (!sb) return null
+  if (!shipmentId) return false
+  const { data, error } = await sb.from("shipments").select("*").eq("id", shipmentId).maybeSingle()
+  if (error) return null
   if (!data) return false
-  return isB2cShipmentRow(data)
+  return isB2cShipmentRow(data as { channel?: unknown; b2c_order_id?: unknown; agency?: unknown })
 }
