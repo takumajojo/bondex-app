@@ -7,6 +7,7 @@ import { buildVoucherFileName } from "@/lib/utils"
 import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
+import { getPlaceEnglish, hasJapanese } from "@/lib/places-search"
 import { cleanResidence, residenceAddressLine, residenceAddressLineEn } from "@/lib/residence"
 import { resolveUnitPriceYen, lineSubtotalYen, type BookingType } from "@/lib/pricing"
 import { resolveLegDiscountBasis } from "@/lib/discount-basis"
@@ -28,8 +29,8 @@ export const maxDuration = 60
 interface RequestShipment {
   shipmentDate: unknown
   expectedArrival: unknown
-  from: { hotel?: unknown; address?: unknown; city?: unknown; residence?: unknown } | unknown
-  to: { hotel?: unknown; address?: unknown; city?: unknown; residence?: unknown } | unknown
+  from: { hotel?: unknown; address?: unknown; city?: unknown; residence?: unknown; placeId?: unknown } | unknown
+  to: { hotel?: unknown; address?: unknown; city?: unknown; residence?: unknown; placeId?: unknown } | unknown
   recipient: unknown
   suitcaseCount: unknown
   dropOffTime?: unknown
@@ -158,6 +159,32 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
 }
 
 /**
+ * ホテルの英語表記を補う (バウチャーはお客様が読むため)。
+ * 運営画面からの出力では日本語のホテル名・住所 (Google の日本語表記) がそのまま届くため、
+ * place_id があれば Places から英語の名前と住所を取り、名前は英語優先 (日本語名は小さく併記)、
+ * 住所は英語に置き換える (DB から読み込んだ区間は住所が空で届くので、そのときも英語住所を入れる)。英語が取れなければ日本語のまま出す (出力は止めない)。
+ */
+async function withEnglishHotel(v: VoucherShipment, raw: RequestShipment): Promise<VoucherShipment> {
+  const placeIdOf = (loc: unknown) => asString((loc as { placeId?: unknown } | null)?.placeId).trim()
+  const resolve = async (loc: VoucherShipment["from"], placeId: string, hotelEn: string | undefined) => {
+    const needName = !hotelEn && hasJapanese(loc.hotel)
+    const needAddr = !loc.address || hasJapanese(loc.address)
+    if (loc.isResidence || !placeId || (!needName && !needAddr)) return { loc, hotelEn }
+    const en = await getPlaceEnglish(placeId)
+    if (!en) return { loc, hotelEn }
+    return {
+      loc: needAddr && en.address ? { ...loc, address: en.address } : loc,
+      hotelEn: needName && en.name ? en.name : hotelEn,
+    }
+  }
+  const [f, t] = await Promise.all([
+    resolve(v.from, placeIdOf(raw.from), v.fromHotelEn),
+    resolve(v.to, placeIdOf(raw.to), v.toHotelEn),
+  ])
+  return { ...v, from: f.loc, to: t.loc, fromHotelEn: f.hotelEn, toHotelEn: t.hotelEn }
+}
+
+/**
  * How to ship ガイドの単体ダウンロード (GET)。
  * 予約データ不要の静的 1 枚ものなので、operator 画面のリンクから直接開ける。
  *   GET /api/voucher/generate?type=howto&lang=en|zh
@@ -233,9 +260,14 @@ export async function POST(req: NextRequest) {
   const carrier = asString(body.carrier).trim() || "sagawa"
   const travelerCount = Math.max(1, Math.floor(Number(body.travelerCount) || 1))
   const rawShipments = Array.isArray(body.shipments) ? body.shipments : []
-  const shipments = rawShipments
-    .map((s) => normalizeShipment(s as RequestShipment))
-    .filter((s): s is VoucherShipment => s !== null)
+  const shipments = (
+    await Promise.all(
+      rawShipments.map(async (s) => {
+        const v = normalizeShipment(s as RequestShipment)
+        return v ? withEnglishHotel(v, s as RequestShipment) : null
+      }),
+    )
+  ).filter((s): s is VoucherShipment => s !== null)
 
   if (!representativeLabel || !tourCompany || shipments.length === 0) {
     return NextResponse.json(

@@ -60,6 +60,39 @@ export async function getPlaceNameByLang(placeId: string, lang: "en" | "ja"): Pr
   }
 }
 
+// placeId → 英語表記 のプロセス内キャッシュ (同じホテルのバウチャー再出力で Places を何度も叩かない)。
+const enPlaceCache = new Map<string, { name: string; address: string; at: number }>()
+const EN_PLACE_CACHE_MS = 24 * 60 * 60 * 1000
+
+/**
+ * place_id からホテル名と住所を英語で取得する (バウチャーのお客様向け表示用)。
+ * 日本語が混じった値は使わない (空文字で返す)。失敗時は null。
+ */
+export async function getPlaceEnglish(placeId: string): Promise<{ name: string; address: string } | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey || !placeId) return null
+  const hit = enPlaceCache.get(placeId)
+  if (hit && Date.now() - hit.at < EN_PLACE_CACHE_MS) return { name: hit.name, address: hit.address }
+  const url = new URL(`${PLACES_BASE}/details/json`)
+  url.searchParams.set("place_id", placeId)
+  url.searchParams.set("language", "en")
+  url.searchParams.set("fields", "name,formatted_address")
+  url.searchParams.set("key", apiKey)
+  try {
+    const res = await fetch(url.toString())
+    if (!res.ok) return null
+    const data = (await res.json()) as { status?: string; result?: { name?: string; formatted_address?: string } }
+    if (data.status !== "OK") return null
+    const name = data.result?.name?.trim() || ""
+    const address = data.result?.formatted_address?.trim() || ""
+    const out = { name: hasJapanese(name) ? "" : name, address: hasJapanese(address) ? "" : address }
+    enPlaceCache.set(placeId, { ...out, at: Date.now() })
+    return out
+  } catch {
+    return null
+  }
+}
+
 /** 日本語 (漢字/かな) を含むか。英語併記が必要かの判定に使う。 */
 export function hasJapanese(s: string): boolean {
   return /[぀-ヿ㐀-鿿]/.test(s)

@@ -723,7 +723,8 @@ export function HotelStaffPage({ ctx }: { ctx: V2Ctx }) {
         <View style={s.hsCell}>
           <VIcon name="location-pin" size={mm(8)} />
           <Text style={s.hsK}>{h.jb(res ? "DELIVER TO" : "お届け先 / TO")}</Text>
-          <Text style={[s.hsV, (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 24 ? { fontSize: 8.5, lineHeight: 1.2 } : (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 14 ? { fontSize: 9, lineHeight: 1.2 } : {}, clamp(2)]}>{h.jb(res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa)}</Text>
+          {/* 2行に折り返す長さのときは 2行分の高さを確保する (react-pdf が1行分で高さを計算し、下の英語名・住所と重なるため) */}
+          <Text style={[s.hsV, (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 24 ? { fontSize: 8.5, lineHeight: 1.2, minHeight: 8.5 * 1.2 * 2 } : (res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa).length > 14 ? { fontSize: 9, lineHeight: 1.2, minHeight: 9 * 1.2 * 2 } : {}, clamp(2)]}>{h.jb(res ? (ctx.toHotelEn || ctx.toHotelJa) : ctx.toHotelJa)}</Text>
           {!res && ctx.toHotelEn ? <Text style={[s.hsS, clamp(1)]}>{h.jb(ctx.toHotelEn)}</Text> : null}
           {ctx.toAddress ? <Text style={[s.hsS, { fontSize: res ? 6.2 : 6.8 }, clamp(res ? 3 : 2)]}>{h.jb(ctx.toAddress)}</Text> : null}
         </View>
