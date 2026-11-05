@@ -47,15 +47,23 @@ insert into b2c_facilities(place_id, name, status, checked_by, checked_at, last_
   ('place_U', 'Dummy Hotel U', 'unknown', null, null, null);
 select pg_temp.expect_error($$insert into b2c_facilities(place_id, name, status) values ('place_X', 'X', 'verified')$$, '施設: verified は確認者と確認日時が必須');
 
-create or replace function pg_temp.new_order(p_id uuid, p_pickup date, p_pieces int, p_status text, p_dest text default 'place_B') returns void language sql as $$
+-- sql/079 の後は、確定の予約にカード登録の同意（card_consent_*）が要るので、列があれば入れる
+create or replace function pg_temp.new_order(p_id uuid, p_pickup date, p_pieces int, p_status text, p_dest text default 'place_B') returns void language plpgsql as $f$
+declare
+  has079 boolean := exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'b2c_orders' and column_name = 'card_consent_version');
+begin
+  execute format($q$
   insert into b2c_orders(id, entry_link_id, referrer_code, guest_name, guest_email, guest_whatsapp, origin_place_id, dest_place_id,
     origin_snapshot, dest_snapshot, pickup_date, delivery_date, pieces, route_class, unit_net_yen, subtotal_net_yen, tax_yen, total_gross_yen,
-    price_rule_version, status, confirmation_mode, card_status, consent_version, consented_at, access_token_hash)
-  values (p_id, '00000000-0000-0000-0000-0000000000e1', 'HNK001', 'Dummy Guest', 'guest@example.invalid', '+31612345678',
-    'place_A', p_dest, '{"name":"Dummy Hotel A","check_in":"2026-11-30"}', '{"name":"Dummy Hotel B","check_in":"2026-12-02","check_out":"2026-12-04"}',
-    p_pickup, p_pickup + 1, p_pieces, 'standard', 4980, 4980 * p_pieces, 498 * p_pieces, 5478 * p_pieces,
-    '2026-11-v1', p_status, 'instant', case when p_status = 'draft' then 'none' else 'registered' end, 'v1', now(), 'tok_' || p_id::text)
-$$;
+    price_rule_version, status, confirmation_mode, card_status, consent_version, consented_at, access_token_hash %s)
+  values ($1, '00000000-0000-0000-0000-0000000000e1', 'HNK001', 'Dummy Guest', 'guest@example.invalid', '+31612345678',
+    'place_A', $5, '{"name":"Dummy Hotel A","check_in":"2026-11-30"}', '{"name":"Dummy Hotel B","check_in":"2026-12-02","check_out":"2026-12-04"}',
+    $2, $2 + 1, $3, 'standard', 4980, 4980 * $3, 498 * $3, 5478 * $3,
+    '2026-11-v1', $4, 'instant', case when $4 = 'draft' then 'none' else 'registered' end, 'v1', now(), 'tok_' || $1::text %s)$q$,
+    case when has079 then ', card_consent_version, card_consented_at' else '' end,
+    case when has079 then ', case when $4 = ''draft'' then null else ''v1-card'' end, case when $4 = ''draft'' then null else now() end' else '' end)
+  using p_id, p_pickup, p_pieces, p_status, p_dest;
+end $f$;
 
 -- ===========================================================================
 -- 3. 予約の制約

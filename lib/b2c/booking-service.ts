@@ -10,10 +10,11 @@ import { getSupabase } from "@/lib/supabase"
 import { fetchHotelPlaceDetailsJa, zipFromPlaceDetails, parseJpAddressString } from "@/lib/hotel-place"
 import { resolveSagawaLeadTime, normalizeZip7 } from "@/lib/sagawa-lead-time"
 import { quoteB2c, B2C_MAX_PIECES, type B2cQuote } from "./pricing"
-import { judgeB2cBookability, jstYmd, B2C_FALLBACK_TRANSIT_DAYS, type B2cBookabilityError } from "./bookability"
+import { judgeB2cBookability, jstYmd, b2cCardWindowFits, B2C_FALLBACK_TRANSIT_DAYS, type B2cBookabilityError } from "./bookability"
 import { planB2cConfirmation, type B2cHotelStatus, type B2cConfirmationMode } from "./hotel-gate"
 import { b2cLateBookingEnabled } from "./flags"
 import { b2cAccessToken, b2cAccessTokenSecretConfigured } from "./access-token"
+import { B2C_TERMS_VERSION } from "./legal-text"
 
 /** Phase 1A の 1予約の個数の上限（Beta。全体の設計は 50個）。DB の CHECK と同じ値。 */
 export const B2C_BETA_MAX_PIECES = 10
@@ -306,6 +307,8 @@ export async function buildB2cQuote(input: B2cQuoteInput): Promise<B2cQuoteResul
       for (let d = firstDelivery; d < input.dest.checkOut; d = addDaysYmd(d, 1)) {
         const r = judge(p, d)
         if (r.full || r.plan.errors.length > 0 || !r.b.ok) continue
+        // カード登録（30分）が締切・確認の期限に間に合わない日は出さない（カード登録で断られる日を選ばせない）
+        if (!b2cCardWindowFits(input.now, p, r.plan.confirmationDueAt)) continue
         deliveryDates.push(d)
         plan0 = r.plan
       }
@@ -358,7 +361,8 @@ export interface B2cGuestInput {
 
 export type B2cGuestError = "invalid_name" | "invalid_email" | "invalid_whatsapp" | "consent_required"
 
-export const B2C_CONSENT_VERSION = "2026-11-phase1a-draft"
+/** 予約の画面の同意の版（= 規約の版。lib/b2c/legal-text.ts）。consent_version にも同じ値を入れる（既存の判定が使う）。 */
+export const B2C_CONSENT_VERSION = B2C_TERMS_VERSION
 
 export function normalizeWhatsapp(raw: string): string | null {
   const s = (raw ?? "").replace(/[\s()-]/g, "")
@@ -415,6 +419,7 @@ export async function createB2cDraftOrder(entry: B2cEntry, q: B2cQuoteInput, gue
     name: h.name, address: h.address, name_en: en.name || null, address_en: en.address || null,
     postal_code: h.postalCode, prefecture: h.prefecture, check_in: stay.checkIn, check_out: stay.checkOut,
   })
+  const consentedAt = new Date().toISOString()
   const { data, error } = await sb
     .from("b2c_orders")
     .insert({
@@ -441,8 +446,12 @@ export async function createB2cDraftOrder(entry: B2cEntry, q: B2cQuoteInput, gue
       status: "draft",
       confirmation_mode: quote.selected.confirmationMode,
       confirmation_due_at: quote.selected.confirmationDueAt,
+      // 予約の画面の同意（規約の版・言語・日時）。本文は b2c_legal_documents（sql/079）に版ごとに残る
       consent_version: B2C_CONSENT_VERSION,
-      consented_at: new Date().toISOString(),
+      consented_at: consentedAt,
+      terms_version: B2C_TERMS_VERSION,
+      terms_lang: guest.language === "ja" ? "ja" : "en",
+      terms_consented_at: consentedAt,
       access_token_hash: sha256Hex(accessToken),
     })
     .select("order_number")

@@ -1,6 +1,6 @@
-# BondEx Luggage Delivery — Terms of Service for Travelers [DRAFT v2]
+# BondEx Luggage Delivery — Terms of Service for Travelers [DRAFT v3]
 
-> Draft v2 (2026-11-04). Reflects business conditions D1–D5 (`01_business_conditions.md`). Not reviewed by a lawyer. `[Lx]` marks the questions in `03_lawyer_request.md`; `[D0]` is the deadline still to be decided. Not to be published.
+> Draft v3 (2026-11-05). Reflects business conditions D0–D5 (`01_business_conditions.md`; D0 = booking deadline 18:30, decided 2026-11-05). Not reviewed by a lawyer. `[Lx]` marks the questions in `03_lawyer_request.md`. Not to be published.
 > Main changes from v1: the booking deadline is defined once (Art. 2); missed pickup (Art. 6); size and weight (Art. 6); items that cannot be sent are separated from items with limited compensation (Art. 7; "precision equipment" and "perishables", which v1 listed without a source, were removed); delays (Art. 8); time limit for reporting damage (Art. 10); changes to these Terms (Art. 14).
 
 Effective date: ●, 2026 (version: ●)
@@ -16,8 +16,9 @@ These Terms set out the conditions under which travelers ("you") book the luggag
 1. To book, you enter the pickup hotel, delivery hotel, dates of stay, pickup date, delivery date, number of bags, your name, email address and phone number (WhatsApp) on the booking site, agree to these Terms and register a credit card.
 2. Your booking is confirmed, and the contract is formed, when we have confirmed your card registration and that both the pickup hotel and the delivery hotel can accept your luggage. We will email you the confirmation.
 3. If we need to check with a hotel, your booking stays "being checked" until we can confirm. Do not leave your luggage at the hotel while it is being checked. If we cannot confirm by the deadline, or a hotel cannot accept your luggage, we will cancel the booking at no charge.
-4. The booking deadline is [D0: 17:00 or 18:30] on the day before pickup (the "booking deadline"). Please complete card registration at least 30 minutes before the booking deadline. If the card entry screen is left open for 30 minutes, the request is cancelled.
-5. You can book up to 10 bags per booking.
+4. The booking deadline is 18:30 on the day before pickup (the "booking deadline"). However, because we need to check with and inform the hotels in advance, bookings for some pickup dates or hotels may close before the booking deadline. The booking site shows only the pickup dates that can still be booked.
+5. Please complete card registration at least 30 minutes before the booking deadline (or, for bookings that need a hotel check, before the deadline for that check). If the card entry screen is left open for 30 minutes, the request is cancelled.
+6. You can book up to 10 bags per booking.
 
 ## Article 3 (Price)
 1. The price is 4,980 JPY per bag excluding tax (5,478 JPY including tax). Between Okinawa and any other prefecture, it is 13,000 JPY per bag excluding tax (14,300 JPY including tax).

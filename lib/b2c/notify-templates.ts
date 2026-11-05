@@ -93,7 +93,7 @@ function pickupSteps(d: B2cNotifyData): string[] {
       "集荷の日にすること",
       "1. 11:00 までに、お荷物をホテルのフロントに預けてください。",
       `2. 「BondEx の配送で、佐川急便が集荷に来ます」とお伝えください（受付番号 ${d.orderNumber}）。送り状は佐川急便が持参します。`,
-      "3. 貴重品・壊れやすい物・現金・パスポートはお荷物に入れず、お手元でお持ちください（補償の対象外です）。",
+      "3. 現金・カード類・パスポートなど、送れない物は入れないでください（一覧は利用規約 第7条）。貴重品・壊れやすい物はお手元でお持ちください。",
       `ホテルのスタッフ向けの案内（フロントでお見せください）: ${d.frontDeskUrl}`,
     ]
   }
@@ -101,7 +101,7 @@ function pickupSteps(d: B2cNotifyData): string[] {
     "On pickup day",
     "1. Leave your bags at the hotel front desk by 11:00.",
     `2. Tell the staff: "BondEx delivery — Sagawa will pick these up" (request number ${d.orderNumber}). Sagawa brings the shipping labels.`,
-    "3. Keep valuables, fragile items, cash and your passport with you. They are not covered.",
+    "3. Do not pack items that cannot be sent, such as cash, cards or your passport (see Article 7 of the Terms). Keep valuables and fragile items with you.",
     `Note for the hotel staff (show it at the front desk): ${d.frontDeskUrl}`,
   ]
 }
@@ -154,8 +154,8 @@ export function renderEmail(kind: B2cNotifyKind, d: B2cNotifyData): RenderedEmai
           hello, "",
           ja ? "ご予約を受け付けました。まだ確定していません。" : "We have received your request. It is not confirmed yet.",
           ja
-            ? `いまホテルに確認しています。${d.confirmationDueAt ? fmtDueJst(d.confirmationDueAt, "ja") : "期限"}までに確定し、メールと WhatsApp でお知らせします。期限までに確定できない場合は自動で取り消します。料金は一切かかりません。`
-            : `We are checking with the hotel(s). We will confirm by ${d.confirmationDueAt ? fmtDueJst(d.confirmationDueAt, "en") : "the deadline"} and let you know by email and WhatsApp. If we cannot confirm by then, the request is cancelled automatically at no charge.`,
+            ? `いまホテルに確認しています。${d.confirmationDueAt ? fmtDueJst(d.confirmationDueAt, "ja") : "期限"}までに確定し、メールでお知らせします。期限までに確定できない場合は自動で取り消します。料金は一切かかりません。`
+            : `We are checking with the hotel(s). We will confirm by ${d.confirmationDueAt ? fmtDueJst(d.confirmationDueAt, "en") : "the deadline"} and let you know by email. If we cannot confirm by then, the request is cancelled automatically at no charge.`,
           ja ? "確定のお知らせが届くまでは、集荷の手配は行いません。" : "Pickup is not arranged until you receive the confirmation.",
           "", ...summary(d), "", ...footer(d),
         ].join("\n"),

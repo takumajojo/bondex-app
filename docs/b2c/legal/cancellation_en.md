@@ -1,6 +1,6 @@
-# Cancellation Policy for Travelers [DRAFT v2]
+# Cancellation Policy for Travelers [DRAFT v3]
 
-> Draft v2 (2026-11-04). Reflects business conditions D1 and D2 (`01_business_conditions.md`). The deadline is the "booking deadline" in Article 2(4) of the Terms ([D0], to be decided). Not reviewed by a lawyer. Not to be published.
+> Draft v3 (2026-11-05). Reflects business conditions D1 and D2 (`01_business_conditions.md`). The deadline is the "booking deadline" in Article 2(4) of the Terms (18:30 on the day before pickup; D0 decided 2026-11-05). Not reviewed by a lawyer. Not to be published.
 
 This policy sets out the conditions for cancellations and refunds under section 9 of the BondEx Terms of Service for Travelers. All times are Japan time.
 
@@ -8,7 +8,7 @@ This policy sets out the conditions for cancellations and refunds under section 
 
 | When | How | Fee |
 |---|---|---|
-| Until the booking deadline ([D0: 17:00 or 18:30] on the day before pickup) | Cancel from your booking page (the link in your confirmation email) | Free |
+| Until the booking deadline (18:30 on the day before pickup) | Cancel from your booking page (the link in your confirmation email) | Free |
 | After the booking deadline, before the courier picks up | Contact support@bondex.express. We contact the courier to cancel. If the pickup has already been requested from the courier, this becomes a cancellation request, and the cancellation is confirmed after the courier confirms it. Your booking stays as it is until then | Free if the cancellation is confirmed before pickup |
 | After the courier has picked up your luggage | Cannot be cancelled | Charged |
 

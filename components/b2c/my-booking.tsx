@@ -9,6 +9,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import type { MyBookingView } from "@/lib/b2c/my-booking"
+import { b2cLegalPath } from "@/lib/b2c/legal-text"
 
 type Lang = "ja" | "en"
 const yen = (n: number) => `¥${n.toLocaleString("ja-JP")}`
@@ -76,9 +77,10 @@ const T = {
     lang: "English", orderNo: "受付番号", pickup: "集荷", delivery: "お届け", bags: "個数", price: "料金", payment: "お支払い",
     by11: "11:00 までにフロントへ", morning: "お届け", unit: (n: number, u: string) => `${u} × ${n}個`, tax: "消費税", total: "合計（税込）",
     stay: (a: string, b: string) => `宿泊 ${a} 〜 ${b}`,
-    awaitingNote: (d: string) => `${d}までにホテルに確認し、確定したらメールと WhatsApp でお知らせします。確定するまで、お荷物をフロントに預けないでください。期限までに確定できない場合は自動で取り消し、料金は一切かかりません。`,
+    awaitingNote: (d: string) => `${d}までにホテルに確認し、確定したらメールでお知らせします。確定するまで、お荷物をフロントに預けないでください。期限までに確定できない場合は自動で取り消し、料金は一切かかりません。`,
     guideTitle: "集荷の日にすること",
-    guide: ["11:00 までに、お荷物をホテルのフロントに預けてください。", "「BondEx の配送で、佐川急便が集荷に来ます」とお伝えください。送り状は佐川急便が持参します。", "貴重品・壊れやすい物・現金・パスポートはお荷物に入れず、お手元でお持ちください（補償の対象外です）。"],
+    docs: { terms: "利用規約", cancellation: "キャンセル規定", privacy: "プライバシーポリシー", tokushoho: "特定商取引法に基づく表記" },
+    guide: ["11:00 までに、お荷物をホテルのフロントに預けてください。", "「BondEx の配送で、佐川急便が集荷に来ます」とお伝えください。送り状は佐川急便が持参します。", "現金・カード類・パスポートなど、送れない物は入れないでください（一覧は利用規約 第7条）。貴重品・壊れやすい物はお手元でお持ちください。"],
     frontDesk: "ホテルのスタッフ向けの案内を開く（フロントでお見せください）",
     tracking: "佐川急便の問い合わせ番号", cancelTitle: "予約の取消", cancelUntil: (d: string) => `${d} まで取り消せます。料金はかかりません。`,
     cancelBtn: "この予約を取り消す", cancelConfirm: "本当に取り消しますか？ 取り消すと元に戻せません。", cancelYes: "取り消す", cancelNo: "やめる",
@@ -90,9 +92,10 @@ const T = {
     lang: "日本語", orderNo: "Request number", pickup: "Pickup", delivery: "Delivery", bags: "Bags", price: "Price", payment: "Payment",
     by11: "Front desk by 11:00", morning: "Delivery", unit: (n: number, u: string) => `${u} × ${n}`, tax: "Consumption tax", total: "Total (tax incl.)",
     stay: (a: string, b: string) => `Stay ${a} – ${b}`,
-    awaitingNote: (d: string) => `We are checking with the hotel(s) and will let you know by email and WhatsApp by ${d}. Please do not leave your bags at the front desk until the booking is confirmed. If we cannot confirm by then, the request is cancelled automatically at no charge.`,
+    awaitingNote: (d: string) => `We are checking with the hotel(s) and will let you know by email by ${d}. Please do not leave your bags at the front desk until the booking is confirmed. If we cannot confirm by then, the request is cancelled automatically at no charge.`,
     guideTitle: "On pickup day",
-    guide: ["Leave your bags at the hotel front desk by 11:00.", "Tell the staff: \"BondEx delivery — Sagawa will pick these up.\" Sagawa brings the shipping labels.", "Keep valuables, fragile items, cash and your passport with you. They are not covered."],
+    docs: { terms: "Terms of Service", cancellation: "Cancellation Policy", privacy: "Privacy Policy", tokushoho: "Legal notice" },
+    guide: ["Leave your bags at the hotel front desk by 11:00.", "Tell the staff: \"BondEx delivery — Sagawa will pick these up.\" Sagawa brings the shipping labels.", "Do not pack items that cannot be sent, such as cash, cards or your passport (see Article 7 of the Terms). Keep valuables and fragile items with you."],
     frontDesk: "Open the note for the hotel staff (show it at the front desk)",
     tracking: "Sagawa tracking number", cancelTitle: "Cancel booking", cancelUntil: (d: string) => `You can cancel free of charge until ${d}.`,
     cancelBtn: "Cancel this booking", cancelConfirm: "Are you sure? This cannot be undone.", cancelYes: "Yes, cancel", cancelNo: "Keep booking",
@@ -225,6 +228,11 @@ export function B2cMyBooking({ token, view, initialLang, supportEmail }: { token
       ) : null}
 
       <p className="mt-6 text-center text-xs text-muted-foreground">{t.contact}: <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a></p>
+      <p className="mt-2 flex flex-wrap justify-center gap-x-4 text-center text-xs text-muted-foreground" data-b2c-legal-links>
+        {(["terms", "cancellation", "privacy", "tokushoho"] as const).map((k) => (
+          <a key={k} className="underline" href={b2cLegalPath(k, lang)} target="_blank" rel="noopener noreferrer">{t.docs[k]}</a>
+        ))}
+      </p>
     </main>
   )
 }

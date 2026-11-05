@@ -1,6 +1,6 @@
-# Notation under the Specified Commercial Transactions Act (traveler booking site) [DRAFT v2]
+# Notation under the Specified Commercial Transactions Act (traveler booking site) [DRAFT v3]
 
-> Draft v2 (2026-11-04). Not reviewed by a lawyer (`03_lawyer_request.md` L6). The existing `/legal/commercial-transactions` page (for agencies) stays as it is; this would be published separately for travelers. Not to be published.
+> Draft v3 (2026-11-05; booking deadline fixed at 18:30). Not reviewed by a lawyer (`03_lawyer_request.md` L6). The existing `/legal/commercial-transactions` page (for agencies) stays as it is; this would be published separately for travelers. Not to be published.
 
 | Item | Details |
 |---|---|
@@ -15,6 +15,6 @@
 | Payment method | Credit card (Visa, Mastercard, JCB, American Express, Diners Club, Discover) |
 | Payment timing | Your card is only registered at booking. It is charged after the courier picks up your luggage, based on the number of bags actually picked up |
 | Service timing | Pickup on the pickup date and delivery to the delivery hotel on the delivery date you selected (delays may occur due to weather, traffic, etc.) |
-| Booking deadline | [D0: 17:00 or 18:30] Japan time on the day before pickup |
+| Booking deadline | 18:30 Japan time on the day before pickup. Because we check with the hotels in advance, bookings for some dates or hotels close earlier (the booking site shows only the dates that can be booked) |
 | Cancellation and refunds | Free until the booking deadline. After that, free if the cancellation is confirmed before pickup. Cannot be cancelled after pickup. See the Cancellation Policy for details. Refunds are made to your card |
 | System requirements | Current versions of major browsers (smartphone or computer) |
