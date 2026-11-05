@@ -10,6 +10,9 @@
 | `03_lawyer_request.md` | 弁護士への確認の依頼（送付用の案・L1〜L11） |
 | `05_pre_publication_checklist.md` | 公開の前に片づける項目と公開の手順 |
 | `06_operations_runbook.md` | 運営の手順（未集荷・遅延・超過の荷物・締切の後の相談・規約の版） |
+| `07_prod_checklist_079_proposal.md` | 本番移行チェックリストへの SQL 079 の追加の案（依存・順番・新旧の組み合わせ・切り戻し） |
+| `08_remaining_work.md` | Beta 公開までの残り（担当・依存・完了の条件・日程） |
+| `09_integration_e2e_report.md` | 統合の検証ブランチでの全工程の試験の結果（2026-11-05・1,057件） |
 | `terms_ja.md` / `terms_en.md` | 旅行者向けの利用規約 第3版 |
 | `cancellation_ja.md` / `cancellation_en.md` | キャンセル規定 第3版 |
 | `tokushoho_ja.md` / `tokushoho_en.md` | 特定商取引法に基づく表記（B2C 用）第3版 |

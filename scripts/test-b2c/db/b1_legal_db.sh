@@ -48,6 +48,14 @@ q -c "update b2c_orders set consent_version='2026-11-phase1a-card-draft' where i
 O_OLD_CONF=$(order 6); q -c "select b2c_confirm_order('$O_OLD_CONF')" >/dev/null
 eq "079 の前に確定した予約がある（カードの同意の列が無い時代の行）" confirmed "$(q -c "select status from b2c_orders where id='$O_OLD_CONF'")"
 
+echo "V0. 新しいアプリ × 079 の前の DB（アプリを先に出してしまった場合）"
+err_has "新しいアプリの予約の書き込み（terms_version）は 079 の前の DB では失敗する（中途半端な予約を作らない）" "insert into b2c_orders (entry_link_id, referrer_code, guest_name, guest_email, guest_whatsapp, origin_place_id, dest_place_id, origin_snapshot, dest_snapshot, pickup_date, delivery_date, pieces, route_class, unit_net_yen, subtotal_net_yen, tax_yen, total_gross_yen, price_rule_version, confirmation_mode, access_token_hash, terms_version) select id,'HKU','G','g@example.invalid','+819000000000','P1','P2','{}','{}',current_date+5,current_date+6,1,'standard',4980,4980,498,5478,'v1','instant','tok_v0','x' from b2c_entry_links limit 1" "terms_version"
+eq "その時、予約は 1件も増えていない" "2" "$(q -c "select count(*) from b2c_orders")"
+
+echo "V1. 079 の途中で失敗した場合（1つのトランザクション）"
+(cat "$R/sql/079_b2c_legal_versions.sql"; echo "select 1/0; -- 途中の失敗の再現") | q -1 >/dev/null 2>&1
+eq "途中で失敗すると何も変わらない（表・列・関数とも元のまま）" "f|0|f" "$(q -c "select (to_regclass('public.b2c_legal_documents') is not null)||'|'||(select count(*) from information_schema.columns where table_name='b2c_orders' and column_name='card_consent_version')||'|'||(select prosrc like '%no_card_consent%' from pg_proc where proname='b2c_charge_check')" | sed 's/false/f/g; s/true/t/g')"
+
 echo "L. sql/079 規約の版と同意の記録"
 apply sql/079_b2c_legal_versions.sql && eq "079 を適用できる" ok ok
 apply sql/079_b2c_legal_versions.sql && eq "079 を2回流しても失敗しない" ok ok
@@ -80,6 +88,20 @@ eq "カードの同意がそろえば確定できる" t "$(q -c "select b2c_conf
 eq "予約から、同意した規約の本文（英語）を引ける" "true|true" "$(q -c "select (d.body like '%Terms of Service%')||'|'||(d.sha256 = encode(sha256(convert_to(d.body,'UTF8')),'hex')) from b2c_orders o join b2c_legal_documents d on d.version=o.terms_version and d.lang=o.terms_lang and d.kind='terms' where o.id='$O_NEW'")"
 eq "予約から、カード登録の同意の文言を引ける（少ない個数の請求・集荷されなければ請求しない、を含む）" "true|true" "$(q -c "select (d.body like '%if fewer%')||'|'||(d.body like '%not picked up, we do not charge%') from b2c_orders o join b2c_legal_documents d on d.version=o.card_consent_version and d.lang=o.terms_lang and d.kind='card_consent' where o.id='$O_NEW'")"
 eq "予約の時の版の本文は、後で新しい版を足しても変わらない" "1" "$(q -c "insert into b2c_legal_documents (version, kind, lang, body, sha256) values ('2027-01-v1','terms','en','new terms', encode(sha256(convert_to('new terms','UTF8')),'hex')); select count(*) from b2c_orders o join b2c_legal_documents d on d.version=o.terms_version and d.lang=o.terms_lang and d.kind='terms' where o.id='$O_NEW' and d.body like '%[DRAFT v3]%'")"
+
+echo "V2. 古いアプリ × 079 の後の DB（移行の間・B2C は OFF のまま流す理由）"
+O_OLDAPP=$(order 5)
+q -c "update b2c_orders set consent_version='2026-11-phase1a-card-draft', consented_at=now() where id='$O_OLDAPP'" >/dev/null  # 古いアプリのカード登録（同意の版を上書き）
+err_has "古いアプリでカード登録した予約は確定できない（同意の記録が無いまま請求の対象にしない）" "select b2c_confirm_order('$O_OLDAPP')" "b2c_orders_card_consent_chk"
+eq "その予約は配送データを作らない" 0 "$(q -c "select count(*) from shipments where b2c_order_id='$O_OLDAPP'")"
+O_OLDDRAFT=$(order 5)
+eq "古いアプリの予約の下書き（新しい列なし）は書ける" "card_pending" "$(q -c "select status from b2c_orders where id='$O_OLDDRAFT'")"
+
+echo "V3. B2B への影響が無い"
+B2B=$(q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient) values ('BDX-B1V3',0,current_date+3,current_date+4,'A','B','issued',2,'AG','R','R') returning id" | head -1)
+q -c "update shipments set status='picked_up' where id='$B2B'" >/dev/null && q -c "update shipments set status='delivered', charged_at=now() where id='$B2B'" >/dev/null
+eq "B2B の区間の作成・集荷・配達・課金の記録は 079 の後も変わらない" "delivered|t|b2b" "$(q -c "select status||'|'||(charged_at is not null)||'|'||coalesce(channel,'b2b') from shipments where id='$B2B'" | sed 's/true/t/')"
+eq "079 は B2B の表（shipments）に列も制約も足していない" "0" "$(q -c "select count(*) from information_schema.columns where table_name='shipments' and column_name like '%consent%'")"
 
 echo "M. D1 未集荷（旅行者の予約の区間）"
 O_MISS=$(order 3 ", terms_version, terms_lang, terms_consented_at, card_consent_version, card_consented_at" ", '2026-11-phase1a-draft','ja', now(), '2026-11-phase1a-card-draft', now()")

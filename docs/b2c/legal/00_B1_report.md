@@ -85,7 +85,7 @@
 | B2C の請求の守り `scripts/test-b2c/charge-guard.ts` | 合格 |
 | Biz-Logi の通し試験 `scripts/test-pickup-e2e/run.ts`（結果不明は再送しない・CSV に切り替えない を含む） | 88/88 合格 |
 | 集荷依頼の自己試験 `scripts/pickup-request/selftest.ts`（19:00〜21:59 の監視を含む） | 110/110 合格 |
-| B2B の金額・料金 `npm test` | 14/14・14/14 合格 |
+| B2B の金額・料金 `npm test` | 14/14・10/10 合格 |
 | 型の確認 `tsc --noEmit` | エラー 0 |
 | lint（変えたファイル） | エラー 0（警告 8 は既存のもの） |
 | スマホ（375px）・PC（1024px）の表示 | 予約画面（日英）・カード登録の画面・規約のページで確認。横のはみ出し 0。規約のページで計測のスクリプト 0 件・Cookie の案内なし |

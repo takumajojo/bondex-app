@@ -39,8 +39,9 @@ export function LegalMarkdown({ source }: { source: string }) {
       }
       const [head, ...body] = rows
       out.push(
+        // 3列以上の表はスマホで列が潰れないよう、表の中だけ横に動かす（ページ全体は横に動かない）
         <div key={key++} className="mt-3 overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
+          <table className={`w-full border-collapse text-sm ${head.length >= 3 ? "min-w-[34rem]" : ""}`}>
             <thead><tr>{head.map((c, j) => <th key={j} className="border px-2 py-1.5 text-left align-top font-semibold">{inline(c)}</th>)}</tr></thead>
             <tbody>{body.map((r, k) => <tr key={k}>{r.map((c, j) => <td key={j} className="border px-2 py-1.5 align-top">{inline(c)}</td>)}</tr>)}</tbody>
           </table>

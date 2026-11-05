@@ -39,6 +39,8 @@ async function newConfirmedOrder(daysAhead: number): Promise<{ id: string; token
     pickup_date: d(daysAhead), delivery_date: d(daysAhead + 1), pieces: 2, route_class: "standard", unit_net_yen: 3000, subtotal_net_yen: 6000,
     tax_yen: 600, total_gross_yen: 6600, price_rule_version: "v1", status: "card_pending", confirmation_mode: "instant",
     card_status: "registered", consent_version: "v1", consented_at: new Date().toISOString(), access_token_hash: sha(token), language: "ja",
+    // sql/079: 確定にはカード登録の同意（後日の請求）が要る
+    card_consent_version: "card-v1", card_consented_at: new Date().toISOString(), terms_version: "v1", terms_lang: "ja", terms_consented_at: new Date().toISOString(),
   })
   if (error) throw new Error(`insert order: ${error.message}`)
   const { data: confirmed } = await sb.rpc("b2c_confirm_order", { p_order_id: id })
