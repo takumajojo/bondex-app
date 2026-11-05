@@ -19,13 +19,17 @@ const ok = (name: string, cond: boolean, detail?: unknown) => {
 }
 const sql = (q: string) => execFileSync("docker", ["exec", "-i", "supabase_db_supa-local", "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-qtA", "-F", "|", "-c", q], { encoding: "utf8" }).trim()
 const JST = 9 * 3600 * 1000
-const D = new Date(Date.now() + JST + 1 * 86_400_000).toISOString().slice(0, 10) // 明日（今日の TODO に出る）
+const D = new Date(Date.now() + JST + 2 * 86_400_000).toISOString().slice(0, 10) // 2日後（今日の TODO の 7日の範囲。明日だと 18:30 以降は確定できず、時刻で結果が変わる）
 const TODAY = new Date(Date.now() + JST).toISOString().slice(0, 10)
 
 // 一意の名前（応答の本文にこの文字があるかで判定する）
 const GUEST = "Piiguest Zetasample"
 const GUEST_EMAIL = "piiguest-zeta@example.invalid"
 const B2B_REP = "Bizrep Omegasample"
+// B2C だけに付ける、特定の手がかりになりうる値（ホテル名・問い合わせ番号）
+const B2C_HOTEL_FROM = "Piiprivate Inn East"
+const B2C_HOTEL_TO = "Piiprivate Inn West"
+const B2C_TRACKING = "999900001111"
 
 async function main() {
   const { issueOperatorSession, OPERATOR_SESSION_COOKIE } = await import("@/lib/operator-session")
@@ -33,12 +37,12 @@ async function main() {
   sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('pii_p1','Pii Hotel A','verified','t@example.invalid',now()), ('pii_p2','Pii Hotel B','verified','t@example.invalid',now()) on conflict do nothing`)
   const b2bId = sql(`insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient, notes) values ('BDX-PII001', 0, '${D}', '${D}'::date+1, 'Pii Hotel A', 'Pii Hotel B', 'issued', 2, 'Pii Agency', '${B2B_REP}', '${B2B_REP}', 'b2b-note') returning id`).split("\n")[0]
   const o = sql(`insert into b2c_orders (entry_link_id, referrer_code, guest_name, guest_email, guest_whatsapp, origin_place_id, dest_place_id, origin_snapshot, dest_snapshot, pickup_date, delivery_date, pieces, route_class, unit_net_yen, subtotal_net_yen, tax_yen, total_gross_yen, price_rule_version, status, confirmation_mode, card_status, consent_version, consented_at, terms_version, terms_lang, terms_consented_at, card_consent_version, card_consented_at, access_token_hash)
-    select id, 'HNK001', '${GUEST}', '${GUEST_EMAIL}', '+819000000099', 'pii_p1', 'pii_p2', jsonb_build_object('name','Pii Hotel A','check_in','${D}'), jsonb_build_object('name','Pii Hotel B','check_in','${D}','check_out',('${D}'::date+4)::text), '${D}', '${D}'::date+1, 2, 'standard', 4980, 9960, 996, 10956, 'v1', 'card_pending', 'instant', 'registered', 'v1', now(), 'v1', 'ja', now(), 'card-v1', now(), md5(random()::text) from b2c_entry_links limit 1 returning id`).split("\n")[0]
+    select id, 'HNK001', '${GUEST}', '${GUEST_EMAIL}', '+819000000099', 'pii_p1', 'pii_p2', jsonb_build_object('name','${B2C_HOTEL_FROM}','check_in','${D}'), jsonb_build_object('name','${B2C_HOTEL_TO}','check_in','${D}','check_out',('${D}'::date+4)::text), '${D}', '${D}'::date+1, 2, 'standard', 4980, 9960, 996, 10956, 'v1', 'card_pending', 'instant', 'registered', 'v1', now(), 'v1', 'ja', now(), 'card-v1', now(), md5(random()::text) from b2c_entry_links limit 1 returning id`).split("\n")[0]
   sql(`select b2c_confirm_order('${o}')`)
   const b2c = sql(`select id || '|' || booking_id from shipments where b2c_order_id='${o}'`).split("|")
   const [b2cId, b2cBooking] = b2c
   // 送り状・メモ・事故の記録・変更の申請（名前・連絡先が入る所）を B2C の区間にも作る
-  sql(`update shipments set notes='b2c-note ${GUEST}', label_url='https://storage.googleapis.com/x/pii-b2c.pdf', pickup_alert_sent_at=null where id='${b2cId}'`)
+  sql(`update shipments set notes='b2c-note ${GUEST}', label_url='https://storage.googleapis.com/x/pii-b2c.pdf', pickup_alert_sent_at=null, tracking_numbers='["${B2C_TRACKING}"]'::jsonb where id='${b2cId}'`)
   if (sql(`select count(*) from information_schema.tables where table_schema='public' and table_name='claim_cases'`) === "0") {
     // ローカルの試験の DB は古い SQL を流していない。本番と同じ sql/005 を流して表を作る（ローカルだけ）
     execFileSync("docker", ["exec", "-i", "supabase_db_supa-local", "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q"], { input: `create extension if not exists "uuid-ossp";\n` + readFileSync("sql/005_claim_cases.sql", "utf8") })
@@ -100,12 +104,15 @@ async function main() {
         continue
       }
       const hasGuest = text.includes(GUEST) || text.includes(GUEST_EMAIL)
+      const hasClue = text.includes(B2C_HOTEL_FROM) || text.includes(B2C_HOTEL_TO) || text.includes(B2C_TRACKING)
       if (c.pii) {
         // 個人のパスキー: 名前が要る所（一覧・レポート等）では見える。請求書は B2C は対象外なのでどちらでもよい
         if (p.b2cRowExpected) ok(`  ${c.name} → B2C の旅行者の名前が見える`, hasGuest, { status: r.status, text: text.slice(0, 200) })
+        if (p.b2cRowExpected && p.name.startsWith("区間の一覧")) ok(`  ${c.name} → ホテル名・問い合わせ番号も見える`, text.includes(B2C_HOTEL_FROM) && text.includes(B2C_TRACKING), text.slice(0, 200))
         else ok(`  ${c.name} → 通る（${r.status}）`, r.status !== 401 && r.status !== 403 && r.status < 500, r.status)
       } else {
         ok(`  ${c.name} → 応答に B2C の旅行者の名前・連絡先が無い`, !hasGuest, text.slice(text.indexOf("Piiguest") - 80, text.indexOf("Piiguest") + 40))
+        ok(`  ${c.name} → 応答に B2C のホテル名・問い合わせ番号が無い（組み合わせでの特定の防止）`, !hasClue, text.slice(Math.max(0, text.indexOf("Piiprivate") - 80), text.indexOf("Piiprivate") + 60))
         if (p.b2cRowExpected) ok(`  ${c.name} → B2C の区間そのものは配送の運用のために見える（名前は伏せ字）`, text.includes(b2cBooking) && (text.includes("個人パスキーで表示") || text.includes("b2c_pii_hidden") || text.includes("b2cPiiHidden")), text.slice(0, 160))
       }
       if (p.b2bNameExpected) ok(`  ${c.name} → B2B の名前はこれまでどおり見える`, text.includes(B2B_REP), text.slice(0, 160))
@@ -127,7 +134,10 @@ async function main() {
     const j = (await r.json()) as { shipments: Array<Record<string, unknown>>; b2cPiiVisible: boolean }
     const row = j.shipments.find((s) => s.id === b2cId)!
     ok("共有パスワード: B2C の区間のメモ・送り状の URL は null", !!row && row.notes === null && row.label_url === null, row)
-    ok("共有パスワード: 配送の運用の項目（日付・ホテル・個数・状態）は残る", !!row && row.shipment_date === D && row.from_hotel === "Pii Hotel A" && row.suitcase_count === 2 && row.status === "issued", row)
+    ok("共有パスワード: 件数と状態を把握する項目（予約番号・集荷日・個数・状態）は残る", !!row && row.booking_id === b2cBooking && row.shipment_date === D && row.suitcase_count === 2 && row.status === "issued", row)
+    ok("共有パスワード: ホテル名は伏せ字", !!row && row.from_hotel === "（B2C・個人パスキーで表示）" && row.to_hotel === "（B2C・個人パスキーで表示）", row)
+    ok("共有パスワード: 宿泊日・問い合わせ番号・言語・場所の ID・B2C の予約の ID・ホテルの連絡先は空", !!row && row.from_check_in == null && row.to_check_out == null && row.origin_check_in == null && Array.isArray(row.tracking_numbers) && (row.tracking_numbers as unknown[]).length === 0 && row.guest_language == null && row.from_place_id == null && row.b2c_order_id == null && JSON.stringify(row.hotel_contact_info) === "{}", row)
+    ok("共有パスワード: DB で必ず値のある列は型を保つ（画面が崩れない: 額は数・変更の記録は配列）", !!row && typeof row.amount_yen === "number" && Array.isArray(row.count_change_log) && typeof row.expected_arrival === "string", row)
     ok("応答に b2cPiiVisible=false", j.b2cPiiVisible === false)
     const b = j.shipments.find((s) => s.id === b2bId)!
     ok("共有パスワード: B2B の区間はメモまでそのまま", !!b && b.notes === "b2b-note" && b.representative === B2B_REP, b)

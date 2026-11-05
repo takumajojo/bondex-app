@@ -13,33 +13,52 @@ import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 /** 外した項目に入れる文字（画面にそのまま出る） */
 export const B2C_PII_REDACTED = "（B2C・個人パスキーで表示）"
 
-/** B2C の区間で、個人のパスキーの運営者にだけ返す項目（shipments の列名）。文字の項目は上の文字に、それ以外は null にする。 */
-export const B2C_SHIPMENT_PII_FIELDS = [
-  "representative",
-  "recipient",
-  "booking_name",
-  "group_name",
-  "notes",
-  "addition_note",
-  "tour_leader_name",
-  "tour_leader_phone",
-  "tour_leader_whatsapp",
+/**
+ * B2C の区間で、個人のパスキーでない運営者にも返す項目（shipments の列名・これ以外は全部外す＝許す項目を列挙する方式）。
+ * 2026-11-05 の追加の監査: 名前を外しても「予約番号 × ホテル × 宿泊日 × 個数 × 言語」の組み合わせや、
+ * 問い合わせ番号（佐川の追跡のページで配達先の地域が分かる）から旅行者を特定できるおそれがあるため、
+ * ホテル・宿泊日・配達日・問い合わせ番号・額・言語も外す。残すのは件数と状態を把握するための最小限。
+ */
+export const B2C_SHIPMENT_PUBLIC_FIELDS = [
+  "id",
+  "booking_id",
+  "leg_index",
+  "status",
+  "shipment_date",
+  "suitcase_count",
+  "channel",
+  "agency",
+  "carrier",
+  "created_at",
+  "updated_at",
+  // DB で NOT NULL の列（画面が値のある前提で表示する）。どれも単独・組み合わせで旅行者の特定にはつながらない
+  // （配達日は集荷日からほぼ決まり、額は個数 × 公開の単価から分かる）
+  "expected_arrival",
+  "amount_yen",
+  "traveler_count",
+  "booking_type",
+  "is_addition",
   "label_to",
+  "label_split",
   "label_sender",
-  "label_sender_info",
-  "label_url", // 送り状（名前が載る）
-  "drive_url",
-  "error_message",
-  "charge_error",
-  "payment_failure_message",
-  "stripe_payment_intent_id",
-  "stripe_checkout_session_id",
-  "stripe_checkout_url",
-  "count_change_log",
+  "tracking_limit_reached",
 ] as const
 
-/** 文字のまま置き換える項目（一覧の表示で名前の欄が空にならないように） */
-const TEXT_PLACEHOLDER_FIELDS = new Set<string>(["representative", "recipient", "booking_name"])
+/** 外す項目のうち、画面が文字として表示するもの（空にすると画面が崩れるので伏せ字にする） */
+const TEXT_PLACEHOLDER_FIELDS = new Set<string>([
+  "representative", "recipient", "booking_name",
+  "from_hotel", "to_hotel", "from_hotel_ja", "to_hotel_ja", "from_hotel_en", "to_hotel_en",
+])
+
+/** 以前の方式（外す項目を列挙）で外していた項目。試験と文書のために残す（許す項目の方式では、これらは全部外れる） */
+export const B2C_SHIPMENT_PII_FIELDS = [
+  "representative", "recipient", "booking_name", "group_name", "notes", "addition_note",
+  "tour_leader_name", "tour_leader_phone", "tour_leader_whatsapp", "label_to", "label_sender", "label_sender_info",
+  "label_url", "drive_url", "error_message", "charge_error", "payment_failure_message",
+  "stripe_payment_intent_id", "stripe_checkout_session_id", "stripe_checkout_url", "count_change_log",
+  "from_hotel", "to_hotel", "from_check_in", "to_check_out", "origin_check_in",
+  "tracking_numbers", "tracking_detail", "guest_language", "hotel_contact_info", "from_place_id", "to_place_id", "b2c_order_id",
+] as const
 
 /** 個人のパスキーの運営者か（B2C の個人情報を見てよいか）。確かめられない時は false。 */
 export async function canSeeB2cPii(req: Pick<NextRequest, "cookies">): Promise<boolean> {
@@ -55,10 +74,13 @@ export function redactB2cShipment<T>(row: T, canSee: boolean): T {
   if (canSee || !row || typeof row !== "object") return row
   const r = row as Record<string, unknown>
   if (!isB2cShipmentRow(r) && !isB2cBookingId(r.booking_id)) return row
-  const out: Record<string, unknown> = { ...r, b2c_pii_hidden: true }
-  for (const f of B2C_SHIPMENT_PII_FIELDS) {
-    if (!(f in out)) continue
-    out[f] = TEXT_PLACEHOLDER_FIELDS.has(f) ? B2C_PII_REDACTED : null
+  const keep = new Set<string>(B2C_SHIPMENT_PUBLIC_FIELDS)
+  const out: Record<string, unknown> = { b2c_pii_hidden: true }
+  for (const [k, v] of Object.entries(r)) {
+    if (keep.has(k)) out[k] = v
+    else if (TEXT_PLACEHOLDER_FIELDS.has(k)) out[k] = B2C_PII_REDACTED
+    // 型を保つ（配列は空の配列・オブジェクトは空のオブジェクト・それ以外は null）。DB で NOT NULL の jsonb（count_change_log・hotel_contact_info）を画面が前提にするため
+    else out[k] = Array.isArray(v) ? [] : v !== null && typeof v === "object" ? {} : null
   }
   return out as T
 }
@@ -85,13 +107,23 @@ export function isB2cBookingId(bookingId: unknown): boolean {
  * 画面向けに組み立てた行（camelCase の bookingId・representative など）から、B2C の旅行者の名前を外す。
  * nameFields に名前の項目を渡す（既定は representative・recipient）。
  */
-export function redactB2cTasks<T extends Record<string, unknown>>(rows: T[], canSee: boolean, nameFields: string[] = ["representative", "recipient"]): T[] {
+/** 画面向けの行（camelCase）で、B2C の時に伏せ字にする文字の項目と、null にする項目 */
+const TASK_TEXT_FIELDS = ["representative", "recipient", "hotel", "fromHotel", "toHotel"]
+const TASK_NULL_FIELDS = [
+  "hotelJa", "fromHotelJa", "toHotelJa", "tourNumber", "shippingNumber", "trackingNumbers", "note", "memo", "value", "method",
+  "error", "changes", "lastFailure", "expectedArrival", "checkIn", "checkOut", "amountYen", "language", "placeId", "fromPlaceId", "toPlaceId",
+]
+
+export function redactB2cTasks<T extends Record<string, unknown>>(rows: T[], canSee: boolean, nameFields: string[] = TASK_TEXT_FIELDS): T[] {
   if (canSee) return rows
   return rows.map((r) => {
     const id = r.bookingId ?? r.booking_id
     if (!isB2cBookingId(id) && !isB2cShipmentRow(r as Record<string, unknown>)) return r
+    // snake_case の行（DB の行そのもの）は区間と同じ扱い
+    if ("booking_id" in r) return redactB2cShipment(r, false)
     const out: Record<string, unknown> = { ...r, b2cPiiHidden: true }
     for (const f of nameFields) if (f in out && out[f] != null) out[f] = B2C_PII_REDACTED
+    for (const f of TASK_NULL_FIELDS) if (f in out) out[f] = Array.isArray(out[f]) ? [] : null
     return out as T
   })
 }

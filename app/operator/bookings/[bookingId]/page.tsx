@@ -264,7 +264,14 @@ export default function OperatorBookingDetailPage() {
         .filter((r) => r.booking_id === bookingId)
         .sort((a, b) => a.leg_index - b.leg_index)
       setRows(list)
-      if (list.length === 0) setError("この予約番号の区間が見つかりません")
+      if (list.length === 0) {
+        // B2C の予約は、個人のパスキーの運営者にだけ返る（lib/b2c/pii-guard.ts）。見つからないのか、見る権限が無いのかを分けて伝える
+        setError(
+          bookingId.startsWith("B2C-") && data.b2cPiiVisible === false
+            ? "旅行者の予約（B2C）の詳細は、個人のパスキーでログインした運営者だけが見られます（/operator/b2c）。"
+            : "この予約番号の区間が見つかりません",
+        )
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました")
     }
