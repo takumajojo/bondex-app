@@ -1,6 +1,6 @@
 # 本番移行チェックリストへの SQL 079 の追加（案）
 
-作成: 2026-11-05。対象: `MyClaudecode/docs/bizlogi-prod-migration-checklist-20261104.md`（統合ブランチを持つセッションの文書。**この案はまだ反映していない**。反映はそのセッションと調整し、たくまさんの承認の後）。
+作成: 2026-11-05。対象: `MyClaudecode/docs/bizlogi-prod-migration-checklist-20261104.md`（**2026-11-05 にたくまさんの承認を受けて反映済み**: 手順 2-6d・照合 SQL-D・6章の「079 だけ戻す」・4章の合格条件・0章の「入るもの」）。
 根拠: `sql/079_b2c_legal_versions.sql`・`sql/rollback/rollback_079.sql`・試験 `scripts/test-b2c/db/b1_legal_db.sh`（V0〜V3・L・R）・`scripts/test-integ/migration-rehearsal.sh`（079 を含む 24件・利用者の操作 475件の間に失敗 0・デッドロック 0）。
 
 ## 1. 依存と順番

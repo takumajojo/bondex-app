@@ -50,5 +50,5 @@
 
 1. 規約を確定（弁護士の回答・S1・S5 を反映）し、版の名前を決める（例 `2027-01-v1`）。`lib/b2c/legal-text.ts` の `B2C_TERMS_VERSION`・`B2C_CARD_CONSENT_VERSION` を変え、原案の見出しの【原案】と冒頭の「> 」の行を外す。
 2. 試験環境で: `sql/079` を適用 → `scripts/b2c-legal/register-docs.ts` の SQL で本文を登録 → `B2C_LEGAL_PAGES_ENABLED=true` → 表示・リンク・同意の記録・過去の版の本文の再現を確認（実機の確認 B5 と一緒に）。
-3. 本番: main へのマージと本番の作業の承認の後に、`sql/079`（5.1 の順 9b）→ アプリ → 本文の登録 → `B2C_LEGAL_PAGES_ENABLED=true`。規約のページは本文を `docs/b2c/legal/` から読むので、本番の配信に本文のファイルが含まれることを確かめる（含まれなければ配信の設定を足す）。
+3. 本番: main へのマージと本番の作業の承認の後に、`sql/079`（5.1 の順 9b）→ アプリ → 本文の登録 → `B2C_LEGAL_PAGES_ENABLED=true`。規約のページは本文を `docs/b2c/legal/` から読む。本番の配信に本文のファイルが含まれることは、2026-11-05 の本番用のビルドで確認済み（`.next/server/app/legal/traveler/[doc]/page.js.nft.json` に 8つの本文がある）。
 4. 公開の後に規約を変える時は、新しい版の名前で本文を足す（過去の版の本文は書き換えられない）。
