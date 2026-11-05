@@ -30,6 +30,8 @@ export async function initSchema(repo: string) {
   await db.exec(readFileSync(`${repo}/sql/075_pickup_watch_alerts.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/076_agency_change_atomic.sql`, "utf8"))
   await db.exec(readFileSync(`${repo}/sql/078_pickup_customer_numbering.sql`, "utf8"))
+  // Biz-Logi の確保で変更申請・印を DB でも拒否する (2026-11-07 監査 B-14・B-01)
+  await db.exec(readFileSync(`${repo}/sql/083_claim_pickup_guards.sql`, "utf8"))
   // B2C の区間の見分け (本番は sql/061 で足す列。B2B のコードは読まない)
   await db.exec(`alter table shipments add column if not exists channel text not null default 'b2b'`)
   // 集荷元のチェックアウト日 (本番は sql/054 が未適用のため、sql/081 で足す想定)

@@ -25,7 +25,7 @@ export interface ClaimInput {
 export interface ClaimResult {
   claimed: boolean
   requestId: string | null
-  /** claimed / live_request_exists / shipment_cancelled / tracking_number_exists / shipment_not_found / invalid_channel */
+  /** claimed / live_request_exists / shipment_cancelled / tracking_number_exists / pickup_marked / open_change_exists (sql/083) / shipment_not_found / invalid_channel */
   reason: string
   /** 確保した時点の依頼内容 (DB が行ロック中に作ったもの)。確保できなかったときは null。 */
   snapshot?: unknown

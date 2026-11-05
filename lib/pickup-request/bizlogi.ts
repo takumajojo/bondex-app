@@ -566,6 +566,10 @@ export function claimReasonJa(reason: string): string {
       return "20個以上のため Biz-Logi では送りません (BondEx の当面の運用ルール。佐川 API の上限ではありません)。佐川へ事前連絡のうえ手動 (Excel) で手配してください"
     case "group_booking":
       return "団体の予約は Biz-Logi では送りません。手動 (Excel) で手配してください"
+    case "pickup_marked":
+      return "「集荷手配 (佐川) 済み」の印が付いていますが、集荷依頼の記録がありません (Excel で依頼した可能性)。佐川 (世田谷営業所) に依頼の有無を確かめてください (Biz-Logi では送りません)"
+    case "open_change_exists":
+      return "この区間に処理中の変更・取消の申請があります。申請を処理してから、もう一度確認してください (Biz-Logi では送りません)"
     case "shipment_not_found":
       return "区間が見つかりません"
     case "claims_paused":

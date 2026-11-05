@@ -1882,7 +1882,7 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.notEqual(p.body.ok, true)
     assert.match(JSON.stringify(p.body), /処理中の変更・取消の申請/)
   })
-  await test("監査 A1-13 [未対策 P2] 申請の確認 (送信前) と確保の間に申請が入ると、そのまま送る (確保の後に申請を読み直していない)", async () => {
+  await test("監査 A1-13 [修正済み P1 B-14] 申請の確認 (送信前) と確保の間に申請が入っても、DB の確保 (sql/083) が拒否する・佐川へ送らない", async () => {
     const leg = await newLeg()
     const s0 = await ship(leg)
     const p = await pv(leg)
@@ -1894,12 +1894,69 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
                        values ($1, $2, 0, 'agency', 'T', '{"shipment_date":"2099-01-01"}', '{}', '締切後の変更', 'dates', 'requested')`, [leg, s0.booking_id])
       }
     }
+    const i0 = mock.issues, c0 = mock.checks
     const s = await sendWith(leg, p.body.fingerprint)
     hooks.beforeRpc = null
     assert.ok(injected)
     const open = (await db.query(`select count(*)::int n from shipment_change_requests where shipment_id=$1 and stage='requested'`, [leg])).rows[0].n
     assert.equal(open, 1, "申請は入っている")
-    assert.equal(s.status, 200, `今は送ってしまう: ${JSON.stringify(s.body)}`)
+    assert.notEqual(s.status, 200, `送ってはいけない: ${JSON.stringify(s.body)}`)
+    assert.match(JSON.stringify(s.body), /変更・取消の申請/)
+    assert.equal(mock.issues + mock.checks, i0 + c0, "佐川へは何も送らない")
+    assert.equal((await reqs(leg)).length, 0, "依頼の記録を作らない")
+  })
+
+  // sql/083: DB の確保の関数だけで止まることを、アプリを通さずに確かめる (B-14・B-01)
+  const claimDb = async (leg: string, channel: string) =>
+    (await db.query(`select * from claim_pickup_request($1, $2, 'test', 'BDXT1L1', 1, current_date + 3, 'test', 'o-083', null)`, [leg, channel])).rows[0]
+  const addChange = async (leg: string, kind: string, stage: string) => {
+    const b = (await db.query(`select booking_id from shipments where id=$1`, [leg])).rows[0].booking_id
+    await db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                    values ($1, $2, 0, 'agency', 'T', '{"shipment_date":"2099-01-01"}', '{}', 'test', $3, 'requested')`, [leg, b, kind])
+    if (stage !== "requested") await db.query(`update shipment_change_requests set stage=$2 where shipment_id=$1`, [leg, stage])
+  }
+  for (const stage of ["requested", "contacted", "approved"]) {
+    await test(`監査 B-14 DB: 処理中の変更申請 (dates・${stage}) がある区間は、Biz-Logi の確保を DB が拒否する`, async () => {
+      const leg = await newLeg()
+      await addChange(leg, "dates", stage)
+      const r = await claimDb(leg, "bizlogi")
+      assert.equal(r.claimed, false)
+      assert.equal(r.reason, "open_change_exists")
+      assert.equal((await reqs(leg)).length, 0)
+    })
+  }
+  await test("監査 B-14 DB: 取消の申請 (cancel・requested) でも Biz-Logi の確保を拒否する", async () => {
+    const leg = await newLeg()
+    await addChange(leg, "cancel", "requested")
+    assert.equal((await claimDb(leg, "bizlogi")).reason, "open_change_exists")
+  })
+  await test("監査 B-14 DB: 取り下げ・却下・反映済みの申請だけなら確保できる", async () => {
+    for (const stage of ["withdrawn", "rejected"]) {
+      const leg = await newLeg()
+      await addChange(leg, "dates", stage)
+      assert.equal((await claimDb(leg, "bizlogi")).claimed, true, stage)
+    }
+  })
+  await test("監査 B-14 DB: 処理中の申請があっても、手動 (Excel で依頼済み) の記録は止めない (佐川側の依頼の事実を残す)", async () => {
+    const leg = await newLeg()
+    await addChange(leg, "dates", "requested")
+    const r = await claimDb(leg, "manual")
+    assert.equal(r.claimed, true)
+  })
+  await test("監査 B-01 DB: 記録の無い「集荷手配済み」の印がある区間は、Biz-Logi の確保を DB が拒否する (手動の記録はできる)", async () => {
+    const leg = await newLeg()
+    await db.query(`update shipments set pickup_requested_at = now() where id=$1`, [leg])
+    const r = await claimDb(leg, "bizlogi")
+    assert.equal(r.claimed, false)
+    assert.equal(r.reason, "pickup_marked")
+    assert.equal((await claimDb(leg, "manual")).claimed, true)
+  })
+  await test("監査 B-14 DB: Biz-Logi で確保した後に出た申請は「依頼済み」の申請になる (確保と申請が直列)", async () => {
+    const leg = await newLeg()
+    assert.equal((await claimDb(leg, "bizlogi")).claimed, true)
+    const c = (await db.query(`select * from create_shipment_change($1, 'dates', '{"shipment_date":"2099-01-01"}', 'test', 'agency', 'T', 'test')`, [leg])).rows[0]
+    assert.equal(c.ok, false, "送信中の依頼がある区間は申請を受けない")
+    assert.equal(c.reason, "request_sending")
   })
 
   console.log("A2. 監査: 二重依頼の防止 (API・同時実行)")
