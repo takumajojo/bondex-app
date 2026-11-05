@@ -3,6 +3,8 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { agencyRecipientEmails } from "@/lib/agency-contacts"
 import { sendMail } from "@/lib/mailer"
 import { voucherAttachment } from "@/lib/voucher-attachment"
+import { renderBookingRequestEmail } from "@/lib/agency-notify"
+import { endpointLabel } from "@/lib/residence"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -11,11 +13,13 @@ export const maxDuration = 60
  * 新規依頼の完了後、谷口さんが内容を確認して「依頼主へ」バウチャー PDF を送付する口
  * (BondEx 運用のみ — middleware で認証済み。2026-10-21 谷口さん指示)。
  *
- * 2026-10-27 改修: バウチャー PDF は **サーバ側で bookingId から再生成**する (voucherAttachment)。
- *   旧実装はブラウザが表示中の PDF(blob)を base64 にしてアップロードしていたが、
- *   その送信リクエストがサイズ/接続断でネットワーク層から失敗し、画面に生の "Load failed" が
- *   出て送れないことがあった。受付メール(app/api/agency/booking)と同じサーバ生成経路に一本化し、
- *   クライアントからの pdfBase64 送信を廃止。宛先はその代理店の登録メール全員、控えは support@ に BCC。
+ * バウチャー PDF はサーバ側で bookingId から再生成する (voucherAttachment・How to ガイド同梱)。
+ * 宛先はその代理店の登録メール全員、控えは support@ に BCC。
+ *
+ * 2026-11-05 改修: 送付メールの本文を、代理店セルフ予約の「受付(予約完了)メール」と完全に
+ *   同一化する。renderBookingRequestEmail(受付メールと同一の関数)で件名/本文/HTMLを生成し、
+ *   区間ごとの予定表・概算金額・バウチャー添付まで予約完了時と揃える
+ *   (従来はこの口だけ簡易文面で不整合だった)。
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured()) {
@@ -33,17 +37,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "bookingId is required" }, { status: 400 })
   }
 
-  // 代理店名: 明示指定が無ければ予約レコードから解決する (送付先=代理店の登録メール)。
-  let agency = body.agency?.trim() || ""
-  if (!agency) {
-    const { data: row } = await sb
-      .from("shipments")
-      .select("agency")
-      .eq("booking_id", bookingId)
-      .limit(1)
-      .maybeSingle()
-    agency = (row?.agency as string | null)?.trim() || ""
+  // 予約の全区間を読む (受付メールと同じ「区間ごとの予定表」を組むため)。
+  const { data: legRows } = await sb
+    .from("shipments")
+    .select(
+      "leg_index, shipment_date, expected_arrival, from_hotel, from_residence, to_hotel, to_residence, suitcase_count, representative, tour_number, booking_type, agency",
+    )
+    .eq("booking_id", bookingId)
+    .order("leg_index", { ascending: true })
+  if (!legRows || legRows.length === 0) {
+    return NextResponse.json({ ok: false, reason: "not_found", error: "予約が見つかりません" }, { status: 404 })
   }
+
+  // 代理店名: 明示指定が無ければ予約レコードから解決する (送付先=代理店の登録メール)。
+  const agency = body.agency?.trim() || (legRows[0].agency as string | null)?.trim() || ""
   if (!agency) {
     return NextResponse.json({ ok: false, reason: "no_agency", error: "依頼元の代理店が特定できません" }, { status: 400 })
   }
@@ -66,31 +73,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: "no_agency_email" }, { status: 400 })
   }
 
-  // 代理店の言語でカバーノートを出し分け。
-  const { data: ag } = await sb.from("agencies").select("locale").eq("name", agency).maybeSingle()
-  const en = (ag?.locale as string | null) === "en"
-  const subject = en
-    ? `[BondEx] Your voucher${bookingId ? ` (${bookingId})` : ""}`
-    : `【BondEx】ご依頼のバウチャー${bookingId ? `（${bookingId}）` : ""}`
-  const text = en
-    ? [
-        `Dear ${agency},`,
-        "",
-        `Please find attached the voucher for your request${bookingId ? ` (${bookingId})` : ""}.`,
-        "Hand the voucher to your guest as-is. No shipping labels are needed — the courier brings and attaches them at pickup.",
-        "Questions? Contact support@bondex.express.",
-        "",
-        "— BondEx / JOJO Inc. | support@bondex.express",
-      ].join("\n")
-    : [
-        `${agency} ご担当者様`,
-        "",
-        `ご依頼のバウチャー${bookingId ? `（${bookingId}）` : ""}をお送りします。添付の PDF をご確認ください。`,
-        "バウチャーはそのままお客様（添乗員様）へお渡しください。送り状のご用意は不要です（集荷員が持参・貼付します）。",
-        "ご不明な点は support@bondex.express までお問い合わせください。",
-        "",
-        "— BondEx ／ 株式会社JOJO ｜ support@bondex.express",
-      ].join("\n")
+  // 代理店メタ (言語・国内区分・契約単価) — 受付メールと同じ概算金額・文面にするため。
+  const { data: ag } = await sb
+    .from("agencies")
+    .select("locale, is_domestic, unit_price_yen")
+    .eq("name", agency)
+    .maybeSingle()
+  const locale: "ja" | "en" = (ag?.locale as string | null) === "en" ? "en" : "ja"
+
+  const legs = legRows.map((r) => ({
+    legIndex: (r.leg_index as number | null) ?? 0,
+    shipmentDate: (r.shipment_date as string | null) ?? "",
+    expectedArrival: (r.expected_arrival as string | null) ?? (r.shipment_date as string | null) ?? "",
+    fromHotel: endpointLabel(r.from_hotel, r.from_residence),
+    toHotel: endpointLabel(r.to_hotel, r.to_residence),
+    suitcaseCount: (r.suitcase_count as number | null) ?? 0,
+  }))
+  const earliestShipDate = legs.map((l) => l.shipmentDate).filter(Boolean).sort()[0] ?? ""
+  const first = legRows[0]
+
+  // 受付(予約完了)メールと同一テンプレートで生成 (件名/本文/HTML・区間予定表・概算金額)。
+  const { subject, text, html } = renderBookingRequestEmail({
+    agencyEmail: null, // 宛先は下で登録メール全員へ送るため、ここでは発火させない。
+    agencyName: agency,
+    bookingId,
+    tourNumber: (first.tour_number as string | null) ?? null,
+    representative: (first.representative as string | null) ?? null,
+    isDomestic: (ag?.is_domestic as boolean | null) ?? null,
+    agencyUnitPriceYen: (ag?.unit_price_yen as number | null) ?? null,
+    bookingType: (first.booking_type as string | null) === "group" ? "group" : "fit",
+    earliestShipDate,
+    needsLabelWait: false,
+    legCount: legs.length,
+    locale,
+    waybillNotNeeded: true,
+    legs,
+  })
 
   const attachments = [{ filename: att.filename, contentBase64: att.contentBase64 }]
   const sentTo: string[] = []
@@ -100,6 +118,7 @@ export async function POST(req: NextRequest) {
       to: recipients[i],
       subject,
       text,
+      html,
       attachments,
       replyTo: "support@bondex.express",
       // 1通目だけ support@ に控え (運用確認用・多重 BCC を避ける)。
