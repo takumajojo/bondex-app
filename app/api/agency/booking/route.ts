@@ -17,6 +17,8 @@ import { itemProductName } from "@/lib/item-types"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
 import { earliestBookableShipDate, isPastPickupCutoff, PICKUP_CUTOFF_TEXT } from "@/lib/pickup-cutoff"
+import { sagawaBulkAlertEnabled } from "@/lib/sagawa-bulk/flag"
+import { recomputeSafe } from "@/lib/sagawa-bulk/db"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -521,6 +523,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // P1-B 早期検知: 予約が保存できた直後に大口集荷を再集計 (ベストエフォート・flag OFF では何もしない)。
+  // recomputeSafe は内部で全例外を握りつぶすため、ここが予約処理を妨げることはない (D1・cron が正本)。
+  if (sagawaBulkAlertEnabled()) {
+    const sbBulk = getSupabase()
+    if (sbBulk) await recomputeSafe(sbBulk, jstTodayYmd())
+  }
+
   // 「今日」は JST 基準。UTC の new Date() だと 0:00-8:59 JST に前日扱いになり、
   // 30日ちょうどの区間が31日と誤算され「即発行(≤30日)」を取りこぼす。両端を UTC 深夜アンカーで比較。
   const today = new Date(`${jstTodayYmd()}T00:00:00Z`)
@@ -668,6 +677,7 @@ export async function POST(req: NextRequest) {
       representative,
       isDomestic: auth.agency.is_domestic,
       agencyUnitPriceYen: auth.agency.unit_price_yen,
+      bookingType,
       earliestShipDate: legs[0]?.shipmentDate ?? "",
       needsLabelWait: false,
       legCount: legs.length,
@@ -688,6 +698,7 @@ export async function POST(req: NextRequest) {
       tourNumber: tourNumber || null,
       representative,
       agencyUnitPriceYen: auth.agency.unit_price_yen,
+      bookingType,
       earliestShipDate,
       needsLabelWait: true,
       legCount: legs.length,

@@ -10,18 +10,23 @@
  */
 
 import { sendMail, mailerConfigured, type MailAttachment } from "./mailer"
-import { estimateTotals, type AmountBreakdown } from "./pricing"
+import { estimateBookingTotals, GROUP_DISCOUNT, type BookingAmount, type BookingType } from "./pricing"
 
 /**
- * 受付メールに載せる「概算金額」。実課金と同じ基準 (税抜単価=代理店別単価 resolveUnitPriceYen・
- * 国内/海外とも +10%) で全区間のお預かり個数合計から算出する ＝ 発行時の請求と同じ単価になる
- * (旧: CONTRACT_PRICE_YEN 固定で、契約単価を設定した代理店では概算と実請求がズレていた)。
- * 確定は集荷完了時 (個数変更可)。個数不明(0)なら null。
+ * 受付メールに載せる「概算金額」。実課金と同じ基準 (単一入口 lineSubtotalYen・税抜単価=代理店別単価・
+ * 国内/海外とも +10%) で、**区間 (leg) ごと**に算出して合算する ＝ 発行時の請求と同じ値になる。
+ * 団体25個以上の割引は有効時のみ (OFF 時は従来どおり 個数×単価)。割引は leg 単位で判定するため
+ * 往復 (13+13) を 26個に合算して割引対象にはしない。確定は集荷完了時 (個数変更可)。個数不明(0)なら null。
  */
-function feeEstimate(input: BookingRequestEmailInput): AmountBreakdown | null {
-  const pieces = (input.legs ?? []).reduce((s, l) => s + (l.suitcaseCount ?? 0), 0)
-  if (pieces <= 0) return null
-  return estimateTotals(pieces, input.agencyUnitPriceYen)
+function feeEstimate(input: BookingRequestEmailInput): BookingAmount | null {
+  const legs = (input.legs ?? []).map((l) => ({ pieces: l.suitcaseCount ?? 0 }))
+  return estimateBookingTotals({
+    legs,
+    bookingType: input.bookingType ?? "fit",
+    agencyUnitPriceYen: input.agencyUnitPriceYen,
+    // 受付 = 予約作成時刻。割引レジームが有効ならこの瞬間で判定する (発行時の行 created_at と一致)。
+    bookingCreatedAt: new Date().toISOString(),
+  })
 }
 
 const yen = (n: number) => "¥" + n.toLocaleString("ja-JP")
@@ -58,6 +63,8 @@ export interface BookingRequestEmailInput {
   isDomestic?: boolean | null
   /** 代理店の契約単価 (agencies.unit_price_yen)。概算金額を実課金と同じ単価で出すため。未設定(null)は既定単価。 */
   agencyUnitPriceYen?: number | null
+  /** 予約タイプ (fit/group)。団体25個以上の割引を概算に反映するため。未指定は fit。 */
+  bookingType?: BookingType
   /** 2026-09-24〜 の運用 (送り状は集荷員が持参)。true なら「バウチャーをそのままお渡し」+ 区間ごとの予定表を本文にする。 */
   waybillNotNeeded?: boolean
   /** 区間ごとの予定表 (waybillNotNeeded のとき使う)。suitcaseCount=個数。 */
@@ -114,7 +121,9 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
         `■ 料金（概算）`,
         ...(fee
           ? [
-              `お預かり個数 合計 ${fee.pieces}個 × ${yen(fee.unit)}（税抜）＝ ${yen(fee.net)}（税抜）`,
+              fee.discountApplied
+                ? `お預かり個数 合計 ${fee.pieces}個（団体割引${GROUP_DISCOUNT.percent}%適用後）小計 ${yen(fee.net)}（税抜）`
+                : `お預かり個数 合計 ${fee.pieces}個 × ${yen(fee.unit)}（税抜）＝ ${yen(fee.net)}（税抜）`,
               `消費税(10%)：${yen(fee.tax)}　合計（税込）：${yen(fee.gross)}`,
             ]
           : []),
@@ -144,7 +153,9 @@ function buildEmailNoWaybill(input: BookingRequestEmailInput): { subject: string
       `■ Charge (estimate)`,
       ...(fee
         ? [
-            `Total ${fee.pieces} piece(s) × ${yen(fee.unit)} (excl. tax) = ${yen(fee.net)} (excl. tax)`,
+            fee.discountApplied
+              ? `Total ${fee.pieces} piece(s) — group discount ${GROUP_DISCOUNT.percent}% applied — subtotal ${yen(fee.net)} (excl. tax)`
+              : `Total ${fee.pieces} piece(s) × ${yen(fee.unit)} (excl. tax) = ${yen(fee.net)} (excl. tax)`,
             `Japanese consumption tax (JCT 10%): ${yen(fee.tax)}　Total (incl. tax): ${yen(fee.gross)}`,
           ]
         : []),
@@ -293,10 +304,20 @@ function buildBookingHtml(input: BookingRequestEmailInput, subject: string): str
     const feeCaveat = ja
       ? `<span style="color:${H_MUTED};">※上記は概算です。ご請求金額は集荷完了時に確定します（集荷までは個数の変更が可能）。</span>`
       : `<span style="color:${H_MUTED};">This is an estimate; the final amount is confirmed at pickup (piece count can still change).</span>`
+    const feeHeadJa = fee
+      ? (fee.discountApplied
+          ? `お預かり個数 合計 <strong>${fee.pieces}個</strong>（団体割引${GROUP_DISCOUNT.percent}%適用後）小計 ${yen(fee.net)}（税抜）`
+          : `お預かり個数 合計 <strong>${fee.pieces}個</strong> × ${yen(fee.unit)}（税抜）＝ ${yen(fee.net)}（税抜）`)
+      : ""
+    const feeHeadEn = fee
+      ? (fee.discountApplied
+          ? `Total <strong>${fee.pieces} pcs</strong> — group discount ${GROUP_DISCOUNT.percent}% applied — subtotal ${yen(fee.net)} (excl. tax)`
+          : `Total <strong>${fee.pieces} pcs</strong> × ${yen(fee.unit)} (excl. tax) = ${yen(fee.net)}`)
+      : ""
     const feeInner = fee
       ? (ja
-          ? `お預かり個数 合計 <strong>${fee.pieces}個</strong> × ${yen(fee.unit)}（税抜）＝ ${yen(fee.net)}（税抜）<br>消費税(10%)：${yen(fee.tax)}<br><strong style="font-size:14px;">合計（税込）：${yen(fee.gross)}</strong><br>${feeCaveat}`
-          : `Total <strong>${fee.pieces} pcs</strong> × ${yen(fee.unit)} (excl. tax) = ${yen(fee.net)}<br>Japanese consumption tax (JCT 10%): ${yen(fee.tax)}<br><strong style="font-size:14px;">Total (incl. tax): ${yen(fee.gross)}</strong><br>${feeCaveat}`)
+          ? `${feeHeadJa}<br>消費税(10%)：${yen(fee.tax)}<br><strong style="font-size:14px;">合計（税込）：${yen(fee.gross)}</strong><br>${feeCaveat}`
+          : `${feeHeadEn}<br>Japanese consumption tax (JCT 10%): ${yen(fee.tax)}<br><strong style="font-size:14px;">Total (incl. tax): ${yen(fee.gross)}</strong><br>${feeCaveat}`)
       : (ja
           ? `ご請求金額は集荷完了時に確定します（お預かり個数 × 単価）。集荷までは個数の変更が可能です。`
           : `The amount is confirmed at pickup (pieces × unit price). You can still change the piece count until then.`)

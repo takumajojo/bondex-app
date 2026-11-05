@@ -59,24 +59,52 @@ export function estimateTotals(
 export type BookingType = "fit" | "group"
 
 /**
- * 団体通常配送のボリューム割引。**Phase 0 では未適用 (enabled=false)** ＝ 現行料金を1円も変えない。
- * Phase 2 で有効化予定の料金ルール (2026-11-04 Phase 0 ブリーフ) を、割引ロジックだけ先に実装・テストして
- * 据え置く (値・判定単位が確定するまで dormant)。有効化は enabled を true にし、各課金経路の
- * 「pieces × resolveUnitPriceYen」を lineSubtotalYen へ差し替える 1 ステップで行う。
+ * 団体通常配送のボリューム割引 (Phase 1)。既定 OFF (feature flag)。
+ * 判定単位は **配送区間 (leg) ごとの個数** (= shipments 1行の suitcase_count)。予約全体の合計では判定しない
+ * (2026-11-04 谷口さん決定)。往復 (例: 往路13個 + 復路13個) を 26個として合算して割引対象にはしない
+ * — 各 leg は 13個 < 25個 で対象外。
  */
 export const GROUP_DISCOUNT = {
-  /**
-   * この個数以上で割引対象 (団体通常配送のみ)。
-   * 判定単位は **配送区間 (leg) ごとの個数** (= shipments 1行の suitcase_count)。予約全体の合計では判定しない
-   * (2026-11-04 谷口さん決定)。往復 (例: 往路13個 + 復路13個) を 26個として合算して割引対象にはしない
-   * — 各 leg は 13個 < 25個 で対象外。
-   */
+  /** この個数以上で割引対象 (団体通常配送のみ)。 */
   minPieces: 25,
   /** 割引率 (%)。 */
   percent: 8,
-  /** Phase 0 は false = 全経路で未適用。Phase 2 で true にして有効化する。 */
-  enabled: false,
 } as const
+
+/**
+ * 団体割引の feature flag。**既定 OFF**。本番有効化は承認後に env で明示する
+ * (GROUP_DISCOUNT_ENABLED="true")。env 未設定/`"true"` 以外は無効 = 現行料金と1円も変わらない。
+ */
+export function groupDiscountEnabled(): boolean {
+  return process.env.GROUP_DISCOUNT_ENABLED === "true"
+}
+
+/**
+ * 割引レジームの境界時刻。**この時刻以降に作成された予約だけ**を割引対象にし、
+ * 既存予約への遡及適用 (有効化後の個数変更で割引が付いてしまう事故) を防ぐ。
+ * GROUP_DISCOUNT_ENABLED_AT (ISO 文字列)。未設定なら割引は一切効かない (安全側)。
+ */
+export function groupDiscountEnabledAt(): Date | null {
+  const v = process.env.GROUP_DISCOUNT_ENABLED_AT
+  if (!v) return null
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * 予約作成時刻 bookingCreatedAt に対し、団体割引レジームが有効か。
+ * enabled かつ 境界時刻が設定済み かつ 予約作成が境界以降 のときだけ true。
+ * bookingCreatedAt が不明 (null/未指定) のときは false = 割引しない (安全側・遡及防止)。
+ */
+export function groupDiscountRegimeActive(
+  bookingCreatedAt: string | Date | null | undefined,
+): boolean {
+  if (!groupDiscountEnabled()) return false
+  const at = groupDiscountEnabledAt()
+  if (!at || !bookingCreatedAt) return false
+  const created = bookingCreatedAt instanceof Date ? bookingCreatedAt : new Date(bookingCreatedAt)
+  return !isNaN(created.getTime()) && created.getTime() >= at.getTime()
+}
 
 /**
  * 団体ボリューム割引の適用可否 (将来ルール・単体でtestable)。pieces は **当該配送区間 (leg) の個数**
@@ -101,22 +129,64 @@ export function isGroupVolumeDiscountApplicable(opts: {
 }
 
 /**
- * 1区間の税抜請求小計 (amount_yen 相当) を返す「将来の」単一入口。
- * Phase 0 (GROUP_DISCOUNT.enabled=false): 現行どおり pieces × resolveUnitPriceYen をそのまま返す
- *   (割引は一切かからない)。既存経路はまだこの関数に差し替えていない (behavior 不変のため)。
- * Phase 2 (enabled=true): 団体かつ割引対象なら規定小計から GROUP_DISCOUNT.percent% を控除 (端数切り捨て)。
+ * 1区間の税抜請求小計 (amount_yen 相当) を返す **単一入口**。全ての金額算出経路 (発行・個数是正・
+ * 受付概算・内部オペシート) はこれを通す。割引が効くのは次の両方を満たすときだけ:
+ *   (1) レジーム有効 = groupDiscountRegimeActive(bookingCreatedAt) (env 有効 + 予約作成が境界以降)
+ *   (2) 適用可 = isGroupVolumeDiscountApplicable (団体25個以上・契約単価なし・非チャーター)
+ * それ以外は pieces × resolveUnitPriceYen をそのまま返す ＝ **OFF 時は現行料金と1円も変わらない**。
+ * 割引は税抜小計に適用して切り捨て (消費税は呼び出し側の taxOf で算出)。
+ * bookingCreatedAt を渡さない/不明なら割引は効かない (既存予約への遡及防止・安全側)。
  */
 export function lineSubtotalYen(opts: {
   bookingType: BookingType
   pieces: number
   agencyUnitPriceYen: number | null | undefined
   discountable?: boolean
+  bookingCreatedAt?: string | Date | null
 }): number {
   const base = opts.pieces * resolveUnitPriceYen(opts.agencyUnitPriceYen)
-  if (GROUP_DISCOUNT.enabled && isGroupVolumeDiscountApplicable(opts)) {
+  if (groupDiscountRegimeActive(opts.bookingCreatedAt) && isGroupVolumeDiscountApplicable(opts)) {
     return Math.floor((base * (100 - GROUP_DISCOUNT.percent)) / 100)
   }
   return base
+}
+
+/** 予約全体の概算金額 (受付メール等)。割引は leg ごとに適用して合算する (往復を合算して判定しない)。 */
+export interface BookingAmount extends AmountBreakdown {
+  /** いずれかの leg で団体割引が適用されたか (表示の出し分け用)。 */
+  discountApplied: boolean
+}
+
+/**
+ * 予約全体 (複数 leg) の税抜/税込を、各 leg の lineSubtotalYen を合算して算出する。
+ * 消費税は合算後の税抜小計に 1 回だけ taxOf を当てる (請求書 invoice-build と同じ基準)。
+ * pieces 合計が 0 以下なら null。
+ */
+export function estimateBookingTotals(opts: {
+  legs: Array<{ pieces: number }>
+  bookingType: BookingType
+  agencyUnitPriceYen: number | null | undefined
+  bookingCreatedAt?: string | Date | null
+  discountable?: boolean
+}): BookingAmount | null {
+  const pieces = opts.legs.reduce((s, l) => s + (l.pieces || 0), 0)
+  if (pieces <= 0) return null
+  const unit = resolveUnitPriceYen(opts.agencyUnitPriceYen)
+  let net = 0
+  let baseNet = 0
+  for (const l of opts.legs) {
+    const p = l.pieces || 0
+    baseNet += p * unit
+    net += lineSubtotalYen({
+      bookingType: opts.bookingType,
+      pieces: p,
+      agencyUnitPriceYen: opts.agencyUnitPriceYen,
+      discountable: opts.discountable,
+      bookingCreatedAt: opts.bookingCreatedAt,
+    })
+  }
+  const tax = taxOf(net)
+  return { pieces, unit, net, tax, gross: net + tax, discountApplied: net < baseNet }
 }
 
 /** 円表示 (例: 4980 → "¥4,980")。全表示の唯一の整形元。 */

@@ -8,7 +8,8 @@ import { contentDisposition } from "@/lib/content-disposition"
 import { WHATSAPP_URL } from "@/lib/contact-links"
 import { getSupabase } from "@/lib/supabase"
 import { cleanResidence, residenceAddressLine, residenceAddressLineEn } from "@/lib/residence"
-import { resolveUnitPriceYen } from "@/lib/pricing"
+import { resolveUnitPriceYen, lineSubtotalYen, type BookingType } from "@/lib/pricing"
+import { resolveLegDiscountBasis } from "@/lib/discount-basis"
 import {
   VoucherDocument,
   OperationsDocument,
@@ -257,7 +258,28 @@ export async function POST(req: NextRequest) {
         ?.unit_price_yen as number | null | undefined)
     : null
   const unitPriceYen = resolveUnitPriceYen(agencyUnitPrice)
-  const totalAmount = shipments.reduce((sum, s) => sum + s.suitcaseCount * unitPriceYen, 0)
+  // 内部オペレーションシートの区間別料金・総額も単一入口 lineSubtotalYen を通す (発行時の請求と同じ基準)。
+  // 団体25個以上の割引は有効時のみ。OFF 時 (既定) は suitcaseCount × unitPriceYen で現行と一致。
+  // 既存行 (予約依頼時に作成) の booking_type / created_at を best-effort で引く (遡及防止のため created_at を使う)。
+  // 判定材料は既存予約 (leg 0) の旅行形態・作成日時 (lib/discount-basis.ts)。OFF (既定) は DB を引かず fit。
+  // オペシートは内部表示なので、取得エラー時は発行 (shipandco/create) と違い中止せず割引なし (base) に倒す。
+  const opsBasis = await resolveLegDiscountBasis(sbPrice, bookingId, 0)
+  const opsBookingType: BookingType = opsBasis.ok ? opsBasis.bookingType : "fit"
+  const opsCreatedAt: string | null = opsBasis.ok ? opsBasis.createdAt : null
+  const legAmounts = shipments.map((s) =>
+    lineSubtotalYen({
+      bookingType: opsBookingType,
+      pieces: s.suitcaseCount,
+      agencyUnitPriceYen: agencyUnitPrice,
+      bookingCreatedAt: opsCreatedAt,
+    }),
+  )
+  const totalAmount = legAmounts.reduce((sum, a) => sum + a, 0)
+  // 区間別表示用に単価と小計を各区間へ付与 (OperationsDocument のみ使用・顧客バウチャーは金額非表示)。
+  shipments.forEach((s, i) => {
+    s.unitPriceYen = unitPriceYen
+    s.lineSubtotalYen = legAmounts[i]
+  })
 
   const contactPersonName =
     asString(body.contactPersonName).trim() || SUPPORT_DEFAULTS.contactPersonName

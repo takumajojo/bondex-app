@@ -8,7 +8,7 @@ import { sendMail } from "@/lib/mailer"
 import { voucherAttachment } from "@/lib/voucher-attachment"
 import { notifyBondEx } from "@/lib/notify"
 import { grossOf } from "@/lib/tax"
-import { resolveUnitPriceYen } from "@/lib/pricing"
+import { lineSubtotalYen, type BookingType } from "@/lib/pricing"
 import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 
 export const runtime = "nodejs"
@@ -94,7 +94,17 @@ export async function POST(req: NextRequest) {
   }
   const agencyEmail: string | null = ag?.contact_email ?? null
   const english = ag?.locale === "en"
-  const unitPriceYen = resolveUnitPriceYen(ag?.unit_price_yen as number | null | undefined)
+  // 新しい請求小計は lib/pricing.ts の単一入口 lineSubtotalYen を通す (発行時 shipandco/create と同じ基準)。
+  // 団体25個以上の割引は有効時 (env 有効化 + 予約作成が境界以降) のみ。OFF 時 (既定) は
+  // newCount × 代理店別単価 (resolveUnitPriceYen) で現行と完全一致。既存予約は created_at が境界より前なので
+  // 有効化後に個数を変えても割引が付かない (遡及防止)。
+  const bookingType: BookingType = shipment.booking_type === "group" ? "group" : "fit"
+  const newSubtotal = lineSubtotalYen({
+    bookingType,
+    pieces: newCount,
+    agencyUnitPriceYen: ag?.unit_price_yen as number | null | undefined,
+    bookingCreatedAt: shipment.created_at,
+  })
 
   const oldCount = shipment.suitcase_count
   const oldAmount = shipment.amount_yen ?? 0
@@ -106,7 +116,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 新しい請求額: 課金済みは据え置き（差額返金は運用で対応）。未課金はキャンセル=0 / それ以外=個数×単価。
-  const newAmount = wasCharged ? oldAmount : cancel ? 0 : newCount * unitPriceYen
+  const newAmount = wasCharged ? oldAmount : cancel ? 0 : newSubtotal
 
   const logEntry = {
     at: new Date().toISOString(),
@@ -156,7 +166,7 @@ export async function POST(req: NextRequest) {
       `受付 ${oldCount}個 → 実際 ${newCount}個 に修正いたしました。`,
     )
     if (wasCharged) {
-      const diff = oldAmount - newCount * unitPriceYen
+      const diff = oldAmount - newSubtotal
       jaLines.push(
         `ご請求は ${yen(oldAmount)} で処理済みのため、差額 ${yen(Math.abs(diff))} を${diff >= 0 ? "返金" : "追加請求"}いたします。`,
       )
@@ -194,7 +204,7 @@ export async function POST(req: NextRequest) {
         `Corrected: ${oldCount} → ${newCount} item(s).`,
       )
       if (wasCharged) {
-        const diff = oldAmount - newCount * unitPriceYen
+        const diff = oldAmount - newSubtotal
         enLines.push(
           `Your charge of ${yen(oldAmount)} was already processed, so we will ${diff >= 0 ? "refund" : "additionally charge"} the difference of ${yen(Math.abs(diff))}.`,
         )
@@ -222,7 +232,7 @@ export async function POST(req: NextRequest) {
       `理由: ${REASON_LABEL_JA[reasonCode]}`,
       reasonNote ? `補足: ${reasonNote}` : "",
       wasCharged
-        ? `⚠️ 課金済み ${yen(oldAmount)} → ${cancel ? "全額" : yen(Math.abs(oldAmount - newCount * unitPriceYen))}返金が必要（Stripe）`
+        ? `⚠️ 課金済み ${yen(oldAmount)} → ${cancel ? "全額" : yen(Math.abs(oldAmount - newSubtotal))}返金が必要（Stripe）`
         : `請求: ${yen(oldAmount)} → ${yen(newAmount)}`,
       agencyEmail ? `ランオペ通知: ${mailSent ? "送信済" : "未送信（要確認）"}` : "ランオペのメール未登録",
     ],

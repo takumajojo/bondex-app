@@ -224,6 +224,13 @@ export interface VoucherShipment {
   /** ホテル名の英語併記 (日本語名のホテル向け)。お客様が読めるよう補う。 */
   fromHotelEn?: string
   toHotelEn?: string
+  /**
+   * 内部オペレーションシート (OperationsDocument) の区間別料金表示用 (税抜)。
+   * lib/pricing.ts の単一入口で算出して voucher/generate が渡す。未指定なら従来どおり
+   * PRICING.regularPrice で表示 (顧客バウチャー VoucherDocument は金額非表示なので無視される)。
+   */
+  unitPriceYen?: number
+  lineSubtotalYen?: number
 }
 
 /**
@@ -2697,7 +2704,7 @@ export function OperationsDocument({ data }: { data: VoucherInput }) {
             <View style={ops.kvRow}>
               <Text style={ops.kvKey}>Suitcases</Text>
               <Text style={ops.kvValue}>
-                {s.suitcaseCount} × ¥{PRICING.regularPrice.toLocaleString()} = ¥{(s.suitcaseCount * PRICING.regularPrice).toLocaleString()}
+                {s.suitcaseCount} × ¥{(s.unitPriceYen ?? PRICING.regularPrice).toLocaleString()} = ¥{(s.lineSubtotalYen ?? s.suitcaseCount * PRICING.regularPrice).toLocaleString()}
               </Text>
             </View>
           </View>
