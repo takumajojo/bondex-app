@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { buildMonthlyInvoice } from "@/lib/invoice-build"
 import { renderInvoiceEmail } from "@/lib/invoice-email"
 import { sendMail } from "@/lib/mailer"
+import { chargeCountHoldEnabled } from "@/lib/charge-hold"
 
 /**
  * 承認済みの月次請求書を「代理店へ」実際に送付する単一ソース。
@@ -86,9 +87,11 @@ export async function sendInvoiceToAgency(
   // 送付済みを記録 (sent_to に代理店アドレスを追記、sent_to_agency_at を立てる)。
   // sent_to_agency_at IS NULL 条件付きなので、同時に2本走っても二重送付記録にならない。
   const nextSentTo = Array.from(new Set([...(row?.sent_to ?? []), to]))
+  // P1-B2 v3.3: 既定 OFF。ON のとき status 列も sent に同期する (追加列のみ・OFF は従来と同一)。
+  const statusSent = chargeCountHoldEnabled() ? { status: "sent" } : {}
   const upd = await sb
     .from("invoice_sends")
-    .update({ sent_to_agency_at: new Date().toISOString(), sent_to: nextSentTo })
+    .update({ sent_to_agency_at: new Date().toISOString(), sent_to: nextSentTo, ...statusSent })
     .eq("agency", agencyName)
     .eq("month", month)
     .is("sent_to_agency_at", null)

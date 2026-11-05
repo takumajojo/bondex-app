@@ -807,6 +807,15 @@ export default function AgencyDashboard() {
               <Info className="w-4 h-4" strokeWidth={1.6} />
               <span className="hidden md:inline">{t.rules}</span>
             </Link>
+            {/* 料金変更（増額）の承認 */}
+            <Link
+              href="/agency/approvals"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm text-foreground hover:bg-slate-50"
+              title={locale === "ja" ? "料金変更のご承認" : "Approve price changes"}
+            >
+              <span className="hidden sm:inline">{locale === "ja" ? "料金承認" : "Approvals"}</span>
+              <span className="sm:hidden">¥</span>
+            </Link>
             {/* 連絡先メール・ログインユーザーの管理 */}
             <Link
               href="/agency/settings"

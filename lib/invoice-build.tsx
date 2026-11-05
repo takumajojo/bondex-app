@@ -4,6 +4,7 @@ import { InvoiceDocument, type InvoiceLineItem } from "@/lib/invoice-pdf"
 import type { ShipmentRecord } from "@/lib/shipments-db"
 import { TAX_RATE, grossOf } from "@/lib/tax"
 import { endpointLabel } from "@/lib/residence"
+import { chargeCountHoldEnabled, chargeHoldAgencyEnabledByName } from "@/lib/charge-hold"
 
 /**
  * 月次請求書の組み立て — 手動DL (api/invoices/generate) と自動送付
@@ -90,6 +91,32 @@ export interface BuildInvoiceResult {
   dueDate?: string
 }
 
+/** B2-4 計上台帳 (claim_invoice_postings) の1行。 */
+interface PostingRow {
+  shipment_id: string
+  booking_id: string
+  leg_index: number
+  shipment_date: string
+  net_yen: number
+  gross_yen: number
+  billed_month: string
+  is_adjustment: boolean
+}
+
+/** 計上 leg の表示用フィールド (金額は台帳の凍結値を使うので持たない)。 */
+interface DisplayRow {
+  id: string
+  from_hotel: string | null
+  to_hotel: string | null
+  from_hotel_en: string | null
+  to_hotel_en: string | null
+  from_residence: unknown
+  to_residence: unknown
+  representative: string | null
+  tour_number: string | null
+  suitcase_count: number | null
+}
+
 /**
  * @param month "YYYY-MM"
  */
@@ -105,20 +132,6 @@ export async function buildMonthlyInvoice(
   const fromDate = `${month}-01`
   const lastDay = new Date(year, mon, 0).getDate()
   const toDate = `${month}-${String(lastDay).padStart(2, "0")}`
-
-  const { data, error } = await sb
-    .from("shipments")
-    .select(
-      "booking_id, leg_index, shipment_date, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, representative, tour_number, suitcase_count, amount_yen, status",
-    )
-    .eq("agency", agencyName)
-    .gte("shipment_date", fromDate)
-    .lte("shipment_date", toDate)
-    .in("status", ["issued", "picked_up", "in_transit", "delivered"])
-    .order("shipment_date", { ascending: true })
-
-  if (error) return { ok: false, reason: error.message }
-  if (!data || data.length === 0) return { ok: false, reason: "no_shipments" }
 
   const { data: agencyRow } = await sb
     .from("agencies")
@@ -137,17 +150,76 @@ export async function buildMonthlyInvoice(
     .toUpperCase()
   const invoiceNumber = `INV-${yearStr}${monthStr}-${agencyHash}`
 
-  const items: InvoiceLineItem[] = data.map((s) => ({
-    shipmentDate: s.shipment_date,
-    bookingRef: `${s.booking_id}-L${(s.leg_index ?? 0) + 1}`,
-    tourNumber: s.tour_number || undefined,
-    // 英語の請求書は英語の施設名があればそちらを使う (無ければ登録時の表記のまま)
-    fromHotel: endpointLabel((locale === "en" && s.from_hotel_en) || s.from_hotel, s.from_residence),
-    toHotel: endpointLabel((locale === "en" && s.to_hotel_en) || s.to_hotel, s.to_residence),
-    representative: s.representative ?? "",
-    suitcaseCount: s.suitcase_count ?? 0,
-    amountYen: s.amount_yen ?? 0,
-  }))
+  let items: InvoiceLineItem[]
+
+  // v3.4 段階導入: Global Flag ON でも、Allowlist 対象の代理店だけが計上台帳 (確定フロー) を使う。
+  // 対象外の代理店は Global ON でも従来の月次集計を使う (対象外=従来動作)。
+  const useHoldLedger = chargeCountHoldEnabled() && (await chargeHoldAgencyEnabledByName(sb, agencyName))
+
+  if (useHoldLedger) {
+    // B2-4: 保留 (held) を再評価で除外し、確定分だけを計上台帳 (shipment_invoice_postings) に凍結して請求する。
+    // 1 leg は生涯1回だけ計上 (二重計上なし)、確定額は凍結 (再実行でも同一PDF=不変)、締め後に確定した
+    // 保留 leg は当月に「前月分調整」として計上する。amount_yen の live 値ではなく凍結 net を使う。
+    const { data: posted, error: pErr } = await sb.rpc("claim_invoice_postings", {
+      p_agency: agencyName,
+      p_month: month,
+    })
+    if (pErr) return { ok: false, reason: pErr.message }
+    const rows = (posted ?? []) as PostingRow[]
+    if (rows.length === 0) return { ok: false, reason: "no_shipments" }
+
+    const ids = rows.map((r) => r.shipment_id)
+    const { data: disp, error: dErr } = await sb
+      .from("shipments")
+      .select(
+        "id, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, representative, tour_number, suitcase_count",
+      )
+      .in("id", ids)
+    if (dErr) return { ok: false, reason: dErr.message }
+    const byId = new Map<string, DisplayRow>((disp ?? []).map((d) => [(d as DisplayRow).id, d as DisplayRow]))
+
+    items = rows.map((r) => {
+      const s = byId.get(r.shipment_id) ?? ({} as DisplayRow)
+      return {
+        shipmentDate: r.shipment_date,
+        // 締め後確定の過去分は「前月分調整」と明記 (原発送日は shipmentDate に残る)。
+        bookingRef: `${r.booking_id}-L${(r.leg_index ?? 0) + 1}${r.is_adjustment ? (locale === "en" ? " (prior-month adj.)" : "（前月分調整）") : ""}`,
+        tourNumber: s.tour_number || undefined,
+        fromHotel: endpointLabel((locale === "en" && s.from_hotel_en) || s.from_hotel, s.from_residence),
+        toHotel: endpointLabel((locale === "en" && s.to_hotel_en) || s.to_hotel, s.to_residence),
+        representative: s.representative ?? "",
+        suitcaseCount: s.suitcase_count ?? 0,
+        amountYen: r.net_yen ?? 0, // 計上時に凍結した税抜額 (確定後は不変)
+      }
+    })
+  } else {
+    // 従来 (フラグ OFF): 当月発送の shipments をそのまま計上 (挙動不変・保留無関心)。
+    const { data, error } = await sb
+      .from("shipments")
+      .select(
+        "booking_id, leg_index, shipment_date, from_hotel, to_hotel, from_hotel_en, to_hotel_en, from_residence, to_residence, representative, tour_number, suitcase_count, amount_yen, status",
+      )
+      .eq("agency", agencyName)
+      .gte("shipment_date", fromDate)
+      .lte("shipment_date", toDate)
+      .in("status", ["issued", "picked_up", "in_transit", "delivered"])
+      .order("shipment_date", { ascending: true })
+
+    if (error) return { ok: false, reason: error.message }
+    if (!data || data.length === 0) return { ok: false, reason: "no_shipments" }
+
+    items = data.map((s) => ({
+      shipmentDate: s.shipment_date,
+      bookingRef: `${s.booking_id}-L${(s.leg_index ?? 0) + 1}`,
+      tourNumber: s.tour_number || undefined,
+      // 英語の請求書は英語の施設名があればそちらを使う (無ければ登録時の表記のまま)
+      fromHotel: endpointLabel((locale === "en" && s.from_hotel_en) || s.from_hotel, s.from_residence),
+      toHotel: endpointLabel((locale === "en" && s.to_hotel_en) || s.to_hotel, s.to_residence),
+      representative: s.representative ?? "",
+      suitcaseCount: s.suitcase_count ?? 0,
+      amountYen: s.amount_yen ?? 0,
+    }))
+  }
 
   const netYen = items.reduce((sum, it) => sum + it.amountYen, 0) // 税抜小計
   const totalYen = grossOf(netYen) // 請求総額 (国内・海外とも外税)

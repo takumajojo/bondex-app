@@ -8,6 +8,8 @@ import {
   type ShipmentRecord,
 } from "@/lib/shipments-db"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { getSupabase } from "@/lib/supabase"
+import { chargeCountHoldEnabled, reconcileChargeAttempt } from "@/lib/charge-hold"
 
 export const runtime = "nodejs"
 
@@ -70,6 +72,9 @@ export async function POST(req: NextRequest) {
         break
       case "payment_intent.payment_failed":
         await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event.created)
+        break
+      case "payment_intent.succeeded":
+        await handlePaymentSucceeded(event.data.object as Stripe.PaymentIntent)
         break
       case "checkout.session.completed":
         await handleAdditionCheckout(event.data.object as Stripe.Checkout.Session)
@@ -178,6 +183,37 @@ async function handleAdditionCheckout(session: Stripe.Checkout.Session): Promise
     ],
     agencyEmail: null,
   })
+}
+
+/**
+ * off_session 課金が成立したことの out-of-band 確認 (B2-3)。
+ * 通信タイムアウト等で同期記録に失敗し reconciliation_required / in_flight のまま止まっている課金を、
+ * ここで charged_at に確定させる (CAS で二重課金を防ぐ)。フラグ OFF では何もしない (従来挙動)。
+ * 通常の同期課金済み (charged_at あり) や、保留フローでない PI は対象外。
+ */
+async function handlePaymentSucceeded(pi: Stripe.PaymentIntent): Promise<void> {
+  if (!chargeCountHoldEnabled()) return
+  const shipmentId = pi.metadata?.shipment_id || null
+  const shipment = shipmentId ? await getShipment(shipmentId) : await getShipmentByPaymentIntentId(pi.id)
+  if (!shipment) return // 当方の課金でない PI は無視 (throw しない)
+  if (shipment.charged_at) return // 既に記録済み = 冪等
+  // 保留フローで結果不明/送信中のものだけを対象に (追加決済リンク等には触れない)。
+  if (shipment.charge_attempt_state !== "reconciliation_required" && shipment.charge_attempt_state !== "in_flight") return
+  const sb = getSupabase()
+  if (!sb) throw new Error("payment_succeeded: Supabase unavailable") // 一時障害は Stripe 再送に乗せる
+  const amount = pi.amount_received ?? pi.amount ?? shipment.amount_yen ?? 0
+  const r = await reconcileChargeAttempt(sb, shipment.id, "succeeded", pi.id, amount)
+  if (r.charged) {
+    await sendOpsAlert({
+      subject: `【結果不明の課金を成立として照合】${legRef(shipment)} (${shipment.agency})`,
+      lines: [
+        `予約: ${legRef(shipment)} / 代理店: ${shipment.agency}`,
+        `Webhook (payment_intent.succeeded) で課金成立を確認し charged_at を確定しました。`,
+        `金額: ¥${amount.toLocaleString()} / PaymentIntent: ${pi.id}`,
+      ],
+      agencyEmail: null,
+    })
+  }
 }
 
 async function handlePaymentFailed(pi: Stripe.PaymentIntent, createdAt: number): Promise<void> {

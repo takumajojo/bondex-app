@@ -149,6 +149,37 @@ export interface ShipmentRecord {
   stripe_checkout_session_id: string | null
   /** カード清算用の決済リンク(代理店へ提示/送付)。 */
   stripe_checkout_url: string | null
+  // ── P1-B2 実集荷個数確認・課金保留 (sql/066・既定は未設定/auto=現行挙動) ──
+  charge_hold_state?: string | null
+  prenotified_count?: number | null
+  actual_count?: number | null
+  actual_count_source?: string | null
+  actual_count_confirmed_at?: string | null
+  actual_count_confirmed_by?: string | null
+  sagawa_reply_note?: string | null
+  count_discrepancy_flag?: boolean | null
+  count_status?: string | null
+  price_status?: string | null
+  recalc_amount_yen?: number | null
+  has_open_pickup_issue?: boolean | null
+  /** 承認済み税抜金額 (release で amount_yen へ反映する確定値)。 */
+  approved_amount_yen?: number | null
+  approved_unit_price_yen?: number | null
+  price_discount_basis?: string | null
+  price_calc_version?: string | null
+  price_calc_count?: number | null
+  price_approved_by?: string | null
+  price_approved_at?: string | null
+  /** 課金試行状態 (in_flight/succeeded/failed/reconciliation_required)。結果不明は新規課金を止める。 */
+  charge_attempt_state?: string | null
+  charge_attempt_at?: string | null
+  charge_attempt_pi_id?: string | null
+  charge_attempt_count?: number | null
+  charge_claim_at?: string | null
+  charge_claim_owner?: string | null
+  /** claim 時点の集荷単位スナップショット (revalidate_charge_claim 用)。 */
+  charge_claim_unit_key?: string | null
+  charge_claim_unit_total?: number | null
   created_at: string
   updated_at: string
 }

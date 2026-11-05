@@ -3,6 +3,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { buildMonthlyInvoice } from "@/lib/invoice-build"
 import { renderInvoiceEmail } from "@/lib/invoice-email"
 import { sendInvoiceToAgency } from "@/lib/invoice-send"
+import { chargeCountHoldEnabled } from "@/lib/charge-hold"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -131,11 +132,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, alreadyApproved: true, approvedAt: row.approved_at })
     }
 
+    // P1-B2 v3.3: 既定 OFF。ON のとき status 列も approved に同期する (追加列のみ・OFF は従来と同一)。
+    const statusApproved = chargeCountHoldEnabled() ? { status: "approved" } : {}
     const now = new Date().toISOString()
     if (row) {
       const upd = await sb
         .from("invoice_sends")
-        .update({ approved_at: now, approved_by: "operator" })
+        .update({ approved_at: now, approved_by: "operator", ...statusApproved })
         .eq("agency", agency)
         .eq("month", month)
         .is("sent_to_agency_at", null)
@@ -149,6 +152,7 @@ export async function POST(req: NextRequest) {
         sent_to: [],
         approved_at: now,
         approved_by: "operator",
+        ...statusApproved,
       })
       if (ins.error) return NextResponse.json({ ok: false, error: ins.error.message }, { status: 500 })
     }
