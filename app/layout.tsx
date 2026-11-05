@@ -187,8 +187,9 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         {children}
         <ConsentBanner />
-        {/* 計測は旅行者の秘密のリンク（/my/・/book/）では読み込まない（URL の token を外部に渡さない） */}
-        <ThirdPartyAnalytics gaMeasurementId={GA_MEASUREMENT_ID} />
+        {/* 計測は旅行者の秘密のリンク（/my/・/book/）では読み込まない（URL の token を外部に渡さない）。
+            試験環境（BONDEX_ENV=staging）では読み込まない（本番の GA に試験の閲覧を混ぜない） */}
+        {process.env.BONDEX_ENV !== "staging" && <ThirdPartyAnalytics gaMeasurementId={GA_MEASUREMENT_ID} />}
       </body>
     </html>
   )

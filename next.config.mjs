@@ -54,10 +54,12 @@ const nextConfig = {
     unoptimized: true,
   },
   async headers() {
+    // 試験環境（BONDEX_ENV=staging）は検索エンジンに載せない（本番の bondex.express と同じ内容の重複を避ける）
+    const staging = process.env.BONDEX_ENV === "staging"
     return [
       {
         source: "/(.*)",
-        headers: securityHeaders,
+        headers: staging ? [...securityHeaders, { key: "X-Robots-Tag", value: "noindex, nofollow" }] : securityHeaders,
       },
     ]
   },
