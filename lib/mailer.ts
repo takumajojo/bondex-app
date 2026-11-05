@@ -177,6 +177,8 @@ export async function sendMail(opts: {
     const g = globalThis as unknown as { __capturedMails?: Array<Record<string, unknown>> }
     g.__capturedMails = g.__capturedMails ?? []
     g.__capturedMails.push({ to: opts.to, subject: opts.subject, idempotencyKey: opts.idempotencyKey, bcc: opts.bcc })
+    // staging（Vercel）ではプロセスが要求ごとに変わるので、記録をログにも残す（宛先はドメインだけ・本文は出さない）
+    console.log(`[mail-capture] to=*@${(opts.to.split("@")[1] ?? "?").trim()} subject=${opts.subject}`)
     return { sent: true, via: "resend" }
   }
 
@@ -219,5 +221,8 @@ export async function sendMail(opts: {
 }
 
 export function mailerConfigured(): boolean {
+  // 記録だけの形（MAIL_TEST_CAPTURE=1・試験と staging）は「送れる」として扱う（sendMail は実際には送らず記録して成功を返す）。
+  // これが無いと、運営への通知などが「送る手段が無い」として止まり、試験・staging で通知の動きを確かめられない。本番では設定しない。
+  if (process.env.MAIL_TEST_CAPTURE === "1") return true
   return smtpConfigured() || !!process.env.RESEND_API_KEY
 }

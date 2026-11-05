@@ -3,7 +3,8 @@ import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { mailerConfigured } from "@/lib/mailer"
-import { listPickupMisses, markPickupAlerted, listDeliveryOverdue, markDeliveryOverdueAlerted } from "@/lib/shipments-db"
+import { listDeliveryOverdue, markDeliveryOverdueAlerted } from "@/lib/shipments-db"
+import { alertPickupMisses } from "@/lib/pickup-request/pickup-miss"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { getTrackingProvider } from "@/lib/tracking"
@@ -628,52 +629,14 @@ export async function GET(req: NextRequest) {
     }
 
     // ------------------------------------------------------------------
-    // 集荷漏れアラート: 発送日を過ぎても picked_up にならない区間を検知。
-    //   - 発送日当日は 18 時 (JST) 以降にのみ発報 (集荷は日中に来るため)
-    //   - 前日以前の発送分は時刻に関わらず即発報
-    //   - pickup_alert_sent_at で二重通知を防止
+    // 集荷漏れアラート（G19・2026-11-05）: 判定と送信は lib/pickup-request/pickup-miss.ts の 1か所だけ。
+    //   集荷依頼の監視ジョブ（/api/cron/pickup-watch）も同じ関数を呼ぶ。区間ごとに印を付けた実行だけが送るので、
+    //   両方が動いても通知は 1回。追跡を止めている間（この処理が動かない間）も pickup-watch が通知する。
+    //   条件（集荷日の 18:00 以降・過去の集荷日・pickup_alert_sent_at で 1回だけ）は従来どおり。
     // ------------------------------------------------------------------
     let pickupAlertsSent = 0
     try {
-      const nowJst = new Date(Date.now() + 9 * 3600 * 1000)
-      const todayJst = nowJst.toISOString().slice(0, 10)
-      const hourJst = nowJst.getUTCHours()
-      const misses = await listPickupMisses(todayJst)
-      const due = misses.filter(
-        (s) => s.shipment_date < todayJst || hourJst >= 18,
-      )
-      const alertedIds: string[] = []
-      for (const s of due) {
-        const agencyEmail = agencyEmailByName.get(s.agency) ?? null
-        const agencyEn = agencyForeignByName.get(s.agency) ?? false
-        await sendOpsAlert({
-          subject: `【集荷漏れの可能性】${s.booking_id}-L${s.leg_index + 1} ${endpointLabel(s.from_hotel, s.from_residence)}`,
-          lines: [
-            `予約: ${s.booking_id} (区間 ${s.leg_index + 1})`,
-            `代表者: ${s.representative} / 受取人: ${s.recipient}`,
-            `発送日: ${s.shipment_date} を過ぎても集荷が確認できていません (現在: ${s.status})`,
-            `発送元: ${endpointLabel(s.from_hotel, s.from_residence)} → ${endpointLabel(s.to_hotel, s.to_residence)}`,
-            `追跡番号: ${(s.tracking_numbers ?? []).join(", ") || "未発行"}`,
-            `対応: 発送元ホテルへ荷物の有無を確認し、必要なら集荷を再手配してください。`,
-          ],
-          agencyEmail,
-          ...(agencyEn
-            ? {
-                agencySubject: `[BondEx] Possible missed pickup — ${s.booking_id}-L${s.leg_index + 1}`,
-                agencyLines: [
-                  `Booking: ${s.booking_id} (leg ${s.leg_index + 1})`,
-                  `Traveler: ${s.representative}`,
-                  `The ship date ${s.shipment_date} has passed but pickup is not confirmed yet.`,
-                  `Route: ${endpointLabel(s.from_hotel, s.from_residence)} → ${endpointLabel(s.to_hotel, s.to_residence)}`,
-                  `We are checking with the origin hotel and the carrier, and will re-arrange pickup if needed.`,
-                ],
-              }
-            : {}),
-        })
-        alertedIds.push(s.id)
-        pickupAlertsSent++
-      }
-      await markPickupAlerted(alertedIds)
+      pickupAlertsSent = (await alertPickupMisses(sb, sendOpsAlert)).alerted
     } catch (err) {
       console.error("[sync-tracking] pickup-miss check failed:", err instanceof Error ? err.message : err)
     }

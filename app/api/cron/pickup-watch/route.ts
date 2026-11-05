@@ -3,6 +3,7 @@ import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { alertStaleSending, alertEveningPickupGaps } from "@/lib/pickup-request/watch"
+import { alertPickupMisses } from "@/lib/pickup-request/pickup-miss"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -12,6 +13,7 @@ export const maxDuration = 60
  * 佐川の追跡 API・Ship&co が止まっていても独立して動く。追跡・課金・通知 (配送) の処理には触れない。
  *   1. 送信中のまま止まった集荷依頼 (5分超) → 1件ごとに1回だけ通知 (pickup_requests.stale_alerted_at)
  *   2. 19:00〜21:59: 明日集荷の未依頼・送信失敗・結果不明・要確認 → 締め前・締め超過にそれぞれ1回 (sql/075)
+ *   3. 未集荷（集荷日の 18:00 以降・過去の集荷日）→ 区間ごとに1回 (G19。追跡の定時処理と共通の lib/pickup-request/pickup-miss.ts)
  * 自動では送信も再送もしない。定時実行は pg_cron (sql/ops/pickup_watch_cron.sql・10分おき)。
  * 認証は他の cron と同じ CRON_SECRET (Bearer)。?probe=1 は通知の到達確認だけ (監視はしない)。
  */
@@ -44,6 +46,8 @@ export async function GET(req: NextRequest) {
     // 片方が失敗しても、もう片方は行う
     result.staleSending = await alertStaleSending(sb, alert).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }))
     result.evening = await alertEveningPickupGaps(sb, alert).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }))
+    // 未集荷（集荷漏れの可能性）: 追跡を止めていても通知する（G19。区間ごとに 1回だけ・lib/pickup-request/pickup-miss.ts）
+    result.pickupMiss = await alertPickupMisses(sb, sendOpsAlert).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }))
   } finally {
     await releaseCronLock("pickup-watch")
   }
