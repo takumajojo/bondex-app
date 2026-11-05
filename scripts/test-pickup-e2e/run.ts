@@ -667,6 +667,30 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(mock.issues, i0)
     assert.equal((await reqs(legH)).length, 1)
   })
+  await test("依頼前の区間に処理中の変更・取消の申請があれば、確認も送信もしない (旧い内容で依頼しない)", async () => {
+    const leg = await newLeg()
+    const s = await ship(leg)
+    const open = async (kind: string, stage: string) =>
+      (await db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                       values ($1, $2, 0, 'agency', 'T', '{"shipment_date":"2099-01-01"}', '{}', '締切後の変更', $3, $4) returning id`, [leg, s.booking_id, kind, stage])).rows[0].id as string
+    const i0 = mock.issues
+    for (const [kind, stage] of [["dates", "requested"], ["count", "approved"], ["fields", "requested"], ["cancel", "contacted"]]) {
+      const id = await open(kind, stage)
+      const pv = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_preview", shipmentId: leg })
+      assert.notEqual(pv.body.ok, true, `${kind}・${stage}: 確認で止める`)
+      assert.match(JSON.stringify(pv.body), /処理中の変更・取消の申請/)
+      const send = await call("POST", "/api/operator/pickup-request", { action: "bizlogi_send", shipmentId: leg, fingerprint: "x", actor: "谷口", confirmNoManual: true })
+      assert.notEqual(send.status, 200, `${kind}・${stage}: 送信も止める`)
+      await db.query(`delete from shipment_change_requests where id = $1`, [id]) // 試験では片付けを簡単にする (段階の遷移は別の試験で確かめる)
+    }
+    // 運営の訂正の記録 (correction) は処理中の申請として扱わない
+    await db.query(`insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, agency, fields, before, reason, kind, stage)
+                    values ($1, $2, 0, 'operator', 'T', '{}', '{}', '訂正', 'correction', 'approved')`, [leg, s.booking_id])
+    assert.equal(mock.issues, i0, "佐川へは何も送っていない")
+    assert.equal((await reqs(leg)).length, 0, "依頼の記録も作らない")
+    const { send } = await previewAndSend(leg)
+    assert.equal(send?.status, 200, "申請が片付けば送れる")
+  })
   await test("佐川が承認 (番号維持) → 反映: ホテル更新・履歴保存・番号そのまま・要確認に出ない", async () => {
     const id = (await changes(legH))[0].id
     assert.equal((await change({ action: "change_step", changeId: id, step: "approve", note: "佐川: 変更可・番号そのまま", numberPolicy: "kept", newNumber: "123" })).status, 409, "維持なのに新番号は不可")
