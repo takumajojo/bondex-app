@@ -13,21 +13,24 @@ begin;
 -- 10秒たっても掴めなければ、何も変えずに失敗する (少し待って流し直す)。1つのトランザクションの中で流すこと。
 do $migration_lock$
 declare
-  i int;
   targets text;
+  deadline timestamptz := clock_timestamp() + interval '10 seconds';
 begin
   -- 存在する表だけ (例: 067 の前は pickup_requests が無い)
   select string_agg(t, ', ') into targets from unnest(array['public.shipments', 'public.pickup_requests', 'public.shipment_change_requests', 'public.operator_passkeys']) t where to_regclass(t) is not null;
   if targets is null then return; end if;
-  for i in 1..50 loop
+  loop
     begin
       execute format('lock table %s in access exclusive mode nowait', targets);
       return;
     exception when lock_not_available then
-      perform pg_sleep(0.2);
+      -- 経過した時間で区切る（回数で数えると、1回ごとの手間の分だけ 10秒を超える: 実測 10.2〜12.4秒）
+      if clock_timestamp() >= deadline then
+        raise exception 'migration: 表 (%) を10秒以内に確保できませんでした。何も変えていません。少し待って流し直してください', targets;
+      end if;
+      perform pg_sleep(least(0.2, greatest(0.01, extract(epoch from (deadline - clock_timestamp())))));
     end;
   end loop;
-  raise exception 'migration: 表 (%) を10秒以内に確保できませんでした。何も変えていません。少し待って流し直してください', targets;
 end $migration_lock$;
 
 -- ── 072: ロック無効・記録の停止 (pause_pickup_lock.sql を先に流していれば何も変わらない)
