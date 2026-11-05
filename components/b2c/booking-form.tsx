@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { B2cCardStep, type B2cPendingOrder } from "./card-step"
 import { B2C_LANG_EVENT } from "@/components/consent-banner"
+import { B2C_BOOKING_CONSENT_TEXT, b2cLegalPath } from "@/lib/b2c/legal-text"
 
 type Lang = "en" | "ja"
 type HotelStatus = "verified" | "unknown"
@@ -65,7 +66,10 @@ const T = {
     verified: "Checked by BondEx: staffed front desk, accepts luggage",
     unknown: "Not yet checked by BondEx. We will confirm with the hotel before your booking is confirmed.",
     s3: "How many bags?",
-    s3h: "Suitcases up to 160 cm (length + width + height). Valuables are not covered — keep them with you.",
+    s3h: "Each bag: up to 160 cm (length + width + height) and up to 30 kg. For larger or heavier bags, contact us before booking.",
+    notSend: "Some items cannot be sent (cash, cards, passports, etc.).",
+    notSendLink: "See the list",
+    keepWithYou: "Keep valuables and fragile items with you.",
     s4: "Pickup and delivery",
     s4h: "Only dates we can actually deliver are shown.",
     pickupDay: "Pickup day (bags at the front desk by 11:00)",
@@ -88,8 +92,13 @@ const T = {
     email: "Email",
     wa: "WhatsApp number with country code",
     waPh: "+31 6 1234 5678",
-    waHelp: "We send pickup reminders and urgent updates on WhatsApp.",
-    consent: "I agree to the Terms. I understand: valuables are not covered; a hotel may be unable to accept my bags, in which case BondEx cancels at no charge; my card is charged only after pickup.",
+    waHelp: "We use this number only if we need to reach you urgently. Updates are sent by email.",
+    consent: B2C_BOOKING_CONSENT_TEXT.en,
+    docs: "Please read before booking:",
+    docTerms: "Terms of Service",
+    docCancel: "Cancellation Policy",
+    docPrivacy: "Privacy Policy",
+    docTokushoho: "Legal notice (Specified Commercial Transactions Act)",
     submit: "Continue to card registration",
     submitting: "Saving…",
     errors: {
@@ -121,7 +130,10 @@ const T = {
     verified: "BondEx 確認済み：フロントに係員がいて荷物を預かれるホテル",
     unknown: "BondEx が未確認のホテルです。予約の確定の前に、ホテルに確認します。",
     s3: "お荷物の個数",
-    s3h: "スーツケースは3辺の合計160cmまで。貴重品は補償の対象外のため、お手元でお持ちください。",
+    s3h: "1個あたり3辺の合計160cm以内・30kg以内。超える場合は、予約の前にご相談ください。",
+    notSend: "送れない物があります（現金・カード類・パスポートなど）。",
+    notSendLink: "一覧を見る",
+    keepWithYou: "貴重品・壊れやすい物はお手元でお持ちください。",
     s4: "集荷日とお届け日",
     s4h: "お届けできる日だけを表示しています。",
     pickupDay: "集荷日（11:00までにフロントへお預けください）",
@@ -144,8 +156,13 @@ const T = {
     email: "メールアドレス",
     wa: "WhatsApp の番号（国番号から）",
     waPh: "+81 90 1234 5678",
-    waHelp: "集荷のリマインドや至急のご連絡を WhatsApp でお送りします。",
-    consent: "利用規約に同意します。貴重品は補償の対象外であること、ホテルの都合で受けられない場合は BondEx が無料で取り消すこと、カードへの請求は集荷の後であることを理解しました。",
+    waHelp: "至急のご連絡が必要な時だけ使います。ご案内はメールでお送りします。",
+    consent: B2C_BOOKING_CONSENT_TEXT.ja,
+    docs: "ご予約の前にお読みください：",
+    docTerms: "利用規約",
+    docCancel: "キャンセル規定",
+    docPrivacy: "プライバシーポリシー",
+    docTokushoho: "特定商取引法に基づく表記",
     submit: "カード登録へ進む",
     submitting: "保存しています…",
     errors: {
@@ -423,6 +440,11 @@ export function B2cBookingForm({ token, referrerName, initialLang }: { token: st
             <span className="min-w-8 text-center text-2xl font-semibold tabular-nums" aria-live="polite">{pieces}</span>
             <Button type="button" variant="outline" className="h-12 w-12 text-xl" disabled={pieces >= 10} onClick={() => setPieces(pieces + 1)} aria-label="+">+</Button>
           </div>
+          <p className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-sm leading-relaxed" data-b2c-not-send>
+            {t.notSend}{" "}
+            <a className="font-medium underline underline-offset-2" href={`${b2cLegalPath("terms", lang)}#article-7`} target="_blank" rel="noopener noreferrer">{t.notSendLink}</a>
+            <span className="block text-muted-foreground">{t.keepWithYou}</span>
+          </p>
         </Section>
 
         <Section n={4} title={t.s4} help={t.s4h} muted={!ready}>
@@ -490,10 +512,20 @@ export function B2cBookingForm({ token, referrerName, initialLang }: { token: st
           </div>
         </Section>
 
-        <label className="flex items-start gap-3 rounded-2xl border bg-card p-4 text-sm leading-relaxed">
-          <input type="checkbox" aria-label={t.consent} className="mt-1 h-5 w-5 shrink-0" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-          <span>{t.consent}</span>
-        </label>
+        <div className="space-y-3 rounded-2xl border bg-card p-4 text-sm leading-relaxed">
+          <div data-b2c-legal-links>
+            <p className="font-medium">{t.docs}</p>
+            <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              {([["terms", t.docTerms], ["cancellation", t.docCancel], ["privacy", t.docPrivacy], ["tokushoho", t.docTokushoho]] as const).map(([k, label]) => (
+                <li key={k}><a className="underline underline-offset-2" href={b2cLegalPath(k, lang)} target="_blank" rel="noopener noreferrer">{label}</a></li>
+              ))}
+            </ul>
+          </div>
+          <label className="flex items-start gap-3">
+            <input type="checkbox" aria-label={t.consent} className="mt-1 h-5 w-5 shrink-0" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+            <span>{t.consent}</span>
+          </label>
+        </div>
 
         {errs.length > 0 ? (
           <ul id="b2c-errors" className="space-y-1 rounded-xl bg-red-50 p-3 text-sm text-red-900 dark:bg-red-950 dark:text-red-100" role="alert">

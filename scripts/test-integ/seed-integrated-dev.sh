@@ -10,7 +10,7 @@ PSQL=(docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=
 bash scripts/test-b2c/db/seed-dev.sh
 for f in sql/043_shipment_change_requests.sql sql/033_hotel_change_schema.sql sql/063_fix_hotel_change_tracking_column.sql \
          sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/071_b2c_cutoff_1830.sql \
-         sql/072_enable_pickup_lock.sql sql/070_change_deadline_1830.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/077_operator_email_code_attempts.sql sql/078_pickup_customer_numbering.sql; do
+         sql/072_enable_pickup_lock.sql sql/070_change_deadline_1830.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/077_operator_email_code_attempts.sql sql/078_pickup_customer_numbering.sql sql/079_b2c_legal_versions.sql; do
   [[ -f "$f" ]] || { echo "missing $f"; exit 1; }
   "${PSQL[@]}" < "$f" > /dev/null
 done

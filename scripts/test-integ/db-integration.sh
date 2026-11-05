@@ -2,7 +2,7 @@
 # B2C と Biz-Logi の統合の DB 試験 (ローカルの PostgreSQL の試験専用データベースだけ。本番・Supabase には接続しない)。
 #   実行: bash scripts/test-integ/db-integration.sh   (Supabase CLI のローカル DB コンテナ supabase_db_supa-local を使う)
 # 確かめること:
-#   A. 本番移行の順番 (067 → 069 → 068 → 061 → 062 → 073 → 071 → 074 → 075 → 076 → [アプリ] → 072 → 070) と二重適用
+#   A. 本番移行の順番 (067 → 069 → 068 → 061 → 062 → 073 → 071 → 074 → 075 → 076 → 077 → 078 → 079 → [アプリ] → 072 → 070) と二重適用
 #   B. 拡張段階 (ロック無効・記録の停止) で古いアプリの操作が通り、集荷依頼の記録は DB が止める
 #   C. 072 の後: ロック・二重依頼の防止・停止スイッチ
 #   D. 締切 18:30 (DB の pickup_cutoff_at・b2c_confirm_order の判定と保存値)
@@ -29,7 +29,7 @@ fresh() {
         alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;" >/dev/null
   apply scripts/test-b2c/db/000_base_from_prod.sql sql/043_shipment_change_requests.sql sql/033_hotel_change_schema.sql sql/063_fix_hotel_change_tracking_column.sql
 }
-EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/077_operator_email_code_attempts.sql sql/078_pickup_customer_numbering.sql)
+EXPAND=(sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/077_operator_email_code_attempts.sql sql/078_pickup_customer_numbering.sql sql/079_b2c_legal_versions.sql)
 lock_state() { q -c "select tgenabled from pg_trigger where tgrelid='public.shipments'::regclass and tgname='shipments_pickup_lock'"; }
 leg() { # booking_id 集荷日のオフセット(日) → id
   q -c "insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel, status, suitcase_count, agency, representative, recipient)
@@ -38,11 +38,11 @@ leg() { # booking_id 集荷日のオフセット(日) → id
 claim() { q -c "select claimed||':'||reason from claim_pickup_request('$1','manual',null,null,2,(select shipment_date from shipments where id='$1'),'op','op',null)"; }
 b2c_order() { # 集荷日のオフセット(日) → order id (カード登録・同意済み・確認済みホテル・instant)
   q -c "insert into b2c_orders (entry_link_id, referrer_code, guest_name, guest_email, guest_whatsapp, origin_place_id, dest_place_id, origin_snapshot, dest_snapshot,
-          pickup_date, delivery_date, pieces, route_class, unit_net_yen, subtotal_net_yen, tax_yen, total_gross_yen, price_rule_version, status, confirmation_mode, card_status, consented_at, access_token_hash)
+          pickup_date, delivery_date, pieces, route_class, unit_net_yen, subtotal_net_yen, tax_yen, total_gross_yen, price_rule_version, status, confirmation_mode, card_status, consented_at, access_token_hash, card_consent_version, card_consented_at)
         select id,'HKU','Guest','g@example.com','+819000000000','P1','P2',
           jsonb_build_object('name','H1','check_in',(current_date)::text),
           jsonb_build_object('name','H2','check_in',(current_date+$1)::text,'check_out',(current_date+$1+5)::text),
-          current_date+$1,current_date+$1+1,2,'standard',3000,6000,600,6600,'v1','card_pending','instant','registered',now(),md5(random()::text)
+          current_date+$1,current_date+$1+1,2,'standard',3000,6000,600,6600,'v1','card_pending','instant','registered',now(),md5(random()::text),'card-v1',now()
         from b2c_entry_links limit 1 returning id" | head -1
 }
 b2c_seed() {

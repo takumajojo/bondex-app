@@ -33,6 +33,7 @@ const HOLD: Record<string, string> = {
   amount_mismatch: "金額が料金の控えと違う",
   no_card: "カードが無い",
   no_consent: "同意の記録が無い",
+  no_card_consent: "カード登録の同意（集荷の後の請求）の記録が無い",
   other_charge_active: "同じ予約の別の請求が処理中",
   stripe_canceled: "Stripe で取り消された",
   stripe_mismatch: "Stripe の内容が DB と違う",

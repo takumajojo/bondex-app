@@ -16,14 +16,15 @@
  */
 import type Stripe from "stripe"
 import { getSupabase } from "@/lib/supabase"
-import { b2cCutoffAt } from "./bookability"
+import { b2cCutoffAt, b2cCardWindowFits, B2C_CARD_WINDOW_MS } from "./bookability"
 import { buildB2cQuote, sha256Hex, B2cDbUnavailable, B2C_DB_TIMEOUT_MS, type B2cEntry } from "./booking-service"
 import { B2C_STRIPE_CHANNEL } from "./stripe"
+import { B2C_CARD_CONSENT_VERSION } from "./legal-text"
 
-/** カードの入力に使える時間。これを過ぎた card_pending の予約は枠を返す（expireStaleCardPending）。 */
-export const B2C_CARD_WINDOW_MS = 30 * 60 * 1000
+/** カードの入力に使える時間。これを過ぎた card_pending の予約は枠を返す（expireStaleCardPending）。予約の画面と共通（bookability.ts）。 */
+export { B2C_CARD_WINDOW_MS } from "./bookability"
 /** カード登録と、集荷の後の請求への同意の文の版（画面の文と合わせて上げる）。 */
-export const B2C_CARD_CONSENT_VERSION = "2026-11-phase1a-card-draft"
+export { B2C_CARD_CONSENT_VERSION } from "./legal-text"
 
 export type B2cCardState = "registering" | "requires_action" | "failed" | "registered"
 
@@ -190,9 +191,7 @@ export async function startB2cCardRegistration(
   if (!cardConsent) return { ok: false, error: "card_consent_required" }
 
   // 締切・ホテルの確認の期限まで、カードの入力の時間が残っていること
-  const limits = [b2cCutoffAt(order.pickup_date).getTime()]
-  if (order.confirmation_due_at) limits.push(new Date(order.confirmation_due_at).getTime())
-  if (now.getTime() + B2C_CARD_WINDOW_MS > Math.min(...limits)) return { ok: false, error: "too_close_to_deadline" }
+  if (!b2cCardWindowFits(now, order.pickup_date, order.confirmation_due_at)) return { ok: false, error: "too_close_to_deadline" }
 
   if (order.status === "draft") {
     // 下書きの後に日付・料金の条件が変わっていないか、サーバーで計算し直す（画面の値は使わない）
@@ -212,7 +211,7 @@ export async function startB2cCardRegistration(
 
     const { data: claimed, error: claimErr } = await sb
       .from("b2c_orders")
-      .update({ status: "card_pending", card_status: "registering", consent_version: B2C_CARD_CONSENT_VERSION, consented_at: now.toISOString() })
+      .update({ status: "card_pending", card_status: "registering", card_consent_version: B2C_CARD_CONSENT_VERSION, card_consented_at: now.toISOString() })
       .eq("id", order.id)
       .eq("status", "draft")
       .select("id")

@@ -143,3 +143,16 @@ export function judgeB2cBookability(input: B2cBookabilityInput): B2cBookabilityR
     cutoffAt: cutoff.toISOString(),
   }
 }
+
+/**
+ * カードの入力に使える時間（30分）。予約の確定にはカード登録が要るので、締切・ホテルの確認の期限まで
+ * この時間が残っていない集荷日は、予約の画面に出さない（出すとカード登録で必ず断られる）。
+ */
+export const B2C_CARD_WINDOW_MS = 30 * 60 * 1000
+
+/** 今からカード登録を始めて、締切（前日 18:30）とホテルの確認の期限（あれば）までに間に合うか。 */
+export function b2cCardWindowFits(now: Date, pickupDate: string, confirmationDueAt: string | null): boolean {
+  const limits = [b2cCutoffAt(pickupDate).getTime()]
+  if (confirmationDueAt) limits.push(new Date(confirmationDueAt).getTime())
+  return now.getTime() + B2C_CARD_WINDOW_MS <= Math.min(...limits)
+}

@@ -37,3 +37,11 @@ export function b2cPickupAutomationEnabled(): boolean {
 export function b2cLateBookingEnabled(): boolean {
   return on("B2C_LATE_BOOKING_ENABLED")
 }
+
+/**
+ * 旅行者向けの規約のページ（/legal/traveler/…）の表示。既定は OFF（ページは 404）。
+ * 弁護士の確認・規約の確定・公開の承認（docs/b2c/legal/05_pre_publication_checklist.md）までは、ローカルのレビューでだけ ON にする。
+ */
+export function b2cLegalPagesEnabled(): boolean {
+  return on("B2C_LEGAL_PAGES_ENABLED")
+}

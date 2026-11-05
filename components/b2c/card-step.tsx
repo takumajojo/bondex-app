@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js"
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js"
 import { Button } from "@/components/ui/button"
+import { B2C_CARD_CONSENT_TEXT, b2cCardChargeTerms, b2cLegalPath } from "@/lib/b2c/legal-text"
 
 type Lang = "en" | "ja"
 
@@ -37,8 +38,10 @@ const T = {
     title: "Register your card",
     orderNo: (n: number) => `Request number ${n}`,
     noCharge: "Nothing is charged now.",
-    whenCharged: (y: string) => `After Sagawa picks up your bags, we charge ${y} (tax included) to this card. If more bags are handed over at pickup than booked, the extra bags are charged at the same price per bag.`,
-    consent: "I authorize BondEx to save this card and charge it after pickup, as described above.",
+    whenCharged: (y: string) => b2cCardChargeTerms("en", y),
+    consent: B2C_CARD_CONSENT_TEXT.en,
+    terms: "Terms of Service",
+    cancel: "Cancellation Policy",
     start: "Enter card",
     starting: "Preparing…",
     register: "Register card",
@@ -48,7 +51,7 @@ const T = {
     secure: "Your card number goes directly to Stripe, our payment provider. BondEx does not store it.",
     brands: "Accepted cards: Visa, Mastercard, JCB, American Express, Diners Club, Discover. UnionPay is not accepted.",
     confirmedTitle: "Your booking is confirmed",
-    confirmedBody: "Leave your bags at the front desk by 11:00 on the pickup day. We will send the details by email and WhatsApp.",
+    confirmedBody: "Leave your bags at the front desk by 11:00 on the pickup day. We will send the details by email.",
     awaitingTitle: "Card registered — booking not yet confirmed",
     awaitingBody: (due: string) => `We are checking with the hotel(s). We will confirm by ${due}. If a hotel cannot accept your bags, we cancel at no charge.`,
     reviewTitle: "Card registered — our team will contact you",
@@ -78,8 +81,10 @@ const T = {
     title: "カードの登録",
     orderNo: (n: number) => `受付番号 ${n}`,
     noCharge: "いまは請求されません。",
-    whenCharged: (y: string) => `佐川急便が集荷した後に、このカードへ ${y}（税込）を請求します。集荷の時にご予約より多い個数をお預けになった場合は、増えた分を同じ1個あたりの料金で請求します。`,
-    consent: "上記のとおり、BondEx がこのカードを保存し、集荷の後に請求することに同意します。",
+    whenCharged: (y: string) => b2cCardChargeTerms("ja", y),
+    consent: B2C_CARD_CONSENT_TEXT.ja,
+    terms: "利用規約",
+    cancel: "キャンセル規定",
     start: "カードを入力する",
     starting: "準備しています…",
     register: "カードを登録する",
@@ -89,7 +94,7 @@ const T = {
     secure: "カードの番号は決済会社の Stripe に直接送られます。BondEx は保存しません。",
     brands: "使えるカード: Visa・Mastercard・JCB・American Express・Diners Club・Discover。銀聯（UnionPay）は使えません。",
     confirmedTitle: "予約が確定しました",
-    confirmedBody: "集荷日の 11:00 までにホテルのフロントへお預けください。詳しくはメールと WhatsApp でお送りします。",
+    confirmedBody: "集荷日の 11:00 までにホテルのフロントへお預けください。詳しくはメールでお送りします。",
     awaitingTitle: "カードを登録しました（予約はまだ確定していません）",
     awaitingBody: (due: string) => `ホテルに確認しています。${due}までに確定のご連絡をします。ホテルが受けられない場合は、無料で取り消します。`,
     reviewTitle: "カードを登録しました（担当者からご連絡します）",
@@ -307,7 +312,11 @@ export function B2cCardStep({ token, lang, order, onRestart }: { token: string; 
       {header}
       <div className="rounded-xl bg-emerald-50 p-3 text-sm leading-relaxed text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
         <p className="font-semibold">{t.noCharge}</p>
-        <p className="mt-1">{t.whenCharged(yen(order.totalGrossYen))}</p>
+        <p className="mt-1" data-b2c-charge-terms>{t.whenCharged(yen(order.totalGrossYen))}</p>
+        <p className="mt-2 flex flex-wrap gap-x-4">
+          <a className="underline underline-offset-2" href={b2cLegalPath("terms", lang)} target="_blank" rel="noopener noreferrer">{t.terms}</a>
+          <a className="underline underline-offset-2" href={b2cLegalPath("cancellation", lang)} target="_blank" rel="noopener noreferrer">{t.cancel}</a>
+        </p>
       </div>
 
       <p className="text-sm font-medium" data-card-brands>{t.brands}</p>
