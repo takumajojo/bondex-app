@@ -11,6 +11,8 @@ import {
 } from "@/lib/claims-db"
 import { isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
+import { B2C_PII_REDACTED, canSeeB2cPii, isB2cBookingId } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -26,6 +28,8 @@ const REPORTED_BY: ReportedBy[] = ["agency", "traveler", "hotel", "bondex", "yam
  */
 
 export async function GET(req: NextRequest) {
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   try {
     const limit = rateLimit(req, "claims-list")
     if (!limit.ok) return limit.response
@@ -37,7 +41,18 @@ export async function GET(req: NextRequest) {
       status: (sp.get("status") as ClaimStatus) || undefined,
       bookingId: sp.get("booking_id") || undefined,
     })
-    return NextResponse.json({ configured: true, claims: items })
+    // B2C の予約の事故の記録（届け出た人の名前・連絡先・内容）は、個人のパスキーの運営者にだけ（lib/b2c/pii-guard.ts）
+    const canSee = await canSeeB2cPii(req)
+    const claims = canSee
+      ? items
+      : items.map((c) => {
+          const r = c as unknown as Record<string, unknown>
+          if (!isB2cBookingId(r.bookingId ?? r.booking_id)) return c
+          const out: Record<string, unknown> = { ...r, b2cPiiHidden: true }
+          for (const f of ["reporter_name", "reporter_contact", "description", "resolution"]) if (f in out) out[f] = f.startsWith("description") ? B2C_PII_REDACTED : null
+          return out as unknown as typeof c
+        })
+    return NextResponse.json({ configured: true, claims })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Internal error"
     return NextResponse.json({ configured: false, claims: [], error: msg }, { status: 500 })

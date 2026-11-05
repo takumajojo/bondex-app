@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { buildMonthlyInvoice } from "@/lib/invoice-build"
 import { contentDisposition } from "@/lib/content-disposition"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -17,6 +18,8 @@ export const maxDuration = 60
  * BondEx admin (/operator) 限定 — middleware で認証済み。
  */
 export async function GET(req: NextRequest) {
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   const limit = rateLimit(req, "invoices-generate")
   if (!limit.ok) return limit.response
 

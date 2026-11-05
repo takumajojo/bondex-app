@@ -4,6 +4,7 @@ import { InvoiceDocument, type InvoiceLineItem } from "@/lib/invoice-pdf"
 import type { ShipmentRecord } from "@/lib/shipments-db"
 import { TAX_RATE, grossOf } from "@/lib/tax"
 import { endpointLabel } from "@/lib/residence"
+import { B2C_AGENCY_NAME } from "@/lib/b2c/b2b-guard"
 
 /**
  * 月次請求書の組み立て — 手動DL (api/invoices/generate) と自動送付
@@ -99,6 +100,9 @@ export async function buildMonthlyInvoice(
   month: string,
 ): Promise<BuildInvoiceResult> {
   if (!/^\d{4}-\d{2}$/.test(month)) return { ok: false, reason: "invalid month" }
+  // 旅行者の予約（B2C）はカードで払うので請求書の対象外。代理店名 BondEx Direct で B2C の区間（旅行者の名前）を
+  // 請求書・その下書きとして引き出せないようにする（2026-11-05・lib/b2c/pii-guard.ts）。呼び出し側は「対象なし」として扱う。
+  if (agencyName.trim() === B2C_AGENCY_NAME) return { ok: false, reason: "no_shipments" }
   const [yearStr, monthStr] = month.split("-")
   const year = Number(yearStr)
   const mon = Number(monthStr)

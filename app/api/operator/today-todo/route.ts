@@ -7,6 +7,8 @@ import { lookupHotelHistory } from "@/lib/hotel-history"
 import { HOTEL_ROUTE_LABEL } from "@/lib/hotel-notification"
 import { loadPickupTodo, type PickupAttentionTask, type SagawaPickupTask } from "@/lib/pickup-request/todo"
 import { bizLogiAvailability } from "@/lib/pickup-request/service"
+import { canSeeB2cPii, redactB2cTasks } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -48,6 +50,8 @@ export interface HotelTodoTask {
  *   ダッシュボードの既存フィルタ(view)へ誘導する。
  */
 export async function GET(req: NextRequest) {
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   const limit = rateLimit(req, "today-todo")
   if (!limit.ok) return limit.response
 
@@ -159,10 +163,14 @@ export async function GET(req: NextRequest) {
     Object.entries(counts).reduce((s, [, n]) => s + (typeof n === "number" ? n : 0), 0)
 
   const avail = bizLogiAvailability()
+  // B2C の区間の旅行者の名前は、個人のパスキーの運営者にだけ（lib/b2c/pii-guard.ts）
+  const canSee = await canSeeB2cPii(req)
+  sagawaPickupTasks = redactB2cTasks(sagawaPickupTasks as unknown as Record<string, unknown>[], canSee) as unknown as SagawaPickupTask[]
+  pickupAttention = redactB2cTasks(pickupAttention as unknown as Record<string, unknown>[], canSee) as unknown as PickupAttentionTask[]
   return NextResponse.json({
     today,
     total,
-    hotelTasks,
+    hotelTasks: redactB2cTasks(hotelTasks as unknown as Record<string, unknown>[], canSee),
     sagawaPickupTasks,
     pickupAttention,
     pickupLegacyMode,

@@ -4,6 +4,8 @@ import { getSupabase } from "@/lib/supabase"
 import { cleanResidence, endpointLabel } from "@/lib/residence"
 import { sagawaCostYen } from "@/lib/sagawa-rates"
 import { resolveUnitPriceYen } from "@/lib/pricing"
+import { canSeeB2cPii, redactB2cShipments } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 
@@ -30,6 +32,8 @@ function jstDate(ts: string | null | undefined): string {
 export async function GET(req: NextRequest) {
   const limit = rateLimit(req, "report")
   if (!limit.ok) return limit.response
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ rows: [], summary: { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 } })
 
@@ -55,7 +59,8 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message, rows: [], summary: { count: 0, pieces: 0, amount: 0, cost: 0, margin: 0 } }, { status: 500 })
   }
-  const rows = (data ?? []) as Array<Record<string, unknown>>
+  // B2C の区間の旅行者の名前は、個人のパスキーの運営者にだけ（CSV も同じ・lib/b2c/pii-guard.ts）
+  const rows = redactB2cShipments((data ?? []) as Array<Record<string, unknown>>, await canSeeB2cPii(req))
   // 代理店ごとの単価（予定売上の算出用）。amount_yen 未確定（依頼中など発行前）でも、
   //  請求書払いで課金予定なので「個数 × 代理店単価(既定4,980)」を売上として見込む（2026-10-21 谷口さん）。
   const { data: agRows } = await sb.from("agencies").select("name, unit_price_yen")

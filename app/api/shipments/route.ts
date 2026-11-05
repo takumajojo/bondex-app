@@ -20,6 +20,7 @@ import { alertSagawaCancel, alertSagawaChange } from "@/lib/sagawa-alert"
 import { pushToAgency } from "@/lib/agency-push"
 import { isPickupLockError, operatorLockBody } from "@/lib/pickup-request/agency-change"
 import { requireOperator, requireB2cOperatorIf, shipmentIsB2c } from "@/lib/operator-authz"
+import { canSeeB2cPii, dropB2cRowsForSearch, redactB2cShipments } from "@/lib/b2c/pii-guard"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -72,7 +73,10 @@ export async function GET(req: NextRequest) {
       todayYmd: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
       limit: sp.get("limit") ? Math.min(500, Number(sp.get("limit"))) : 100,
     })
-    return NextResponse.json({ configured: true, shipments: data })
+    // B2C の区間の旅行者の名前などは、個人のパスキーの運営者にだけ返す（lib/b2c/pii-guard.ts）
+    const canSee = await canSeeB2cPii(req)
+    const rows = dropB2cRowsForSearch(data, canSee, !!sp.get("search"))
+    return NextResponse.json({ configured: true, shipments: redactB2cShipments(rows, canSee), b2cPiiVisible: canSee })
   } catch (err) {
     // どんなエラーでも JSON で返す (フロントの parse 失敗を防ぐ)
     const msg = err instanceof Error ? err.message : "Internal error"

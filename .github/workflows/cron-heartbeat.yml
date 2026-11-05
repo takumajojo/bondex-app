@@ -1,0 +1,32 @@
+name: Cron heartbeat check
+
+# 定期の処理（pg_cron の B2C の定期の処理・集荷依頼の監視）が止まっていないか、1時間おきに別の仕組み（GitHub Actions）から確かめる。
+#   呼ぶ先: /api/cron/heartbeat-check（app/api/cron/heartbeat-check/route.ts）。読むだけ（請求・送信の処理はしない）。
+#   問題があれば、アプリが運営にメール・Slack で知らせ、503 を返す → このワークフローが失敗し、GitHub からも知らせが届く（2つ目の経路）。
+#   GitHub の schedule は間引かれることがある（実測で 2〜6時間おき: sync-tracking.yml）。止まったことに気づく保険であり、主の知らせはアプリ側。
+# schedule は既定のブランチ（main）にある時だけ動く。main に入れるのは公開の承認の後。
+#
+# 事前設定: Repository → Settings → Secrets and variables → Actions に CRON_SECRET（Vercel 側と同じ値・既存）
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check cron heartbeats and B2C charges
+        run: |
+          response=$(curl -s -w "\n%{http_code}" --max-time 90 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://bondex.express/api/cron/heartbeat-check)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "$body"
+          if [ "$http_code" -ge 400 ] || [ -z "$http_code" ] || [ "$http_code" = "000" ]; then
+            echo "::error::heartbeat-check reported a problem (HTTP $http_code). See the ops alert email or /operator/b2c."
+            exit 1
+          fi

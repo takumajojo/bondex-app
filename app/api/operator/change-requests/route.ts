@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
+import { canSeeB2cPii, isB2cBookingId } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 
@@ -16,6 +18,8 @@ export const runtime = "nodejs"
 export async function GET(req: NextRequest) {
   const limit = rateLimit(req, "change-requests-list")
   if (!limit.ok) return limit.response
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
 
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
@@ -30,5 +34,12 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await q.limit(200)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ requests: data ?? [] })
+  // B2C の区間の変更の中身（名前などが入りうる fields・自由記入）は、個人のパスキーの運営者にだけ（lib/b2c/pii-guard.ts）。
+  // 他の運営者には、件数と状態が分かる項目だけを返す。
+  const canSee = await canSeeB2cPii(req)
+  const KEEP = new Set(["id", "shipment_id", "booking_id", "leg_index", "status", "kind", "stage", "requested_by", "created_at", "decided_at", "needs_sagawa"])
+  const requests = (data ?? []).map((r) =>
+    canSee || !isB2cBookingId(r.booking_id) ? r : { ...Object.fromEntries(Object.entries(r).filter(([k]) => KEEP.has(k))), b2c_pii_hidden: true },
+  )
+  return NextResponse.json({ requests })
 }

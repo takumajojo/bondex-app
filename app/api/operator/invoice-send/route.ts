@@ -3,6 +3,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { buildMonthlyInvoice } from "@/lib/invoice-build"
 import { renderInvoiceEmail } from "@/lib/invoice-email"
 import { sendInvoiceToAgency } from "@/lib/invoice-send"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -27,6 +28,8 @@ function badMonth(month: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
   }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
+import { canSeeB2cPii, redactB2cShipments } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 
@@ -17,6 +19,8 @@ export const runtime = "nodejs"
 const LOOKBACK_DAYS = 7
 
 export async function GET(req: NextRequest) {
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   const limit = rateLimit(req, "pickup-alerts")
   if (!limit.ok) return limit.response
   const sb = getSupabase()
@@ -33,7 +37,8 @@ export async function GET(req: NextRequest) {
     .limit(50)
   if (error) return NextResponse.json({ error: error.message, alerts: [] }, { status: 500 })
 
-  return NextResponse.json({ alerts: data ?? [] })
+  // B2C の区間の旅行者の名前は、個人のパスキーの運営者にだけ（lib/b2c/pii-guard.ts）
+  return NextResponse.json({ alerts: redactB2cShipments(data ?? [], await canSeeB2cPii(req)) })
 }
 
 export async function POST(req: NextRequest) {

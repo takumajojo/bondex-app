@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { findDuplicateBookings } from "@/lib/shipments-db"
 import { isSupabaseConfigured } from "@/lib/supabase"
+import { canSeeB2cPii, dropB2cRowsForSearch } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 15
@@ -15,6 +17,8 @@ export const maxDuration = 15
  * 発行を止めるものではなく、operator に「それでも発行するか」を確認させる用途。
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
   const limit = rateLimit(req, "shipments-dup-check")
   if (!limit.ok) return limit.response
 
@@ -37,7 +41,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const matches = await findDuplicateBookings({ names, dates })
-    return NextResponse.json({ configured: true, matches })
+    // 名前で当てる照会なので、個人のパスキーの運営者でなければ B2C の区間は結果に入れない（lib/b2c/pii-guard.ts）
+    return NextResponse.json({ configured: true, matches: dropB2cRowsForSearch(matches, await canSeeB2cPii(req), true) })
   } catch (err) {
     // チェック失敗で発行を止めない (警告機能はベストエフォート)
     console.error("[duplicate-check] failed:", err instanceof Error ? err.message : err)

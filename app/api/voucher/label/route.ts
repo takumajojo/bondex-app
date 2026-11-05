@@ -4,6 +4,8 @@ import { rateLimit } from "@/lib/rate-limit"
 import { buildVoucherFileName, carrierFileLabel } from "@/lib/utils"
 import { getSupabase } from "@/lib/supabase"
 import { contentDisposition } from "@/lib/content-disposition"
+import { canSeeB2cPii, isB2cBookingId } from "@/lib/b2c/pii-guard"
+import { requireOperator } from "@/lib/operator-authz"
 
 export const runtime = "nodejs"
 export const maxDuration = 30
@@ -54,6 +56,8 @@ const ALLOWED_LABEL_HOST = "storage.googleapis.com"
 export async function GET(req: NextRequest) {
   const limit = rateLimit(req, "voucher-label")
   if (!limit.ok) return limit.response
+  const denied = await requireOperator(req) // ハンドラーでも認可（middleware と同じ条件・lib/operator-authz.ts）
+  if (denied) return denied
 
   const url = req.nextUrl.searchParams.get("url")?.trim() || ""
   const bookingId = req.nextUrl.searchParams.get("bookingId")?.trim() || ""
@@ -65,6 +69,11 @@ export async function GET(req: NextRequest) {
 
   if (!url || !bookingId) {
     return NextResponse.json({ error: "url and bookingId are required" }, { status: 400 })
+  }
+  // B2C の送り状（旅行者の名前・宛先が載る）は、個人のパスキーの運営者だけ（lib/b2c/pii-guard.ts。
+  // 送り状の URL も一覧の応答から外しているので、他の運営者は URL を知り得ない）
+  if (isB2cBookingId(bookingId) && !(await canSeeB2cPii(req))) {
+    return NextResponse.json({ error: "operator_passkey_required", message: "旅行者の予約（B2C）の送り状は、個人のパスキーでログインした運営者だけが開けます。" }, { status: 403 })
   }
 
   let parsed: URL

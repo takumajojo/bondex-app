@@ -4,6 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { sendOpsAlert } from "@/lib/ops-alert"
 import { alertStaleSending, alertEveningPickupGaps } from "@/lib/pickup-request/watch"
 import { alertPickupMisses } from "@/lib/pickup-request/pickup-miss"
+import { recordHeartbeat } from "@/lib/cron-heartbeat"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -52,5 +53,7 @@ export async function GET(req: NextRequest) {
     await releaseCronLock("pickup-watch")
   }
   const failed = Object.values(result).some((r) => r && typeof r === "object" && "error" in r)
+  // 最後の実行の記録（止まった・失敗が続くことを別の仕組みで見つける: /api/cron/heartbeat-check）
+  await recordHeartbeat("pickup-watch", !failed, failed ? JSON.stringify(result).slice(0, 400) : undefined)
   return NextResponse.json({ ok: !failed, ...result }, { status: failed ? 500 : 200 })
 }

@@ -1,6 +1,6 @@
 # 運営の API の認可の監査（B2C に関わる操作）
 
-作成: 2026-11-05。ブランチ `verify/b2c-golive`。試験: `scripts/test-integ/operator-authz.ts`（ルートを middleware を通さずに直接呼ぶ。69件）。
+作成: 2026-11-05。ブランチ `verify/b2c-golive`。試験: `scripts/test-integ/operator-authz.ts`（ルートを middleware を通さずに直接呼ぶ。69件）・`scripts/test-integ/b2c-pii.ts`（個人情報の応答。142件）。
 
 ## 認証の方式の言葉
 
@@ -28,6 +28,28 @@
 | `/api/b2c/stripe/webhook` | Stripe の通知 | — | Stripe の署名 | 署名なし 400 | 既存（charge_e2e） |
 | `/api/b2c/orders`・`card/*`・`my/*`・`pay`・`quote`・`places`・`entry` | 旅行者の予約 | 予約・カード登録・確認・取消・支払 | 旅行者の token | 不正な token 404 | 既存（api_local・card・pay） |
 
+## B2C の旅行者の個人情報の読み取り（2026-11-05 追加・`lib/b2c/pii-guard.ts`・試験 `scripts/test-integ/b2c-pii.ts` 142件）
+
+方針: 名前・連絡先・予約の詳細・支払の情報は、**個人パスキーの運営者にだけ応答に入れる**（画面で隠すのではなく、API の応答から外す）。
+他の運営者（共有パスワード・Bearer・メールなしのパスキー）には、配送の運用に要る項目（予約番号・日付・ホテル・個数・状態・問い合わせ番号）だけを返し、
+名前は「（B2C・個人パスキーで表示）」、メモ・送り状の URL・支払の ID・エラーの文などは null にする。判定ができない時は見せない。
+B2C の旅行者のメール・WhatsApp は `b2c_orders` にだけあり、`/api/b2c/ops/*`（個人パスキー）以外は読まない（監査で確認）。
+
+| 読み取りの経路 | 以前 | 今回 |
+|---|---|---|
+| `GET /api/shipments`（ダッシュボード・予約の詳細） | 全項目（名前・メモ・送り状・支払の ID） | 名前などを外す。**文字の検索（名前・番号）では B2C の区間を結果に入れない**（名前で当たったこと自体が分かるため） |
+| `GET /api/operator/report`（JSON・CSV） | 代表者名つき。代理店名 BondEx Direct で B2C だけを出せた | 名前を外す。認可をハンドラーにも |
+| `GET /api/operator/today-todo`・`/pickup-alerts` | 代表者名 | 名前を外す。認可をハンドラーにも |
+| `POST /api/shipments/duplicate-check`（名前で照会） | B2C の名前・ホテルが当たる | B2C の区間を結果に入れない。認可をハンドラーにも |
+| `GET /api/voucher/label`（送り状の PDF） | 予約番号の形を見ていない | B2C の予約番号は 403。送り状の URL も一覧から外したので他の運営者は知り得ない |
+| `GET /api/invoices/generate`・`/api/operator/invoice-send`（代理店名 BondEx Direct） | B2C の名前・ホテル・額の請求書を作れた | B2C は請求書の対象外として「対象なし」（`lib/invoice-build.tsx`）。認可をハンドラーにも |
+| `GET /api/operator/change-requests` | 変更の中身（名前が入りうる） | B2C は件数と状態の項目だけ |
+| `GET /api/claims` | 届け出た人の名前・連絡先・内容 | B2C の予約の分は外す |
+| 名前の無いもの（`hotel-contact`・`hotel-intro-email`・`hotel-lookup`・`bulk-pickups`・`board-stats`） | ホテル・個数・件数だけ | 変更なし |
+| `BDX-` だけを扱うもの（`voucher/labels`・`voucher/regenerate`・`groups`・`request`・`track`） | B2C は扱わない | 変更なし |
+
+代理店のログイン（`/api/agency/*`）は代理店名で絞るので B2C の区間は出ない。代理店名 BondEx Direct の登録は DB の制約 `agencies_name_not_b2c`（sql/061）で止める（**本番は 061 の適用の後に有効**）。
+
 ## 区間が B2C か確かめられない時（DB の障害など）
 
 `shipmentIsB2c()` は true / false / null（確かめられない）を返す。null の時は、個人パスキーの運営者だけが通り、それ以外は **503 `shipment_check_unavailable`**（B2C の区間かもしれないので通さない。B2B の区間を「B2C 扱い」の 403 で止めて理由が分からなくなるのを避ける）。
@@ -38,7 +60,7 @@
 
 | 重要度 | 内容 | 対応の案 |
 |---|---|---|
-| 中 | 運営の画面の一覧（ダッシュボード・予約の一覧・`GET /api/shipments`）は、B2C の区間の旅行者の名前・ホテルも v1（共有パスワード）の運営者に見える（既存。readiness 0.3 に記載） | 一覧で B2C の区間の名前を伏せるか、v1 を廃止する（事業の判断） |
-| 中 | 運営の API 45本のうち、ハンドラーの中で認可を確かめるのは今回の 4本（＋ B2C の 3本）。残りの B2B の API は middleware だけに頼る | B2B の API にも `requireOperator` を順に足す（middleware と同じ条件なので B2B の動きは変わらない） |
+| 済 | 運営の画面の一覧で、共有パスワードの運営者にも B2C の旅行者の名前が見えた | 2026-11-05 に API の応答から外した（上の表） |
+| 中 | 運営の API のうち、ハンドラーの中で認可を確かめるのは 13本（＋ B2C の 3本）。残りの B2B の API は middleware だけに頼る | B2B の API にも `requireOperator` を順に足す（middleware と同じ条件なので B2B の動きは変わらない） |
 | 低 | `pickup-request` の担当者名（`actor`）は自由入力（B2C の区間では個人パスキーの運営者が必要になったが、記録の名前は入力のまま） | B2C の区間の操作では、運営者のメールを記録に足す |
 | 低 | 開発の環境（`OPERATOR_PASSWORD` が無い）では `requireOperator` は middleware と同じく通す。本番は middleware が 503 で止める | 本番・staging に `OPERATOR_PASSWORD` を必ず入れる（staging の誤接続の防止に足す案） |
