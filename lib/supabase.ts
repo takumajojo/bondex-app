@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { assertEnvironmentSafe } from "@/lib/env-guard"
 
 /**
  * Supabase クライアント (server-side only).
@@ -16,6 +17,8 @@ let _client: SupabaseClient | null = null
 
 export function getSupabase(): SupabaseClient | null {
   if (_client) return _client
+  // 試験環境（BONDEX_ENV=staging）で本番の接続先などがあれば止める（それ以外は何もしない）
+  assertEnvironmentSafe()
 
   const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY

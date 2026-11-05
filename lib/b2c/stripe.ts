@@ -6,6 +6,7 @@
  * - 通信の再試行は Stripe の SDK に任せる（同じ冪等キーで送り直す）。
  */
 import Stripe from "stripe"
+import { assertEnvironmentSafe } from "@/lib/env-guard"
 
 export type B2cStripeUnavailable = "not_configured" | "live_key_blocked"
 
@@ -16,6 +17,7 @@ export interface B2cStripeConfig {
 }
 
 export function b2cStripeConfig(): { ok: true; config: B2cStripeConfig } | { ok: false; reason: B2cStripeUnavailable } {
+  assertEnvironmentSafe() // 試験環境（BONDEX_ENV=staging）では本番の鍵を使わない（それ以外は何もしない）
   const secret = process.env.STRIPE_SECRET_KEY ?? ""
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""
   if (!secret || !publishableKey) return { ok: false, reason: "not_configured" }
