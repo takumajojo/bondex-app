@@ -1,0 +1,46 @@
+name: Sagawa bulk pickup alert
+
+# P1-B 佐川 大口集荷/同一ホテル同日重複 の検知・事前連絡 (/api/cron/sagawa-bulk-alert)。
+#  1) 現在の shipments から集荷単位 (ホテル×集荷日) を再集計 (冪等)。
+#  2) 大口 (合計20個以上) は佐川・世田谷営業所へ事前連絡メール。重複のみ (20個未満) は Operator 画面の注意喚起のみ。
+# feature flag SAGAWA_BULK_ALERT_ENABLED が OFF の間は endpoint 側で即 skip ({"ok":true,"skipped":"flag off"}) = 本番無影響。
+#
+# 事前設定: Repository Secrets の CRON_SECRET (Vercel Production と同じ値)。既存 cron と同じものを再利用する。
+#
+# 頻度について (SRE 判断):
+#  - GitHub Actions の schedule は実測で間引かれる (当リポジトリでは sync-tracking を pg_cron へ移行済み・sync-tracking.yml 参照)。
+#    よって本ワークフローは「検知/前日・当日リマインドのバックストップ + 手動実行 (workflow_dispatch)」と位置づけ、
+#    定時実行を保証する前提にしない。通知種別 (initial/change/eve/day) は日付粒度なので、多少の遅延・間引きは次回実行で吸収される。
+#  - 予約成功直後の早期検知 (flag ON 時) は app 側フックが即時に行うため、cron は網羅のための二次経路。
+#  - 30分間隔の確実な定時実行が必要になった場合は、pg_cron (sql/052_pg_cron_sync_tracking.sql と同方式) への移行を推奨 (別途承認)。
+#
+# 二重起動の無害化: endpoint 側 acquireCronLock("sagawa-bulk-alert") + 下記 concurrency の二重防御。
+
+on:
+  schedule:
+    # JST 07:00–20:00 の毎時 (UTC 22:00–11:00)。当日集荷の朝リマインドを拾えるよう 07:00 JST から。
+    - cron: "0 22,23,0,1,2,3,4,5,6,7,8,9,10,11 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: sagawa-bulk-alert
+  cancel-in-progress: false
+
+jobs:
+  sagawa-bulk-alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BondEx sagawa-bulk-alert endpoint
+        run: |
+          # --max-time は endpoint 側 maxDuration(120s) + 余裕。秘密値 (CRON_SECRET) はログに出さない。
+          response=$(curl -s -w "\n%{http_code}" --max-time 150 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://bondex.express/api/cron/sagawa-bulk-alert)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "$body"
+          if [ "$http_code" -ge 400 ]; then
+            echo "::error::sagawa-bulk-alert failed (http $http_code)"
+            exit 1
+          fi
