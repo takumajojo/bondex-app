@@ -12,6 +12,10 @@ import { urgencyOf } from "@/lib/sagawa-bulk/core"
 
 export const runtime = "nodejs"
 
+// 運用データ (集荷候補: ホテル名・個数・予約件数) を含むため、プレビュー応答は no-store で
+// 中間/ブラウザキャッシュによる第三者露出を防ぐ。
+const NO_STORE = { "Cache-Control": "no-store" } as const
+
 /**
  * P1-B 大口集荷 Operator API。middleware で operator 認証済み (代理店には到達しない)。
  *   GET                  → 未対応の集荷単位一覧 (flag OFF なら enabled:false を返しUI非表示)
@@ -32,9 +36,9 @@ export async function GET(req: NextRequest) {
   // メール送信なし・送信済みフラグ/claim 変更なし・DB 書込なし (read 専用)。レスポンスの enabled で検知フラグ状態が分かる。
   if (req.nextUrl.searchParams.get("preview") === "1") {
     const sb = getSupabase()
-    if (!sb) return NextResponse.json({ enabled, preview: null })
+    if (!sb) return NextResponse.json({ enabled, preview: null }, { headers: NO_STORE })
     const preview = await dryRunBulkAlert(sb, todayJstYmd())
-    return NextResponse.json({ enabled, preview })
+    return NextResponse.json({ enabled, preview }, { headers: NO_STORE })
   }
 
   if (!enabled) return NextResponse.json({ enabled: false, groups: [] })

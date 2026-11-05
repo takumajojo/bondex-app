@@ -22,6 +22,7 @@ import {
 import { planReconcile, type ExistingGroup } from "@/lib/sagawa-bulk/reconcile"
 import { canClaimNotify, notifyKeyHash, NOTIFY_LEASE_MS, type NotifyRow } from "@/lib/sagawa-bulk/notify"
 import { sagawaBulkAlertEnabled, sagawaBulkEmailEnabled } from "@/lib/sagawa-bulk/flag"
+import { cronBearerAuthorized } from "@/lib/sagawa-bulk/auth"
 import { dryRunBulkAlert } from "@/lib/sagawa-bulk/db"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -583,6 +584,50 @@ const tests: Array<[string, () => void | Promise<void>]> = [
       assert.equal(r.initial_notify_candidates, 1)
       assert.equal(r.groups[0].would_notify?.reason, "initial") // 「有効化したら送る対象」を提示
     })
+  }],
+  ["dryRun: プレビューの大口/重複分類は computeBulkGroups (再集計の正本ロジック) と一致する", async () => {
+    const legs = [
+      leg({ shipment_id: "s1", booking_id: "BDX-A", from_place_id: "PID1", suitcase_count: 13 }),
+      leg({ shipment_id: "s2", booking_id: "BDX-B", from_place_id: "PID1", suitcase_count: 12 }),
+      leg({ shipment_id: "s3", booking_id: "BDX-C", from_place_id: "PID2", suitcase_count: 5 }),
+      leg({ shipment_id: "s4", booking_id: "BDX-D", from_place_id: "PID2", suitcase_count: 6 }),
+    ]
+    const expected = computeBulkGroups(legs, TODAY) // 再集計 (recompute/listBulkPickups) が使う正本
+    const sb = fakeSb({
+      shipments: legs.map((l) => shipRow(l as unknown as Record<string, unknown>)),
+      sagawa_bulk_pickups: [], sagawa_bulk_pickup_members: [],
+    }, () => {})
+    const r = await dryRunBulkAlert(sb, TODAY)
+    // 同じ入力なら件数・各集荷単位の分類がプレビューと再集計で一致 (本番で再集計を走らせず検証)。
+    assert.equal(r.bulk_count, expected.filter((g) => g.is_bulk).length)
+    assert.equal(r.duplicate_count, expected.filter((g) => g.is_duplicate).length)
+    assert.equal(r.groups_total, expected.length)
+    for (const g of expected) {
+      const p = r.groups.find((x) => x.hotel_key === g.hotel_key && x.pickup_date === g.pickup_date)
+      assert.ok(p, `preview に ${g.hotel_key} が無い`)
+      assert.equal(p!.is_bulk, g.is_bulk)
+      assert.equal(p!.is_duplicate, g.is_duplicate)
+      assert.equal(p!.total_pieces, g.total_pieces)
+      assert.equal(p!.booking_count, g.booking_count)
+    }
+  }],
+
+  // ── cron 認証 (CRON_SECRET + Bearer・fail closed) ──
+  ["cron認証: CRON_SECRET 未設定/空/空白なら常に拒否 (fail closed)", () => {
+    for (const secret of [undefined, "", "   "]) {
+      assert.equal(cronBearerAuthorized("Bearer whatever", secret), false)
+      assert.equal(cronBearerAuthorized(null, secret), false)
+    }
+  }],
+  ["cron認証: 正しい Bearer のみ許可・ヘッダなし/プレフィックス違い/トークン不一致は拒否", () => {
+    const secret = "s3cr3t-token"
+    assert.equal(cronBearerAuthorized(`Bearer ${secret}`, secret), true)   // 正規
+    assert.equal(cronBearerAuthorized(null, secret), false)                // ヘッダなし
+    assert.equal(cronBearerAuthorized("", secret), false)                  // 空ヘッダ
+    assert.equal(cronBearerAuthorized(secret, secret), false)              // Bearer プレフィックスなし
+    assert.equal(cronBearerAuthorized(`Bearer ${secret}x`, secret), false) // トークン不一致
+    assert.equal(cronBearerAuthorized(`bearer ${secret}`, secret), false)  // 大文字小文字も区別
+    assert.equal(cronBearerAuthorized(`Basic ${secret}`, secret), false)   // 別スキーム
   }],
 ]
 

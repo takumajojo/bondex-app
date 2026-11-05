@@ -13,6 +13,10 @@ import {
 } from "@/lib/sagawa-bulk/db"
 import { notifyKeyOf, urgencyOf, type NotifyKind } from "@/lib/sagawa-bulk/core"
 import { buildBulkAlertEmail } from "@/lib/sagawa-bulk/notify"
+import { cronBearerAuthorized } from "@/lib/sagawa-bulk/auth"
+
+// 運用データ (集荷候補) を含むため、ドライラン応答は no-store で中間/ブラウザキャッシュを禁止する。
+const NO_STORE = { "Cache-Control": "no-store" } as const
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -28,9 +32,7 @@ export const maxDuration = 120
  * 宛先は opsRecipients() = [ALERT_EMAIL, support@]。代理店・旅行者には送らない。
  */
 function authorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET?.trim()
-  if (!secret) return false
-  return (req.headers.get("authorization") || "") === `Bearer ${secret}`
+  return cronBearerAuthorized(req.headers.get("authorization"), process.env.CRON_SECRET)
 }
 
 function todayJstYmd(): string {
@@ -44,9 +46,9 @@ export async function GET(req: NextRequest) {
   // 再集計もメール送信も DB 書込も claim 変更も行わない (read 専用)。本番を有効化せず事前確認できるようにする。
   if (req.nextUrl.searchParams.get("dryRun") === "1") {
     const sb = getSupabase()
-    if (!sb) return NextResponse.json({ ok: true, dryRun: true, skipped: "supabase unavailable" })
+    if (!sb) return NextResponse.json({ ok: true, dryRun: true, skipped: "supabase unavailable" }, { headers: NO_STORE })
     const preview = await dryRunBulkAlert(sb, todayJstYmd())
-    return NextResponse.json({ ok: true, dryRun: true, alertEnabled: sagawaBulkAlertEnabled(), preview })
+    return NextResponse.json({ ok: true, dryRun: true, alertEnabled: sagawaBulkAlertEnabled(), preview }, { headers: NO_STORE })
   }
 
   // 検知フラグ OFF の間は既存フローに一切触れない (通常の定期実行は flag off でスキップ)。
