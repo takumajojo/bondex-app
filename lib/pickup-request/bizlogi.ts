@@ -24,6 +24,7 @@ import { legRef, type PickupShipmentRow } from "./leg-input"
 import { PickupStoreError, type PickupStore } from "./store"
 import { bizlogiEligibility } from "./eligibility"
 import { pickupSnapshot, snapshotChanges } from "./snapshot"
+import { scheduleCheck, sourceChanges, sourceFingerprint, verifyDetailAgainstRow, type SafetyConfirmation } from "./send-safety"
 
 export interface BizLogiSendDeps {
   store: PickupStore
@@ -37,6 +38,19 @@ export interface BizLogiSendDeps {
   numbering?: "customer" | "system"
   now?: () => Date
   newOwner?: () => string
+  /**
+   * 確保の直後に DB から区間を読み直す (2026-11-04 監査 N1)。確認画面の後・確保までの間に、電文に効く予約の項目が
+   * 1つでも変わっていれば送らない。アプリ (service.ts) は必ず渡す。
+   */
+  reloadRow?: () => Promise<PickupShipmentRow | null>
+}
+
+/** 送信前の安全チェックの文脈 (運営の名称の指定・運営が明示的に確認した項目)。 */
+export interface SafetyContext {
+  /** 旅行者名を運営が指定したか (指定が無ければ宛名は予約の代表者名と一致しなければならない) */
+  guestOverridden?: boolean
+  /** 運営が確認画面で明示的に確認した項目の code (SafetyConfirmation) */
+  acknowledged?: string[]
 }
 
 export type PreviewResult =
@@ -46,6 +60,8 @@ export type PreviewResult =
       detail: ShippingDetail
       warnings: string[]
       cutoffAt: string | null
+      /** 運営が明示的に確認しないと送れない項目 */
+      confirmations: SafetyConfirmation[]
     }
   | { ok: false; errors: string[] }
 
@@ -55,9 +71,19 @@ export type SendOutcome =
   | { outcome: "unknown"; requestId: string; reason: string }
   | { outcome: "blocked"; reason: string }
 
-/** 確認画面に出した内容と送信内容が同じかを確かめるための指紋。 */
-export function detailFingerprint(detail: ShippingDetail): string {
-  return createHash("sha256").update(JSON.stringify(detail)).digest("hex").slice(0, 32)
+/**
+ * 確認画面に出した内容と送信内容が同じかを確かめるための指紋。電文と、電文の元にした予約の項目の両方から作る
+ * (電文に出ない予約の変更でも、確認画面の承認は無効になる・2026-11-04)。
+ */
+export function detailFingerprint(detail: ShippingDetail, row?: PickupShipmentRow): string {
+  return createHash("sha256").update(JSON.stringify(detail) + (row ? `|${sourceFingerprint(row)}` : "")).digest("hex").slice(0, 32)
+}
+
+/** 予約と電文の一致・日程の判定 (確認画面と送信の両方で同じものを使う)。 */
+function safetyCheck(row: PickupShipmentRow, input: PickupLegInput, detail: ShippingDetail, ctx: SafetyContext): { errors: string[]; confirmations: SafetyConfirmation[] } {
+  const sched = scheduleCheck(row)
+  const mismatch = verifyDetailAgainstRow(row, input, detail, { guestOverridden: !!ctx.guestOverridden })
+  return { errors: [...sched.errors, ...mismatch.map((m) => `予約と送信内容が一致しません: ${m}`)], confirmations: sched.confirmations }
 }
 
 const ymd = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, "")
@@ -151,12 +177,15 @@ export async function previewBizLogiPickup(
   row: PickupShipmentRow,
   input: PickupLegInput,
   deps: Pick<BizLogiSendDeps, "client" | "now" | "numbering"> & { store?: PickupStore; environment?: "test" | "production" },
+  ctx: SafetyContext = {},
 ): Promise<PreviewResult> {
   const now = deps.now?.() ?? new Date()
   const errors = precheck(row, now)
   const { detail, errors: buildErrors } = buildDetail(input)
   errors.push(...buildErrors)
   if (errors.length || !detail) return { ok: false, errors }
+  const safety = safetyCheck(row, input, detail, ctx)
+  if (safety.errors.length) return { ok: false, errors: safety.errors }
   const numErr = await attachNumber(row, detail, deps)
   if (numErr) return { ok: false, errors: [numErr] }
   let res: ShippingResponse
@@ -180,13 +209,20 @@ export async function previewBizLogiPickup(
       "社内の送信目標 (集荷前日 19:00) を過ぎています。送信はできますが、結果不明になった場合は締め (20:00) までに世田谷営業所へ確認できないことがあります (その場合は再依頼せず SOP に従う)",
     )
   }
-  return { ok: true, fingerprint: detailFingerprint(detail), detail, warnings, cutoffAt: pickupRequestCutoff(row.shipment_date)?.toISOString() ?? null }
+  return {
+    ok: true,
+    fingerprint: detailFingerprint(detail, row),
+    detail,
+    warnings,
+    cutoffAt: pickupRequestCutoff(row.shipment_date)?.toISOString() ?? null,
+    confirmations: safety.confirmations,
+  }
 }
 
 export async function sendBizLogiPickup(
   row: PickupShipmentRow,
   input: PickupLegInput,
-  opts: { actor: string; expectedFingerprint: string; note?: string | null },
+  opts: { actor: string; expectedFingerprint: string; note?: string | null } & SafetyContext,
   deps: BizLogiSendDeps,
 ): Promise<SendOutcome> {
   const now = deps.now?.() ?? new Date()
@@ -198,8 +234,15 @@ export async function sendBizLogiPickup(
   // 顧客側採番: 確認画面と同じ番号 (区間に割り当て済み) を入れる。取れなければ送らない
   const numErr = await attachNumber(row, detail, deps)
   if (numErr) return { outcome: "blocked", reason: numErr }
-  if (detailFingerprint(detail) !== opts.expectedFingerprint) {
-    return { outcome: "blocked", reason: "確認画面のあとで送信内容が変わりました。もう一度確認してから送信してください" }
+  // 送信時点の DB の予約 (呼び出し元が読み直した行) で、予約との一致と日程をもう一度確かめる
+  const safety = safetyCheck(row, input, detail, opts)
+  if (safety.errors.length) return { outcome: "blocked", reason: safety.errors.join(" / ") }
+  const missingAck = safety.confirmations.filter((c) => !(opts.acknowledged ?? []).includes(c.code))
+  if (missingAck.length) {
+    return { outcome: "blocked", reason: `確認画面で確認が必要な項目があります: ${missingAck.map((c) => c.message).join(" / ")}` }
+  }
+  if (detailFingerprint(detail, row) !== opts.expectedFingerprint) {
+    return { outcome: "blocked", reason: "確認画面のあとで予約または送信内容が変わりました。確認は無効になりました。もう一度確認してから送信してください" }
   }
 
   const owner = deps.newOwner?.() ?? randomUUID()
@@ -228,8 +271,22 @@ export async function sendBizLogiPickup(
   // 読み取りから確保までの間に変更が入っていたら送らない。確保の後は DB のトリガーが区間の書き換えを止めるので、
   // ここで一致すれば、佐川へ送る電文と DB の依頼内容は一致したままになる (2026-11-04 段階A)。
   const drift = snapshotChanges(claim.snapshot, row)
-  if (claim.snapshot == null || drift.length > 0) {
-    const why = claim.snapshot == null ? "確保した時点の依頼内容を確認できません" : `確認のあとで区間が変わりました (${drift.join("・")})`
+  // 2c. 確保した後 (区間は DB のトリガーで書き換えできない) に区間を読み直し、電文に効く予約の項目がすべて同じかを確かめる。
+  //     確保の時点の内容 (claim.snapshot) は主な10項目だけなので、代表者名・ツアー番号などの変更はここで止める。
+  let reloadDrift: string[] = []
+  if (deps.reloadRow) {
+    try {
+      const fresh = await deps.reloadRow()
+      reloadDrift = fresh ? sourceChanges(row, fresh) : ["区間を読み直せません"]
+    } catch (e) {
+      reloadDrift = [`区間を読み直せません (${e instanceof Error ? e.message : String(e)})`]
+    }
+  }
+  if (claim.snapshot == null || drift.length > 0 || reloadDrift.length > 0) {
+    const why =
+      claim.snapshot == null
+        ? "確保した時点の依頼内容を確認できません"
+        : `確認のあとで区間が変わりました (${[...drift, ...reloadDrift].join("・")})`
     try {
       await deps.store.transition({ requestId, from: ["sending"], to: "void", owner, note: `送信前に中止: ${why}` })
     } catch {
@@ -238,7 +295,7 @@ export async function sendBizLogiPickup(
     return { outcome: "blocked", reason: `${why}。もう一度確認してから送信してください` }
   }
 
-  // 2c. 顧客側採番: 送る番号を依頼の記録に書く (佐川へ送る前)。書けなければ送らない。
+  // 2d. 顧客側採番: 送る番号を依頼の記録に書く (佐川へ送る前)。書けなければ送らない。
   //     システム採番では何も書かない (番号は佐川の正常応答から受け取って保存する)。
   if (detail.shippingNumber) {
     let set = false
