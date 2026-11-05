@@ -35,6 +35,7 @@ import {
 } from "@/lib/hotel-notification"
 import { labelMailStatus, labelMailApplies, todayJst, type LabelMailUrgency } from "@/lib/label-delivery"
 import TodayTodo from "@/components/operator/TodayTodo"
+import BulkPickupAlerts from "@/components/operator/BulkPickupAlerts"
 import { LABEL_MAIL_ENABLED } from "@/lib/label-delivery"
 import { WAYBILL_UI_ENABLED } from "@/lib/waybill-issuance"
 import { formatChangeDeadlineJst, isChangeDeadlineNear, isChangeDeadlinePassed } from "@/lib/change-deadline"
@@ -1016,6 +1017,9 @@ export default function DashboardPage() {
 
         {/* 今日のTODO — 運用担当が今日やること (中心=ホテル連絡)。 */}
         <TodayTodo onSelectView={(v) => setViewFilter(v as typeof viewFilter)} />
+
+        {/* P1-B 佐川 大口集荷の事前連絡 (feature flag OFF の間は何も描画しない・既存 TODO とは独立)。 */}
+        <BulkPickupAlerts />
 
         {/* 要対応（あなたの判断待ち）— 状態の一望。解消するまで残り続ける。 */}
         {attention.total > 0 && (

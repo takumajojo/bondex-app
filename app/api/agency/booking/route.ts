@@ -16,6 +16,8 @@ import { bulkInsertLuggage } from "@/lib/group-luggage-db"
 import { itemProductName } from "@/lib/item-types"
 import { waybillIssuanceEnabled } from "@/lib/waybill-issuance"
 import { sagawaLeadTimeViolation } from "@/lib/lead-time-check"
+import { sagawaBulkAlertEnabled } from "@/lib/sagawa-bulk/flag"
+import { recomputeSafe } from "@/lib/sagawa-bulk/db"
 
 export const runtime = "nodejs"
 export const maxDuration = 60 // 即発行 (Ship&co) + Drive 格納で数秒かかるため延長
@@ -500,6 +502,13 @@ export async function POST(req: NextRequest) {
         )
       }
     }
+  }
+
+  // P1-B 早期検知: 予約が保存できた直後に大口集荷を再集計 (ベストエフォート・flag OFF では何もしない)。
+  // recomputeSafe は内部で全例外を握りつぶすため、ここが予約処理を妨げることはない (D1・cron が正本)。
+  if (sagawaBulkAlertEnabled()) {
+    const sbBulk = getSupabase()
+    if (sbBulk) await recomputeSafe(sbBulk, jstTodayYmd())
   }
 
   // 「今日」は JST 基準。UTC の new Date() だと 0:00-8:59 JST に前日扱いになり、
