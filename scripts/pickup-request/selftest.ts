@@ -323,7 +323,9 @@ async function main() {
     const id = store.rows[0].id
     const early = await resolvePickupRequest(id, "confirm_none", { actor: "谷口" }, store, () => new Date())
     check("送信中 (5分未満) は運営が触れない", !early.ok)
-    const later = await resolvePickupRequest(id, "confirm_none", { actor: "谷口" }, store, () => new Date(Date.now() + 6 * 60 * 1000))
+    const noNote = await resolvePickupRequest(id, "confirm_none", { actor: "谷口" }, store, () => new Date(Date.now() + 6 * 60 * 1000))
+    check("結果の分からない依頼を「依頼なし」にするには、佐川に確かめた内容のメモが必須", !noNote.ok && /確認メモ/.test(noNote.reason) && store.rows[0].state === "sending")
+    const later = await resolvePickupRequest(id, "confirm_none", { actor: "谷口", note: "世田谷 11/6 10:00 電話・依頼なしと回答" }, store, () => new Date(Date.now() + 6 * 60 * 1000))
     check("送信中のまま止まった (5分超) ものは確認結果を記録できる", later.ok)
   }
 

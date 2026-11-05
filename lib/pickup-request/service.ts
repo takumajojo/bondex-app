@@ -266,6 +266,11 @@ export async function resolvePickupRequest(
   if (!t.from.includes(current.state)) {
     return { ok: false, reason: `現在の状態 (${current.state}) ではこの操作はできません` }
   }
+  // 結果の分からない依頼を「依頼なし」にすると、また送れるようになる。前の依頼が佐川に届いていれば二重になるので、
+  // 佐川 (世田谷営業所・SG) に確かめた内容の記録を必須にする (2026-11-06 監査 項目9)
+  if (action === "confirm_none" && current.state !== "accepted" && !(input.note ?? "").trim()) {
+    return { ok: false, reason: "佐川 (世田谷営業所) に依頼が無いことを確かめた内容 (相手・日時・回答) を確認メモに入力してください" }
+  }
   // 送信中の記録は、送信処理が動いている間は触らない (止まったと判断できる時間が経ってから)
   if (current.state === "sending" && now().getTime() - Date.parse(current.updated_at) < STALE_SENDING_MS) {
     return { ok: false, reason: "送信処理中です。数分待ってから確認してください" }
