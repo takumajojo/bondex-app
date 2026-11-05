@@ -40,6 +40,8 @@ export async function initSchema(repo: string) {
   await db.exec(readFileSync(`${repo}/sql/058_sagawa_lead_times.sql`, "utf8"))
 }
 
+export const FAKE_MAX_ROWS = Number(process.env.FAKE_MAX_ROWS ?? 1000)
+
 const jsonCol = (v: unknown) => v !== null && typeof v === "object" && !(v instanceof Date)
 
 class Query {
@@ -81,6 +83,7 @@ class Query {
   gte(c: string, v: unknown) { this.where.push(`${c} >= ${this.p(v)}`); return this }
   lte(c: string, v: unknown) { this.where.push(`${c} <= ${this.p(v)}`); return this }
   lt(c: string, v: unknown) { this.where.push(`${c} < ${this.p(v)}`); return this }
+  gt(c: string, v: unknown) { this.where.push(`${c} > ${this.p(v)}`); return this }
   in(c: string, arr: unknown[]) { this.where.push(`${c}::text = any(${this.p(arr.map(String))}::text[])`); return this }
   not(c: string, op: string, v: unknown) {
     if (op === "in") {
@@ -129,7 +132,9 @@ class Query {
         const r = await db.query(sql, this.params)
         return { data: this.returning ? r.rows : null, error: null }
       }
-      const sql = `select ${this.cols} from ${this.table}${w}${this.orders.length ? ` order by ${this.orders.join(", ")}` : ""}${this.lim ? ` limit ${this.lim}` : ""}`
+      // 本番の PostgREST と同じく、1回の読み取りは最大 1000 行 (超えた行はエラーにせず捨てる・2026-11-07 監査 B-03)
+      const cap = Math.min(this.lim ?? FAKE_MAX_ROWS, FAKE_MAX_ROWS)
+      const sql = `select ${this.cols} from ${this.table}${w}${this.orders.length ? ` order by ${this.orders.join(", ")}` : ""} limit ${cap}`
       const r = await db.query(sql, this.params)
       return { data: this.single ? (r.rows[0] ?? null) : r.rows, error: null }
     } catch (e) {

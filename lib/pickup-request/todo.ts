@@ -7,6 +7,7 @@
 //   要対応     = 結果不明 / 要確認 / 送信中のまま止まった / 変更・取消の連絡中 / 取消した区間に有効な依頼が残っている
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { selectAllById, chunk } from "@/lib/supabase-paged"
 import { endpointLabel } from "@/lib/residence"
 import { pickupRequestCutoff } from "@/lib/bizlogi/deadline"
 import { STALE_SENDING_MS, isLive, type PickupRequestRow } from "./state"
@@ -283,25 +284,44 @@ export function buildPickupTodo(
 
 const isMissingTable = (msg: string | undefined) => !!msg && /pickup_requests/.test(msg) && /(does not exist|schema cache|not find)/i.test(msg)
 
-/** TODO を DB から組み立てる。sql/067 未適用なら旧来の印 (pickup_requested_at) で判定する。 */
+/**
+ * TODO を DB から組み立てる。sql/067 未適用なら旧来の印 (pickup_requested_at) で判定する。
+ * どの読み取りも PostgREST の行数の上限 (1000) で打ち切らせない (全ページを読む・2026-11-07 監査 B-03)。
+ * 1つでも読めなければ例外にする (一部だけの一覧で「依頼が必要な区間は無い」と見せない)。
+ */
 export async function loadPickupTodo(sb: SupabaseClient, today: string, now: Date = new Date()): Promise<PickupTodo> {
   const horizon = addDays(today, PICKUP_TODO_LOOKAHEAD_DAYS)
-  const { data: windowLegs, error: legErr } = await sb
-    .from("shipments")
-    .select(PICKUP_TODO_COLUMNS + ", pickup_requested_at")
-    .neq("status", "cancelled")
-    .gte("shipment_date", today)
-    .lte("shipment_date", horizon)
-    .order("shipment_date", { ascending: true })
-  if (legErr) throw new Error(`集荷依頼TODOの区間を読めません: ${legErr.message}`)
-  const legs = (windowLegs ?? []) as unknown as Array<PickupTodoLeg & { pickup_requested_at: string | null }>
+  type Leg = PickupTodoLeg & { pickup_requested_at: string | null }
+  const legs = await selectAllById<Leg>((after, size) => {
+    let q = sb
+      .from("shipments")
+      .select(PICKUP_TODO_COLUMNS + ", pickup_requested_at")
+      .neq("status", "cancelled")
+      .gte("shipment_date", today)
+      .lte("shipment_date", horizon)
+    if (after) q = q.gt("id", after)
+    return q.order("id", { ascending: true }).limit(size)
+  }, "集荷依頼TODOの区間を読めません")
+  legs.sort((a, b) => a.shipment_date.localeCompare(b.shipment_date))
 
-  const { data: reqWindow, error: reqErr } = await sb
-    .from("pickup_requests")
-    .select("*")
-    .in("shipment_id", legs.length ? legs.map((l) => l.id) : ["00000000-0000-0000-0000-000000000000"])
-  if (reqErr) {
-    if (!isMissingTable(reqErr.message)) throw new Error(`集荷依頼の記録を読めません: ${reqErr.message}`)
+  const readRequestsFor = async (ids: string[]) => {
+    const out: PickupRequestRow[] = []
+    for (const part of chunk(ids)) {
+      out.push(...(await selectAllById<PickupRequestRow>((after, size) => {
+        let q = sb.from("pickup_requests").select("*").in("shipment_id", part)
+        if (after) q = q.gt("id", after)
+        return q.order("id", { ascending: true }).limit(size)
+      }, "集荷依頼の記録を読めません")))
+    }
+    return out
+  }
+  let reqWindow: PickupRequestRow[]
+  try {
+    // 区間が0件でも1回は読む (sql/067 が未適用かどうかをここで判定するため)
+    reqWindow = await readRequestsFor(legs.length ? legs.map((l) => l.id) : ["00000000-0000-0000-0000-000000000000"])
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (!isMissingTable(msg)) throw e
     // 移行前: 旧来の印で「未依頼」を判定する (status は見ない)
     const needRequest = buildPickupTodo(
       legs.filter((l) => !l.pickup_requested_at),
@@ -313,30 +333,42 @@ export async function loadPickupTodo(sb: SupabaseClient, today: string, now: Dat
   }
 
   // 発送日に関係なく残っている要対応の記録 (結果不明・要確認・送信中・変更対応中) と、取消された区間の有効な依頼
-  const { data: openReqs, error: openErr } = await sb
-    .from("pickup_requests")
-    .select("*")
-    .in("state", ["sending", "unknown", "needs_review", "change_pending", "accepted"])
-    .or(`pickup_date.is.null,pickup_date.gte.${addDays(today, -14)}`)
-  if (openErr) throw new Error(`集荷依頼の記録を読めません: ${openErr.message}`)
-  const requests = [...((reqWindow ?? []) as PickupRequestRow[])]
+  const openReqs = await selectAllById<PickupRequestRow>((after, size) => {
+    let q = sb
+      .from("pickup_requests")
+      .select("*")
+      .in("state", ["sending", "unknown", "needs_review", "change_pending", "accepted"])
+      .or(`pickup_date.is.null,pickup_date.gte.${addDays(today, -14)}`)
+    if (after) q = q.gt("id", after)
+    return q.order("id", { ascending: true }).limit(size)
+  }, "集荷依頼の記録を読めません")
+  const requests = [...reqWindow]
   const seen = new Set(requests.map((r) => r.id))
-  for (const r of (openReqs ?? []) as PickupRequestRow[]) if (!seen.has(r.id)) requests.push(r)
+  for (const r of openReqs) if (!seen.has(r.id)) requests.push(r)
 
   // 記録が指す区間のうち、窓の外 (過去日・取消) のものを追加で読む
   const known = new Set(legs.map((l) => l.id))
   // 変更申請で進行中のもの (未連絡・承認済みで未反映)。sql/068 未適用の環境では列が無く空になる。
-  const { data: chg } = await sb
-    .from("shipment_change_requests")
-    .select("id, shipment_id, stage, kind, fields, updated_at")
-    .in("stage", ["requested", "approved"])
-    .not("kind", "in", '("correction","fields")')
-  const openChanges = ((chg ?? []) as Array<Omit<OpenChangeRow, "state"> & { stage: string }>).map((c) => ({ ...c, state: c.stage }))
+  let chg: Array<Omit<OpenChangeRow, "state"> & { stage: string }> = []
+  try {
+    chg = await selectAllById((after, size) => {
+      let q = sb
+        .from("shipment_change_requests")
+        .select("id, shipment_id, stage, kind, fields, updated_at")
+        .in("stage", ["requested", "approved"])
+        .not("kind", "in", '("correction","fields")')
+      if (after) q = q.gt("id", after)
+      return q.order("id", { ascending: true }).limit(size)
+    }, "変更申請を読めません")
+  } catch {
+    chg = []
+  }
+  const openChanges = chg.map((c) => ({ ...c, state: c.stage }))
   const extraIds = [...new Set([...requests.map((r) => r.shipment_id), ...openChanges.map((c) => c.shipment_id)])].filter((id) => !known.has(id))
-  if (extraIds.length) {
-    const { data: extra, error: exErr } = await sb.from("shipments").select(PICKUP_TODO_COLUMNS).in("id", extraIds)
+  for (const part of chunk(extraIds)) {
+    const { data: extra, error: exErr } = await sb.from("shipments").select(PICKUP_TODO_COLUMNS).in("id", part)
     if (exErr) throw new Error(`集荷依頼TODOの区間を読めません: ${exErr.message}`)
-    legs.push(...((extra ?? []) as unknown as Array<PickupTodoLeg & { pickup_requested_at: string | null }>))
+    legs.push(...((extra ?? []) as unknown as Leg[]))
   }
   return buildPickupTodo(legs, requests, today, now, openChanges)
 }

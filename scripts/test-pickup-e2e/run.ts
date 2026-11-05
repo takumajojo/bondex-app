@@ -2206,6 +2206,24 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(live, 50)
   })
 
+  await test("監査 B-03 TODO は 1000行で打ち切らない: 7日以内の未依頼 1,500区間 (日付の遅い区間を含む) がすべて「依頼が必要」に出る", async () => {
+    // 試験の偽の Supabase も本番と同じく 1回 1000行まで (FAKE_MAX_ROWS)。直す前の読み方なら 1000件で切れる
+    const direct = await sb.from("shipments").select("id")
+    assert.equal((direct.data as unknown[]).length, 1000, "偽の DB が 1000行の上限を再現している")
+    await db.query(`insert into shipments (booking_id, leg_index, shipment_date, expected_arrival, from_hotel, to_hotel)
+      select 'BDX-B03-'||lpad(g::text, 5, '0'), 0, current_date + 1 + (g % 7), current_date + 2 + (g % 7), 'A', 'B' from generate_series(1,1500) g`)
+    const t0 = Date.now()
+    const t = await todo()
+    const ms = Date.now() - t0
+    const mine = t.needRequest.filter((x) => x.bookingId.startsWith("BDX-B03-"))
+    console.log(`     TODO 読込 ${ms}ms・依頼が必要 ${t.needRequest.length}件 (うち試験の 1,500区間 ${mine.length}件)`)
+    assert.equal(mine.length, 1500, "1,500区間すべてが出る")
+    assert.ok(mine.some((x) => x.bookingId === "BDX-B03-01500"), "最後に作った区間も出る")
+    // 日付の順に並ぶ (読み方を id の順に変えても、画面の並びは発送日の順のまま)
+    const dates = t.needRequest.map((x) => x.shipmentDate)
+    assert.deepEqual(dates, [...dates].sort())
+  })
+
   console.log(`\n${pass}/${pass + fail} passed`)
   process.exit(fail ? 1 : 0)
 })()
