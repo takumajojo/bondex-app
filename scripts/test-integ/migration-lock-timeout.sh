@@ -11,7 +11,7 @@
 #   6. 前置きだけ（sql/ops/migration_lock_prefix.sql）でも同じく 10秒で諦める
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-C=supabase_db_supa-local; DB=${LOCKTEST_DB:-bondex_lock_timeout}
+C=${PG_TEST_CONTAINER:-supabase_db_supa-local}; DB=${LOCKTEST_DB:-bondex_lock_timeout}
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
 eq() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "  ok   $1"; else FAIL=$((FAIL+1)); echo "  FAIL $1 (期待: $2 / 実際: $3)"; fi; }

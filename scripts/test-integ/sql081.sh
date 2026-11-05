@@ -11,7 +11,7 @@
 #   F. 権限: 匿名・ログイン利用者は関数を呼べない
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-C=supabase_db_supa-local; DB=${SQL081_TEST_DB:-bondex_sql081_test}
+C=${PG_TEST_CONTAINER:-supabase_db_supa-local}; DB=${SQL081_TEST_DB:-bondex_sql081_test}
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
 apply() { for f in "$@"; do q -1 < "$R/$f" >/dev/null 2>/tmp/sql081_err.txt || { echo "  適用失敗: $f"; grep -m3 ERROR /tmp/sql081_err.txt; return 1; }; done; }

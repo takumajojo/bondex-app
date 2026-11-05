@@ -10,7 +10,7 @@
 #   - 既存データの分類が本番の読み取り結果 (受付済み 21・要確認 0・今後の未依頼 4) と一致する
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-C=supabase_db_supa-local; DB=${REHEARSAL_DB:-bondex_rehearsal}  # 並行する作業コピーと名前を分けるときは環境変数で変える
+C=${PG_TEST_CONTAINER:-supabase_db_supa-local}; DB=${REHEARSAL_DB:-bondex_rehearsal}  # 並行する作業コピーと名前を分けるときは環境変数で変える
 WORK=$(mktemp -d); ERR=$WORK/traffic_errors.txt; OPS=$WORK/traffic_ops.txt; : > "$ERR"; : > "$OPS"
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }

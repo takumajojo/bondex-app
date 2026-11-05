@@ -8,7 +8,7 @@
 #   N. D0: DB の締切 18:30（確定・取消の判定）
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../../.." && pwd)"
-C=supabase_db_supa-local; DB=${B1_TEST_DB:-bondex_b1legal_test}
+C=${PG_TEST_CONTAINER:-supabase_db_supa-local}; DB=${B1_TEST_DB:-bondex_b1legal_test}
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
 apply() { for f in "$@"; do q -1 < "$R/$f" >/dev/null 2>/tmp/b1legal_err.txt || { echo "  適用失敗: $f"; grep -m3 ERROR /tmp/b1legal_err.txt; FAIL=$((FAIL+1)); return 1; }; done; }

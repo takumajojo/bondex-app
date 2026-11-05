@@ -10,7 +10,7 @@
 #   F. 切り戻し (ロック無効 → 全体の切り戻し → 古いアプリの操作) と再適用
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-C=supabase_db_supa-local; DB=${INTEG_TEST_DB:-bondex_integ_test}  # 並行する作業コピーと名前を分けるときは環境変数で変える
+C=${PG_TEST_CONTAINER:-supabase_db_supa-local}; DB=${INTEG_TEST_DB:-bondex_integ_test}  # 並行する作業コピーと名前を分けるときは環境変数で変える
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
 # 本番 (Supabase の migration) と同じく、1ファイル1トランザクションで流す
@@ -230,6 +230,39 @@ eq "切り戻し後: B2C の確定・取消は 062 の版で動く" cancelled "$
 q -c "insert into shipment_change_requests (shipment_id, booking_id, leg_index, requested_by, fields, status) values ('$L2','L2',0,'agency','{\"suitcase_count\":3}','pending')" >/dev/null && eq "切り戻し後: 古いアプリの申請が積める" ok ok
 eq "切り戻しのバックアップが残る" "t" "$(q -c "select (select count(*) from pickup_requests_rollback_backup) > 0 and (select count(*) from shipment_change_requests_rollback_backup) > 0")"
 apply "${EXPAND[@]}" sql/072_enable_pickup_lock.sql sql/070_change_deadline_1830.sql && eq "切り戻しの後にもう一度適用できる" O "$(lock_state)"
+
+echo "H. 080〜083 の通しの適用・確保と変更申請 (B-14)・移行 SQL の流し直し (B-09)"
+fresh
+TAIL=(sql/072_enable_pickup_lock.sql sql/070_change_deadline_1830.sql sql/080_cron_heartbeats.sql sql/081_b2c_leg_prefecture.sql sql/082_b2c_charge_safety.sql sql/083_claim_pickup_guards.sql)
+apply "${EXPAND[@]}" "${TAIL[@]}" && eq "拡張 → 072 → 070 → 080 → 081 → 082 → 083 を通しで適用できる" ok ok
+apply "${EXPAND[@]}" sql/080_cron_heartbeats.sql sql/081_b2c_leg_prefecture.sql sql/082_b2c_charge_safety.sql sql/083_claim_pickup_guards.sql && eq "072 と 070 を除いて、もう一度全部を番号の順に流しても失敗しない" ok ok
+src() { q -c "select (prosrc like '%$2%') from pg_proc where proname='$1'"; }
+eq "083 の確保の関数が入っている (変更申請・印の拒否)" "t|t" "$(src claim_pickup_request open_change_exists)|$(src claim_pickup_request pickup_marked)"
+GC=$(leg GC 4); GM=$(leg GM 4); GO=$(leg GO 4); GW=$(leg GW 4)
+q -c "select ok from create_shipment_change('$GC','dates','{\"shipment_date\":\"2099-01-01\"}','t','agency','T','t')" >/dev/null
+eq "B-14 処理中の変更申請がある区間は Biz-Logi で確保できない (本物の Postgres)" "false|open_change_exists" "$(q -c "select claimed||'|'||reason from claim_pickup_request('$GC','bizlogi','test','X',2,current_date+4,'a','o',null)")"
+eq "B-14 同じ区間でも手動 (Excel で依頼済み) の記録はできる" "true|claimed" "$(q -c "select claimed||'|'||reason from claim_pickup_request('$GC','manual',null,null,2,current_date+4,'a','o',null)")"
+q -c "update shipments set pickup_requested_at=now() where id='$GM'" >/dev/null
+eq "B-01 記録の無い「集荷手配済み」の印がある区間は Biz-Logi で確保できない" "false|pickup_marked" "$(q -c "select claimed||'|'||reason from claim_pickup_request('$GM','bizlogi','test','X',2,current_date+4,'a','o',null)")"
+q -c "select ok from create_shipment_change('$GW','dates','{\"shipment_date\":\"2099-01-01\"}','t','agency','T','t')" >/dev/null
+q -c "select ok from step_shipment_change((select id from shipment_change_requests where shipment_id='$GW'),'withdraw','t','t',null,null)" >/dev/null
+eq "取り下げた申請だけの区間は Biz-Logi で確保できる" "t" "$(q -c "select claimed from claim_pickup_request('$GW','bizlogi','test','X',2,current_date+4,'a','o',null)")"
+eq "Biz-Logi で確保 (送信中) の区間には変更申請を受けない (確保と申請が直列)" "false|request_sending" "$(q -c "select claimed from claim_pickup_request('$GO','bizlogi','test','X',2,current_date+4,'a','o',null)" >/dev/null; q -c "select ok||'|'||reason from create_shipment_change('$GO','dates','{\"shipment_date\":\"2099-01-01\"}','t','agency','T','t')")"
+# B-09: 古いファイルを単独で流し直すと新しい定義が消える。続けて後のファイルを番号の順に流し直すと戻る
+apply sql/074_b2c_stage5_payments.sql
+eq "B-09 074 を単独で流し直すと、カード登録の同意の確認 (079) と取消申請中の保留 (082) が消える (危険の再現)" "f|f" "$(src b2c_charge_check no_card_consent)|$(src b2c_charge_check cancel_pending)"
+eq "B-09 判定の道具も、074 の後に流し直すファイルとして 079・082 を挙げる" "079_b2c_legal_versions.sql,082_b2c_charge_safety.sql" "$(node "$R/scripts/sql-reapply/check.mjs" sql/074_b2c_stage5_payments.sql | grep -oE '^  [0-9]{3}_[a-z0-9_]+\.sql' | tr -d ' ' | paste -sd, -)"
+apply sql/079_b2c_legal_versions.sql sql/082_b2c_charge_safety.sql
+eq "B-09 079 → 082 を流し直すと、両方の確認が戻る" "t|t" "$(src b2c_charge_check no_card_consent)|$(src b2c_charge_check cancel_pending)"
+apply sql/067_pickup_requests.sql
+eq "B-09 067 を単独で流し直すと、083 の確保の守りが消える (危険の再現)" "f" "$(src claim_pickup_request open_change_exists)"
+apply sql/083_claim_pickup_guards.sql && eq "B-09 083 を流し直すと戻る" "t" "$(src claim_pickup_request open_change_exists)"
+eq "B-09 067 の流し直しで既存の記録を作り直さない (移行の分類は1回だけ)" "t" "$(q -c "select backfill_done_at is not null from pickup_request_settings")"
+apply sql/ops/pickup_claims_pause.sql
+apply sql/072_enable_pickup_lock.sql
+eq "B-09 緊急停止の後に 072 を流し直しても、送信の停止は解けない (以前は黙って解けた)" "t|t" "$(q -c "select claims_paused||'|'||lock_enabled from pickup_request_settings" | sed 's/true/t/g;s/false/f/g')"
+apply sql/ops/pickup_claims_resume.sql && eq "B-09 再開は pickup_claims_resume.sql で行う" "f" "$(q -c "select claims_paused from pickup_request_settings")"
+apply sql/rollback/pause_pickup_lock.sql sql/072_enable_pickup_lock.sql && eq "B-09 切り戻し (ロック無効) の後の 072 は、今までどおりロックを有効にして再開する" "O|f" "$(lock_state)|$(q -c "select claims_paused from pickup_request_settings")"
 
 docker exec -i $C psql -U postgres -d postgres -qc "drop database if exists $DB" >/dev/null 2>&1
 echo
