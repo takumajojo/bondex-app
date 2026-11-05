@@ -25,12 +25,21 @@ else
 fi
 
 q()  { docker exec -i -e PGURL="$STAGING_DB_URL" "$C" sh -c 'psql "$PGURL" -v ON_ERROR_STOP=1 -qtA "$@"' psql "$@"; }
-GUARD="do \$g\$ begin if not exists (select 1 from staging_guard.marker where ref = '$STAGING_REF') then raise exception 'STOP: 試験環境の印がありません（本番かもしれない）'; end if; end \$g\$;"
+# DB の固有の番号（pg_control_system の system_identifier）。2026-11-05 に Supabase の連携で読み取って確認:
+#   試験環境 = 7702071863184491885 / 本番 = 7642734024280108049
+STAGING_SYSID=7702071863184491885
+PROD_SYSID=7642734024280108049
+[ -n "${REHEARSAL_LOCAL_DB:-}" ] && STAGING_SYSID=$(docker exec -i "$C" psql -U postgres -d postgres -tAc "select system_identifier from pg_control_system()")
+GUARD="do \$g\$ begin if (select system_identifier from pg_control_system())::text <> '$STAGING_SYSID' then raise exception 'STOP: 試験環境の DB ではありません（DB の番号が違う）'; end if; if not exists (select 1 from staging_guard.marker where ref = '$STAGING_REF') then raise exception 'STOP: 試験環境の印がありません（本番かもしれない）'; end if; end \$g\$;"
 # 印を確かめてから、ファイルを 1つのトランザクションで流す（印の確認も同じトランザクションの中）
 run() { local label=$1; shift; echo "== $label"; { echo "$GUARD"; for f in "$@"; do cat "$f"; echo; done; } | q -1 >/dev/null; }
 
 marker() {
-  local has
+  local sysid has
+  sysid=$(q -c "select system_identifier from pg_control_system()")
+  [ "$sysid" != "$PROD_SYSID" ] || { echo "STOP: 本番の DB につながっています"; exit 1; }
+  [ "$sysid" = "$STAGING_SYSID" ] || { echo "STOP: 試験環境の DB の番号と一致しません"; exit 1; }
+  echo "== DB の番号を確認（試験環境と一致・本番と不一致）"
   has=$(q -c "select count(*) from information_schema.tables where table_schema='staging_guard' and table_name='marker'")
   if [ "$has" = "0" ]; then
     local n; n=$(q -c "select count(*) from information_schema.tables where table_schema='public'")

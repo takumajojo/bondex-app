@@ -77,6 +77,18 @@ begin
   update b2c_orders set card_consent_version='2026-11-phase1a-card-draft', card_consented_at=now() where id=o;
   raise notice 'R2=%', (select b2c_confirm_order(o));
   raise notice 'R3=%', (select count(*) from shipments where b2c_order_id=o and channel='b2c');
+  -- 二重請求の防止: 集荷の確認 → 30分の猶予 → 請求の取り出しは 1回だけ（DB の中だけ・Stripe には何も送らない）
+  update b2c_orders set stripe_customer_id='cus_staging_dummy', stripe_payment_method_id='pm_staging_dummy' where id=o;
+  insert into operator_passkeys(credential_id, public_key, operator_email) values ('staging-verify-cred', '\x00', 'ops-staging@example.invalid') on conflict do nothing;
+  raise notice 'R7=%|%', (select b2c_confirm_pickup(o, 'ops-staging@example.invalid', 'staging-verify-cred', 'sagawa_tracking', 'staging-ref', 2, '試験環境の確認', now(), interval '30 minutes')->>'result'), (select status from b2c_payments where order_id=o and kind='base');
+  raise notice 'R8=%', (select b2c_confirm_pickup(o, 'ops-staging@example.invalid', 'staging-verify-cred', 'sagawa_tracking', 'staging-ref', 2, '試験環境の確認（2回目）', now(), interval '30 minutes')->>'result');
+  raise notice 'R9=%', (select count(*) from b2c_claim_charges(now() + interval '29 minutes', 10, 'staging-w0'));
+  raise notice 'R10=%|%', (select count(*) from b2c_claim_charges(now() + interval '31 minutes', 10, 'staging-w1')), (select count(*) from b2c_claim_charges(now() + interval '31 minutes', 10, 'staging-w2'));
+  begin
+    insert into b2c_payments(order_id, kind, charge_key, amount_yen, scheduled_at, created_by) values (o, 'base', 'base:'||o, 100, now(), 'staging');
+    raise notice 'R11=NG';
+  exception when unique_violation then raise notice 'R11=ok';
+  end;
   -- 規約の本文は書き換えられない
   begin
     update b2c_legal_documents set body = body || 'x' where kind='terms' and lang='ja';
@@ -100,6 +112,11 @@ eq "R4: 規約の本文は書き換えられない" "ok" "$(echo "$res" | grep -
 eq "R2: カードの同意がそろえば確定できる" "t" "$(echo "$res" | grep -o 'R2=[a-z]*' | cut -d= -f2)"
 eq "R3: 確定で B2C の区間が 1つできる" "1" "$(echo "$res" | grep -o 'R3=[0-9]*' | cut -d= -f2)"
 eq "R5: 登録した本文 12行すべてで本文と SHA-256 が一致" "12" "$(echo "$res" | grep -o 'R5=[0-9]*' | cut -d= -f2)"
+eq "R7: 集荷の確認 → 請求の行は 30分後の予定（scheduled）" "confirmed|scheduled" "$(echo "$res" | grep -o 'R7=[a-z_|]*' | cut -d= -f2)"
+eq "R8: 同じ予約の 2回目の集荷の確認は already_confirmed" "already_confirmed" "$(echo "$res" | grep -o 'R8=[a-z_]*' | cut -d= -f2)"
+eq "R9: 29分の時点では請求を取り出さない" "0" "$(echo "$res" | grep -o 'R9=[0-9]*' | cut -d= -f2)"
+eq "R10: 31分の時点で 1回だけ取り出し、続けて動かしても 2回目は 0（二重請求なし）" "1|0" "$(echo "$res" | grep -o 'R10=[0-9|]*' | cut -d= -f2)"
+eq "R11: 同じ予約の基本料金の請求は 2行目を作れない（DB の一意の制約）" "ok" "$(echo "$res" | grep -o 'R11=[a-zA-Z]*' | cut -d= -f2)"
 eq "R6: B2B の区間の作成・個数の変更・集荷・配達・課金の記録は変わらない" "delivered|3|true|b2b" "$(echo "$res" | grep -o 'R6=[^ ]*' | cut -d= -f2)"
 eq "確認の後に試験のデータが残っていない（取り消した）" "0|0" "$(q -c "select (select count(*) from b2c_orders where access_token_hash='tok_staging_verify')||'|'||(select count(*) from shipments where booking_id='BDX-STGVERIFY')")"
 
