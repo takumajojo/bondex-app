@@ -10,12 +10,12 @@
 
 | # | 対象 | 内容 | 誰が | 費用 | 戻し方 |
 |---|---|---|---|---|---|
-| S1 | Supabase bondex-staging の DB | `bash scripts/staging/apply.sh 080`（sql/080 だけ。表 1つと関数 1つを足す。匿名には権限なし）。067〜079 は流し済み。SQL068 などの直し（表の確保の時間）は流す時の手順の違いだけなので、流し直しは要らない | Claude（承認の後） | なし | `drop table public.cron_heartbeats; drop function public.cron_heartbeat_record(text, boolean, text, timestamptz);` |
+| S1 | Supabase bondex-staging の DB | `bash scripts/staging/apply.sh 080`（sql/080 だけ。表 1つと関数 1つを足す。匿名には権限なし）。067〜079 は流し済み。SQL068 などの直し（表の確保の時間）は流す時の手順の違いだけなので、流し直しは要らない | 済（2026-11-05・DB の番号一致を確認・表と関数あり・anon/authenticated は権限なし・RLS 有効） | なし | `drop table public.cron_heartbeats; drop function public.cron_heartbeat_record(text, boolean, text, timestamptz);` |
 | S2 | Vercel（新しい project `bondex-staging`） | GitHub の bondex-app の `integ/bizlogi-b2c` を出す。本番の project とは別。下の環境変数を Preview・Production の両方に（staging の project の中だけ） | たくまさん（Vercel の画面）。Claude は Vercel に入れない | Hobby（無料）は商用不可の規約。Pro は 1人 月$20 | project の削除 |
 | S3 | Stripe（テストモードだけ） | Webhook の送り先 `https://<staging の URL>/api/b2c/stripe/webhook`（イベント: payment_intent.*・setup_intent.*・charge.refunded・charge.refund.updated・refund.*・charge.dispute.*。受け取る種類は app/api/b2c/stripe/webhook/route.ts と同じ）。署名の秘密を S2 の `STRIPE_B2C_WEBHOOK_SECRET` に | たくまさん（Stripe の画面・テストモードの切り替えを確認） | なし | Webhook の削除 |
 | S4 | 定期の処理 | staging では pg_cron を有効にしない（承認の条件）。試験の時に手で `curl -H "Authorization: Bearer <staging の CRON_SECRET>"` で `/api/b2c/cron/tick`・`/api/cron/pickup-watch`・`/api/cron/heartbeat-check` を呼ぶ。GitHub の schedule は main の時だけ動くので、staging では動かない | Claude（承認の後・staging の URL だけ） | なし | — |
 | S5 | 個人パスキー | staging の `/operator/login` で、たくまさんの端末のパスキーを登録（メールのワンタイムコードで本人確認）。共有パスワード（`OPERATOR_PASSWORD`・staging だけの値）での比較も行う | たくまさん（端末の操作） | なし | `operator_passkeys` の行を消す |
-| S6 | メールの通知 | まず `MAIL_TEST_CAPTURE=1`（送らずに Vercel のログに記録）。届くことを確かめる回だけ外し、`ALERT_EMAIL` を社内の試験の宛先にして 1通（`/api/cron/pickup-watch?probe=1`）。旅行者への送信は、宛先をダミー（@example.invalid）だけにする | 両方 | Resend の無料の範囲 | 環境変数を戻す |
+| S6 | メールの通知 | `MAIL_TEST_CAPTURE=1`（送らずに Vercel のログに記録）。**staging では外せない**（`lib/env-guard.ts` が 1 以外で起動を止める）。届くことの確認は staging では行わない（必要なら、ガードに社内の宛先だけ許す例外を足すかを別に判断） | Claude（ログの確認） | なし | — |
 | S7 | 実機の試験 | iPhone（Safari）・Android（Chrome）で: 入口のリンク → 予約 → カード登録（テストのカード・3D セキュア）→ 予約の確認ページ（秘密のリンク）→ 取消 | たくまさん（端末）・Claude（手順と確認） | なし | — |
 
 staging の環境変数（S2。値は staging だけのもの。本番の値は使わない・`lib/env-guard.ts` が本番の値で起動を止める）:
@@ -23,6 +23,8 @@ staging の環境変数（S2。値は staging だけのもの。本番の値は�
 | 変数 | 値 | 意味 |
 |---|---|---|
 | `BONDEX_ENV` | `staging` | 誤接続の防止の仕組みを有効に |
+| `STAGING_SUPABASE_REF` | `oeucjrmuigtfnwowvzwr` | **必須**（無いと env-guard が起動を止める） |
+| `APP_BASE_URL`・`B2C_SITE_URL` | staging の URL | メールのリンク（本番のドメインだと env-guard が止める） |
 | `NEXT_PUBLIC_SUPABASE_URL`・`SUPABASE_SERVICE_ROLE_KEY` | bondex-staging のもの（`.env.staging.local` にある・画面に出さない） | DB |
 | `STRIPE_SECRET_KEY`・`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe の**テストモード**の鍵（`sk_test_`・`pk_test_`） | 決済 |
 | `STRIPE_B2C_WEBHOOK_SECRET` | S3 で作った Webhook の署名の秘密 | Webhook |
@@ -33,7 +35,9 @@ staging の環境変数（S2。値は staging だけのもの。本番の値は�
 | `B2C_SCHEDULER_ENABLED`・`B2C_CHARGE_LIVE` | `true`（テストモードの鍵の時だけ） | 定期の処理・請求 |
 | `B2C_NOTIFY_LIVE` | 未設定（運営への通知はログだけ）→ 通知を確かめる回だけ `true` | 運営への知らせ |
 | `SAGAWA_BULK_ALERT_ENABLED` | `true`（メールのフラグは未設定） | 大口集荷の再集計 |
-| Biz-Logi・Ship&co・WhatsApp の鍵 | **入れない**（外へ送らない。Biz-Logi は模擬） | — |
+| Biz-Logi・Ship&co・WhatsApp・LINE・Slack・Google Drive の鍵 | **入れない**（env-guard が起動を止める）。Biz-Logi の模擬はローカルの試験だけ。staging では集荷依頼は「設定が無い」で安全に失敗し、運営の画面に出る | — |
+
+注意: staging では佐川の追跡（Ship&co）も無いので、集荷の確認は運営の画面（`/operator/b2c`・個人パスキー）から手で行う（`b2c_confirm_pickup`）。30分後の請求はその時刻から数える。
 
 ## 2. staging で確かめること
 
