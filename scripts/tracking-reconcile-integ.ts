@@ -105,9 +105,14 @@ async function main() {
   resetCaps()
   await reconcileTrackingNow(sb, "s1", mockProvider({ N1: delivered("N1"), N2: delivered("N2") }))
   check("全番号 delivered: leg=delivered", S().status === "delivered")
-  check("完了メール 1通送信", caps().length === 1, `sent=${caps().length}`)
+  // 代理店宛てだけを数える。社内への「配送完了」の通知（lib/notify.ts の support@・ALERT_EMAIL 宛て）は本番でも送るので、別に確かめる
+  // （2026-11-06: MAIL_TEST_CAPTURE=1 を「送れる」と扱うようにした後〔lib/mailer.ts mailerConfigured〕、試験でも記録されるようになった）
+  const toAgency = caps().filter((c) => c.to === "ops@test.example")
+  const toOthers = caps().filter((c) => c.to !== "ops@test.example")
+  check("完了メール 1通送信（代理店宛て）", toAgency.length === 1, `agency=${toAgency.length} all=${caps().length}`)
+  check("社内への配送完了の通知は社内の宛先だけ", toOthers.length >= 1 && toOthers.every((c) => /配送完了|配達完了|delivered/i.test(String(c.subject ?? ""))), JSON.stringify(toOthers.map((c) => c.subject)))
   check("delivered_notified_at を記録", S().delivered_notified_at != null)
-  check("冪等キー付き (delivered-BDX-TEST01-L1)", String(caps()[0]?.idempotencyKey ?? "").startsWith("delivered-BDX-TEST01-L1"))
+  check("冪等キー付き (delivered-BDX-TEST01-L1)", String(toAgency[0]?.idempotencyKey ?? "").startsWith("delivered-BDX-TEST01-L1"))
 
   // 3) 再実行 (再送相当): 終端 delivered なので照会せず、完了メールは重複しない
   resetCaps()
