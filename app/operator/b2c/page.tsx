@@ -37,6 +37,7 @@ const HOLD: Record<string, string> = {
   other_charge_active: "同じ予約の別の請求が処理中",
   stripe_canceled: "Stripe で取り消された",
   stripe_mismatch: "Stripe の内容が DB と違う",
+  cancel_pending: "取消の申請が佐川の確認待ち（申請が却下・取り下げになってから請求する）",
 }
 const ERRORS: Record<string, string> = {
   operator_passkey_required: "個人のパスキーでログインしてください（共有パスワードでは操作できません）",
@@ -196,7 +197,7 @@ export default function OperatorB2cPage() {
           <Section title="止めた請求（運営の確認待ち）" rows={todo.heldCharges} empty="ありません" render={(r) => (<>
             <span>{orderBtn(r)} {yen(r.amountYen)}（{String(r.pieces)}個）: {HOLD[String(r.holdReason)] ?? String(r.holdReason)}</span>
             <span className="flex gap-1">
-              {["pieces_mismatch", "carrier_piece_mismatch"].includes(String(r.holdReason)) ? (
+              {["pieces_mismatch", "carrier_piece_mismatch", "cancel_pending"].includes(String(r.holdReason)) ? (
                 <Button size="sm" onClick={() => setAction({ title: "この内容で請求する", path: P, body: { action: "release_hold", paymentId: r.paymentId }, summary: `受付番号 ${r.orderNumber}: ${yen(r.amountYen)}（${r.pieces}個）を請求します。理由: ${HOLD[String(r.holdReason)] ?? r.holdReason}` })}>請求する</Button>
               ) : null}
               <Button size="sm" variant="outline" onClick={() => setAction({ title: "請求をやめる", path: P, body: { action: "cancel_hold", paymentId: r.paymentId }, summary: `受付番号 ${r.orderNumber}: この請求（${yen(r.amountYen)}）をやめます` })}>やめる</Button>
