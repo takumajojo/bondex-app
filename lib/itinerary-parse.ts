@@ -63,7 +63,7 @@ Rules for extracting shipments:
 - If the document has an explicit "Luggage Forwarding Schedule" table, use it as the authoritative source
 - Otherwise, infer shipments from notes like "Forward luggage to X", "Luggage will be sent to Y", "Luggage waiting at hotel"
 - Skip "arrival in Japan", "departure from Japan", and any hop where the traveler stays at the same hotel
-- Date format: ISO 8601 YYYY-MM-DD. If only month/day given (e.g. "June 10"), infer the year from context (default to next occurrence of that date from today)
+- Date format: ISO 8601 YYYY-MM-DD. If only month/day given (e.g. "June 10"), infer the year so the date is today or in the FUTURE (the next occurrence from today). A booking date is NEVER in the past. Today's date is provided in the user message.
 - shipmentDate is the date luggage is HANDED OVER at the from-hotel
 - expectedArrival is the date luggage SHOULD ARRIVE at the to-hotel (often 1-3 days after shipmentDate)
 - to.checkIn / to.checkOut: if the itinerary's accommodation info states the guest's check-in and
@@ -368,12 +368,69 @@ type ExtractionBlock =
   | { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } }
   | { type: "text"; text: string }
 
+/** JST(UTC+9)の今日 YYYY-MM-DD。日付のみ(時刻なし)の判定に使う。 */
+function todayYmdJst(): string {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * YYYY-MM-DD が floor より過去なら、同じ月日のまま年を繰り上げて「floor 以降の最初の同月日」にする。
+ * 月日だけの入力でAIが過去の年(例: 2025)を補完してしまった事故を、決定的に未来側へ正す。
+ * YYYY-MM-DD 形式でない値・空文字はそのまま返す(推測しない)。
+ */
+function rollForward(ymd: unknown, floor: string): unknown {
+  if (typeof ymd !== "string" || !YMD.test(ymd) || !YMD.test(floor)) return ymd
+  const md = ymd.slice(4) // "-MM-DD"
+  let year = Number(floor.slice(0, 4))
+  let cand = `${year}${md}`
+  // 過去に戻ることはあり得ない(谷口さん指示): floor(今日 or 発送日)以降の最初の同月日に寄せる。
+  while (cand < floor) {
+    year += 1
+    cand = `${year}${md}`
+  }
+  return cand
+}
+
+/**
+ * 解析結果の日付を決定的に補正する(AIの年推測の揺れを吸収):
+ *  - shipmentDate: 今日以降へ(過去なら翌年へ繰り上げ)。
+ *  - expectedArrival: 今日以降 かつ 発送日以降。
+ *  - from/to の checkIn/checkOut: 今日以降、checkOut は checkIn 以降。
+ * 文字列の YYYY-MM-DD 比較は辞書順＝日付順で正しく働く。
+ */
+function normalizeItineraryDates<T>(data: T, todayYmd: string): T {
+  const d = data as { shipments?: Array<Record<string, unknown>> } | null
+  if (!d || !Array.isArray(d.shipments)) return data
+  for (const s of d.shipments) {
+    if (typeof s.shipmentDate === "string" && s.shipmentDate) {
+      s.shipmentDate = rollForward(s.shipmentDate, todayYmd)
+    }
+    const shipFloor = typeof s.shipmentDate === "string" && YMD.test(s.shipmentDate) ? s.shipmentDate : todayYmd
+    if (typeof s.expectedArrival === "string" && s.expectedArrival) {
+      s.expectedArrival = rollForward(s.expectedArrival, shipFloor)
+    }
+    for (const side of ["from", "to"] as const) {
+      const loc = s[side] as Record<string, unknown> | undefined
+      if (!loc) continue
+      if (typeof loc.checkIn === "string" && loc.checkIn) loc.checkIn = rollForward(loc.checkIn, todayYmd)
+      if (typeof loc.checkOut === "string" && loc.checkOut) {
+        const inFloor = typeof loc.checkIn === "string" && YMD.test(loc.checkIn) ? loc.checkIn : todayYmd
+        loc.checkOut = rollForward(loc.checkOut, inFloor)
+      }
+    }
+  }
+  return data
+}
+
 async function runExtraction(
   client: Anthropic,
   documentBlock: ExtractionBlock,
   log: { agency: string; file_name: string; file_hash: string; file_size: number; file_type: string },
 ): Promise<ParseItineraryResult> {
   try {
+    const todayYmd = todayYmdJst()
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
@@ -387,6 +444,10 @@ async function runExtraction(
         {
           role: "user",
           content: [
+            {
+              type: "text",
+              text: `Today's date is ${todayYmd} (Asia/Tokyo). When a date is given as only month/day (no year), choose the year so the resulting date is today (${todayYmd}) or later — a booking is never in the past.`,
+            },
             documentBlock,
             { type: "text", text: "Parse this itinerary and call the extract_itinerary tool." },
           ],
@@ -406,8 +467,10 @@ async function runExtraction(
     }
 
     const cleaned = scrubOtaPrefixes(toolUse.input)
-    await saveParseLog({ ...log, ai_raw_output: cleaned })
-    return { ok: true, data: cleaned }
+    // 月日だけの入力でAIが過去の年(例: 2025)を補完する事故を決定的に未来側へ正す(谷口さん指示)。
+    const dated = normalizeItineraryDates(cleaned, todayYmd)
+    await saveParseLog({ ...log, ai_raw_output: dated })
+    return { ok: true, data: dated }
   } catch (err) {
     return { ok: false, status: 502, error: err instanceof Error ? err.message : "Anthropic error" }
   }
