@@ -28,11 +28,18 @@ if [ -e "$OUT" ]; then
 fi
 
 ask() { # 名前 説明 → 値（画面に出さない）
+  # 貼り付けができない端末のため: 何も入力せずに Enter を押すと、クリップボードの中身を使う（使った後はクリップボードを空にする）
   local v
-  printf '%s（入力は表示されません）: ' "$2" >&2
+  printf '%s\n  → 値をコピーしてから Enter（貼り付けてもよい・どちらも表示されません）: ' "$2" >&2
   IFS= read -r -s v; printf '\n' >&2
-  v="${v//[$'\r\n ']/}"
-  [ -n "$v" ] || { echo "空です。やめました" >&2; exit 1; }
+  if [ -z "$v" ] && command -v pbpaste >/dev/null; then
+    v=$(pbpaste)
+    printf '' | pbcopy
+    printf '  （クリップボードから読み取り、クリップボードを空にしました）\n' >&2
+  fi
+  # 端末に貼り付けた時に付く印（ESC[200~ … ESC[201~）と、改行・空白・制御文字を取り除く
+  v=$(printf '%s' "$v" | LC_ALL=C sed $'s/\x1b\\[20[01]~//g' | LC_ALL=C tr -d '[:cntrl:][:space:]')
+  [ -n "$v" ] || { echo "空です。やめました（値をコピーしてから Enter を押してください）" >&2; exit 1; }
   printf '%s' "$v"
 }
 
