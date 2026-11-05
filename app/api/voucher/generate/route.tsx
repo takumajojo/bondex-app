@@ -162,13 +162,13 @@ function normalizeShipment(s: RequestShipment): VoucherShipment | null {
  * ホテルの英語表記を補う (バウチャーはお客様が読むため)。
  * 運営画面からの出力では日本語のホテル名・住所 (Google の日本語表記) がそのまま届くため、
  * place_id があれば Places から英語の名前と住所を取り、名前は英語優先 (日本語名は小さく併記)、
- * 住所は英語に置き換える。英語が取れなければ日本語のまま出す (出力は止めない)。
+ * 住所は英語に置き換える (DB から読み込んだ区間は住所が空で届くので、そのときも英語住所を入れる)。英語が取れなければ日本語のまま出す (出力は止めない)。
  */
 async function withEnglishHotel(v: VoucherShipment, raw: RequestShipment): Promise<VoucherShipment> {
   const placeIdOf = (loc: unknown) => asString((loc as { placeId?: unknown } | null)?.placeId).trim()
   const resolve = async (loc: VoucherShipment["from"], placeId: string, hotelEn: string | undefined) => {
     const needName = !hotelEn && hasJapanese(loc.hotel)
-    const needAddr = hasJapanese(loc.address)
+    const needAddr = !loc.address || hasJapanese(loc.address)
     if (loc.isResidence || !placeId || (!needName && !needAddr)) return { loc, hotelEn }
     const en = await getPlaceEnglish(placeId)
     if (!en) return { loc, hotelEn }
