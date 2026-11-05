@@ -11,7 +11,7 @@
 #      請求の取り出しと同時に流しても二重に取り出さない
 set -uo pipefail
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-C=supabase_db_supa-local; DB=${SQL082_TEST_DB:-bondex_sql082_test}
+C=${PG_TEST_CONTAINER:-supabase_db_supa-local}; DB=${SQL082_TEST_DB:-bondex_sql082_test}
 PASS=0; FAIL=0
 q() { docker exec -i $C psql -U postgres -d $DB -v ON_ERROR_STOP=1 -qtA "$@"; }
 apply() { for f in "$@"; do q -1 < "$R/$f" >/dev/null 2>/tmp/sql082_err.txt || { echo "  適用失敗: $f"; grep -m3 ERROR /tmp/sql082_err.txt; return 1; }; done; }
