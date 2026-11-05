@@ -151,6 +151,47 @@ async function main() {
     assert.equal(calls[0].body.from, "BondEx staging <stg@bondex.express>")
   })
 
+  console.log("宛先の形の抜け道（2026-11-06 監査で追加）: すべて送らない")
+  const KOPS = "kanri@jojo-test.example"
+  for (const [name, to, extra] of [
+    ["表示名で社内に見せかけた社外の宛先", `"${OPS}" <${TRAVELER}>`, {}],
+    ["表示名付きの社内の宛先（形が違うので送らない側に倒す）", `Ops <${OPS}>`, {}],
+    ["末尾の点のドメイン", `${OPS}.`, {}],
+    ["プラスの付いた宛先", OPS.replace("@", "+x@"), {}],
+    ["セミコロンで並べた社外", `${OPS};${TRAVELER}`, {}],
+    ["全角の＠", OPS.replace("@", "＠"), {}],
+    ["ゼロ幅の空白", `${OPS}\u200b`, {}],
+    ["改行で足した Bcc の行", `${OPS}\nBcc: ${TRAVELER}`, {}],
+    ["キリル文字の似た文字（о）", OPS.replace("o", "\u043e"), {}],
+    ["ケルビン記号（K。小文字にすると k になる）で社内の宛先に見せかける", KOPS.replace("k", "\u212a"), {}],
+    ["ドメインのケルビン記号", "ops@\u212aanri-test.example", {}],
+    ["bcc の 1つの値にカンマで社外", OPS, { bcc: [`${OPS2},${TRAVELER}`] }],
+  ] as Array<[string, string, Partial<Parameters<typeof sendMail>[0]>]>) {
+    await t(name, async () => {
+      setEnv({ ...STAGING_ON, OPERATOR_EMAILS: `${OPS}, ${OPS2}, ${KOPS}, ops@kanri-test.example` })
+      await mail(to, extra)
+      assert.equal(calls.length, 0, `${name}: ${JSON.stringify(to)}`)
+    })
+  }
+  await t("ケルビン記号の試験の宛先の一覧そのもの（ASCII の kanri@）には送る（試験の前提の確認）", async () => {
+    setEnv({ ...STAGING_ON, OPERATOR_EMAILS: `${KOPS}, ops@kanri-test.example` })
+    await mail(KOPS)
+    await mail("ops@kanri-test.example")
+    assert.equal(calls.length, 2)
+  })
+  await t("宛先の一覧の大文字・空白は正しく扱う（社内には送る）", async () => {
+    setEnv({ ...STAGING_ON, OPERATOR_EMAILS: ` ${OPS.toUpperCase()} ,${OPS2} ` })
+    await mail(OPS)
+    assert.equal(calls.length, 1)
+  })
+  await t("reply_to は宛先ではない（社内だけに送る・返信先はそのまま渡す）", async () => {
+    setEnv(STAGING_ON)
+    await mail(OPS, { replyTo: TRAVELER })
+    assert.equal(calls.length, 1)
+    assert.deepEqual(calls[0].body.to, [OPS])
+    assert.equal(calls[0].body.bcc, undefined)
+  })
+
   console.log("ログ: 認証コード・受付番号・名前を出さない")
   await t("記録のログに認証コードが無い", async () => {
     setEnv({ ...STAGING_ON, STAGING_MAIL_SEND: "" })
