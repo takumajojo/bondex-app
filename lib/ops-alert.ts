@@ -13,6 +13,7 @@
  * 戻り値で報告する。
  */
 
+import { isNonProductionDeployment } from "@/lib/env-guard"
 import { sendMail, mailerConfigured } from "./mailer"
 import { opsRecipients } from "./ops-recipients"
 import { safeLog, generateLogId, errorTypeOf } from "./safe-log"
@@ -82,7 +83,8 @@ export async function sendOpsAlert(input: OpsAlertInput): Promise<OpsAlertResult
     result.emailSent = anySent
   }
 
-  const slackUrl = process.env.SLACK_WEBHOOK_URL
+  // Preview・Development からは Slack に投稿しない (lib/env-guard.ts)
+  const slackUrl = isNonProductionDeployment() ? undefined : process.env.SLACK_WEBHOOK_URL
   if (slackUrl) {
     const err = await sendViaSlack(slackUrl, input.subject, input.lines)
     if (err) result.errors.push(`slack: ${err}`)

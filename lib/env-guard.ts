@@ -109,7 +109,42 @@ export function stagingGuardViolations(env: Env = process.env): string[] {
  * staging (BONDEX_ENV=staging) の守りは stagingGuardViolations が別に行う。
  */
 export function isNonProductionDeployment(env: Env = process.env): boolean {
-  return env.VERCEL_ENV === "preview" || env.VERCEL_ENV === "development"
+  // Vercel の上で、本番 (VERCEL_ENV=production) と確かに分かる時だけ本番。値が無い・知らない値も本番ではないとみなす (安全側・2026-11-07)。
+  // Vercel の上かは、Vercel が入れる VERCEL・VERCEL_ENV・VERCEL_URL のどれかで見る (手元の開発・試験には無い)
+  const onVercel = env.VERCEL === "1" || !!env.VERCEL_ENV || !!env.VERCEL_URL
+  return onVercel && env.VERCEL_ENV !== "production"
+}
+
+/**
+ * Preview・Development の配置の設定の違反 (2026-11-07)。本番の配置以外は、staging と同じ条件を満たさないと動かさない:
+ *   - BONDEX_ENV=staging (メールの記録だけ・社内だけの送信などの staging の動きにする)
+ *   - stagingGuardViolations の全部 (試験環境の Supabase・テストモードの Stripe・メールを送らない・Slack・WhatsApp・LINE・
+ *     Ship&co・Biz-Logi・Google Drive の鍵が無い・本番のドメインを使わない)
+ *   - APP_BASE_URL を必ず入れる (無いと自分自身を呼ぶ処理が本番のドメイン bondex.express を運営のパスワードつきで呼ぶ)
+ * 環境の名前だけでなく、接続先 (Supabase の ID・Stripe の鍵の種類) と鍵の有無を照らし合わせる。値はエラーの文に出さない。
+ */
+export function previewEnvironmentViolations(env: Env = process.env): string[] {
+  if (!isNonProductionDeployment(env)) return []
+  const v: string[] = []
+  if (env.BONDEX_ENV !== "staging") v.push("BONDEX_ENV: Preview・Development は staging にする（本番の設定のまま動かさない）")
+  for (const x of stagingGuardViolations({ ...env, BONDEX_ENV: "staging" })) v.push(x)
+  const base = hostOf(env.APP_BASE_URL)
+  if (!base) v.push("APP_BASE_URL: Preview・Development では必ず入れる（無いと本番のドメインを呼ぶ）")
+  return v
+}
+
+/**
+ * 自分自身を呼ぶ時の公開の URL (運営のパスワードを Bearer で載せる呼び出し)。本番の配置は今までどおり APP_BASE_URL → bondex.express。
+ * Preview・Development では本番のドメインを決して使わない (本番のパスワードで本番の送り状の発行・Drive の同期を動かさない)。
+ */
+export function selfBaseUrl(env: Env = process.env): string {
+  const u = env.APP_BASE_URL?.trim().replace(/\/+$/, "")
+  if (isNonProductionDeployment(env)) {
+    const h = hostOf(u)
+    if (!u || !h || PROD_SITE_HOSTS.includes(h)) throw new Error("[env-guard] Preview・Development では本番のドメインを呼びません（APP_BASE_URL に本番以外の URL が要ります）")
+    return u
+  }
+  return u || "https://bondex.express"
 }
 
 /**
@@ -128,7 +163,8 @@ export function previewDatabaseViolations(env: Env = process.env): string[] {
 
 /** 違反があれば止める（エラーの文には変数の名前と理由だけを出す）。 */
 export function assertEnvironmentSafe(env: Env = process.env): void {
-  const v = [...stagingGuardViolations(env), ...previewDatabaseViolations(env)]
+  // 同じ理由が重ならないようにまとめる (Preview は staging の条件も含む)
+  const v = [...new Set([...stagingGuardViolations(env), ...previewDatabaseViolations(env), ...previewEnvironmentViolations(env)])]
   if (v.length > 0) {
     throw new Error(`[env-guard] 試験環境・Preview の設定に問題があるため止めます（${v.length}件）: ${v.join(" / ")}`)
   }

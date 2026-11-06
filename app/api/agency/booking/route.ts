@@ -1,3 +1,4 @@
+import { selfBaseUrl } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { rateLimit } from "@/lib/rate-limit"
 import { resolveAgencyFromRequest } from "@/lib/agency-auth"
@@ -547,8 +548,8 @@ export async function POST(req: NextRequest) {
   // VERCEL_URL(自デプロイ URL)は使わない: Vercel Deployment Protection の対象で、
   // 内部自己呼び出しが 401 "Protected deployment" で弾かれ発行が失敗するため
   // (公開ドメイン bondex.express は保護対象外)。
-  const origin =
-    process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
+  // Preview・Development では本番のドメインを呼ばない (lib/env-guard.ts selfBaseUrl)
+  const origin = selfBaseUrl()
   const opPw = process.env.OPERATOR_PASSWORD
   // reason: "far" = 1ヶ月超で発行窓の外 (正常な待ち) / "failed" = 発行を試みたが失敗
   //         "not_needed" = 送り状は佐川が作成する運用 (2026-09-24〜) で BondEx は発行しない

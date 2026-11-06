@@ -38,8 +38,10 @@ const FAKE_LIVE_PK = ["pk", "live", "testonlynotarealkey000000"].join("_")
     let biz: { live: boolean } | null = null
     try { biz = bizLogiConfigFromEnv(process.env) as { live: boolean } } catch (e) { biz = null; console.log("    (Biz-Logi の設定の読み込み:", e instanceof Error ? e.message.slice(0, 80) : e, ")") }
     check(`${target}: Biz-Logi の発行依頼は送らない (BIZLOGI_LIVE=true でも)`, biz === null || biz.live === false, JSON.stringify(biz?.live))
-    const s = b2cStripeConfig()
-    check(`${target}: B2C は本番の Stripe の鍵を使わない (許可があっても)`, s.ok === false && s.reason === "live_key_blocked", JSON.stringify(s.ok ? "ok" : s.reason))
+    // 2026-11-07: Preview は起動の守り (assertEnvironmentSafe) で例外になる (より強い拒否)。どちらでも本番の鍵は使わない
+    let s: ReturnType<typeof b2cStripeConfig> | null = null
+    try { s = b2cStripeConfig() } catch { s = null }
+    check(`${target}: B2C は本番の Stripe の鍵を使わない (許可があっても)`, s === null || (s.ok === false && s.reason === "live_key_blocked"), JSON.stringify(s === null ? "refused" : s.ok ? "ok" : s.reason))
     const c = await chargeShipmentIfDue("00000000-0000-0000-0000-000000000000")
     check(`${target}: B2B の請求はしない (STRIPE_CHARGE_LIVE=true でも)`, c.charged === false && c.reason === "non_production_deployment", JSON.stringify(c))
     const m = await sendMail({ to: "someone@example.invalid", subject: "t", text: "t" } as never)

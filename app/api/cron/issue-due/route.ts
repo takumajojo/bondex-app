@@ -1,3 +1,4 @@
+import { selfBaseUrl } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
@@ -38,7 +39,8 @@ const HORIZON_DAYS = 30
 function trustedOrigin(): string {
   // VERCEL_URL は使わない: Vercel Deployment Protection の対象で、内部自己呼び出しが
   // 401 "Protected deployment" で弾かれ自動発行が失敗するため。公開ドメイン直で呼ぶ。
-  return process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
+  // Preview・Development では本番のドメインを呼ばない (lib/env-guard.ts selfBaseUrl)
+  return selfBaseUrl()
 }
 
 // ShipmentRecord から /api/shipandco/create のリクエストボディを組み立てる。
