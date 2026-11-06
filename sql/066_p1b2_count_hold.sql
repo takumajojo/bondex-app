@@ -521,7 +521,9 @@ end; $$;
 -- ── 8. 集荷単位の予約別内訳 (読み取り専用・Operator の照合ビュー用) ──
 -- 指定 shipment と同一 (hotel_key × 集荷日) の通常配送 leg を、予約別に列挙する。
 -- A社30 + B社20 のような重複を「予約ごとに独立」表示し、按分せず内訳確定を促す。
-drop function if exists pickup_unit_summary(uuid);
+-- 注: ここは drop せず create or replace のみにする。drop + create (同一シグネチャ) だと再実行時に
+--   関数が作り直されて EXECUTE 権限が既定 (PUBLIC) に戻り、sql/072 の権限制限が巻き戻るため
+--   (create or replace は既存の権限を保持する)。本関数は 066 のみで定義し <=065 に無いので drop 不要。
 create or replace function pickup_unit_summary(p_shipment_id uuid)
 returns table(
   shipment_id uuid, booking_id text, leg_index int, agency text,
@@ -678,49 +680,11 @@ create index if not exists shipment_invoice_postings_month_idx
 alter table public.shipment_invoice_postings enable row level security;
 -- policy なし = service_role のみ。
 
--- 10-1. 指定 (代理店, 月) の請求対象 leg を確定し計上する (冪等・競合安全)。フラグ ON のときだけ TS が呼ぶ。
---   対象: 当該代理店・status in (issued/picked_up/in_transit/delivered)・amount_yen>0・未計上。
---   保留判定は cached 列だけでなく released か (auto かつ evaluate_charge_hold が hold でない) で再評価。
---   held は除外。released は price_status=approved が前提 (release が保証)。計上額は amount_yen を凍結 (=承認額)。
---   当月分 (shipment_date ∈ 月) + 締め後に確定した released で未計上の過去 leg (翌月/調整) を拾う。
-create or replace function claim_invoice_postings(p_agency text, p_month text)
-returns table(shipment_id uuid, booking_id text, leg_index int, shipment_date date,
-              net_yen int, gross_yen int, billed_month text, is_adjustment boolean)
-language plpgsql as $$
-declare m_from date; m_to date;
-begin
-  if p_agency is null or p_month !~ '^\d{4}-\d{2}$' then return; end if;
-  m_from := (p_month || '-01')::date;
-  m_to := (m_from + interval '1 month' - interval '1 day')::date;
-  -- (代理店, 月) を直列化 (複数 Operator / cron 再実行の同時計上を防ぐ)。
-  perform pg_advisory_xact_lock(hashtextextended('inv|'||p_agency||'|'||p_month, 0));
-
-  insert into public.shipment_invoice_postings(shipment_id, agency, billed_month, shipment_date, net_yen, gross_yen)
-  select t.id, p_agency, p_month, t.shipment_date,
-         coalesce(t.amount_yen,0),
-         coalesce(t.amount_yen,0) + (coalesce(t.amount_yen,0) / 10)   -- grossOf: net + floor(net/10)
-  from shipments t
-  where t.agency = p_agency
-    and t.status in ('issued','picked_up','in_transit','delivered')
-    and coalesce(t.amount_yen,0) > 0
-    and not exists (select 1 from public.shipment_invoice_postings p where p.shipment_id = t.id)
-    and (
-      (t.shipment_date between m_from and m_to)
-      or (t.charge_hold_state = 'released' and t.shipment_date < m_from)   -- 締め後確定の過去分
-    )
-    and (
-      t.charge_hold_state = 'released'
-      or (t.charge_hold_state = 'auto' and not (select hold from evaluate_charge_hold(t.id)))
-    )
-  on conflict on constraint shipment_invoice_postings_uq do nothing;
-
-  -- 当月計上ぶんを凍結金額で返す (再実行時も同じ集合=不変・同一PDF)。
-  return query
-    select p.shipment_id, t.booking_id, t.leg_index, p.shipment_date,
-           p.net_yen, p.gross_yen, p.billed_month,
-           (p.shipment_date < m_from) as is_adjustment
-    from public.shipment_invoice_postings p
-    join shipments t on t.id = p.shipment_id
-    where p.agency = p_agency and p.billed_month = p_month
-    order by p.shipment_date, t.booking_id, t.leg_index;
-end; $$;
+-- 10-1. 請求対象 leg の確定・計上 (claim_invoice_postings / post_invoice_legs) は sql/067 が唯一の定義元。
+--   この表 (shipment_invoice_postings) と RLS は 066 が作るが、計上関数は 067 でのみ定義する。理由:
+--   067 は voided_at 列を足し、ここで作る一意制約 shipment_invoice_postings_uq を drop して
+--   部分一意インデックス (shipment_id) where voided_at is null に差し替える。もし 066 でも
+--   claim_invoice_postings を定義すると、(a) 定義が 2 ファイルに重複し、(b) 067 適用後に 066 を
+--   単独再実行すると関数が旧版へ巻き戻って drop 済み制約 shipment_invoice_postings_uq を参照し、
+--   月次請求の実行時にエラー + void 済み leg の二重計上を招く。計上関数は 067 に一本化する
+--   (migration 再実行・部分適用でも最終状態が壊れないため。sql/067 §6 を参照)。
