@@ -452,6 +452,24 @@ async function main() {
     check("同じ区間の2回目・形式違いは NG", !v[5].ok && !v[6].ok)
     const legacy = checkExcelRows(["BDX-A-L1"], [L("BDX-A-L1", { pickup_requested_at: "2026-11-01T00:00:00Z" })], [])
     check("移行前は『依頼済み』印で NG にする", !legacy[0].ok)
+    // 2026-11-06 監査 B-12: 処理中の変更・取消の申請・予約と違う個数や日付の行は NG
+    const full = (ref: string, o: Record<string, unknown> = {}) => ({ ...L(ref), suitcase_count: 3, shipment_date: "2026-11-10", expected_arrival: "2026-11-12", ...o })
+    const fl = [full("BDX-F-L1"), full("BDX-G-L1"), full("BDX-H-L1")]
+    const chg = [{ shipment_id: fl[1].id, kind: "cancel", stage: "requested" }]
+    const ok1 = checkExcelRows([{ ref: "BDX-F-L1", pieces: "3", pickupDate: "20261110", deliveryDate: "20261112" }], fl, [], chg)
+    check("予約と同じ個数・日付の行は OK (日付の書き方の違いは同じとみなす)", ok1[0].ok, ok1)
+    const c1 = checkExcelRows(["BDX-G-L1"], fl, [], chg)
+    check("処理中の取消の申請がある区間は NG", !c1[0].ok && /申請/.test((c1[0] as { reason: string }).reason), c1)
+    check("申請が無い区間はそのまま OK", checkExcelRows(["BDX-H-L1"], fl, [], chg)[0].ok)
+    const bad = checkExcelRows([
+      { ref: "BDX-F-L1", pieces: "4" },
+      { ref: "BDX-H-L1", pickupDate: "2026/11/11" },
+    ], fl, [], [])
+    check("個数が予約と違う行は NG", !bad[0].ok && /個数/.test((bad[0] as { reason: string }).reason), bad)
+    check("集荷日が予約と違う行は NG", !bad[1].ok && /集荷日/.test((bad[1] as { reason: string }).reason), bad)
+    const dl = checkExcelRows([{ ref: "BDX-F-L1", deliveryDate: "20261113" }], fl, [], [])
+    check("配達指定日が予約と違う行は NG", !dl[0].ok, dl)
+    check("Excel の側が空の項目は照合しない (配達指定なし)", checkExcelRows([{ ref: "BDX-F-L1", deliveryDate: "" }], fl, [], [])[0].ok)
   }
 
   console.log("11. 送信中のまま止まった記録の通知 (P1-4)")
