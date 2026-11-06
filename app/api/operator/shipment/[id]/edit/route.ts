@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { resolveUnitPriceYen } from "@/lib/pricing"
 import { rateLimit } from "@/lib/rate-limit"
 import { getSupabase } from "@/lib/supabase"
 import { getShipment } from "@/lib/shipments-db"
@@ -130,12 +131,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   let trackingSyncNote: string | null = null
   if (hasTracking) {
+    // 送り状を Ship&co で発行せず問い合わせ番号を手入力した区間は、発行処理を通らないため
+    // 請求額 (amount_yen) が未確定 (0) のまま残り、集荷時のカード課金が漏れた (BDX-8K8Z2V-L1)。
+    // 番号を入れる = 佐川に手配済み なので、ここで「個数 × 代理店単価」で確定させる。
+    const trackingPatch: Record<string, unknown> = { tracking_numbers: tracking, tracking_detail: null }
+    let amountNote: string | null = null
+    if (tracking && tracking.length > 0 && !(Number(shipment.amount_yen) > 0) && Number(shipment.suitcase_count) > 0) {
+      const { data: agRow } = await sb
+        .from("agencies")
+        .select("unit_price_yen")
+        .eq("name", (hasAgency ? agency : shipment.agency) ?? "")
+        .maybeSingle()
+      const newAmount = Math.floor(Number(shipment.suitcase_count)) * resolveUnitPriceYen((agRow?.unit_price_yen as number | null) ?? null)
+      trackingPatch.amount_yen = newAmount
+      amountNote = `請求額を確定: ¥0 → ¥${newAmount.toLocaleString("ja-JP")}（税抜・${shipment.suitcase_count}個）`
+    }
     const { error: upErr } = await sb
       .from("shipments")
-      .update({ tracking_numbers: tracking, tracking_detail: null })
+      .update(trackingPatch)
       .eq("id", shipmentId)
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
     results.push(`配送番号: [${oldTracking.join(", ") || "—"}] → [${(tracking ?? []).join(", ") || "—"}]`)
+    if (amountNote) results.push(amountNote)
 
     // 番号を入れ替えたら「時間毎の cron を待たず」に即照会し、集荷済み/配達完了なら
     // その場で反映＋代理店メール発火 (best-effort・失敗しても番号更新は成功のまま返す)。
