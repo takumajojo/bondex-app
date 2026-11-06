@@ -12,17 +12,26 @@ Vercel は、デプロイを作った時点の環境変数をそのデプロイ�
 
 ## 1. Vercel の操作（谷口さん・承認の後）
 
-### 1-1. Preview の環境変数を替える
-- 外す（Preview から。Production はそのまま）:
-  `RESEND_API_KEY`・`SMTP_HOST`・`SMTP_USER`・`SMTP_PASS`・`GOOGLE_DRIVE_SA_KEY`・`SHIPANDCO_API_KEY`・`SHIPANDCO_LIVE`・`STRIPE_CHARGE_LIVE`
-  （秘密ではないが本番の設定の流用なので、これも外す: `SMTP_PORT`・`GOOGLE_DRIVE_ROOT_ID`・`ALERT_EMAIL`）
-- 値を staging のものに替える（名前は同じ・Preview の値だけ）:
-  `NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`・`SUPABASE_SERVICE_ROLE_KEY`（staging の Supabase `oeucjrmuigtfnwowvzwr`）、
-  `STRIPE_SECRET_KEY`・`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`（Stripe のテストモードの鍵 `sk_test_`・`pk_test_`）、
-  `OPERATOR_PASSWORD`（本番と別の値）
-- 足す（Preview だけ）:
-  `BONDEX_ENV=staging`・`STAGING_SUPABASE_REF=oeucjrmuigtfnwowvzwr`・`APP_BASE_URL`（staging の URL・本番のドメインは不可）・`MAIL_TEST_CAPTURE=1`
-- 費用だけの鍵（`ANTHROPIC_API_KEY`・`GOOGLE_MAPS_API_KEY`）は、Preview 用に別の鍵にするか外す（外への副作用は無いが、本番の鍵の使い回しになる）
+### 1-1. Preview の環境変数を替える（**順番を守る**）
+**注意: 今の 20個の変数は、Production と Preview で「同じ 1つの登録」（設定先が production と preview の両方・種類は sensitive）。**
+その登録の値を書き換えると本番の値も変わる。`vercel env rm` で消すと登録ごと消え、sensitive の値は読み戻せないので本番を元に戻せない。
+（2026-11-07 Vercel の API の GET で確認・名前・ID・設定先だけを読んだ）
+
+1. **設定先から Preview だけを外す**（20個それぞれ。値は触らない）
+   - 画面: Settings → Environment Variables → 各変数の Edit → 「Preview」のチェックだけを外して保存（Production は残す）
+   - API でやる場合: `PATCH /v10/projects/{projectId}/env/{envId}` に `{"target":["production"]}` だけを送る（値は送らない）
+   - 終わったら、点検（2）の 1 で「Preview に残っている本番の鍵の名前」が 0件・本番の側の名前が今までどおりあることを確かめる
+2. **Preview 専用の登録を新しく作る**（設定先は Preview だけ）
+   - staging の値: `NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`・`SUPABASE_SERVICE_ROLE_KEY`（staging の Supabase `oeucjrmuigtfnwowvzwr`）、
+     `STRIPE_SECRET_KEY`・`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`（Stripe のテストモード `sk_test_`・`pk_test_`）、`OPERATOR_PASSWORD`（本番と別の値）
+   - 足す: `BONDEX_ENV=staging`・`STAGING_SUPABASE_REF=oeucjrmuigtfnwowvzwr`・`APP_BASE_URL`（staging の URL・本番のドメインは不可）・`MAIL_TEST_CAPTURE=1`
+   - 費用だけの鍵（`ANTHROPIC_API_KEY`・`GOOGLE_MAPS_API_KEY`）は Preview 専用の別の鍵にするか、作らない
+3. **Preview には作らない**（本番の鍵・外への実際の処理のスイッチ・本番の設定の流用）:
+   `RESEND_API_KEY`・`SMTP_HOST`・`SMTP_PORT`・`SMTP_USER`・`SMTP_PASS`・`GOOGLE_DRIVE_SA_KEY`・`GOOGLE_DRIVE_ROOT_ID`・`SHIPANDCO_API_KEY`・`SHIPANDCO_LIVE`・
+   `STRIPE_CHARGE_LIVE`・`ALERT_EMAIL`、それに今 Production だけにあるもの（`CRON_SECRET`・WhatsApp・Slack・LINE・Biz-Logi・`AUTO_ISSUE_ENABLED` など）。
+   `RATE_LIMIT_PER_MINUTE` は秘密でも外への処理でもないので、Preview 用に同じ値で作ってよい
+4. 前提: staging の Supabase に SQL 081・082・083 が入っていないと、Preview の集荷依頼の画面が読めない（081 の列）。
+   staging の DB への適用は別の承認（この手順の範囲の外）。
 
 ### 1-2. 本番の判定に要る設定
 - 「Automatically expose System Environment Variables」は **ON のまま（既定）**。本番は Vercel が入れる 3つ（`VERCEL=1`・`VERCEL_ENV=production`・
