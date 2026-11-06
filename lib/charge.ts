@@ -12,6 +12,16 @@ import { notifyBondEx } from "@/lib/notify"
 import { buildChargeInvoice } from "@/lib/invoice-build"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { grossOf } from "@/lib/tax"
+import {
+  chargeCountHoldEnabled,
+  chargeHoldDisposition,
+  markChargeOperatorReview,
+  claimChargeRight,
+  beginChargeAttempt,
+  revalidateChargeClaim,
+  settleChargeAttempt,
+  classifyStripeError,
+} from "@/lib/charge-hold"
 
 /**
  * 集荷完了時のカード課金 (海外/法人=Stripe 1件ごと課金モデル)。
@@ -124,6 +134,46 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       return { charged: false, error: msg }
     }
 
+    // P1-B2 課金保留 (既定 OFF)。ON のときだけ、Stripe 送信の直前に原子的な課金権を取得する。
+    // 実個数確認前の大口/重複 (held) は claimed=false で課金に進まない。保留判定は RPC 内で
+    // 集荷単位を "その場" 再集計するため、直前に別予約が足されて 20個 以上になっても取りこぼさない。
+    // さらに begin_charge_attempt で試行を in_flight にし、前回が結果不明 (reconciliation_required) /
+    // 送信中なら送らない = Stripe 冪等キーに加えて DB 側でも二重課金を止める。
+    //
+    // v3.4 段階導入: Global Flag ON でも、適用判定 (disposition) が legacy の leg は従来どおり即課金する
+    // (対象外代理店=従来動作)。混在集荷単位 (operator_review) は自動課金せず Operator 確認へ回す (scheme C)。
+    let claimOwner: string | null = null
+    if (chargeCountHoldEnabled()) {
+      const disposition = await chargeHoldDisposition(sb, shipmentId)
+      if (disposition === "operator_review") {
+        await markChargeOperatorReview(sb, shipmentId)
+        return { charged: false, skipped: true, reason: "hold:operator_review" }
+      }
+      if (disposition === "hold") {
+        claimOwner = `charge_${globalThis.crypto.randomUUID()}`
+        const claim = await claimChargeRight(sb, shipmentId, claimOwner)
+        if (!claim.claimed) {
+          return { charged: false, skipped: true, reason: `hold:${claim.reason}` }
+        }
+        const began = await beginChargeAttempt(sb, shipmentId, claimOwner, `charge_${shipmentId}`)
+        if (!began.ok) {
+          // 前回の試行が未確定 (in_flight/reconciliation_required) か既課金。新規送信しない。
+          return { charged: false, skipped: true, reason: `attempt:${began.reason}` }
+        }
+        // v3.2 §2: Stripe 送信の直前に集荷単位を再評価 (claim→送信の窓)。claim 後に別予約が足されて
+        // 単位が大口化していたら送信を中止する (DB 側で held へ戻し課金権/試行を解放済み)。
+        const reval = await revalidateChargeClaim(sb, shipmentId, claimOwner)
+        if (!reval.ok) {
+          if (!reval.reason.startsWith("unit_changed_hold")) {
+            // hold 以外の無効化 (lease切れ/owner不一致等) は in_flight を failed で掃除し再試行可に。
+            await settleChargeAttempt(sb, shipmentId, claimOwner, "failed", null, "revalidate", reval.reason)
+          }
+          return { charged: false, skipped: true, reason: `revalidate:${reval.reason}` }
+        }
+      }
+      // disposition === "legacy": 対象外=従来動作。claimOwner は null のまま、通常課金へ進む。
+    }
+
     // off_session で即時課金 (JPY はゼロ小数通貨なので amount = 円の額そのまま)
     try {
       const pi = await stripe.paymentIntents.create(
@@ -147,6 +197,10 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
 
       if (pi.status === "succeeded") {
         const rec = await recordShipmentCharge(shipmentId, pi.id, amountYen)
+        // 課金成立を試行台帳にも記録 (claim を保持したまま succeeded に)。charged_at は recordShipmentCharge が CAS。
+        if (chargeCountHoldEnabled() && claimOwner) {
+          await settleChargeAttempt(sb, shipmentId, claimOwner, "succeeded", pi.id, pi.status)
+        }
         if (!rec.ok) {
           // 課金成功なのに記録失敗 = 24時間後の再試行で二重課金になりうる最悪パターン。
           // 必ず人に届くアラートを飛ばす (2026-08-31 監査対応)。
@@ -184,11 +238,37 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
       // requires_action など (3DS 等) — off_session では完了できない
       const msg = `決済が完了しませんでした (status: ${pi.status})`
       await recordShipmentChargeError(shipmentId, msg)
+      if (chargeCountHoldEnabled() && claimOwner) {
+        // 既知の未成立ステータスは failed (再試行可)。processing 等の不確定は照合へ回す。
+        const terminalFail = ["requires_action", "requires_payment_method", "canceled"].includes(pi.status)
+        await settleChargeAttempt(
+          sb, shipmentId, claimOwner,
+          terminalFail ? "failed" : "reconciliation_required",
+          pi.id, pi.status,
+        )
+      }
       await notifyChargeFailure(shipment.booking_id, shipment.leg_index, agency.name, amountYen, msg, agency.contact_email)
       return { charged: false, error: msg, paymentIntentId: pi.id }
     } catch (err) {
-      // カード拒否・残高不足など
       const msg = err instanceof Error ? err.message : "Stripe charge failed"
+      // フラグ ON: 通信タイムアウト/Stripe障害 (結果不明) と、明確な失敗 (カード拒否等) を区別する。
+      if (chargeCountHoldEnabled() && claimOwner) {
+        const kind = classifyStripeError(err)
+        const etype = (err as { type?: string } | null)?.type ?? null
+        if (kind === "unknown") {
+          // 結果不明: 課金された可能性がある。claim/試行を保持し、照合まで新規課金を禁止 (reconciliation_required)。
+          await recordShipmentChargeError(shipmentId, `結果不明(要Stripe照合): ${msg}`)
+          await settleChargeAttempt(sb, shipmentId, claimOwner, "reconciliation_required", null, etype, msg)
+          await notifyChargeUnknown(shipment.booking_id, shipment.leg_index, agency.name, amountYen, msg)
+          return { charged: false, error: msg, reason: "reconciliation_required" }
+        }
+        // 明確な失敗: 課金は成立していない。claim を解放し再試行可。
+        await recordShipmentChargeError(shipmentId, msg)
+        await settleChargeAttempt(sb, shipmentId, claimOwner, "failed", null, etype, msg)
+        await notifyChargeFailure(shipment.booking_id, shipment.leg_index, agency.name, amountYen, msg, agency.contact_email)
+        return { charged: false, error: msg }
+      }
+      // フラグ OFF: 従来どおり (挙動不変)。
       await recordShipmentChargeError(shipmentId, msg)
       await notifyChargeFailure(shipment.booking_id, shipment.leg_index, agency.name, amountYen, msg, agency.contact_email)
       return { charged: false, error: msg }
@@ -341,4 +421,32 @@ async function notifyChargeFailure(
     agencyEmail: null,
   })
   void agencyEmail
+}
+
+/**
+ * Stripe の結果が不明 (通信タイムアウト/Stripe障害) のときのアラート。
+ * 「失敗」と断定せず、二重課金の恐れがあるため Stripe ダッシュボードで実際の課金有無を照合するよう促す。
+ * 照合して成立していれば reconcile_charge_attempt('succeeded') で charged_at を確定、
+ * 未成立なら reconcile_charge_attempt('failed') で解放する。
+ */
+async function notifyChargeUnknown(
+  bookingId: string,
+  legIndex: number,
+  agencyName: string,
+  amountYen: number,
+  reason: string,
+): Promise<void> {
+  await sendOpsAlert({
+    subject: `【要Stripe照合・結果不明】${bookingId}-L${legIndex + 1} (${agencyName})`,
+    lines: [
+      `予約: ${bookingId}-L${legIndex + 1} / 代理店: ${agencyName}`,
+      `金額: ¥${amountYen.toLocaleString()}`,
+      `理由: ${reason}`,
+      "⚠️ 通信タイムアウト等で Stripe の課金成否が不明です。課金された可能性があるため、",
+      "   この区間は照合が済むまで自動で再課金しません (reconciliation_required)。",
+      `→ Stripe ダッシュボードで PaymentIntent (冪等キー charge_${bookingId}… / 直近の該当顧客) を確認し、`,
+      "   成立していれば「成立として照合」、未成立なら「未成立として解放」の操作をしてください。",
+    ],
+    agencyEmail: null,
+  })
 }

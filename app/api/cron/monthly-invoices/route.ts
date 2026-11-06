@@ -4,6 +4,7 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
 import { buildMonthlyInvoice } from "@/lib/invoice-build"
 import { renderInvoiceEmail } from "@/lib/invoice-email"
 import { sendMail } from "@/lib/mailer"
+import { chargeCountHoldEnabled } from "@/lib/charge-hold"
 
 export const runtime = "nodejs"
 // 代理店数に比例して伸びる (1社あたり PDF 生成+メール1〜2通 ≒ 3〜6秒)。20社で120秒に達するため300に (2026-08-31)。
@@ -165,6 +166,8 @@ export async function GET(req: NextRequest) {
           month: targetMonth,
           invoice_no: built.invoiceNumber ?? null,
           sent_to: sentTo,
+          // P1-B2 v3.3: 既定 OFF。ON のとき status 列も prepared に (確認依頼=金額確定済)。OFF は従来と同一。
+          ...(chargeCountHoldEnabled() ? { status: "prepared" } : {}),
         })
         if (mark.error) console.error("[monthly-invoices] send marker failed:", mark.error.message)
       }
