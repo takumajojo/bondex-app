@@ -13,7 +13,9 @@ import { execFileSync } from "node:child_process"
 import { issueOperatorSession, OPERATOR_SESSION_COOKIE } from "@/lib/operator-session"
 import { checkB2cOutboxHealth, enqueueB2cReminders, processB2cOutbox, sandboxTransport, type B2cTransport, type SendOutcome } from "@/lib/b2c/notify"
 import type { OpsAlertInput } from "@/lib/ops-alert"
-import { D, T as shiftT } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
+import { D, T as shiftT } from "./dates/test-dates"
+/** 期待値の「MM-DD」（ずらした日付） */
+const MD = (ymd: string) => D(ymd).slice(5) // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -127,7 +129,7 @@ async function main() {
   isolate()
   bulk(B, "booking_confirmed", "email", "backlog:", 300, 180) // 3時間前から溜まっている
   const q = await enqueueB2cReminders(DAY_0830) // 当日のリマインド（P・B・C × メール・WhatsApp）
-  ok("当日のリマインドを積んだ（重要度 10・期限は集荷日の 11:00 JST）", q >= 6 && sql(`select priority || '|' || to_char(expires_at at time zone 'Asia/Tokyo','MM-DD HH24:MI') from b2c_outbox where dedupe_key='reminder_day:${P.id}:email'`) === "10|11-12 11:00", sql(`select priority || '|' || expires_at from b2c_outbox where dedupe_key='reminder_day:${P.id}:email'`))
+  ok("当日のリマインドを積んだ（重要度 10・期限は集荷日の 11:00 JST）", q >= 6 && sql(`select priority || '|' || to_char(expires_at at time zone 'Asia/Tokyo','MM-DD HH24:MI') from b2c_outbox where dedupe_key='reminder_day:${P.id}:email'`) === `10|${MD("2026-11-12")} 11:00`, sql(`select priority || '|' || expires_at from b2c_outbox where dedupe_key='reminder_day:${P.id}:email'`))
   ok("古い通知の方が予定の時刻は早い（古い順なら後ろに並ぶ状況）", sql(`select (select min(next_attempt_at) from b2c_outbox where dedupe_key like 'backlog:%') < (select next_attempt_at from b2c_outbox where dedupe_key='reminder_day:${P.id}:email')`) === "t")
   const slowOk = new FakeProvider({ email: true, whatsapp: false }, () => ({ ...OK, delayMs: 15 }))
   const r1 = await processB2cOutbox(slowOk.transport(), DAY_0830, { batch: 20, budgetMs: 700, alert })
@@ -267,7 +269,7 @@ async function main() {
   await processB2cOutbox(expP.transport(), at(shiftT("2026-11-11T15:30:00Z")), { alert }) // 集荷日の 00:30 JST
   ok("集荷日の 00:30 に残っていた前日のリマインドは送らない（「明日は集荷日」と誤って送らない）→ expired_before_send", st("exp-eve").startsWith("expired|0|expired_before_send"), st("exp-eve"))
   ins("exp-conf", "booking_confirmed"); ins("exp-day2", "reminder_day")
-  ok("期限: 前日のリマインド＝集荷日の 0:00・当日＝11:00・予約確定＝集荷日の 11:00（JST）", sql("select string_agg(dedupe_key || '=' || to_char(expires_at at time zone 'Asia/Tokyo','MM-DD HH24:MI'), ',' order by dedupe_key) from b2c_outbox where dedupe_key in ('exp-eve','exp-day2','exp-conf')") === "exp-conf=11-12 11:00,exp-day2=11-12 11:00,exp-eve=11-12 00:00")
+  ok("期限: 前日のリマインド＝集荷日の 0:00・当日＝11:00・予約確定＝集荷日の 11:00（JST）", sql("select string_agg(dedupe_key || '=' || to_char(expires_at at time zone 'Asia/Tokyo','MM-DD HH24:MI'), ',' order by dedupe_key) from b2c_outbox where dedupe_key in ('exp-eve','exp-day2','exp-conf')") === `exp-conf=${MD("2026-11-12")} 11:00,exp-day2=${MD("2026-11-12")} 11:00,exp-eve=${MD("2026-11-12")} 00:00`)
   await processB2cOutbox(expP.transport(), at(shiftT("2026-11-12T02:30:00Z")), { alert }) // 11:30 JST
   ok("集荷日の 11:30: 当日のリマインド・予約確定の通知は送らない（expired_before_send）", st("exp-conf").startsWith("expired|0|expired_before_send") && st("exp-day2").startsWith("expired|0|expired_before_send"), [st("exp-conf"), st("exp-day2")])
   ok("期限切れの行で送信を呼んだ回数は 0（前日のリマインドの 1回だけ）", expP.calls.length === 1)
