@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 本番移行のリハーサル (ローカルの PostgreSQL の試験専用データベースだけ。本番・Supabase には接続しない)。
+# 本番移行のリハーサル (2026-11-06: 080〜083 をチェックリストの順に足した。ローカルの PostgreSQL の試験専用データベースだけ。本番・Supabase には接続しない)。
 #   実行: bash scripts/test-integ/migration-rehearsal.sh
 # db-integration.sh (順番どおりに1つずつ確かめる) と違い、ここでは「本番と同じ形のデータ」と
 # 「移行の最中もアプリが動き続けている」状態で、手順書 (docs/bizlogi-b2c-integration-report-20261104.md 6章) を
@@ -96,6 +96,9 @@ eq "拡張後: ロック無効・記録の停止中・B2C の関数は 071 の�
 eq "既存データの分類 (受付済み21・要確認0・今後の未依頼は記録なし)" "21|0|0" "$(q -c "select count(*) from pickup_requests where state='accepted'")|$(q -c "select count(*) from pickup_requests where state='needs_review'")|$(q -c "select count(*) from pickup_requests r join shipments s on s.id=r.shipment_id where s.booking_id like 'FUT-%'")"
 eq "074 の B2C 区間の守りが入り、071 の版は上書きされない" "1|t" "$(q -c "select count(*) from pg_trigger where tgname='b2c_shipments_guard'")|$(q -c "select prosrc like '%pickup_cutoff_at%' from pg_proc where proname='b2c_confirm_order'")"
 eq "既存の変更申請3件は運営の訂正 (correction・applied) として残る" "3" "$(q -c "select count(*) from shipment_change_requests where kind='correction' and stage='applied'")"
+step "080・081・082・083 (チェックリスト 2-6e〜2-6h の順・アプリの切替の前)" sql/080_cron_heartbeats.sql sql/081_b2c_leg_prefecture.sql sql/082_b2c_charge_safety.sql sql/083_claim_pickup_guards.sql
+eq "081〜083 の後: 区間に origin_check_out・請求の確認は 082 の版 (同意・取消の申請中)・確保は 083 の版" "1|t|t|t|t" "$(q -c "select count(*) from information_schema.columns where table_name='shipments' and column_name='origin_check_out'")|$(q -c "select prosrc like '%no_card_consent%' from pg_proc where proname='b2c_charge_check'")|$(q -c "select prosrc like '%cancel_pending%' from pg_proc where proname='b2c_charge_check'")|$(q -c "select prosrc like '%open_change_exists%' from pg_proc where proname='claim_pickup_request'")|$(q -c "select prosrc like '%pickup_marked%' from pg_proc where proname='claim_pickup_request'")"
+eq "081〜083 の後も記録の停止とロックの無効は変わらない (072 の前)" "D|t" "$(q -c "select tgenabled from pg_trigger where tgname='shipments_pickup_lock'")|$(q -c "select claims_paused from pickup_request_settings")"
 
 echo "2. 手順3 (アプリ切替) の後 — 新しいアプリの操作"
 L=$(q -c "select id from shipments where booking_id='FUT-4'")
@@ -108,6 +111,7 @@ echo "3. 手順5 (072 ロック有効化と記録の再開) — 利用者の操�
 step "072" sql/072_enable_pickup_lock.sql
 step "070 (保存済みの締切を 18:30 に)" sql/070_change_deadline_1830.sql
 eq "移行の途中に入った予約・移行中の予約は「依頼済み」にならない (TODO の依頼が必要に出る)" "0" "$(q -c "select count(*) from pickup_requests r join shipments s on s.id=r.shipment_id where s.booking_id like 'MID-%' or s.booking_id like 'LIVE-%'")"
+eq "有効化の後: 処理中の変更申請がある区間は Biz-Logi で確保できない (083・B-14)" "false:open_change_exists" "$(q -c "select claimed||':'||reason from claim_pickup_request('$L','bizlogi','production','X',2,(select shipment_date from shipments where id='$L'),'op','op',null)")"
 eq "有効化の後は集荷依頼を記録できる" "t" "$(q -c "select claimed from claim_pickup_request('$L','manual',null,null,2,(select shipment_date from shipments where id='$L'),'op','op',null)")"
 eq "今後の未依頼区間の締切は 18:30 (過去の区間は変えない)" "18:30|0" "$(q -c "select distinct to_char(change_deadline_at at time zone 'Asia/Tokyo','HH24:MI') from shipments where booking_id like 'FUT-%'")|$(q -c "select count(*) from shipments where booking_id like 'PAST-%' and change_deadline_at is not null")"
 
@@ -117,7 +121,8 @@ step "全体の切り戻し (rollback_067_072)" sql/rollback/rollback_067_072.sq
 eq "切り戻し後: 区間の締切は元の値、移行で作った記録はバックアップに残る" "18:00|22" "$(q -c "select distinct to_char(change_deadline_at at time zone 'Asia/Tokyo','HH24:MI') from shipments where booking_id like 'FUT-%'")|$(q -c "select count(*) from pickup_requests_rollback_backup")"
 
 echo "5. 再適用 (手順2〜6 をもう一度)"
-step "再適用" sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/077_operator_email_code_attempts.sql sql/078_pickup_customer_numbering.sql sql/079_b2c_legal_versions.sql sql/072_enable_pickup_lock.sql sql/070_change_deadline_1830.sql
+step "再適用" sql/067_pickup_requests.sql sql/069_facilities.sql sql/068_change_requests_pickup_lock.sql sql/061_b2c_mvp.sql sql/062_b2c_stage4.sql sql/073_b2c_outbox_hardening.sql sql/071_b2c_cutoff_1830.sql sql/074_b2c_stage5_payments.sql sql/075_pickup_watch_alerts.sql sql/076_agency_change_atomic.sql sql/077_operator_email_code_attempts.sql sql/078_pickup_customer_numbering.sql sql/079_b2c_legal_versions.sql sql/080_cron_heartbeats.sql sql/081_b2c_leg_prefecture.sql sql/082_b2c_charge_safety.sql sql/083_claim_pickup_guards.sql sql/072_enable_pickup_lock.sql sql/070_change_deadline_1830.sql
+eq "再適用後: 確保は 083 の版・請求の確認は 082 の版" "t|t" "$(q -c "select prosrc like '%open_change_exists%' from pg_proc where proname='claim_pickup_request'")|$(q -c "select prosrc like '%cancel_pending%' from pg_proc where proname='b2c_charge_check'")"
 eq "再適用後: ロック有効・記録の再開・移行の記録は作り直し (受付済み21)" "O|f|21" "$(q -c "select tgenabled from pg_trigger where tgname='shipments_pickup_lock'")|$(q -c "select claims_paused from pickup_request_settings")|$(q -c "select count(*) from pickup_requests where state='accepted' and requested_by='migration-062'")"
 
 touch "$STOP"; wait $TPID
