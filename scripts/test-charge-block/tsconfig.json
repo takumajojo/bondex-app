@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/lib/shipments-db": ["scripts/test-charge-block/fakes/shipments-db.ts"],
+      "@/lib/supabase": ["scripts/test-charge-block/fakes/supabase.ts"],
+      "@/lib/ops-alert": ["scripts/test-charge-block/fakes/side-effects.ts"],
+      "@/lib/mailer": ["scripts/test-charge-block/fakes/side-effects.ts"],
+      "@/lib/notify": ["scripts/test-charge-block/fakes/side-effects.ts"],
+      "@/lib/invoice-build": ["scripts/test-charge-block/fakes/side-effects.ts"],
+      "stripe": ["scripts/test-charge-block/fakes/stripe.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}

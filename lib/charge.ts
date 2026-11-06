@@ -44,7 +44,29 @@ export interface ChargeResult {
   error?: string
 }
 
+/**
+ * 自動課金を止める区間 (shipments.id) — 環境変数 CHARGE_BLOCKED_SHIPMENT_IDS (カンマ区切り)。
+ * 運営が Stripe 管理画面で決済リンクを手動発行した区間など、リンク払いの入金を照合するまで
+ * off-session 課金をしてはならない区間に使う (2026-11-06 BDX-9K4NGJ-L1: インド発行カードで失敗 → 手動リンク送付済み)。
+ * カードを差し替えられても、どの経路 (追跡同期・リコンサイル・手動ステータス変更・再試行) から呼ばれても止まる。
+ * DB を触らずに止め、外すのは環境変数から消して再デプロイするだけ。
+ */
+export function isChargeBlocked(shipmentId: string, raw = process.env.CHARGE_BLOCKED_SHIPMENT_IDS): boolean {
+  if (!raw) return false
+  const id = shipmentId.trim().toLowerCase()
+  if (!id) return false
+  return raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .some((s) => s === id)
+}
+
 export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeResult> {
+  // --- 手動回収中の区間: 他のどの条件よりも先に止める (Stripe にも DB にも触れない) ---
+  if (isChargeBlocked(shipmentId)) {
+    return { charged: false, skipped: true, reason: "blocked_manual_recovery" }
+  }
+
   // --- 安全ゲート: フラグとキーが揃うまで課金しない ---
   const live = process.env.STRIPE_CHARGE_LIVE === "true"
   const secret = process.env.STRIPE_SECRET_KEY
