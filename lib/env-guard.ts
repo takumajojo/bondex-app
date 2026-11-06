@@ -101,6 +101,17 @@ export function stagingGuardViolations(env: Env = process.env): string[] {
   return v
 }
 
+/**
+ * Vercel の Preview・Development の配置か (Vercel が自動で入れる VERCEL_ENV で判定する。手元の npm run dev・試験は対象外)。
+ * Preview にも本番の Supabase・Stripe・Ship&co・メールの鍵が入っているため (2026-11-06 の環境変数の名前の一覧)、
+ * 機能のスイッチ (STRIPE_CHARGE_LIVE・SHIPANDCO_LIVE・BIZLOGI_LIVE・AUTO_ISSUE_ENABLED) が ON でも、
+ * Preview・Development からは外への実際の処理 (請求・送り状の発行・佐川への依頼・メールの送信) をしない。
+ * staging (BONDEX_ENV=staging) の守りは stagingGuardViolations が別に行う。
+ */
+export function isNonProductionDeployment(env: Env = process.env): boolean {
+  return env.VERCEL_ENV === "preview" || env.VERCEL_ENV === "development"
+}
+
 /** 違反があれば止める（エラーの文には変数の名前と理由だけを出す）。 */
 export function assertEnvironmentSafe(env: Env = process.env): void {
   const v = stagingGuardViolations(env)

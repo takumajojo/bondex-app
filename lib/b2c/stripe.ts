@@ -6,7 +6,7 @@
  * - 通信の再試行は Stripe の SDK に任せる（同じ冪等キーで送り直す）。
  */
 import Stripe from "stripe"
-import { assertEnvironmentSafe } from "@/lib/env-guard"
+import { assertEnvironmentSafe, isNonProductionDeployment } from "@/lib/env-guard"
 
 export type B2cStripeUnavailable = "not_configured" | "live_key_blocked"
 
@@ -23,6 +23,8 @@ export function b2cStripeConfig(): { ok: true; config: B2cStripeConfig } | { ok:
   if (!secret || !publishableKey) return { ok: false, reason: "not_configured" }
   const live = /^(sk|rk)_live_/.test(secret) || publishableKey.startsWith("pk_live_")
   if (live && process.env.B2C_STRIPE_ALLOW_LIVE !== "true") return { ok: false, reason: "live_key_blocked" }
+  // Vercel の Preview・Development では、許可があっても本番の鍵を使わない (lib/env-guard.ts)
+  if (live && isNonProductionDeployment()) return { ok: false, reason: "live_key_blocked" }
   return {
     ok: true,
     config: { stripe: new Stripe(secret, { maxNetworkRetries: 2 }), publishableKey, mode: live ? "live" : "test" },

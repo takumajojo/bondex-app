@@ -1,3 +1,4 @@
+import { isNonProductionDeployment } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { rateLimit } from "@/lib/rate-limit"
@@ -908,7 +909,8 @@ export async function POST(req: NextRequest) {
   // 本番発行スイッチ (fail-safe): 環境変数 SHIPANDCO_LIVE が厳密に "true" のときだけ
   // 実ラベル (課金・実集荷・取消不可) を発行する。未設定・空・タイプミス等は必ずテスト扱い。
   // 本番化は Vercel で SHIPANDCO_LIVE=true を設定 → 再デプロイ。戻すときは削除/false。
-  const isLive = process.env.SHIPANDCO_LIVE === "true"
+  // Vercel の Preview・Development からは実ラベルを作らない (本番の鍵が入っていても・lib/env-guard.ts)
+  const isLive = process.env.SHIPANDCO_LIVE === "true" && !isNonProductionDeployment()
   console.log(`[shipandco/create] mode=${isLive ? "LIVE(本番・実ラベル)" : "TEST(テスト)"} carrier=${carrier.id} ref=${refNumberWithDate}`)
 
   const payload = {

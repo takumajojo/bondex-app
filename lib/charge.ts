@@ -1,3 +1,4 @@
+import { isNonProductionDeployment } from "@/lib/env-guard"
 import Stripe from "stripe"
 import { getSupabase } from "@/lib/supabase"
 import {
@@ -51,6 +52,10 @@ export async function chargeShipmentIfDue(shipmentId: string): Promise<ChargeRes
   const secret = process.env.STRIPE_SECRET_KEY
   if (!live || !secret) {
     return { charged: false, skipped: true, reason: "disabled" }
+  }
+  // Vercel の Preview・Development からは請求しない (本番の鍵が入っていても・lib/env-guard.ts)
+  if (isNonProductionDeployment()) {
+    return { charged: false, skipped: true, reason: "non_production_deployment" }
   }
 
   try {

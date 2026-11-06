@@ -1,3 +1,5 @@
+import { isNonProductionDeployment } from "@/lib/env-guard"
+
 /**
  * 送り状 (伝票) を BondEx 側で発行するかどうかの単一スイッチ。
  *
@@ -11,7 +13,8 @@
  * 運用画面からの手動発行 (/api/shipandco/create) はこのスイッチの対象外 (必要時の逃げ道)。
  */
 export function waybillIssuanceEnabled(): boolean {
-  return process.env.AUTO_ISSUE_ENABLED === "true"
+  // Vercel の Preview・Development からは自動の発行をしない (lib/env-guard.ts)
+  return process.env.AUTO_ISSUE_ENABLED === "true" && !isNonProductionDeployment()
 }
 
 /**
