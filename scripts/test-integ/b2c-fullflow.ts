@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process"
 import { issueOperatorSession, OPERATOR_SESSION_COOKIE } from "@/lib/operator-session"
 import { enqueueB2cReminders, processB2cOutbox, sandboxTransport } from "@/lib/b2c/notify"
 import { runB2cCharges } from "@/lib/b2c/charge-service"
+import { D, T } from "../test-b2c/dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3216"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -45,14 +46,14 @@ async function main() {
   const TOKYO = await place("Keio Plaza Hotel Tokyo"), NAHA = await place("Hotel Collective Naha"), KYOTO = await place("Hotel Granvia Kyoto")
   sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${TOKYO}', 'Keio Plaza Hotel Tokyo', 'verified', 'e2e@example.invalid', now()), ('${KYOTO}', 'Hotel Granvia Kyoto', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   sql(`insert into b2c_facilities(place_id, name, status) values ('${NAHA}', 'Hotel Collective Naha', 'unknown') on conflict (place_id) do update set status='unknown', checked_by=null, last_verified_at=null`)
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-25'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('${D("2026-11-04")}'::date, '${D("2026-11-25")}'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-stage6-0000000001', '\\x00', 'ops-stage6@example.invalid') on conflict do nothing")
   const op = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession("e2e-cred-stage6-0000000001")}` }
 
   console.log("F01 予約（日本語）→ 未確認のホテル → カード登録 → ホテル確認待ち（確定しない・集荷依頼の対象にならない）")
-  const quote = (await http("POST", "/api/b2c/quote", { token: TOK, originPlaceId: TOKYO, destPlaceId: NAHA, origin: { checkIn: "2026-11-14", checkOut: "2026-11-16" }, dest: { checkIn: "2026-11-16", checkOut: "2026-11-20" }, pieces: 2 })).json
-  const delivery = (quote.options as Array<{ pickupDate: string; earliestDelivery: string }>).find((o) => o.pickupDate === "2026-11-16")!.earliestDelivery
-  const d = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: NAHA, origin: { checkIn: "2026-11-14", checkOut: "2026-11-16" }, dest: { checkIn: "2026-11-16", checkOut: "2026-11-20" }, pieces: 2, pickupDate: "2026-11-16", deliveryDate: delivery, name: "通し 花子", email: "fullflow@example.invalid", whatsapp: "+81 90 1234 5678", language: "ja", consent: true })
+  const quote = (await http("POST", "/api/b2c/quote", { token: TOK, originPlaceId: TOKYO, destPlaceId: NAHA, origin: { checkIn: D("2026-11-14"), checkOut: D("2026-11-16") }, dest: { checkIn: D("2026-11-16"), checkOut: D("2026-11-20") }, pieces: 2 })).json
+  const delivery = (quote.options as Array<{ pickupDate: string; earliestDelivery: string }>).find((o) => o.pickupDate === D("2026-11-16"))!.earliestDelivery
+  const d = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: NAHA, origin: { checkIn: D("2026-11-14"), checkOut: D("2026-11-16") }, dest: { checkIn: D("2026-11-16"), checkOut: D("2026-11-20") }, pieces: 2, pickupDate: D("2026-11-16"), deliveryDate: delivery, name: "通し 花子", email: "fullflow@example.invalid", whatsapp: "+81 90 1234 5678", language: "ja", consent: true })
   ok("予約の下書き 200", d.status === 200, d.json)
   const n = d.json.orderNumber as number, token = d.json.accessToken as string
   const id = sql(`select id from b2c_orders where order_number=${n}`)
@@ -86,10 +87,10 @@ async function main() {
   ok("取消申請の取り下げ（運営の変更申請の操作）→ 予約は確定のまま", wd.status === 200 && sql(`select status from b2c_orders where id='${id}'`) === "confirmed", [wd.status, wd.json])
 
   console.log("F04 前日・当日のリマインド（集荷依頼済み・確定のまま）")
-  await enqueueB2cReminders(new Date("2026-11-15T09:30:00Z")) // 11/15 18:30 JST
-  await processB2cOutbox(sandboxTransport, new Date("2026-11-15T09:31:00Z"))
-  await enqueueB2cReminders(new Date("2026-11-15T23:30:00Z")) // 11/16 08:30 JST
-  await processB2cOutbox(sandboxTransport, new Date("2026-11-15T23:31:00Z"))
+  await enqueueB2cReminders(new Date(T("2026-11-15T09:30:00Z"))) // 11/15 18:30 JST
+  await processB2cOutbox(sandboxTransport, new Date(T("2026-11-15T09:31:00Z")))
+  await enqueueB2cReminders(new Date(T("2026-11-15T23:30:00Z"))) // 11/16 08:30 JST
+  await processB2cOutbox(sandboxTransport, new Date(T("2026-11-15T23:31:00Z")))
   ok("前日・当日のリマインドを送信（sandbox）", sql(`select string_agg(kind || ':' || status, ',' order by kind) from b2c_outbox where order_id='${id}' and channel='email' and kind like 'reminder%'`) === "reminder_day:sent,reminder_eve:sent")
 
   console.log("F05 集荷の確認（運営・佐川の正式な個数）→ 30分は請求しない → 30分の後に 1回だけ請求")

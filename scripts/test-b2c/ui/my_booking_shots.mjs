@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import Stripe from "stripe"
 import { launch } from "./cdp.mjs"
+import { D } from "../dates/test-dates.mjs" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 if (!/^http:\/\/(localhost|127\.0\.0\.1):/.test(BASE)) throw new Error("refusing: local only")
@@ -21,19 +22,19 @@ const place = async (q) => (await post("/api/b2c/places", { token: TOK, query: q
 const tk = await place("Keio Plaza Hotel Tokyo"), ky = await place("Hotel Granvia Kyoto"), nh = await place("Hotel Collective Naha")
 for (const [pid, nm] of [[tk, "Keio Plaza Hotel Tokyo"], [ky, "Hotel Granvia Kyoto"]]) sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
 sql(`insert into b2c_facilities(place_id, name, status) values ('${nh}', 'Hotel Collective Naha', 'unknown') on conflict (place_id) do update set status='unknown', checked_by=null, last_verified_at=null`)
-const STAY = { origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" } }
+const STAY = { origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") } }
 async function booked(lang, dest, delivery, name) {
-  const d = await post("/api/b2c/orders", { token: TOK, originPlaceId: tk, destPlaceId: dest, ...STAY, pieces: 2, pickupDate: "2026-11-10", deliveryDate: delivery, name, email: "guest@example.invalid", whatsapp: "+81 90 1234 5678", language: lang, consent: true })
+  const d = await post("/api/b2c/orders", { token: TOK, originPlaceId: tk, destPlaceId: dest, ...STAY, pieces: 2, pickupDate: D("2026-11-10"), deliveryDate: delivery, name, email: "guest@example.invalid", whatsapp: "+81 90 1234 5678", language: lang, consent: true })
   const s = await post("/api/b2c/card/start", { token: TOK, orderNumber: d.orderNumber, accessToken: d.accessToken, cardConsent: true })
   await stripe.setupIntents.confirm(s.clientSecret.split("_secret_")[0], { payment_method: "pm_card_visa" })
   await post("/api/b2c/card/status", { token: TOK, orderNumber: d.orderNumber, accessToken: d.accessToken })
   return d
 }
 const naDelivery = (await post("/api/b2c/quote", { token: TOK, originPlaceId: tk, destPlaceId: nh, ...STAY, pieces: 2 })).options[0].earliestDelivery
-const ja = await booked("ja", ky, "2026-11-12", "山田 花子")
-const en = await booked("en", ky, "2026-11-12", "Emma Smith")
+const ja = await booked("ja", ky, D("2026-11-12"), "山田 花子")
+const en = await booked("en", ky, D("2026-11-12"), "Emma Smith")
 const wait = await booked("en", nh, naDelivery, "Liam Brown")
-const cxl = await booked("ja", ky, "2026-11-13", "鈴木 一郎")
+const cxl = await booked("ja", ky, D("2026-11-13"), "鈴木 一郎")
 await post("/api/b2c/my/cancel", { token: cxl.accessToken })
 
 const b = await launch({ port: 9450 })

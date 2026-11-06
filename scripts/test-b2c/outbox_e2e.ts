@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process"
 import { issueOperatorSession, OPERATOR_SESSION_COOKIE } from "@/lib/operator-session"
 import { checkB2cOutboxHealth, enqueueB2cReminders, processB2cOutbox, sandboxTransport, type B2cTransport, type SendOutcome } from "@/lib/b2c/notify"
 import type { OpsAlertInput } from "@/lib/ops-alert"
+import { D, T } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -87,10 +88,10 @@ const plus = (d: Date, min: number) => new Date(d.getTime() + min * 60_000)
 const restoreGrants = () => sql("grant select, insert, update, delete on public.b2c_outbox to service_role")
 
 let TOKYO = "", KYOTO = ""
-const STAY = { origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" } }
+const STAY = { origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") } }
 interface Ord { n: number; token: string; id: string }
 async function order(lang: "ja" | "en", name: string): Promise<Ord> {
-  const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces: 2, pickupDate: "2026-11-12", deliveryDate: "2026-11-14", name, email: `${lang}-outbox@example.invalid`, whatsapp: lang === "ja" ? "+81 90 1234 5678" : "+44 7700 900123", language: lang, consent: true })
+  const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces: 2, pickupDate: D("2026-11-12"), deliveryDate: D("2026-11-14"), name, email: `${lang}-outbox@example.invalid`, whatsapp: lang === "ja" ? "+81 90 1234 5678" : "+44 7700 900123", language: lang, consent: true })
   if (r.status !== 200) throw new Error(`draft ${r.status} ${r.text.slice(0, 200)}`)
   const o = { n: r.json.orderNumber as number, token: r.json.accessToken as string, id: sql(`select id from b2c_orders where order_number=${r.json.orderNumber}`) }
   const s = await http("POST", "/api/b2c/card/start", { token: TOK, orderNumber: o.n, accessToken: o.token, cardConsent: true })
@@ -112,15 +113,15 @@ async function main() {
   for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
     sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   }
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-20'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('${D("2026-11-04")}'::date, '${D("2026-11-20")}'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-0000000000000002', '\\x00', 'ops-outbox@example.invalid') on conflict do nothing")
   const P = await order("ja", "集荷 花子"), B = await order("en", "Backlog Smith"), C = await order("ja", "障害 次郎")
   await processB2cOutbox(sandboxTransport, new Date(), { alert })
 
   // 集荷日 11/12（JST）。前日 11/11・当日 11/12 の時刻を指定して動かす
-  const DAY_0830 = at("2026-11-11T23:30:00Z") // 11/12 08:30 JST
-  const EVE_1830 = at("2026-11-11T09:30:00Z") // 11/11 18:30 JST
-  const NOON_BEFORE = at("2026-11-11T03:00:00Z") // 11/11 12:00 JST
+  const DAY_0830 = at(T("2026-11-11T23:30:00Z")) // 11/12 08:30 JST
+  const EVE_1830 = at(T("2026-11-11T09:30:00Z")) // 11/11 18:30 JST
+  const NOON_BEFORE = at(T("2026-11-11T03:00:00Z")) // 11/11 12:00 JST
 
   console.log("O01 重要度と期限: 古い通常の通知 300件が溜まっていても、当日のリマインドが先に送られる")
   isolate()
@@ -263,11 +264,11 @@ async function main() {
   ok("前日 18:30: 前日のリマインドは送信", st("ok-eve").startsWith("sent|1"))
   ok("当日のリマインドを前日に送らない（日付が違う → expired・not_eligible:date_mismatch）", st("exp-day").startsWith("expired|0|not_eligible:date_mismatch"), st("exp-day"))
   ins("exp-eve", "reminder_eve")
-  await processB2cOutbox(expP.transport(), at("2026-11-11T15:30:00Z"), { alert }) // 集荷日の 00:30 JST
+  await processB2cOutbox(expP.transport(), at(T("2026-11-11T15:30:00Z")), { alert }) // 集荷日の 00:30 JST
   ok("集荷日の 00:30 に残っていた前日のリマインドは送らない（「明日は集荷日」と誤って送らない）→ expired_before_send", st("exp-eve").startsWith("expired|0|expired_before_send"), st("exp-eve"))
   ins("exp-conf", "booking_confirmed"); ins("exp-day2", "reminder_day")
   ok("期限: 前日のリマインド＝集荷日の 0:00・当日＝11:00・予約確定＝集荷日の 11:00（JST）", sql("select string_agg(dedupe_key || '=' || to_char(expires_at at time zone 'Asia/Tokyo','MM-DD HH24:MI'), ',' order by dedupe_key) from b2c_outbox where dedupe_key in ('exp-eve','exp-day2','exp-conf')") === "exp-conf=11-12 11:00,exp-day2=11-12 11:00,exp-eve=11-12 00:00")
-  await processB2cOutbox(expP.transport(), at("2026-11-12T02:30:00Z"), { alert }) // 11:30 JST
+  await processB2cOutbox(expP.transport(), at(T("2026-11-12T02:30:00Z")), { alert }) // 11:30 JST
   ok("集荷日の 11:30: 当日のリマインド・予約確定の通知は送らない（expired_before_send）", st("exp-conf").startsWith("expired|0|expired_before_send") && st("exp-day2").startsWith("expired|0|expired_before_send"), [st("exp-conf"), st("exp-day2")])
   ok("期限切れの行で送信を呼んだ回数は 0（前日のリマインドの 1回だけ）", expP.calls.length === 1)
   ok("期限切れは運営に知らせる", alerts.some((a) => a.lines.join("\n").includes("expired（")), alerts.map((a) => a.subject))

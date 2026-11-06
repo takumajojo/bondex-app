@@ -11,6 +11,7 @@
 import Stripe from "stripe"
 import { execFileSync } from "node:child_process"
 import { NextRequest } from "next/server"
+import { D } from "../test-b2c/dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3218"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -115,15 +116,15 @@ async function main() {
   const place = async (q: string) => (await http("POST", "/api/b2c/places", { token: TOK, query: q, lang: "en" })).json.candidates[0].placeId as string
   const TOKYO = await place("Keio Plaza Hotel Tokyo"), KYOTO = await place("Hotel Granvia Kyoto")
   sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${TOKYO}', 'Keio Plaza Hotel Tokyo', 'verified', 'e2e@example.invalid', now()), ('${KYOTO}', 'Hotel Granvia Kyoto', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-30'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('${D("2026-11-04")}'::date, '${D("2026-11-30")}'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-b1-000000000001', '\\x00', 'ops-b1@example.invalid') on conflict do nothing")
   const op = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession("e2e-cred-b1-000000000001")}` }
   opCookieHeader = op.cookie
 
-  const STAY = { origin: { checkIn: "2026-11-15", checkOut: "2026-11-17" }, dest: { checkIn: "2026-11-17", checkOut: "2026-11-21" } }
+  const STAY = { origin: { checkIn: D("2026-11-15"), checkOut: D("2026-11-17") }, dest: { checkIn: D("2026-11-17"), checkOut: D("2026-11-21") } }
   async function book(lang: "ja" | "en", pieces = 2) {
     const quote = (await http("POST", "/api/b2c/quote", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces })).json
-    const opt = (quote.options as Array<{ pickupDate: string; earliestDelivery: string; confirmationMode: string }>).find((o) => o.pickupDate === "2026-11-17")!
+    const opt = (quote.options as Array<{ pickupDate: string; earliestDelivery: string; confirmationMode: string }>).find((o) => o.pickupDate === D("2026-11-17"))!
     const d = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces, pickupDate: opt.pickupDate, deliveryDate: opt.earliestDelivery, name: "B1 Test", email: "b1-e2e@example.invalid", whatsapp: "+81 90 1234 5678", language: lang, consent: true })
     const n = d.json.orderNumber as number, token = d.json.accessToken as string
     const id = sql(`select id from b2c_orders where order_number=${n}`)
@@ -137,7 +138,7 @@ async function main() {
 
   console.log("B01 予約（英語）→ 規約の同意の記録（予約の画面）")
   const a = await book("en")
-  ok("同意なしの予約は 422 consent_required", (await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces: 2, pickupDate: "2026-11-17", deliveryDate: "2026-11-18", name: "x", email: "x@example.invalid", whatsapp: "+81 90 1234 5678", language: "en", consent: false })).json?.errors?.includes("consent_required"))
+  ok("同意なしの予約は 422 consent_required", (await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces: 2, pickupDate: D("2026-11-17"), deliveryDate: D("2026-11-18"), name: "x", email: "x@example.invalid", whatsapp: "+81 90 1234 5678", language: "en", consent: false })).json?.errors?.includes("consent_required"))
   ok("下書き 200・確認済みのホテルは即時確定の予定", a.d.status === 200 && a.mode === "instant", a.d.json)
   ok("予約の時: 規約の版・言語・日時を記録（カードの同意はまだ無い）", sql(`select terms_version||'|'||terms_lang||'|'||(terms_consented_at is not null)||'|'||coalesce(card_consent_version,'-') from b2c_orders where id='${a.id}'`) === "2026-11-phase1a-draft|en|true|-")
 
@@ -155,7 +156,7 @@ async function main() {
   const reqA = sql(`select channel||'|'||state||'|'||coalesce(shipping_number,'') from pickup_requests where shipment_id='${shipA}' and state<>'void' order by created_at desc limit 1`)
   ok("集荷依頼の記録: bizlogi・accepted・問い合わせ番号あり", /^bizlogi\|accepted\|\d{12}$/.test(reqA), reqA)
   // サイズの区分（weight1）は運営の集荷依頼の経路では送らない（lib/pickup-request/leg-input.ts の weight: null）
-  ok("送った電文: 個数 2・集荷日 2026-11-17・サイズの区分は送らない", tag(mock.lastIssueXml, "haisoKosu") === "2" && tag(mock.lastIssueXml, "shukaIraiShiteiDate").replace(/\D/g, "") === "20261117" && !mock.lastIssueXml.includes("<weight1>"), [tag(mock.lastIssueXml, "haisoKosu"), tag(mock.lastIssueXml, "shukaIraiShiteiDate"), tag(mock.lastIssueXml, "weight1")])
+  ok("送った電文: 個数 2・集荷日 2026-11-17・サイズの区分は送らない", tag(mock.lastIssueXml, "haisoKosu") === "2" && tag(mock.lastIssueXml, "shukaIraiShiteiDate").replace(/\D/g, "") === D("2026-11-17").replace(/-/g, "") && !mock.lastIssueXml.includes("<weight1>"), [tag(mock.lastIssueXml, "haisoKosu"), tag(mock.lastIssueXml, "shukaIraiShiteiDate"), tag(mock.lastIssueXml, "weight1")])
   const again = await bizlogiSend(shipA)
   ok("同じ区間に二度目は送れない（発行 1回のまま）", mock.issues === 1 && again.send?.body?.outcome !== "accepted", [mock.issues, again.pv.body?.error ?? again.send?.body])
   const num = reqA.split("|")[2]
@@ -212,7 +213,7 @@ async function main() {
   ok("集荷の確認が無い予約: 請求の行 0・PaymentIntent 0", sql(`select count(*) from b2c_payments where order_id='${c.id}'`) === "0" && (await stripe.paymentIntents.list({ customer: sql(`select stripe_customer_id from b2c_orders where id='${c.id}'`) })).data.length === 0)
   ok("集荷依頼の後は区間の日付を直接は変えられない（DB のロック・変更申請から）", (() => { try { sql(`update shipments set shipment_date=current_date where id='${shipC}'`); return false } catch { return true } })())
   // 集荷日（2026-11-17）を「今日」とした時の、未集荷のアラートの条件（lib/shipments-db.ts listPickupMisses と同じ）
-  ok("集荷日になって集荷の確認が無い区間は、未集荷のアラートの対象", sql(`select count(*) from shipments where id='${shipC}' and status in ('requested','pending','issued') and shipment_date <= date '2026-11-17' and pickup_alert_sent_at is null`) === "1")
+  ok("集荷日になって集荷の確認が無い区間は、未集荷のアラートの対象", sql(`select count(*) from shipments where id='${shipC}' and status in ('requested','pending','issued') and shipment_date <= date '${D("2026-11-17")}' and pickup_alert_sent_at is null`) === "1")
 
   console.log("B07 B2C の受付を止めても既存の予約は動く（同じ処理の中・スイッチ OFF）")
   const saved = { b: process.env.B2C_BOOKING_ENABLED }
