@@ -2061,6 +2061,29 @@ async function previewAndSend(id: string, actor = "谷口", overrides?: unknown)
     assert.equal(mock.issues, i0)
     assert.equal((await reqs(leg))[0].state, "unknown")
   })
+  await test("監査 T-02 結果不明 → 佐川に確かめて「依頼なし」(メモ付き) → もう一度送ると発行は1回だけ (本物の DB 関数で)", async () => {
+    const leg = await newLeg()
+    mock.mode = "issue-network-error"
+    await previewAndSend(leg, "担当A")
+    mock.mode = "ok"
+    const r0 = (await reqs(leg))[0]
+    assert.equal(r0.state, "unknown")
+    const i0 = mock.issues
+    assert.notEqual((await pv(leg)).body.ok, true, "結果不明の間は確認画面も止まる")
+    assert.equal(mock.issues, i0, "結果不明の間は佐川へ何も送らない")
+    const res = await call("POST", "/api/operator/pickup-request", { action: "resolve", requestId: r0.id, resolveAction: "confirm_none", actor: "担当A", note: "世田谷営業所に電話で確認・依頼なし" })
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+    const afterNone = await reqs(leg)
+    assert.ok(afterNone.every((r: { state: string }) => !["sending", "accepted", "unknown", "needs_review", "change_pending"].includes(r.state)), "有効な依頼は残らない")
+    assert.ok(String(afterNone[0].note ?? "").includes("依頼なし"), "確かめた内容のメモが残る")
+    const again = await previewAndSend(leg, "担当A")
+    assert.equal(again.send?.status, 200, JSON.stringify(again.send?.body))
+    assert.equal(mock.issues, i0 + 1, "発行は1回だけ")
+    for (let k = 0; k < 2; k++) assert.equal((await sendWith(leg, again.pv.body.fingerprint, { actor: "担当A" })).status, 409, "受付の後の送信は止まる")
+    assert.equal(mock.issues, i0 + 1)
+    const live = (await reqs(leg)).filter((r: { state: string }) => r.state === "accepted")
+    assert.equal(live.length, 1, "受付済みは1件")
+  })
   await test("監査 A2-8 [未対策 P2] 結果不明を受付済みにするとき、別の区間で使っている問合番号でも記録できてしまう (システム採番)", async () => {
     const legX = await newLeg()
     const sx = await previewAndSend(legX)

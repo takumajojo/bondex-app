@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
+import { getSupabase } from "@/lib/supabase"
 import { b2cStripeConfig } from "@/lib/b2c/stripe"
 import { expireStaleCardPending } from "@/lib/b2c/card-service"
 import { b2cNotifyLive, b2cOpsAlert, enqueueB2cReminders, expireB2cConfirmationTimeouts, processB2cOutbox } from "@/lib/b2c/notify"
@@ -29,6 +30,9 @@ export async function POST(req: NextRequest) {
   if (!secret) return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 })
   if (req.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   if (process.env.B2C_SCHEDULER_ENABLED !== "true") return NextResponse.json({ ok: true, skipped: "scheduler disabled" })
+  // DB に接続できない設定のまま「成功 (200)」を返さない。各段階は DB が無いと 0件として通るため、
+  // pg_cron・見張りの側で失敗として見えるように 503 にする (2026-11-06 監査 B-07)
+  if (!getSupabase()) return NextResponse.json({ ok: false, error: "db_unavailable" }, { status: 503 })
   const lock = await acquireCronLock("b2c-tick")
   if (!lock.ok) return NextResponse.json({ ok: true, skipped: "already running" })
   const errors: string[] = []
