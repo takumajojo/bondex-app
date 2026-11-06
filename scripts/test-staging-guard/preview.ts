@@ -58,13 +58,14 @@ const FAKE_LIVE_PK = ["pk", "live", "testonlynotarealkey000000"].join("_")
     const stg = { VERCEL_ENV: target, NEXT_PUBLIC_SUPABASE_URL: `https://${guard.STAGING_SUPABASE_REF}.supabase.co`, SUPABASE_SERVICE_ROLE_KEY: fakeJwt(guard.STAGING_SUPABASE_REF) }
     check(`${target}: 試験環境の Supabase なら止めない`, guard.previewDatabaseViolations(stg).length === 0)
   }
-  const prodEnv = { VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: `https://${guard.PROD_SUPABASE_REF}.supabase.co`, SUPABASE_SERVICE_ROLE_KEY: fakeJwt(guard.PROD_SUPABASE_REF) }
+  const prodEnv = { VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app", NEXT_PUBLIC_SUPABASE_URL: `https://${guard.PROD_SUPABASE_REF}.supabase.co`, SUPABASE_SERVICE_ROLE_KEY: fakeJwt(guard.PROD_SUPABASE_REF) }
   check("production: 本番の Supabase に接続できる (今までどおり)", guard.previewDatabaseViolations(prodEnv).length === 0)
-  check("VERCEL_ENV なし: 本番の URL でも止めない (手元の読み取りの道具・今までどおり)", guard.previewDatabaseViolations({ ...prodEnv, VERCEL_ENV: undefined }).length === 0)
+  check("VERCEL_ENV なし: Preview の DB の判定 (previewDatabaseViolations) の対象外 (本番の資格情報は undeclaredProductionCredentials が止める)", guard.previewDatabaseViolations({ NEXT_PUBLIC_SUPABASE_URL: prodEnv.NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: prodEnv.SUPABASE_SERVICE_ROLE_KEY }).length === 0)
   // 本番 (VERCEL_ENV=production) と手元 (VERCEL_ENV なし) の判定は今までどおり
-  process.env.VERCEL_ENV = "production"
+  // 本番は Vercel の Production の配置 (VERCEL=1・VERCEL_ENV=production・VERCEL_URL がそろう) だけ (2026-11-07 改訂)
+  Object.assign(process.env, { VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app" })
   check("production: 本番以外とは判定しない (今までどおり)", !guard.isNonProductionDeployment() && waybillIssuanceEnabled() === true)
-  delete process.env.VERCEL_ENV
+  delete process.env.VERCEL_ENV; delete process.env.VERCEL; delete process.env.VERCEL_URL
   check("VERCEL_ENV なし (手元の開発・試験): 今までどおり", !guard.isNonProductionDeployment())
   check("試験の全体で外への通信 0回", fetches === 0 && smtpSends === 0, `${fetches} ${smtpSends}`)
   console.log(`\n${pass}/${pass + fail} passed`)

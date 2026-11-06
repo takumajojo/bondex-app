@@ -24,10 +24,11 @@ Vercel は、デプロイを作った時点の環境変数をそのデプロイ�
   `BONDEX_ENV=staging`・`STAGING_SUPABASE_REF=oeucjrmuigtfnwowvzwr`・`APP_BASE_URL`（staging の URL・本番のドメインは不可）・`MAIL_TEST_CAPTURE=1`
 - 費用だけの鍵（`ANTHROPIC_API_KEY`・`GOOGLE_MAPS_API_KEY`）は、Preview 用に別の鍵にするか外す（外への副作用は無いが、本番の鍵の使い回しになる）
 
-### 1-2. 本番に宣言を足す（推奨）
-- Production だけに `BONDEX_ENV=production` を足す。Vercel のシステム環境変数（`VERCEL_ENV` など）が無効にされても、本番が本番と分かって起動する。
-  無い間は `VERCEL_ENV=production` で本番と判定する（今の本番の設定のままで動く）。
-- 「Automatically expose System Environment Variables」は ON のまま（既定）。
+### 1-2. 本番の判定に要る設定
+- 「Automatically expose System Environment Variables」は **ON のまま（既定）**。本番は Vercel が入れる 3つ（`VERCEL=1`・`VERCEL_ENV=production`・
+  `VERCEL_URL`）がそろった時だけ本番と判定する。無効にすると本番も起動しない（止まる側。誤って本番の鍵を使う側には倒れない）。
+- `BONDEX_ENV` は Production には入れなくてよい（入れるなら `production`。`staging` など他の値は本番を止める）。
+  `BONDEX_ENV=production` だけでは本番にならない（手元の道具が 1つの宣言で本番の資格情報を使えないようにするため）。
 
 ### 1-3. 古い Preview を削除する
 - 1-1 を終えた時刻（`--since`）より前に作られた Preview をすべて削除する（点検の 2 の一覧）。
@@ -59,10 +60,14 @@ python3 -I ../<このリポジトリ>/scripts/ops/vercel-preview-audit.py --sinc
 ## 4. コードの守りの判定（lib/env-guard.ts）
 | 配置 | 判定 | 本番の資格情報（本番の Supabase・Stripe の本番の鍵・実際の送り状・佐川への実際の依頼） |
 |---|---|---|
-| VERCEL_ENV=production（BONDEX_ENV なし）／BONDEX_ENV=production（VERCEL_ENV なしか production） | 本番 | 使える（今までどおり） |
+| Vercel の Production（VERCEL=1・VERCEL_ENV=production・VERCEL_URL がそろう。BONDEX_ENV は無しか production） | 本番 | 使える（今までどおり） |
+| BONDEX_ENV=production だけ・VERCEL_ENV=production だけ（手元の道具など） | 本番ではない | 持っていれば起動しない |
 | VERCEL_ENV が production 以外（preview・development・空・知らない値） | 本番ではない | 起動しない・実行の時も使わない |
 | BONDEX_ENV=staging | 本番ではない | staging の条件の全部を満たさないと起動しない |
-| 何も無い（手元・または Vercel のシステム環境変数が無効の Preview） | 本番ではない | 持っていれば起動しない。手元で本番を読む道具は BONDEX_ENV=production を明示する |
+| 何も無い（手元・または Vercel のシステム環境変数が無効の Preview） | 本番ではない | 持っていれば起動しない |
+
+手元で本番を操作する管理の道具は、このアプリの守りを通さない別の経路（本番の鍵を手元に置かない・都度の承認と認証）で行う。
+この守りは誤設定・誤操作の防止で、本番の鍵を持つ人の意図的な偽装は防げない。本番の鍵は本番の配置の外に置かない。
 
 外への送信（メール・Slack・WhatsApp・LINE・Drive・自分自身の呼び出し）は、本番ではない配置・止める理由がある時、実行の時にもそれぞれの場所で止まる。
 名前だけで見分けられない鍵（メール・Drive など）は、Vercel の上の本番以外の配置では「置いてはいけない名前」として扱う。

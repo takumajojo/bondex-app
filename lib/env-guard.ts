@@ -102,18 +102,18 @@ export function stagingGuardViolations(env: Env = process.env): string[] {
 }
 
 /**
- * 本番の配置と宣言されているか (2026-11-07)。Vercel のシステム環境変数だけに頼らない:
- *   - BONDEX_ENV=staging → 本番ではない
- *   - VERCEL_ENV があって production 以外 (preview・development・空・知らない値) → 本番ではない
- *   - BONDEX_ENV=production → 本番 (Vercel のシステム環境変数が無くても本番と分かる。Production の配置にだけ入れる)
- *   - VERCEL_ENV=production で BONDEX_ENV が無い → 本番 (今の本番の設定のまま動く)
- *   - それ以外 (何も無い・知らない値) → 本番ではない
+ * 本番の配置か (2026-11-07 改訂)。本番は「Vercel の Production の配置」だけ。Vercel が入れる 3つ (VERCEL=1・VERCEL_ENV=production・
+ * VERCEL_URL) がそろい、BONDEX_ENV が staging など本番以外を言っていない時だけ本番。
+ *   - 変数 1つ (BONDEX_ENV=production や VERCEL_ENV=production だけ) では本番にしない。手元の道具が 1つの宣言で本番の資格情報を
+ *     使える形にしない (谷口さんの指示)。手元で本番を操作する管理の道具は、アプリとは別の承認・認証の経路で行う
+ *   - BONDEX_ENV=production は、Production の配置での食い違いの確かめ (production か無しのどちらか) にだけ使う
+ *   - Vercel のシステム環境変数の自動の公開を無効にすると本番も起動しない (止まる側に倒す。公開は既定で ON のまま保つ)
+ * 注意: これは誤設定・誤操作の防止で、本番の鍵を持つ人の意図的な偽装を防ぐものではない。本番の鍵は本番の配置の外に置かない。
  */
 export function isProductionDeployment(env: Env = process.env): boolean {
-  if (env.BONDEX_ENV === "staging") return false
-  if (env.VERCEL_ENV !== undefined && env.VERCEL_ENV !== "production") return false
-  if (env.BONDEX_ENV === "production") return true
-  return env.VERCEL_ENV === "production" && !env.BONDEX_ENV
+  const bondex = env.BONDEX_ENV ?? ""
+  if (bondex !== "" && bondex !== "production") return false
+  return env.VERCEL === "1" && env.VERCEL_ENV === "production" && !!(env.VERCEL_URL ?? "").trim()
 }
 
 /**
@@ -135,12 +135,12 @@ const isRealHost = (h: string | null) => !!h && !LOCAL_HOSTS.includes(h) && !h.e
  * 本番と宣言されていないのに、本番の資格情報 (見分けられるもの) を持っていれば、その理由 (変数の名前だけ)。
  * 環境の名前ではなく、接続先と鍵そのもので見る: Vercel のシステム環境変数が無効にされて Preview が「手元」に見えても、
  * 本番の Supabase の ID・Stripe の本番の鍵・実際の送り状・佐川への実際の依頼のスイッチがあれば止める。
- * 手元で本番を読む道具は BONDEX_ENV=production を明示して使う。
+ * 手元で本番を操作する道具は、このアプリの守りを通さず、別の承認・認証の経路で行う (BONDEX_ENV=production だけでは動かない)。
  */
 export function undeclaredProductionCredentials(env: Env = process.env): string[] {
   if (isProductionDeployment(env)) return []
   const v: string[] = []
-  const tail = "（本番と宣言されていない配置: 本番は VERCEL_ENV=production か BONDEX_ENV=production）"
+  const tail = "（本番の配置ではない: 本番は Vercel の Production の配置だけ）"
   if ((env.NEXT_PUBLIC_SUPABASE_URL ?? "").includes(PROD_SUPABASE_REF)) v.push(`NEXT_PUBLIC_SUPABASE_URL: 本番の Supabase${tail}`)
   for (const k of ["SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]) {
     const val = env[k] ?? ""

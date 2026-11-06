@@ -29,10 +29,12 @@ t("BONDEX_ENV が無い: staging の守りは働かない (違反 0)", () => {
   const prodLike = { NEXT_PUBLIC_SUPABASE_URL: `https://${PROD_SUPABASE_REF}.supabase.co`, STRIPE_SECRET_KEY: "sk_live_FAKE", MAIL_TEST_CAPTURE: "" }
   assert.deepEqual(stagingGuardViolations(prodLike), [])
   // 2026-11-07: 本番と宣言されていない所に本番の資格情報があれば止める (Vercel のシステム環境変数が無い Preview も含む)
-  assert.throws(() => assertEnvironmentSafe(prodLike), /本番と宣言されていない/)
-  // 本番の配置 (VERCEL_ENV=production か BONDEX_ENV=production) は今までどおり止めない
-  assert.doesNotThrow(() => assertEnvironmentSafe({ ...prodLike, VERCEL_ENV: "production" }))
-  assert.doesNotThrow(() => assertEnvironmentSafe({ ...prodLike, BONDEX_ENV: "production" }))
+  assert.throws(() => assertEnvironmentSafe(prodLike), /本番の配置ではない/)
+  // 本番 (Vercel の Production の配置: VERCEL=1・VERCEL_ENV=production・VERCEL_URL) は今までどおり止めない
+  assert.doesNotThrow(() => assertEnvironmentSafe({ ...prodLike, VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app" }))
+  // 2026-11-07 改訂: BONDEX_ENV=production だけ・VERCEL_ENV=production だけでは本番にしない
+  assert.throws(() => assertEnvironmentSafe({ ...prodLike, BONDEX_ENV: "production" }))
+  assert.throws(() => assertEnvironmentSafe({ ...prodLike, VERCEL_ENV: "production" }))
 })
 t("BONDEX_ENV=production も何もしない", () => assert.deepEqual(stagingGuardViolations({ BONDEX_ENV: "production", STRIPE_SECRET_KEY: "sk_live_FAKE" }), []))
 

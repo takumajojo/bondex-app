@@ -283,8 +283,9 @@ t("本番の Stripe のキーは B2C では使わない（B2C_STRIPE_ALLOW_LIVE=
   }
   const reason = () => { const r = b2cStripeConfig(); return r.ok ? r.config.mode : r.reason }
   // 本番の鍵の判定は本番の配置で確かめる (2026-11-07: 本番と宣言されていない所では、本番の鍵があるだけで lib/env-guard.ts が止める)
-  const keepEnv = process.env.BONDEX_ENV
-  process.env.BONDEX_ENV = "production"
+  const VK = ["VERCEL", "VERCEL_ENV", "VERCEL_URL"] as const
+  const keepV = VK.map((k) => process.env[k])
+  Object.assign(process.env, { VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app" })
   set(undefined, undefined); assert.equal(reason(), "not_configured")
   set("sk_live_x", "pk_live_x"); assert.equal(reason(), "live_key_blocked")
   set("rk_live_x", "pk_test_x"); assert.equal(reason(), "live_key_blocked")
@@ -292,10 +293,9 @@ t("本番の Stripe のキーは B2C では使わない（B2C_STRIPE_ALLOW_LIVE=
   set("sk_test_x", "pk_test_x"); assert.equal(reason(), "test")
   set("sk_live_x", "pk_live_x", "true"); assert.equal(reason(), "live")
   // 本番と宣言されていない所 (手元・Vercel のシステム環境変数の無い Preview) では、許可があっても本番の鍵を使わない (例外で止める)
-  delete process.env.BONDEX_ENV
-  set("sk_live_x", "pk_live_x", "true"); assert.throws(() => b2cStripeConfig(), /本番と宣言されていない/)
-  if (keepEnv === undefined) delete process.env.BONDEX_ENV
-  else process.env.BONDEX_ENV = keepEnv
+  for (const k of VK) delete process.env[k]
+  set("sk_live_x", "pk_live_x", "true"); assert.throws(() => b2cStripeConfig(), /本番の配置ではない/)
+  VK.forEach((k, i) => { if (keepV[i] === undefined) delete process.env[k]; else process.env[k] = keepV[i] })
   set(keep.sk, keep.pk, keep.allow)
 })
 

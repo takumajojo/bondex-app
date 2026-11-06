@@ -47,8 +47,8 @@ const TEST_SK = ["sk", "test", "fakefakefakefake0000"].join("_"), TEST_PK = ["pk
   for (const [n, e, nonProd] of kinds) check(`${n} → ${nonProd ? "本番以外 (守りが効く)" : "本番・手元 (今までどおり)"}`, g.isNonProductionDeployment(e) === nonProd)
 
   console.log("2. 起動の時の守り (instrumentation と同じ assertEnvironmentSafe)")
-  check("Vercel Production・本番の鍵 → 起動する", v({ VERCEL: "1", VERCEL_ENV: "production", ...prodKeys }).length === 0)
-  check("Vercel Production の自分自身の URL は bondex.express (今までどおり)", self({ VERCEL: "1", VERCEL_ENV: "production" }) === "https://bondex.express")
+  check("Vercel Production・本番の鍵 → 起動する", v({ VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app", ...prodKeys }).length === 0)
+  check("Vercel Production の自分自身の URL は bondex.express (今までどおり)", self({ VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app" }) === "https://bondex.express")
   check("Vercel Preview・正しい staging の設定 → 起動する", v({ VERCEL: "1", VERCEL_ENV: "preview", ...stagingKeys }).length === 0, v({ VERCEL: "1", VERCEL_ENV: "preview", ...stagingKeys })[0])
   check("Vercel Preview の自分自身の URL は APP_BASE_URL (Preview 自身)", self({ VERCEL: "1", VERCEL_ENV: "preview", ...stagingKeys }) === stagingKeys.APP_BASE_URL)
   check("Vercel Preview・今の設定 (本番の鍵がそのまま) → 起動しない", v({ VERCEL: "1", VERCEL_ENV: "preview", ...prodKeys }).length === 1)
@@ -87,7 +87,9 @@ const TEST_SK = ["sk", "test", "fakefakefakefake0000"].join("_"), TEST_PK = ["pk
   check("エラーの文に鍵の値を出さない", !v({ VERCEL: "1", VERCEL_ENV: "preview", ...prodKeys })[0].includes(LIVE_SK) && !v({ VERCEL: "1", VERCEL_ENV: "preview", ...prodKeys })[0].includes(jwt(PROD)))
   // 2026-11-07 の設計 (f5b4721): 本番は宣言で決める。宣言の無い所 (手元・CI) で本番の鍵があれば止める。本番を触る手元の道具は BONDEX_ENV=production を明示する
   check("手元・CI で本番の鍵があって本番の宣言が無い → 止める", v({ ...prodKeys }).length === 1 && v({ CI: "true", GITHUB_ACTIONS: "true", ...prodKeys }).length === 1)
-  check("手元で BONDEX_ENV=production を明示すれば本番の鍵で動く (運営の読み取りの道具)", v({ BONDEX_ENV: "production", ...prodKeys }).length === 0)
+  // 2026-11-07 改訂 (谷口さんの指示): BONDEX_ENV=production だけでは本番にしない。手元の管理の道具は、アプリとは別の承認・認証の経路で行う
+  check("手元で BONDEX_ENV=production と書いても本番の鍵では動かない (1つの宣言で本番を操作させない)", v({ BONDEX_ENV: "production", ...prodKeys }).length > 0)
+  check("VERCEL_ENV=production だけ (VERCEL・VERCEL_URL が無い) でも本番にしない", g.isProductionDeployment({ VERCEL_ENV: "production" }) === false)
   check("手元・CI で本番の鍵が無ければ今までどおり (試験・開発を壊さない)", v({}).length === 0 && v({ CI: "true", GITHUB_ACTIONS: "true" }).length === 0)
   check("Vercel の Preview で BONDEX_ENV=production と書いても本番にならない (宣言の食い違いは本番にしない)", g.isProductionDeployment({ VERCEL: "1", VERCEL_ENV: "preview", BONDEX_ENV: "production" }) === false)
 
@@ -103,7 +105,7 @@ const TEST_SK = ["sk", "test", "fakefakefakefake0000"].join("_"), TEST_PK = ["pk
     check("Preview・本番の鍵のまま → 起動の処理が終了する (exit 1)", exited === 1)
     exited = null
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
-    Object.assign(process.env, saved, { VERCEL: "1", VERCEL_ENV: "production", NEXT_RUNTIME: "nodejs", ...prodKeys })
+    Object.assign(process.env, saved, { VERCEL: "1", VERCEL_ENV: "production", VERCEL_URL: "bondex-poc-main.vercel.app", NEXT_RUNTIME: "nodejs", ...prodKeys })
     let threw = false
     try { register() } catch { threw = true }
     check("Production・本番の鍵 → 起動する (終了しない)", exited === null && !threw)

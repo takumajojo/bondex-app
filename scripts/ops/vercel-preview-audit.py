@@ -91,9 +91,7 @@ def main():
     print(f"   Preview に残っている本番の鍵・スイッチの名前: {len(left)}件 {' '.join(left)}")
     print(f"   Preview に足りない名前 (無いと新しい Preview は起動しない): {len(missing)}件 {' '.join(missing)}")
     print(f"   値を本番と別にする名前 (目で確かめる): {' '.join(MUST_DIFFER)}")
-    prod_missing = [n for n in ("BONDEX_ENV",) if "Production" not in names.get(n, set())]
-    if prod_missing:
-        print("   (推奨) Production に BONDEX_ENV=production が無い: Vercel のシステム環境変数が無効にされると本番が起動しない")
+    print("   (目で確かめる) Vercel の「Automatically expose System Environment Variables」が ON（本番の判定に要る・CLI では読めない）")
 
     deps = deployments(a.vercel)
     old = [d for d in deps if (d.get("target") or "preview") != "production" and d.get("state") == "READY" and int(d.get("createdAt", 0)) < since_ms]
