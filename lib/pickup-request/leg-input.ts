@@ -9,6 +9,7 @@
 // 解決できないものは推測で埋めず、エラーとして運営に返す。
 
 import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@/lib/hotel-place"
+import { placesMockEnabled } from "@/lib/places-mock"
 import { normalizeBanchi, stripKyotoRouteName } from "@/lib/jp-address"
 import { cleanResidence, type ResidenceAddress } from "@/lib/residence"
 import type { PickupHotel, PickupLegInput } from "@/lib/bizlogi/pickup"
@@ -154,11 +155,11 @@ async function hotelParty(
   if (!placeId) {
     return { ok: false, error: `${label}: 「${nameJa || name}」はホテルの場所 (Google の場所 ID) が予約に登録されていません。名前からの推測はしません。予約のホテルを候補から選び直してから確認してください` }
   }
-  if (!env.placesKey) return { ok: false, error: `${label}: GOOGLE_MAPS_API_KEY が未設定のため住所を解決できません` }
+  if (!env.placesKey && !placesMockEnabled()) return { ok: false, error: `${label}: GOOGLE_MAPS_API_KEY が未設定のため住所を解決できません` }
   const fetchPlace = env.fetchPlace ?? fetchHotelPlaceDetailsJa
   let d: Awaited<ReturnType<typeof fetchHotelPlaceDetailsJa>>
   try {
-    d = await fetchPlace(name, env.placesKey, placeId, { timeoutMs: PLACES_TIMEOUT_MS })
+    d = await fetchPlace(name, env.placesKey ?? "", placeId, { timeoutMs: PLACES_TIMEOUT_MS })
   } catch (e) {
     return { ok: false, error: `${label}: 住所の照会が完了しませんでした (${e instanceof Error ? e.name : "error"})。時間をおいて再度確認してください` }
   }

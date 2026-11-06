@@ -7,6 +7,7 @@
 
 import { getSupabase } from "@/lib/supabase"
 import { fetchHotelPlaceDetailsJa, parseJpAddressString, pickComponent } from "@/lib/hotel-place"
+import { placesMockEnabled } from "@/lib/places-mock"
 import { PLACES_TIMEOUT_MS } from "@/lib/pickup-request/leg-input"
 
 export type ChangeStep = "contact" | "approve" | "reject" | "withdraw"
@@ -110,10 +111,10 @@ export async function verifyChangeHotel(
   apiKey: string | undefined,
   fetchPlace: typeof fetchHotelPlaceDetailsJa = fetchHotelPlaceDetailsJa,
 ): Promise<{ ok: true; prefecture: string | null; city: string | null } | { ok: false; status: number; reason: string }> {
-  if (!apiKey) return { ok: false, status: 503, reason: "GOOGLE_MAPS_API_KEY が未設定のため、ホテルを確認できません" }
+  if (!apiKey && !placesMockEnabled()) return { ok: false, status: 503, reason: "GOOGLE_MAPS_API_KEY が未設定のため、ホテルを確認できません" }
   let d: Awaited<ReturnType<typeof fetchHotelPlaceDetailsJa>>
   try {
-    d = await fetchPlace("", apiKey, placeId, { timeoutMs: PLACES_TIMEOUT_MS })
+    d = await fetchPlace("", apiKey ?? "", placeId, { timeoutMs: PLACES_TIMEOUT_MS })
   } catch {
     return { ok: false, status: 502, reason: "ホテルの照会が完了しませんでした。時間をおいて再度登録してください" }
   }

@@ -214,9 +214,23 @@ export function b2cSiteBaseUrl(env: Env = process.env): string {
   return u || "https://bondex.express"
 }
 
+/**
+ * staging の架空のホテル (lib/places-mock.ts・2026-11-07 R1) の守り。STAGING_PLACES_MOCK が入っているのに、本番の配置・
+ * staging でない・値が true 以外なら止める。本番の配置でもこの判定は動く (本番で模擬を有効にできない)。
+ */
+export function placesMockViolations(env: Env = process.env): string[] {
+  const raw = (env.STAGING_PLACES_MOCK ?? "").trim()
+  if (raw === "" || raw.toLowerCase() === "false") return []
+  if (isProductionDeployment(env)) return ["STAGING_PLACES_MOCK: 本番の配置では使えない（架空のホテルの模擬）"]
+  const v: string[] = []
+  if (env.BONDEX_ENV !== "staging") v.push("STAGING_PLACES_MOCK: BONDEX_ENV=staging の時だけ使える")
+  if (env.STAGING_PLACES_MOCK !== "true") v.push("STAGING_PLACES_MOCK: 値は true だけ")
+  return v
+}
+
 /** 起動・実行を止める理由の全部 (変数の名前と理由だけ・重なりはまとめる)。空なら問題なし。 */
 export function environmentViolations(env: Env = process.env): string[] {
-  return [...new Set([...stagingGuardViolations(env), ...previewDatabaseViolations(env), ...previewEnvironmentViolations(env), ...undeclaredProductionCredentials(env)])]
+  return [...new Set([...stagingGuardViolations(env), ...previewDatabaseViolations(env), ...previewEnvironmentViolations(env), ...undeclaredProductionCredentials(env), ...placesMockViolations(env)])]
 }
 
 /**

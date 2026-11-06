@@ -5,6 +5,8 @@
  * 認証は各ルート側で行う (運営=OPERATOR_PASSWORD / 代理店=Supabase JWT)。
  */
 
+import { announcePlacesMock, isMockPlaceId, mockHotelById, placesMockEnabled, searchMockHotels } from "@/lib/places-mock"
+
 const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 
 export interface PlaceCandidate {
@@ -42,6 +44,12 @@ export function parseJpAddress(formattedAddr: string): { prefecture: string; cit
  * 日本語で保存されたホテル名に対し英語名を補うのに使う。失敗時は null。
  */
 export async function getPlaceNameByLang(placeId: string, lang: "en" | "ja"): Promise<string | null> {
+  // staging の架空のホテル (lib/places-mock.ts)。模擬の ID は本番では Google に問い合わせない
+  if (placesMockEnabled()) {
+    const h = mockHotelById(placeId)
+    return h ? (lang === "en" ? h.nameEn : h.nameJa) : null
+  }
+  if (isMockPlaceId(placeId)) return null
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey || !placeId) return null
   const url = new URL(`${PLACES_BASE}/details/json`)
@@ -70,6 +78,21 @@ export type PlacesSearchResult =
   | { ok: false; status: number; error: string }
 
 export async function searchPlaces(query: string, lang: "ja" | "en"): Promise<PlacesSearchResult> {
+  // staging の架空のホテル (lib/places-mock.ts)。Google は呼ばない
+  if (placesMockEnabled()) {
+    announcePlacesMock()
+    if (query.trim().length < 2) return { ok: true, candidates: [] }
+    return {
+      ok: true,
+      candidates: searchMockHotels(query).map((h) => ({
+        placeId: h.placeId,
+        name: lang === "en" ? h.nameEn : h.nameJa,
+        address: lang === "en" ? h.addressEn : h.addressJa,
+        city: h.city,
+        prefecture: h.prefecture,
+      })),
+    }
+  }
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) return { ok: false, status: 500, error: "GOOGLE_MAPS_API_KEY not configured" }
 

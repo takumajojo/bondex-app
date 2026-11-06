@@ -8,6 +8,7 @@
 import crypto from "node:crypto"
 import { getSupabase } from "@/lib/supabase"
 import { fetchHotelPlaceDetailsJa, zipFromPlaceDetails, parseJpAddressString } from "@/lib/hotel-place"
+import { isMockPlaceId, mockHotelById, placesMockEnabled } from "@/lib/places-mock"
 import { resolveSagawaLeadTime, normalizeZip7 } from "@/lib/sagawa-lead-time"
 import { quoteB2c, B2C_MAX_PIECES, type B2cQuote } from "./pricing"
 import { judgeB2cBookability, jstYmd, b2cCardWindowFits, B2C_FALLBACK_TRANSIT_DAYS, type B2cBookabilityError } from "./bookability"
@@ -79,11 +80,14 @@ const hotelCache = new Map<string, { at: number; hotel: Omit<B2cHotel, "status">
 const HOTEL_CACHE_MS = 6 * 3600 * 1000
 
 async function placeDetails(placeId: string): Promise<Omit<B2cHotel, "status"> | null> {
+  // 模擬の ID (lib/places-mock.ts) は、模擬が有効な staging の時だけ使える (控えに残っていても本番の予約に入れない)
+  if (isMockPlaceId(placeId) && !placesMockEnabled()) return null
   const hit = hotelCache.get(placeId)
   if (hit && Date.now() - hit.at < HOTEL_CACHE_MS) return hit.hotel
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
-  if (!apiKey) return null
-  const d = await fetchHotelPlaceDetailsJa("", apiKey, placeId).catch(() => null)
+  // staging の架空のホテル (lib/places-mock.ts) は鍵なしで詳細を返す
+  if (!apiKey && !placesMockEnabled()) return null
+  const d = await fetchHotelPlaceDetailsJa("", apiKey ?? "", placeId).catch(() => null)
   if (!d) return null
   const zip = normalizeZip7(zipFromPlaceDetails(d))
   if (!zip) return null
@@ -101,6 +105,11 @@ const hotelEnCache = new Map<string, { at: number; name: string; address: string
 async function placeNamesEn(placeId: string): Promise<{ name: string; address: string }> {
   const hit = hotelEnCache.get(placeId)
   if (hit && Date.now() - hit.at < HOTEL_CACHE_MS) return hit
+  if (placesMockEnabled()) {
+    const h = mockHotelById(placeId)
+    return h ? { name: h.nameEn, address: h.addressEn } : { name: "", address: "" }
+  }
+  if (isMockPlaceId(placeId)) return { name: "", address: "" }
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) return { name: "", address: "" }
   try {

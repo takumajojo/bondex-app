@@ -13,6 +13,7 @@
  */
 import { resolveSagawaLeadTime, earliestArrivalYmd, normalizeZip7, type LeadTimeSource } from "@/lib/sagawa-lead-time"
 import { resolveHotelZip } from "@/lib/hotel-place"
+import { placesMockEnabled } from "@/lib/places-mock"
 
 export interface LeadTimeEndpoint {
   /** Google Places の place_id (ホテル) */
@@ -37,8 +38,9 @@ export async function resolveEndpointZip(ep: LeadTimeEndpoint): Promise<string |
   if (direct) return direct
   const placeId = (ep.placeId ?? "").trim()
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
-  if (!placeId || !apiKey) return null
-  return normalizeZip7(await resolveHotelZip(placeId, apiKey))
+  // staging の架空のホテル (lib/places-mock.ts) は鍵なしで郵便番号を返す
+  if (!placeId || (!apiKey && !placesMockEnabled())) return null
+  return normalizeZip7(await resolveHotelZip(placeId, apiKey ?? ""))
 }
 
 /** ルートの最短お届け日。不明なら null。 */

@@ -7,6 +7,8 @@
  * サーバー専用 (GOOGLE_MAPS_API_KEY を使う)。
  */
 
+import { announcePlacesMock, isMockPlaceId, mockAddressComponents, mockHotelById, placesMockEnabled, searchMockHotels } from "@/lib/places-mock"
+
 const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 
 /**
@@ -149,6 +151,15 @@ export async function fetchHotelPlaceDetailsJa(
   /** 1回の照会の時間制限 (ms)。指定時は超過で例外 (TimeoutError)。未指定は従来どおり制限なし。 */
   opts?: { timeoutMs?: number },
 ): Promise<HotelPlaceDetails | null> {
+  // staging の架空のホテル (lib/places-mock.ts)。Google は呼ばない。電話は持たない (ホテルへの連絡につながらない)
+  if (placesMockEnabled()) {
+    announcePlacesMock()
+    const h = placeId ? mockHotelById(placeId) : hotelName.trim() ? searchMockHotels(hotelName)[0] ?? null : null
+    if (!h) return null
+    return { placeId: h.placeId, name: h.nameJa, formattedAddress: h.addressJa, components: mockAddressComponents(h) }
+  }
+  // 本番などで模擬の ID が来ても Google に問い合わせず、見つからないにする (模擬のホテルを本番の DB に入れない)
+  if (isMockPlaceId(placeId)) return null
   const signal = () => (opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined)
   // place_id がフロントから渡されている場合は text search をスキップして直接 details へ.
   // (operator / 代理店が autocomplete から選択したホテル — 確定済み)

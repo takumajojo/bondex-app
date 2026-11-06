@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { b2cGuard, str } from "@/lib/b2c/api-common"
 import { searchPlaces } from "@/lib/places-search"
 import { facilityStatuses } from "@/lib/b2c/booking-service"
+import { placesMockEnabled } from "@/lib/places-mock"
 
 export const runtime = "nodejs"
 
@@ -20,5 +21,6 @@ export async function POST(req: NextRequest) {
   const candidates = result.candidates
     .map((c) => ({ ...c, status: statuses.get(c.placeId) ?? "unknown" }))
     .filter((c) => c.status !== "unsupported")
-  return NextResponse.json({ candidates })
+  // staging の架空のホテルを返している時は mock: true を付ける (画面・試験で見分ける。本番では付かない)
+  return NextResponse.json(placesMockEnabled() ? { candidates, mock: true } : { candidates })
 }

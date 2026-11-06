@@ -12,12 +12,16 @@
  * UI 側は公式サイトのリンクを出して手入力させる。
  */
 
+import { isMockPlaceId, placesMockEnabled } from "@/lib/places-mock"
+
 const PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 const FETCH_TIMEOUT_MS = 8000
 const MAX_HTML_BYTES = 600_000
 
 /** place_id からホテル公式サイトの URL を取得する (Google は URL 探索にのみ使用)。 */
 export async function getOfficialWebsite(placeId: string): Promise<string | null> {
+  // staging の架空のホテル・模擬の ID は公式サイトを持たない (実在のホテルの連絡先を調べない)
+  if (placesMockEnabled() || isMockPlaceId(placeId)) return null
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey || !placeId) return null
   const url = `${PLACES_BASE}/details/json?place_id=${encodeURIComponent(placeId)}&fields=website&language=ja&key=${apiKey}`
@@ -129,6 +133,7 @@ export async function fetchPhoneFromWebsite(website: string): Promise<{ phone: s
 /** ホテル名 (+ 地域ヒント) から place_id を検索する。
  *  place_id が保存されていない予約 (フリーテキスト入力) でも公式サイトを辿れるようにするフォールバック。 */
 export async function resolvePlaceIdByName(name: string, regionHint?: string | null): Promise<string | null> {
+  if (placesMockEnabled()) return null
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   const query = [name, regionHint].map((v) => (v || "").trim()).filter(Boolean).join(" ")
   if (!apiKey || !query) return null
