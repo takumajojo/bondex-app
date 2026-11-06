@@ -51,10 +51,11 @@ Vercel は、デプロイを作った時点の環境変数をそのデプロイ�
   - Preview へのアクセスの記録（日時・URL・パス・応答の番号だけ。IP と問い合わせの文字列は残さない）:
     `vercel logs requests -e preview --since 7d --until now --json` を 1週間ずつ遡る（2026-11-06 の時点で遡れたのは約30日・それより前は拒否される）
   - 実行の記録（`vercel logs -e preview`）は保存の期間が短い。残っていれば同じく集計だけを残す
-  - 2026-11-06 の控え: `MyClaudecode/docs/vercel-deployments-audit-snapshot-20261106.tsv`（全145件）・
-    `MyClaudecode/docs/vercel-preview-access-records-20261106.tsv`（Preview へのアクセス 7件・すべて 302 = ログインへの転送でアプリに届いていない）
+  - 2026-11-06 15:51 の控え: `MyClaudecode/docs/vercel-deployments-audit-snapshot-20261106-1551.tsv`（全146件・削除の対象 93件）・
+    `MyClaudecode/docs/vercel-preview-access-records-20261106.tsv`（Preview へのアクセス 9件・すべて 302 = ログインへの転送でアプリに届いていない）・
+    確認できる期間とできない期間: `MyClaudecode/docs/vercel-preview-access-coverage-20261106.md`
 - 1-1 を終えた時刻（`--since`）より前に作られた Preview をすべて削除する（点検の 2 の一覧）。**削除の直前に点検をもう一度流し、一覧を取り直す**
-  （分離の前にどのブランチでも push すると、本番の鍵を持つ Preview が増える。2026-11-06 15:23 に 1件増えて 92件になった）。
+  （分離の前にどのブランチでも push すると、本番の鍵を持つ Preview が増える。2026-11-06 15:23・15:28 の hotfix の push で 2件増えて 93件になった）。
 - Production のデプロイは削除しない。
 
 ### 1-4. 保護
