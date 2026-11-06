@@ -11,7 +11,9 @@
 import Stripe from "stripe"
 import { execFileSync } from "node:child_process"
 import { NextRequest } from "next/server"
-import { D } from "../test-b2c/dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
+import { datesFor } from "../test-b2c/dates/test-dates"
+// 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）。Biz-Logi は 30日を超える先の発送日を断るので、使う範囲（11-15〜11-21）だけでずらす
+const { D } = datesFor("2026-11-15", "2026-11-21")
 
 const BASE = process.env.BASE ?? "http://localhost:3218"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""

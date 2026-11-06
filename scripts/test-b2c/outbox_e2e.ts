@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process"
 import { issueOperatorSession, OPERATOR_SESSION_COOKIE } from "@/lib/operator-session"
 import { checkB2cOutboxHealth, enqueueB2cReminders, processB2cOutbox, sandboxTransport, type B2cTransport, type SendOutcome } from "@/lib/b2c/notify"
 import type { OpsAlertInput } from "@/lib/ops-alert"
-import { D, T } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
+import { D, T as shiftT } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -119,9 +119,9 @@ async function main() {
   await processB2cOutbox(sandboxTransport, new Date(), { alert })
 
   // 集荷日 11/12（JST）。前日 11/11・当日 11/12 の時刻を指定して動かす
-  const DAY_0830 = at(T("2026-11-11T23:30:00Z")) // 11/12 08:30 JST
-  const EVE_1830 = at(T("2026-11-11T09:30:00Z")) // 11/11 18:30 JST
-  const NOON_BEFORE = at(T("2026-11-11T03:00:00Z")) // 11/11 12:00 JST
+  const DAY_0830 = at(shiftT("2026-11-11T23:30:00Z")) // 11/12 08:30 JST
+  const EVE_1830 = at(shiftT("2026-11-11T09:30:00Z")) // 11/11 18:30 JST
+  const NOON_BEFORE = at(shiftT("2026-11-11T03:00:00Z")) // 11/11 12:00 JST
 
   console.log("O01 重要度と期限: 古い通常の通知 300件が溜まっていても、当日のリマインドが先に送られる")
   isolate()
@@ -264,11 +264,11 @@ async function main() {
   ok("前日 18:30: 前日のリマインドは送信", st("ok-eve").startsWith("sent|1"))
   ok("当日のリマインドを前日に送らない（日付が違う → expired・not_eligible:date_mismatch）", st("exp-day").startsWith("expired|0|not_eligible:date_mismatch"), st("exp-day"))
   ins("exp-eve", "reminder_eve")
-  await processB2cOutbox(expP.transport(), at(T("2026-11-11T15:30:00Z")), { alert }) // 集荷日の 00:30 JST
+  await processB2cOutbox(expP.transport(), at(shiftT("2026-11-11T15:30:00Z")), { alert }) // 集荷日の 00:30 JST
   ok("集荷日の 00:30 に残っていた前日のリマインドは送らない（「明日は集荷日」と誤って送らない）→ expired_before_send", st("exp-eve").startsWith("expired|0|expired_before_send"), st("exp-eve"))
   ins("exp-conf", "booking_confirmed"); ins("exp-day2", "reminder_day")
   ok("期限: 前日のリマインド＝集荷日の 0:00・当日＝11:00・予約確定＝集荷日の 11:00（JST）", sql("select string_agg(dedupe_key || '=' || to_char(expires_at at time zone 'Asia/Tokyo','MM-DD HH24:MI'), ',' order by dedupe_key) from b2c_outbox where dedupe_key in ('exp-eve','exp-day2','exp-conf')") === "exp-conf=11-12 11:00,exp-day2=11-12 11:00,exp-eve=11-12 00:00")
-  await processB2cOutbox(expP.transport(), at(T("2026-11-12T02:30:00Z")), { alert }) // 11:30 JST
+  await processB2cOutbox(expP.transport(), at(shiftT("2026-11-12T02:30:00Z")), { alert }) // 11:30 JST
   ok("集荷日の 11:30: 当日のリマインド・予約確定の通知は送らない（expired_before_send）", st("exp-conf").startsWith("expired|0|expired_before_send") && st("exp-day2").startsWith("expired|0|expired_before_send"), [st("exp-conf"), st("exp-day2")])
   ok("期限切れの行で送信を呼んだ回数は 0（前日のリマインドの 1回だけ）", expP.calls.length === 1)
   ok("期限切れは運営に知らせる", alerts.some((a) => a.lines.join("\n").includes("expired（")), alerts.map((a) => a.subject))

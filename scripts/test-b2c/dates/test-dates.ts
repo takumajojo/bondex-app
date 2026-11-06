@@ -23,12 +23,7 @@ const utcNoon = (ymd: string) => Date.parse(`${ymd}T12:00:00Z`)
 const addDays = (ymd: string, n: number) => toYmd(new Date(utcNoon(ymd) + n * DAY))
 
 export function shiftIsValid(shift: number, now: Date = new Date()): boolean {
-  if (!Number.isInteger(shift) || shift < 0 || shift % 7 !== 0) return false
-  if (Date.parse(`${addDays(ANCHOR_FROM, shift)}T00:00:00+09:00`) <= now.getTime()) return false
-  for (let ymd = ANCHOR_FROM; ymd <= ANCHOR_TO; ymd = addDays(ymd, 1)) {
-    if (isBusinessDay(new Date(utcNoon(ymd))) !== isBusinessDay(new Date(utcNoon(addDays(ymd, shift))))) return false
-  }
-  return true
+  return shiftIsValidFor(shift, ANCHOR_FROM, ANCHOR_TO, now)
 }
 
 export function computeShiftDays(now: Date = new Date()): number {
@@ -40,6 +35,30 @@ export function computeShiftDays(now: Date = new Date()): number {
   }
   for (let s = 0; s <= 7 * 26; s += 7) if (shiftIsValid(s, now)) return s
   throw new Error("試験の日付をずらせる週が見つかりません")
+}
+
+export function shiftIsValidFor(shift: number, from: string, to: string, now: Date = new Date()): boolean {
+  if (!Number.isInteger(shift) || shift < 0 || shift % 7 !== 0) return false
+  if (Date.parse(`${addDays(from, shift)}T00:00:00+09:00`) <= now.getTime()) return false
+  for (let ymd = from; ymd <= to; ymd = addDays(ymd, 1)) {
+    if (isBusinessDay(new Date(utcNoon(ymd))) !== isBusinessDay(new Date(utcNoon(addDays(ymd, shift))))) return false
+  }
+  return true
+}
+
+/**
+ * 試験が使う暦の範囲を指定してずらす（できるだけ小さく）。相手の決まりで先の日付に上限がある試験に使う
+ * （例: Biz-Logi は 30日を超える先の発送日を断る → scripts/test-integ/b2c-bizlogi-flow.ts）。
+ */
+export function datesFor(from: string, to: string, now: Date = new Date()) {
+  let shift = -1
+  for (let s = 0; s <= 7 * 26; s += 7) if (shiftIsValidFor(s, from, to, now)) { shift = s; break }
+  if (shift < 0) throw new Error("試験の日付をずらせる週が見つかりません")
+  return {
+    SHIFT_DAYS: shift,
+    D: (ymd: string): string => addDays(ymd, shift),
+    T: (iso: string): string => new Date(Date.parse(iso) + shift * DAY).toISOString().replace(".000Z", "Z"),
+  }
 }
 
 export const SHIFT_DAYS = computeShiftDays()
