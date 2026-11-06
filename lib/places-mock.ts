@@ -99,7 +99,13 @@ export function mockAddressComponents(h: MockHotel): Array<{ long_name: string; 
   return [
     { long_name: zipHyphen, short_name: zipHyphen, types: ["postal_code"] },
     { long_name: h.prefecture, short_name: h.prefecture, types: ["administrative_area_level_1", "political"] },
-    { long_name: h.city, short_name: h.city, types: ["locality", "political"] },
+    // Google と同じく、政令市の区は locality (市) と sublocality_level_1 (区) に分ける (例: 京都市・下京区)
+    ...(/^(.+?市)(.+区)$/.test(h.city)
+      ? [
+          { long_name: h.city.replace(/^(.+?市)(.+区)$/, "$1"), short_name: h.city.replace(/^(.+?市)(.+区)$/, "$1"), types: ["locality", "political"] },
+          { long_name: h.city.replace(/^(.+?市)(.+区)$/, "$2"), short_name: h.city.replace(/^(.+?市)(.+区)$/, "$2"), types: ["sublocality", "sublocality_level_1", "political"] },
+        ]
+      : [{ long_name: h.city, short_name: h.city, types: ["locality", "political"] }]),
     { long_name: "日本", short_name: "JP", types: ["country", "political"] },
   ]
 }
