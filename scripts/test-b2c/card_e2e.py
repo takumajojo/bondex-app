@@ -23,6 +23,8 @@ import urllib.request
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dates"))
 from test_dates import D  # noqa: E402  試験の日付を実際の今日から見て有効な週へ（7日の倍数）
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from card_leak import find_card_leaks  # noqa: E402  カードの番号・CVC の漏えいの検査（構造を見る・2026-11-07）
 
 BASE = os.environ.get("BASE", "http://localhost:3211")
 if not (BASE.startswith("http://localhost:") or BASE.startswith("http://127.0.0.1:")):
@@ -36,6 +38,7 @@ CONTAINER = os.environ.get("B2C_LOCAL_DB_CONTAINER", "supabase_db_supa-local")
 TOK = "dev-hnk-local-token-0001"
 passed = failed = 0
 ip_counter = [0]
+API_RESPONSES = []  # 開発サーバーの応答をすべて控え、最後にカードの番号・CVC が無いことを確かめる
 
 
 def check(label, got, want):
@@ -62,9 +65,11 @@ def post(path, body, headers=None, raw=None):
     req = urllib.request.Request(BASE + path, data=data, headers=h, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=90) as r:
-            return r.status, json.loads(r.read() or b"{}")
+            res = r.status, json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b"{}")
+        res = e.code, json.loads(e.read() or b"{}")
+    API_RESPONSES.append({"path": path, "status": res[0], "body": res[1]})
+    return res
 
 
 def stripe(method, path, params=None):
@@ -314,8 +319,22 @@ for c in [x for x in customers if x]:
 check(f"この試験の Customer（{len([x for x in customers if x])}件）の PaymentIntent は 0件", total_pi, 0)
 check("DB の b2c_payments は 0行", sql("select count(*) from b2c_payments"), "0")
 check("B2C の shipments に課金の記録は無い", sql("select count(*) from shipments where channel='b2c' and (charged_at is not null or stripe_payment_intent_id is not null)"), "0")
-pan = sql("select count(*) from b2c_orders where row_to_json(b2c_orders)::text ~ '4242424242424242|\"number\"|cvc'")
-check("DB にカードの番号・CVC は無い", pan, "0")
+# カードの番号・CVC の漏えい（2026-11-07）: 以前は行全体の文字列で '…|cvc' を探し、Stripe の ID（seti_…）に偶然 cvc が
+# 含まれると誤って反応した。保存先の行・API の応答・（あれば）開発サーバーのログを、構造を見て調べる（scripts/test-b2c/card_leak.py）
+LEAK_TABLES = ["b2c_orders", "b2c_payments", "b2c_order_events", "b2c_outbox", "b2c_stripe_events", "b2c_refunds", "b2c_hotel_acceptances"]
+db_leaks = []
+for t in LEAK_TABLES:
+    rows = sql(f"select coalesce(json_agg(row_to_json(x)), '[]') from {t} x")
+    db_leaks += find_card_leaks(json.loads(rows or "[]"), t)
+db_leaks += find_card_leaks(json.loads(sql("select coalesce(json_agg(row_to_json(s)), '[]') from shipments s where channel='b2c'") or "[]"), "shipments(b2c)")
+check("DB（B2C の表・B2C の区間）にカードの番号・CVC は無い", db_leaks, [])
+check("API の応答にカードの番号・CVC は無い", find_card_leaks(API_RESPONSES, "api"), [])
+server_log = os.environ.get("B2C_DEV_SERVER_LOG", "")
+if server_log and os.path.exists(server_log):
+    with open(server_log, encoding="utf-8", errors="replace") as fh:
+        check("開発サーバーのログにカードの番号・CVC は無い", find_card_leaks(fh.read().splitlines(), "log"), [])
+else:
+    print("  --  B2C_DEV_SERVER_LOG が無いのでログの検査は省略")
 
 # ---------------------------------------------------------------------------
 print("11 B2B の Webhook は B2C の SetupIntent の通知で何もしない")
