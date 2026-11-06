@@ -12,6 +12,7 @@
 import { getSupabase } from "@/lib/supabase"
 import { b2cOpsAlert, type B2cAlertFn } from "@/lib/b2c/notify"
 import { b2cChargeLive } from "@/lib/b2c/flags"
+import { isNonProductionDeployment, selfBaseUrl } from "@/lib/env-guard"
 
 /** 予定の時刻を過ぎても請求が終わらない、とみなすまでの分（定期の処理は数分おき） */
 export const CHARGE_OVERDUE_MIN = 60
@@ -23,6 +24,20 @@ export const CHARGE_ALERT_REPEAT = "24 hours"
 export type ChargeIssueKind = "unknown" | "on_hold" | "overdue" | "processing_stuck"
 
 const OPS_URL = "https://bondex.express/operator/b2c"
+
+/**
+ * 知らせに載せる運営の画面の URL。本番の配置は今までどおり OPS_URL。
+ * Preview・staging では本番の運営の画面を指さない（2026-11-06 監査）: 自分自身の URL（APP_BASE_URL・lib/env-guard.ts）を使い、
+ * 無い・本番のドメインなら URL の行を出さない（知らせそのものは止めない）。
+ */
+export function chargeWatchOpsUrl(env: Record<string, string | undefined> = process.env): string | null {
+  if (!isNonProductionDeployment(env)) return OPS_URL
+  try {
+    return `${selfBaseUrl(env)}/operator/b2c`
+  } catch {
+    return null
+  }
+}
 
 const TEXT: Record<ChargeIssueKind, { title: string; action: string }> = {
   unknown: {
@@ -124,7 +139,8 @@ export async function watchB2cCharges(now: Date = new Date(), alert: B2cAlertFn 
     lines.push("", `■ ${TEXT[k].title}（${ks.length}件）`, `  → 対応: ${TEXT[k].action}`)
     for (const i of ks) lines.push(`  受付番号 ${i.orderNumber ?? "?"} / 状態 ${i.status} / 請求予定額 ${i.amountYen.toLocaleString("ja-JP")}円 / ${fmtJst(i.since)} から`)
   }
-  lines.push("", `運営の画面: ${OPS_URL}`)
+  const opsUrl = chargeWatchOpsUrl()
+  if (opsUrl) lines.push("", `運営の画面: ${opsUrl}`)
   const top = order.find((k) => claimed.some((i) => i.kind === k))!
   const subject = `【B2C 請求】要確認 ${claimed.length}件（${TEXT[top].title.split("（")[0]}${claimed.length > 1 ? " ほか" : ""}）`
 

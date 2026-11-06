@@ -126,6 +126,16 @@ const setEnv = (e: Record<string, string>) => { for (const k of URL_KEYS) delete
   setEnv({ BONDEX_ENV: "staging" })
   check("手元で BONDEX_ENV=staging: B2C_SITE_URL が無ければ例外 (staging は本番のリンクを作らない)", throws(() => guard.b2cSiteBaseUrl()))
 
+  console.log("6. 請求の見張りの運営への知らせ (lib/b2c/charge-watch.ts): Preview・staging では本番の運営の画面を指さない")
+  const { chargeWatchOpsUrl } = await import("../../lib/b2c/charge-watch")
+  check("本番: 今までどおり https://bondex.express/operator/b2c", chargeWatchOpsUrl({ ...PRODUCTION }) === "https://bondex.express/operator/b2c")
+  check("本番 (APP_BASE_URL が別の値でも): 今までどおり https://bondex.express/operator/b2c", chargeWatchOpsUrl({ ...PRODUCTION, APP_BASE_URL: "https://example.com" }) === "https://bondex.express/operator/b2c")
+  check("手元の開発: 今までどおり", chargeWatchOpsUrl({}) === "https://bondex.express/operator/b2c")
+  check("Preview・APP_BASE_URL=preview.invalid: 自分自身の運営の画面", chargeWatchOpsUrl({ ...PREVIEW, APP_BASE_URL: "https://preview.invalid/" }) === "https://preview.invalid/operator/b2c")
+  check("Preview・APP_BASE_URL なし: URL の行を出さない (null・本番を指さない)", chargeWatchOpsUrl({ ...PREVIEW }) === null)
+  for (const u of PROD_ALIASES) check(`Preview・APP_BASE_URL=${u}: URL の行を出さない`, chargeWatchOpsUrl({ ...PREVIEW, APP_BASE_URL: u }) === null)
+  check("手元で BONDEX_ENV=staging・APP_BASE_URL なし: URL の行を出さない", chargeWatchOpsUrl({ BONDEX_ENV: "staging" }) === null)
+
   console.log(`\n${pass}/${pass + fail} passed`)
   process.exit(fail ? 1 : 0)
 })()
