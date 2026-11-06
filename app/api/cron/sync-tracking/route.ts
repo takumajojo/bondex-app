@@ -5,6 +5,7 @@ import { sendOpsAlert } from "@/lib/ops-alert"
 import { mailerConfigured } from "@/lib/mailer"
 import { listDeliveryOverdue, markDeliveryOverdueAlerted } from "@/lib/shipments-db"
 import { alertPickupMisses } from "@/lib/pickup-request/pickup-miss"
+import { recordHeartbeat } from "@/lib/cron-heartbeat"
 import type { ShipmentStatus } from "@/lib/shipments-db"
 import { chargeShipmentIfDue } from "@/lib/charge"
 import { getTrackingProvider } from "@/lib/tracking"
@@ -12,7 +13,7 @@ import { statusDataFromRow, sendAgencyStatusEmail, type StatusRow } from "@/lib/
 import { notifyBondEx } from "@/lib/notify"
 import { pushToAgency } from "@/lib/agency-push"
 import { endpointLabel, endpointLabelLocalized } from "@/lib/residence"
-import { TRACKING_SYNC_PAUSED } from "@/lib/tracking-pause"
+import { trackingSyncPaused } from "@/lib/tracking-pause"
 import { shouldQueryLeg, numberHasBudget, legProgressStatus, TRACKING_MAX_QUERIES, type NumberMeta } from "@/lib/tracking/poll-policy"
 
 export const runtime = "nodejs"
@@ -107,7 +108,9 @@ export async function GET(req: NextRequest) {
   // 追跡同期の一時停止（佐川の追跡停止・流出対応中）。
   // 追跡照会（Ship&co）も未達アラート（集荷漏れ/配達遅延）も行わず即終了し、
   // 429 エラーの蓄積と誤アラートを抑制する。復旧したら lib/tracking-pause.ts で解除。
-  if (TRACKING_SYNC_PAUSED) {
+  if (trackingSyncPaused()) {
+    // 止めている間は「成功」を記録しない（未集荷の通知は、追跡が古い間は代理店に送らない: lib/pickup-request/pickup-miss.ts agencyNoticeGate）
+    await recordHeartbeat("sync-tracking", false, "paused")
     return NextResponse.json({ ok: true, paused: true, note: "追跡同期は一時停止中（佐川の追跡停止・外部要因）" })
   }
 
@@ -627,6 +630,12 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       console.error("[sync-tracking] delivery re-notify failed:", err instanceof Error ? err.message : err)
     }
+
+    // 追跡の最後の成功の記録（2026-11-07）。照会した番号のうち 1つでも現況が取れた時、または照会する番号が無い時だけ成功。
+    // 全部 noData・429 の時（佐川・Ship&co の停止）は失敗として記録し、未集荷の通知を代理店に送らない（agencyNoticeGate）。
+    // 集荷漏れの判定より前に記録する（この回で追跡が進んだ区間は、もう集荷の前ではない）。
+    const trackedAny = tasks.length === 0 || taskResults.some((t) => !t.result.noData)
+    await recordHeartbeat("sync-tracking", trackedAny, trackedAny ? undefined : `no tracking data for ${tasks.length} numbers`)
 
     // ------------------------------------------------------------------
     // 集荷漏れアラート（G19・2026-11-05）: 判定と送信は lib/pickup-request/pickup-miss.ts の 1か所だけ。

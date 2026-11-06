@@ -23,3 +23,9 @@ export const TRACKING_SYNC_PAUSED: boolean =
   process.env.TRACKING_SYNC_PAUSED != null
     ? process.env.TRACKING_SYNC_PAUSED.toLowerCase() === "true"
     : false
+
+/** 呼んだ時の環境変数で判定する版（読み込みの後に環境変数が変わる試験・未集荷の通知の宛先の判定用）。 */
+export function trackingSyncPaused(): boolean {
+  const v = process.env.TRACKING_SYNC_PAUSED
+  return v != null ? v.toLowerCase() === "true" : false
+}

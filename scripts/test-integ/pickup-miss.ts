@@ -28,12 +28,17 @@ function leg(bid: string, date: string, status: string, agency: string, extra = 
 const sent: OpsAlertInput[] = []
 const okSend = async (i: OpsAlertInput): Promise<OpsAlertResult> => { sent.push(i); return { emailSent: true, slackSent: false, errors: [] } }
 const subjectsFor = (bid: string) => sent.filter((s) => s.subject.includes(bid)).length
+// 追跡の定時処理の最後の成功（cron_heartbeats の sync-tracking）。代理店に送るのは追跡が動いている時だけ（agencyNoticeGate）
+const trackingOkAt = (d: Date) => sql(`insert into cron_heartbeats (name, last_started_at, last_ok_at, consecutive_failures, updated_at) values ('sync-tracking', '${d.toISOString()}', '${d.toISOString()}', 0, now())
+  on conflict (name) do update set last_ok_at = excluded.last_ok_at, last_started_at = excluded.last_started_at, consecutive_failures = 0`)
 const mark = (id: string) => sql(`select coalesce(pickup_alert_sent_at::text,'') from shipments where id='${id}'`)
 
 async function main() {
   const { getSupabase } = await import("@/lib/supabase")
-  const { alertPickupMisses, pickupMissDue } = await import("@/lib/pickup-request/pickup-miss")
+  const { alertPickupMisses: alertRaw, pickupMissDue } = await import("@/lib/pickup-request/pickup-miss")
   const sb = getSupabase()!
+  // 1〜5・7 は追跡が動いている前提（直前の 10分前に追跡が成功）。追跡が止まっている時は 6・8 で見る
+  const alertPickupMisses: typeof alertRaw = (s, send, now = new Date(), opts) => (trackingOkAt(new Date(now.getTime() - 10 * 60_000)), alertRaw(s, send, now, opts))
   sql(`insert into agencies (name, contact_email, locale) values ('PM Agency JA', 'pm-ja@example.invalid', 'ja'), ('PM Agency EN', 'pm-en@example.invalid', 'en') on conflict (name) do nothing`)
 
   console.log("1. 時刻と対象（条件は従来どおり）")
@@ -110,12 +115,38 @@ async function main() {
   ok("監視ジョブを続けて動かしても同じ区間は 0件（送れず再送・結果不明も 0）", (wres2.pickupMiss?.alerted ?? -1) === 0 && wres2.pickupMiss?.retry === 0 && wres2.pickupMiss?.unknown === 0, wres2.pickupMiss)
   const cap = ((globalThis as unknown as { __capturedMails?: Array<{ subject: string }> }).__capturedMails ?? []).filter((m) => m.subject.includes("PM-TRKOFF"))
   ok("記録だけの形（MAIL_TEST_CAPTURE=1）で運営への通知が記録される（実際には送らない）", cap.length >= 1, cap.length)
+  const capTo = ((globalThis as unknown as { __capturedMails?: Array<{ subject: string; to?: unknown }> }).__capturedMails ?? []).filter((m) => m.subject.includes("PM-TRKOFF")).map((m) => JSON.stringify(m.to ?? ""))
+  ok("追跡の一時停止中は代理店の主メールには送らない（運営だけ・誤った集荷漏れの通知を防ぐ）", capTo.length >= 1 && !capTo.some((t) => t.includes("pm-ja@example.invalid")), capTo)
+  process.env.TRACKING_SYNC_PAUSED = "false"
 
   console.log("7. 定時処理が止まっていた後")
   const M = leg("PM-CRONSTOP", addDays(todayJst, -3), "issued", "PM Agency JA")
   ok("どの定時処理も動かなければ通知されない（未通知のまま残る＝運営の手順書で定時処理の停止を検知する）", mark(M) === "")
   await alertPickupMisses(sb, okSend, at("08:00"))
   ok("再開した最初の回で、過去の集荷日の区間をまとめて通知", subjectsFor("PM-CRONSTOP") === 1)
+
+  console.log("8. 追跡が古い・記録が無い時は運営だけ（代理店に送らない）")
+  sql(`delete from cron_heartbeats where name = 'sync-tracking'`)
+  const N = leg("PM-NOHB", addDays(todayJst, -1), "issued", "PM Agency EN")
+  await alertRaw(sb, okSend, at("14:00"))
+  const nohb = sent.find((s) => s.subject.includes("PM-NOHB"))
+  ok("追跡の成功の記録が無い → 運営だけ・理由を本文に書く", !!nohb && nohb.agencyEmail === null && !nohb.agencySubject && nohb.lines.some((l) => l.includes("代理店には送っていません")), nohb)
+  const O = leg("PM-STALE", addDays(todayJst, -1), "issued", "PM Agency JA")
+  trackingOkAt(at("12:29"))
+  await alertRaw(sb, okSend, at("14:00"))
+  const stale = sent.find((s) => s.subject.includes("PM-STALE"))
+  ok("追跡の最後の成功が 91分前（基準 90分）→ 運営だけ", !!stale && stale.agencyEmail === null && stale.lines.some((l) => l.includes("91分")), stale)
+  const P = leg("PM-FRESH", addDays(todayJst, -1), "issued", "PM Agency JA")
+  trackingOkAt(at("12:31"))
+  await alertRaw(sb, okSend, at("14:00"))
+  const fresh = sent.find((s) => s.subject.includes("PM-FRESH"))
+  ok("追跡の最後の成功が 89分前 → 代理店にも送る（従来どおり）", !!fresh && fresh.agencyEmail === "pm-ja@example.invalid" && !fresh.lines.some((l) => l.includes("代理店には送っていません")), fresh)
+  const Q = leg("PM-PAUSEOPT", addDays(todayJst, -1), "issued", "PM Agency JA")
+  await alertRaw(sb, okSend, at("14:00"), { trackingPaused: true })
+  const po = sent.find((s) => s.subject.includes("PM-PAUSEOPT"))
+  ok("追跡が新しくても一時停止中 → 運営だけ", !!po && po.agencyEmail === null, po)
+  ok("運営だけにした区間も 1回だけ（印は付く・あとで代理店へ送り直さない）", mark(N) !== "" && mark(O) !== "" && mark(Q) !== "")
+  void P
 
   console.log(`${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

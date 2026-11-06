@@ -13,10 +13,15 @@
 //   - 集荷日が今日（日本時間）より前なら、時刻に関わらず対象（ただし PICKUP_MISS_LOOKBACK_DAYS 日より前は対象外）
 //   - 集荷日が今日なら、日本時間 18:00 以降だけ対象（集荷は日中に来るため）
 //   - 宛先: 運営（ops-alert）＋代理店の主メール（あれば。英語の代理店には英語の文）。旅行者の予約（B2C・代理店名 BondEx Direct）は代理店が無いので運営だけ
+//   - 追跡が止まっている・古い時は運営だけ（2026-11-07）。追跡の一時停止（TRACKING_SYNC_PAUSED）の間や、追跡の定時処理
+//     （sync-tracking）が TRACKING_FRESH_MIN 分のあいだ成功していない間は、実際は集荷済みでも「集荷の前」のまま残る。
+//     その区間を代理店に「集荷漏れの可能性」と送らない（運営が佐川の追跡で確かめてから連絡する）。判定は agencyNoticeGate。
+//     追跡の記録が読めない・一度も記録が無い時も運営だけ（代理店への誤報より、運営の確認を選ぶ）。
 // 課金には関わらない（B2C の請求は運営の集荷の確認の後にしか作られない）。
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { OpsAlertInput, OpsAlertResult } from "@/lib/ops-alert"
 import { endpointLabel } from "@/lib/residence"
+import { trackingSyncPaused } from "@/lib/tracking-pause"
 
 const JST_MS = 9 * 3600 * 1000
 export const PICKUP_MISS_SAME_DAY_FROM_HOUR_JST = 18
@@ -27,6 +32,33 @@ export const PICKUP_MISS_STATUSES = ["requested", "pending", "issued"] as const
  * 運営と代理店の主メールへ「集荷漏れの可能性」を送らないため。古い区間は運営の画面で確かめる。
  */
 export const PICKUP_MISS_LOOKBACK_DAYS = 3
+
+/** 追跡の定時処理（sync-tracking・pg_cron 30分おき）の最後の成功がこの分より古ければ、追跡は止まっているとみなす。 */
+export const TRACKING_FRESH_MIN_DEFAULT = 90
+
+export interface AgencyNoticeGate {
+  /** 代理店にも送ってよいか（false なら運営だけ） */
+  ok: boolean
+  /** 運営への文に添える理由（ok の時は空） */
+  reason: string
+}
+
+/**
+ * 代理店に「集荷漏れの可能性」を送ってよいか（追跡が動いていて、集荷前のままなのが本当に未集荷を意味する時だけ）。
+ * 追跡の定時処理の最後の成功は cron_heartbeats の sync-tracking（app/api/cron/sync-tracking/route.ts が記録）。
+ */
+export async function agencyNoticeGate(sb: SupabaseClient, now: Date, paused: boolean = trackingSyncPaused()): Promise<AgencyNoticeGate> {
+  if (paused) return { ok: false, reason: "追跡の同期を一時停止中（TRACKING_SYNC_PAUSED）" }
+  const freshMin = Number(process.env.TRACKING_FRESH_MIN ?? TRACKING_FRESH_MIN_DEFAULT)
+  const { data, error } = await sb.from("cron_heartbeats").select("last_ok_at").eq("name", "sync-tracking").maybeSingle()
+  if (error) return { ok: false, reason: `追跡の同期の記録を読めません（${error.message}）` }
+  const lastOk = data?.last_ok_at ? Date.parse(data.last_ok_at as string) : NaN
+  if (!Number.isFinite(lastOk)) return { ok: false, reason: "追跡の同期が成功した記録がありません" }
+  if (now.getTime() - lastOk > freshMin * 60_000) {
+    return { ok: false, reason: `追跡の同期が ${Math.floor((now.getTime() - lastOk) / 60_000)}分 成功していません（基準 ${freshMin}分）` }
+  }
+  return { ok: true, reason: "" }
+}
 
 interface MissRow {
   id: string
@@ -66,6 +98,7 @@ export async function alertPickupMisses(
   sb: SupabaseClient,
   send: (input: OpsAlertInput) => Promise<OpsAlertResult>,
   now: Date = new Date(),
+  opts: { trackingPaused?: boolean } = {},
 ): Promise<PickupMissResult> {
   const today = new Date(now.getTime() + JST_MS).toISOString().slice(0, 10)
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - PICKUP_MISS_LOOKBACK_DAYS * 86400_000).toISOString().slice(0, 10)
@@ -81,8 +114,11 @@ export async function alertPickupMisses(
   const due = ((data ?? []) as MissRow[]).filter((r) => pickupMissDue(r.shipment_date, now))
   if (due.length === 0) return { alerted: 0, retry: 0, unknown: 0, note: "なし" }
 
-  // 代理店の主メールと言語（区間に代理店名があるものだけ）
-  const names = [...new Set(due.map((r) => r.agency).filter((a): a is string => !!a))]
+  // 追跡が止まっている・古い時は代理店に送らない（運営だけ）
+  const gate = await agencyNoticeGate(sb, now, opts.trackingPaused)
+
+  // 代理店の主メールと言語（区間に代理店名があるものだけ。代理店に送らない時は読まない）
+  const names = gate.ok ? [...new Set(due.map((r) => r.agency).filter((a): a is string => !!a))] : []
   const agencyEmail = new Map<string, string>()
   const agencyEn = new Map<string, boolean>()
   if (names.length) {
@@ -121,9 +157,16 @@ export async function alertPickupMisses(
         `発送元: ${route}`,
         `追跡番号: ${tracking || "未発行"}`,
         `対応: 発送元ホテルへ荷物の有無を確認し、必要なら集荷を再手配してください。`,
+        ...(gate.ok
+          ? []
+          : [
+              ``,
+              `※ 代理店には送っていません: ${gate.reason}。`,
+              `  追跡が止まっているため、実際は集荷済みでも「集荷の前」のままの可能性があります。佐川の追跡で確かめ、本当に未集荷の時だけ代理店へ連絡してください。`,
+            ]),
       ],
-      agencyEmail: s.agency ? agencyEmail.get(s.agency) ?? null : null,
-      ...(en
+      agencyEmail: gate.ok && s.agency ? agencyEmail.get(s.agency) ?? null : null,
+      ...(gate.ok && en
         ? {
             agencySubject: `[BondEx] Possible missed pickup — ${leg}`,
             agencyLines: [

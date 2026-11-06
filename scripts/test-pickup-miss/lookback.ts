@@ -10,6 +10,7 @@ import type { OpsAlertInput } from "@/lib/ops-alert"
 type Row = Record<string, unknown>
 const NOW = new Date("2026-11-06T10:00:00Z") // 19:00 JST
 const leg = (id: string, date: string, agency = "Old Agency"): Row => ({ id, booking_id: `BK-${id}`, leg_index: 0, agency, representative: "R", recipient: "R", shipment_date: date, status: "issued", from_hotel: "H", from_residence: null, to_hotel: "H2", to_residence: null, tracking_numbers: null, pickup_alert_sent_at: null })
+const heartbeats: Row[] = [{ name: "sync-tracking", last_ok_at: new Date(NOW.getTime() - 10 * 60_000).toISOString() }]
 const rows: Row[] = [leg("today", "2026-11-06"), leg("d1", "2026-11-05"), leg("d3", "2026-11-03"), leg("d4", "2026-11-02"), leg("old", "2026-09-30"), leg("older", "2026-07-01")]
 
 // supabase の select・update の連鎖のうち、この関数が使う形だけを実装した偽物（条件を実際に当てる）
@@ -26,8 +27,9 @@ function fakeSb() {
       eq: (c: string, v: unknown) => (conds.push((r) => r[c] === v), api),
       is: (c: string, v: unknown) => (conds.push((r) => (r[c] ?? null) === v), api),
       limit: () => api,
+      maybeSingle: () => ({ then: (res: (v: unknown) => void) => (api.then as (r: (v: unknown) => void) => void)((v) => res({ data: (v as { data: Row[] }).data[0] ?? null, error: null })) }),
       then: (res: (v: unknown) => void) => {
-        const src = table === "shipments" ? rows : []
+        const src = table === "shipments" ? rows : table === "cron_heartbeats" ? heartbeats : []
         const hit = src.filter((r) => conds.every((f) => f(r)))
         if (patch) for (const r of hit) Object.assign(r, patch)
         res({ data: hit.map((r) => ({ ...r })), error: null })
