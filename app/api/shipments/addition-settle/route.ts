@@ -1,4 +1,4 @@
-import { assertEnvironmentSafe } from "@/lib/env-guard"
+import { assertEnvironmentSafe, selfBaseUrl } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { rateLimit } from "@/lib/rate-limit"
@@ -29,7 +29,8 @@ export const runtime = "nodejs"
 function trustedOrigin(): string {
   // VERCEL_URL は使わない: Vercel Deployment Protection の対象で、内部自己呼び出しが
   // 401 "Protected deployment" で弾かれるため。公開ドメイン直で呼ぶ。
-  return process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
+  // 本番の配置は今までどおり APP_BASE_URL → bondex.express。本番以外では本番のドメインを使わない (lib/env-guard.ts)
+  return selfBaseUrl()
 }
 
 export async function POST(req: NextRequest) {

@@ -1,3 +1,4 @@
+import { selfBaseUrl } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock"
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase"
@@ -26,7 +27,8 @@ export const maxDuration = 300
  */
 
 const BONDEX_OPS_EMAIL = process.env.ALERT_EMAIL || "support@bondex.express"
-const SITE_URL = process.env.APP_BASE_URL?.replace(/\/+$/, "") || "https://bondex.express"
+// 本番の配置は今までどおり APP_BASE_URL → bondex.express。Preview・Development では本番のドメインを使わない (lib/env-guard.ts)
+const siteUrl = () => selfBaseUrl()
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
@@ -143,7 +145,7 @@ export async function GET(req: NextRequest) {
             "添付 PDF の金額をご確認のうえ、問題なければダッシュボードで「承認」してください。",
             "承認すると翌営業日(第2営業日)に、下記の文面で代理店へ自動送付されます。",
             "承認されない限り代理店へは送られません。",
-            `ダッシュボード: ${SITE_URL}/operator/dashboard`,
+            `ダッシュボード: ${siteUrl()}/operator/dashboard`,
             "",
             "──────── 以下、承認後に代理店へ送られる文面 ────────",
             "",
