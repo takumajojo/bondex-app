@@ -7,6 +7,9 @@
 //   - 本番の DB は運営の照合のモード (--ops-mode=excel-check) の時だけ読む。Vercel・CI の上では動かない
 //   - 鍵は、読み取りだけの役割の鍵 EXCEL_CHECK_READONLY_KEY (sql/ops/excel_check_readonly.sql の bondex_excel_reader) を優先する。
 //     無い間は移行期として SUPABASE_SERVICE_ROLE_KEY を使う。どちらも読み取り (GET) しか送れない接続で作る
+//   - Supabase のゲートウェイは apikey の欄に anon・service_role (または publishable・secret) の鍵しか受け付けない。読み取りだけの
+//     役割の鍵は Authorization: Bearer で送り、apikey には公開の鍵 NEXT_PUBLIC_SUPABASE_ANON_KEY を入れる (2026-11-07・Supabase の文書)
+//   - 読み取りだけの役割の鍵は有効期限 (exp) を必須にし、期限切れは接続の前に止める
 //   - URL は NEXT_PUBLIC_SUPABASE_URL (または SUPABASE_URL)
 
 import { readFileSync } from "node:fs"
@@ -14,13 +17,14 @@ import { createClient } from "@supabase/supabase-js"
 import { checkExcelRows, parseLegRef, type ExcelCheckLeg, type ExcelOpenChange } from "../../lib/pickup-request/excel-check"
 import { isPickupTableMissing } from "../../lib/pickup-request/store"
 import type { PickupRequestRow } from "../../lib/pickup-request/state"
-import { assertExcelCheckAllowed, classifyDbTarget, keyRole, readOnlyFetch, ScriptGuardError } from "../../lib/ops/script-db-guard"
+import { assertExcelCheckAllowed, classifyDbTarget, jwtPayload, keyRole, readOnlyFetch, ScriptGuardError } from "../../lib/ops/script-db-guard"
 
 export const READONLY_ROLE = "bondex_excel_reader"
 
 export interface CheckDeps {
   fetch?: typeof fetch
   log?: (s: string) => void
+  now?: Date
 }
 
 /** 終了コード (0 = すべて OK、1 = NG・止めた)。process.exit はここでは呼ばない (試験で使うため)。 */
@@ -37,16 +41,32 @@ export async function run(argv: string[], env: Record<string, string | undefined
 
     const url = env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL
     const readonlyKey = (env.EXCEL_CHECK_READONLY_KEY ?? "").trim()
-    const key = readonlyKey || env.SUPABASE_SERVICE_ROLE_KEY
-    const target = classifyDbTarget(url, key)
+    let apiKey: string | undefined
+    if (readonlyKey) {
+      const claims = jwtPayload(readonlyKey)
+      if (claims?.role !== READONLY_ROLE) throw new ScriptGuardError(`EXCEL_CHECK_READONLY_KEY は ${READONLY_ROLE} の鍵ではありません`)
+      if (typeof claims.exp !== "number") throw new ScriptGuardError("EXCEL_CHECK_READONLY_KEY に有効期限 (exp) がありません（期限なしの鍵は使わない）")
+      if (claims.exp * 1000 <= (deps.now ?? new Date()).getTime()) throw new ScriptGuardError("EXCEL_CHECK_READONLY_KEY の有効期限が切れています（谷口さんに作り直しを依頼する）")
+      apiKey = (env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim()
+      if (!apiKey) throw new ScriptGuardError("読み取りだけの役割の鍵には、ゲートウェイを通すための公開の鍵 NEXT_PUBLIC_SUPABASE_ANON_KEY が要ります")
+      if (keyRole(apiKey) !== "anon") throw new ScriptGuardError("NEXT_PUBLIC_SUPABASE_ANON_KEY が公開の鍵 (anon) ではありません")
+    } else {
+      apiKey = env.SUPABASE_SERVICE_ROLE_KEY
+    }
+    const target = classifyDbTarget(url, apiKey)
+    if (readonlyKey) {
+      const ref = jwtPayload(readonlyKey)?.ref
+      if (ref && (target === "local" || ref !== jwtPayload(apiKey)?.ref)) throw new ScriptGuardError("EXCEL_CHECK_READONLY_KEY の接続先が URL と一致しません")
+    }
     assertExcelCheckAllowed(target, argv, env)
-    const role = keyRole(key)
-    if (readonlyKey && role !== READONLY_ROLE) throw new ScriptGuardError(`EXCEL_CHECK_READONLY_KEY は ${READONLY_ROLE} の鍵ではありません`)
-    if (!readonlyKey && target !== "local" && role !== "service_role") {
+    if (!readonlyKey && target !== "local" && keyRole(apiKey) !== "service_role") {
       // anon などの鍵は RLS で行が見えず、依頼済みを「依頼なし」と誤って OK にしうる
       throw new ScriptGuardError("照合に使える鍵ではありません (読み取りだけの役割の鍵か、移行期の service_role の鍵)")
     }
-    const sb = createClient(url!, key!, { auth: { persistSession: false }, global: { fetch: readOnlyFetch(deps.fetch ?? fetch) } })
+    const sb = createClient(url!, apiKey!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: readOnlyFetch(deps.fetch ?? fetch), headers: readonlyKey ? { Authorization: `Bearer ${readonlyKey}` } : undefined },
+    })
     if (target === "production") log(readonlyKey ? "本番の DB を読み取りだけの役割で照合します" : "本番の DB を照合します (移行期: service_role の鍵を読み取りだけの接続で使用)")
 
     const bookingIds = [...new Set(refs.map((r) => parseLegRef(r)?.bookingId).filter(Boolean))] as string[]

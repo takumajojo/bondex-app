@@ -19,19 +19,21 @@ const PROD_URL = `https://${PROD_SUPABASE_REF}.supabase.co`
 const STG_URL = `https://${STAGING_SUPABASE_REF}.supabase.co`
 const PROD_SR = jwt({ ref: PROD_SUPABASE_REF, role: "service_role" })
 const PROD_ANON = jwt({ ref: PROD_SUPABASE_REF, role: "anon" })
-const PROD_RO = jwt({ ref: PROD_SUPABASE_REF, role: "bondex_excel_reader" })
+const FUTURE = Math.floor(Date.now() / 1000) + 3600
+const PROD_RO = jwt({ role: "bondex_excel_reader", exp: FUTURE })
 const STG_SR = jwt({ ref: STAGING_SUPABASE_REF, role: "service_role" })
 const prodEnv = { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, SUPABASE_SERVICE_ROLE_KEY: PROD_SR }
 
 // 模擬の PostgREST。送られた要求 (方法・パス) を記録する
-interface Mock { calls: Array<{ method: string; path: string }>; fetch: typeof fetch }
+interface Mock { calls: Array<{ method: string; path: string; apikey: string | null; auth: string | null }>; fetch: typeof fetch }
 function mockDb(opts: { requests?: object[]; changes?: object[]; snapshot?: unknown; fail?: "throw" | 500 } = {}): Mock {
   const calls: Mock["calls"] = []
   const leg = { id: "11111111-1111-1111-1111-111111111111", booking_id: "BDX-TEST01", leg_index: 0, status: "issued", tracking_numbers: [], pickup_requested_at: null, suitcase_count: 2, shipment_date: "2026-11-10", expected_arrival: "2026-11-11" }
   const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const u = new URL(String(input instanceof Request ? input.url : input))
     const method = (init?.method ?? "GET").toUpperCase()
-    calls.push({ method, path: u.pathname })
+    const h = new Headers(init?.headers)
+    calls.push({ method, path: u.pathname, apikey: h.get("apikey"), auth: h.get("authorization") })
     if (opts.fail === "throw") throw new TypeError("fetch failed (模擬: DB に届かない)")
     if (opts.fail === 500) return new Response(JSON.stringify({ message: "模擬の障害" }), { status: 500, headers: { "content-type": "application/json" } })
     const json = (b: unknown, extra: Record<string, string> = {}) => new Response(JSON.stringify(b), { status: 200, headers: { "content-type": "application/json", ...extra } })
@@ -115,7 +117,7 @@ async function main() {
   ok("照合: staging の宣言で本番 → 止める", c.rc === 1 && c.m.calls.length === 0)
   c = await chk(["--ops-mode=excel-check"], { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, SUPABASE_SERVICE_ROLE_KEY: PROD_ANON })
   ok("照合: anon の鍵 (RLS で行が見えない) → 止める", c.rc === 1 && c.m.calls.length === 0)
-  c = await chk(["--ops-mode=excel-check"], { ...prodEnv, EXCEL_CHECK_READONLY_KEY: PROD_SR })
+  c = await chk(["--ops-mode=excel-check"], { ...prodEnv, NEXT_PUBLIC_SUPABASE_ANON_KEY: PROD_ANON, EXCEL_CHECK_READONLY_KEY: PROD_SR })
   ok("照合: 読み取り専用の欄に service_role の鍵 → 止める", c.rc === 1 && c.m.calls.length === 0)
 
   console.log("[3] 本番の鍵が混入した開発環境での停止")
@@ -140,9 +142,20 @@ async function main() {
   ok("移行期: 依頼の記録あり → NG・終了コード 1", c.rc === 1 && /NG/.test(c.out) && !allOk(c.out))
   c = await chk(["--ops-mode=excel-check"], prodEnv, mockDb({ changes: [{ shipment_id: liveReq.shipment_id, kind: "cancel", stage: "requested" }] }))
   ok("移行期: 変更・取消の申請中 → NG", c.rc === 1 && /申請/.test(c.out))
-  const ro = { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, EXCEL_CHECK_READONLY_KEY: PROD_RO }
+  const ro = { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY: PROD_ANON, EXCEL_CHECK_READONLY_KEY: PROD_RO }
   c = await chk(["--ops-mode=excel-check"], ro)
   ok("読み取りの役割: 関数を GET で 1回だけ・依頼なし → OK", c.rc === 0 && allOk(c.out) && c.m.calls.length === 1 && c.m.calls[0].method === "GET" && c.m.calls[0].path.endsWith("/rpc/excel_check_snapshot"), JSON.stringify(c.m.calls))
+  ok("読み取りの役割: apikey は公開の鍵 (anon)・Authorization は役割の鍵 (ゲートウェイの決まり)", c.m.calls[0]?.apikey === PROD_ANON && c.m.calls[0]?.auth === `Bearer ${PROD_RO}`)
+  c = await chk(["--ops-mode=excel-check"], { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, EXCEL_CHECK_READONLY_KEY: PROD_RO })
+  ok("読み取りの役割: 公開の鍵が無い → 止める", c.rc === 1 && c.m.calls.length === 0)
+  c = await chk(["--ops-mode=excel-check"], { ...ro, NEXT_PUBLIC_SUPABASE_ANON_KEY: PROD_SR })
+  ok("読み取りの役割: 公開の鍵の欄に service_role → 止める", c.rc === 1 && c.m.calls.length === 0)
+  c = await chk(["--ops-mode=excel-check"], { ...ro, EXCEL_CHECK_READONLY_KEY: jwt({ role: "bondex_excel_reader", exp: Math.floor(Date.now() / 1000) - 60 }) })
+  ok("読み取りの役割: 有効期限切れ → 止める・接続 0回", c.rc === 1 && c.m.calls.length === 0 && /期限が切れ/.test(c.out))
+  c = await chk(["--ops-mode=excel-check"], { ...ro, EXCEL_CHECK_READONLY_KEY: jwt({ role: "bondex_excel_reader" }) })
+  ok("読み取りの役割: 有効期限なし → 止める", c.rc === 1 && c.m.calls.length === 0)
+  c = await chk(["--ops-mode=excel-check"], { ...ro, EXCEL_CHECK_READONLY_KEY: jwt({ role: "bondex_excel_reader", ref: STAGING_SUPABASE_REF, exp: FUTURE }) })
+  ok("読み取りの役割: 鍵が staging のもの → 止める", c.rc === 1 && c.m.calls.length === 0)
   c = await chk(["--ops-mode=excel-check"], { ...ro, SUPABASE_SERVICE_ROLE_KEY: PROD_SR })
   ok("読み取りの役割の鍵があれば service_role より優先", c.rc === 0 && c.m.calls.length === 1 && /読み取りだけの役割/.test(c.out))
   c = await chk(["--ops-mode=excel-check"], ro, mockDb({ requests: [liveReq] }))

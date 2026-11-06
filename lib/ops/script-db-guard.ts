@@ -18,7 +18,7 @@ export type DbTarget = "production" | "staging" | "local"
 
 export class ScriptGuardError extends Error {}
 
-function jwtPayload(key: string | undefined): Record<string, unknown> | null {
+export function jwtPayload(key: string | undefined): Record<string, unknown> | null {
   if (!key || key.split(".").length !== 3) return null
   try {
     return JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString("utf8"))
