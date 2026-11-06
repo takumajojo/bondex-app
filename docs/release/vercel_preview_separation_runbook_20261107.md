@@ -15,6 +15,7 @@ Vercel は、デプロイを作った時点の環境変数をそのデプロイ�
 ### 1-1. Preview の環境変数を替える
 - 外す（Preview から。Production はそのまま）:
   `RESEND_API_KEY`・`SMTP_HOST`・`SMTP_USER`・`SMTP_PASS`・`GOOGLE_DRIVE_SA_KEY`・`SHIPANDCO_API_KEY`・`SHIPANDCO_LIVE`・`STRIPE_CHARGE_LIVE`
+  （秘密ではないが本番の設定の流用なので、これも外す: `SMTP_PORT`・`GOOGLE_DRIVE_ROOT_ID`・`ALERT_EMAIL`）
 - 値を staging のものに替える（名前は同じ・Preview の値だけ）:
   `NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`・`SUPABASE_SERVICE_ROLE_KEY`（staging の Supabase `oeucjrmuigtfnwowvzwr`）、
   `STRIPE_SECRET_KEY`・`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`（Stripe のテストモードの鍵 `sk_test_`・`pk_test_`）、
