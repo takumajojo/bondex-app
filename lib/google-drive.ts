@@ -1,4 +1,4 @@
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 import crypto from "crypto"
 
 /**
@@ -32,12 +32,12 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 export function isDriveConfigured(): boolean {
   // Preview・Development からは本番の Drive に書かない (lib/env-guard.ts)
-  if (isNonProductionDeployment()) return false
+  if (externalEffectsBlocked()) return false
   return !!(process.env.GOOGLE_DRIVE_SA_KEY?.trim() && ROOT_ID)
 }
 
 function loadCredentials(): ServiceAccount | null {
-  if (isNonProductionDeployment()) return null
+  if (externalEffectsBlocked()) return null
   const raw = process.env.GOOGLE_DRIVE_SA_KEY?.trim()
   if (!raw) return null
   let jsonStr = raw

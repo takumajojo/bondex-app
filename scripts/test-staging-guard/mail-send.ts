@@ -41,7 +41,10 @@ console.log = (...a: unknown[]) => {
 }
 const captured = () => ((globalThis as unknown as { __capturedMails?: unknown[] }).__capturedMails ?? []).length
 
-const ENV_KEYS = ["BONDEX_ENV", "MAIL_TEST_CAPTURE", "STAGING_MAIL_SEND", "STAGING_RESEND_API_KEY", "STAGING_MAIL_FROM", "OPERATOR_EMAILS", "RESEND_API_KEY", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "ALERT_FROM_EMAIL"]
+const ENV_KEYS = ["BONDEX_ENV", "MAIL_TEST_CAPTURE", "STAGING_MAIL_SEND", "STAGING_RESEND_API_KEY", "STAGING_MAIL_FROM", "OPERATOR_EMAILS", "RESEND_API_KEY", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "ALERT_FROM_EMAIL",
+  "NEXT_PUBLIC_SUPABASE_URL", "STAGING_SUPABASE_REF", "APP_BASE_URL", "B2C_SITE_URL"]
+// staging の接続先 (2026-11-07: staging の条件を満たさない時は、社内だけの送信も止めるようになったため、試験も本物の staging と同じ形にする)
+const STAGING_BASE = { NEXT_PUBLIC_SUPABASE_URL: `https://${STAGING_SUPABASE_REF}.supabase.co`, STAGING_SUPABASE_REF, APP_BASE_URL: "https://bondex-staging.vercel.app" }
 function setEnv(e: Record<string, string>) {
   for (const k of ENV_KEYS) delete process.env[k]
   Object.assign(process.env, e)
@@ -50,7 +53,7 @@ function setEnv(e: Record<string, string>) {
   fetchStatus = 200
   ;(globalThis as unknown as { __capturedMails?: unknown[] }).__capturedMails = []
 }
-const STAGING_ON = { BONDEX_ENV: "staging", MAIL_TEST_CAPTURE: "1", STAGING_MAIL_SEND: "internal", STAGING_RESEND_API_KEY: STG_KEY, OPERATOR_EMAILS: `${OPS}, ${OPS2}` }
+const STAGING_ON = { ...STAGING_BASE, BONDEX_ENV: "staging", MAIL_TEST_CAPTURE: "1", STAGING_MAIL_SEND: "internal", STAGING_RESEND_API_KEY: STG_KEY, OPERATOR_EMAILS: `${OPS}, ${OPS2}` }
 const mail = (to: string, extra: Partial<Parameters<typeof sendMail>[0]> = {}) => sendMail({ to, subject: "【BondEx 運営】認証コード 482913", text: "認証コード: 482913", ...extra })
 
 async function main() {
@@ -64,6 +67,13 @@ async function main() {
   })
   await t("MAIL_TEST_CAPTURE が無くても staging は記録だけ（安全装置を外しても送らない）", async () => {
     setEnv({ BONDEX_ENV: "staging", OPERATOR_EMAILS: OPS, RESEND_API_KEY: PROD_KEY })
+    await mail(OPS)
+    assert.equal(calls.length, 0)
+    assert.equal(captured(), 1)
+  })
+
+  await t("staging の条件を満たさない (本番の Supabase) 時は、スイッチ ON・社内の宛先でも送らない", async () => {
+    setEnv({ ...STAGING_ON, NEXT_PUBLIC_SUPABASE_URL: "https://dscxftwfspgihkszfakk.supabase.co" })
     await mail(OPS)
     assert.equal(calls.length, 0)
     assert.equal(captured(), 1)
@@ -124,14 +134,23 @@ async function main() {
     await mail(OPS)
     assert.equal(calls.length, 0)
   })
-  await t("本番の名前の鍵（RESEND_API_KEY）があっても、staging は staging の鍵だけを使う", async () => {
+  // 2026-11-07: 本番の名前の鍵（RESEND_API_KEY・SMTP_*）がある staging は、staging の条件の違反なので、社内の宛先でも送らない（記録だけ）。
+  // 以前は staging の鍵で送っていた。起動の守りでも止まるので、実行の時も同じく止める（より強い）
+  await t("本番の名前の鍵（RESEND_API_KEY）がある staging は送らない（本番の鍵でも staging の鍵でも）", async () => {
     setEnv({ ...STAGING_ON, RESEND_API_KEY: PROD_KEY })
     await mail(OPS)
-    assert.equal(calls.length, 1)
-    assert.equal(calls[0].auth, `Bearer ${STG_KEY}`)
+    assert.equal(calls.length, 0)
+    assert.equal(captured(), 1)
+  })
+  await t("SMTP の設定がある staging は送らない（SMTP も Resend も使わない）", async () => {
+    setEnv({ ...STAGING_ON, SMTP_HOST: "127.0.0.1", SMTP_USER: "u", SMTP_PASS: "p" })
+    const r = await mail(OPS)
+    assert.equal(calls.length, 0)
+    assert.equal(captured(), 1)
+    assert.ok(!/smtp/i.test(String(r.error ?? "")), String(r.error))
   })
   await t("Resend が失敗しても SMTP で送り直さない（staging では SMTP を使わない）", async () => {
-    setEnv({ ...STAGING_ON, SMTP_HOST: "127.0.0.1", SMTP_USER: "u", SMTP_PASS: "p" })
+    setEnv(STAGING_ON)
     fetchStatus = 500
     const r = await mail(OPS)
     assert.equal(r.sent, false)

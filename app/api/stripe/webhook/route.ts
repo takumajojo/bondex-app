@@ -1,3 +1,4 @@
+import { assertEnvironmentSafe } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import {
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
   if (!sig) return NextResponse.json({ error: "missing signature" }, { status: 400 })
 
   const raw = await req.text()
+  assertEnvironmentSafe() // 本番以外の配置・本番と宣言されていない所では Stripe を使わない (lib/env-guard.ts)
   const stripe = new Stripe(secret)
 
   let event: Stripe.Event

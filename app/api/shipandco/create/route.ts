@@ -1,4 +1,4 @@
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { assertEnvironmentSafe, externalEffectsBlocked } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import { isB2cShipmentRow } from "@/lib/b2c/b2b-guard"
 import { rateLimit } from "@/lib/rate-limit"
@@ -453,6 +453,8 @@ function buildResidenceAddress(
 }
 
 export async function POST(req: NextRequest) {
+  // 本番以外の配置・本番と宣言されていない所で本番の資格情報があれば、Ship&co を呼ばない (lib/env-guard.ts)
+  assertEnvironmentSafe()
   const limit = rateLimit(req, "shipandco-create")
   if (!limit.ok) return limit.response
 
@@ -910,7 +912,7 @@ export async function POST(req: NextRequest) {
   // 実ラベル (課金・実集荷・取消不可) を発行する。未設定・空・タイプミス等は必ずテスト扱い。
   // 本番化は Vercel で SHIPANDCO_LIVE=true を設定 → 再デプロイ。戻すときは削除/false。
   // Vercel の Preview・Development からは実ラベルを作らない (本番の鍵が入っていても・lib/env-guard.ts)
-  const isLive = process.env.SHIPANDCO_LIVE === "true" && !isNonProductionDeployment()
+  const isLive = process.env.SHIPANDCO_LIVE === "true" && !externalEffectsBlocked()
   console.log(`[shipandco/create] mode=${isLive ? "LIVE(本番・実ラベル)" : "TEST(テスト)"} carrier=${carrier.id} ref=${refNumberWithDate}`)
 
   const payload = {

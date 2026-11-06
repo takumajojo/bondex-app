@@ -102,17 +102,55 @@ export function stagingGuardViolations(env: Env = process.env): string[] {
 }
 
 /**
- * Vercel の Preview・Development の配置か (Vercel が自動で入れる VERCEL_ENV で判定する。手元の npm run dev・試験は対象外)。
- * Preview にも本番の Supabase・Stripe・Ship&co・メールの鍵が入っているため (2026-11-06 の環境変数の名前の一覧)、
- * 機能のスイッチ (STRIPE_CHARGE_LIVE・SHIPANDCO_LIVE・BIZLOGI_LIVE・AUTO_ISSUE_ENABLED) が ON でも、
- * Preview・Development からは外への実際の処理 (請求・送り状の発行・佐川への依頼・メールの送信) をしない。
- * staging (BONDEX_ENV=staging) の守りは stagingGuardViolations が別に行う。
+ * 本番の配置と宣言されているか (2026-11-07)。Vercel のシステム環境変数だけに頼らない:
+ *   - BONDEX_ENV=staging → 本番ではない
+ *   - VERCEL_ENV があって production 以外 (preview・development・空・知らない値) → 本番ではない
+ *   - BONDEX_ENV=production → 本番 (Vercel のシステム環境変数が無くても本番と分かる。Production の配置にだけ入れる)
+ *   - VERCEL_ENV=production で BONDEX_ENV が無い → 本番 (今の本番の設定のまま動く)
+ *   - それ以外 (何も無い・知らない値) → 本番ではない
+ */
+export function isProductionDeployment(env: Env = process.env): boolean {
+  if (env.BONDEX_ENV === "staging") return false
+  if (env.VERCEL_ENV !== undefined && env.VERCEL_ENV !== "production") return false
+  if (env.BONDEX_ENV === "production") return true
+  return env.VERCEL_ENV === "production" && !env.BONDEX_ENV
+}
+
+/**
+ * 本番以外の「配置」か (Vercel の上・または BONDEX_ENV がある)。外への実際の処理 (請求・送り状・佐川への依頼・メール・
+ * Slack・WhatsApp・LINE・Drive) をしない。手元の開発・試験 (Vercel の変数も BONDEX_ENV も無い) は対象外で、
+ * そこで本番の資格情報を持っていれば undeclaredProductionCredentials が止める。
+ * Vercel の上かは VERCEL・VERCEL_ENV・VERCEL_URL のどれかで見る。値が無い・空・知らない値は本番ではないとみなす (安全側)。
  */
 export function isNonProductionDeployment(env: Env = process.env): boolean {
-  // Vercel の上で、本番 (VERCEL_ENV=production) と確かに分かる時だけ本番。値が無い・知らない値も本番ではないとみなす (安全側・2026-11-07)。
-  // Vercel の上かは、Vercel が入れる VERCEL・VERCEL_ENV・VERCEL_URL のどれかで見る (手元の開発・試験には無い)
-  const onVercel = env.VERCEL === "1" || !!env.VERCEL_ENV || !!env.VERCEL_URL
-  return onVercel && env.VERCEL_ENV !== "production"
+  if (isProductionDeployment(env)) return false
+  const onVercel = env.VERCEL === "1" || env.VERCEL_ENV !== undefined || !!env.VERCEL_URL
+  return onVercel || !!env.BONDEX_ENV
+}
+
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"]
+const isRealHost = (h: string | null) => !!h && !LOCAL_HOSTS.includes(h) && !h.endsWith(".invalid") && !h.endsWith(".test") && !h.endsWith(".localhost")
+
+/**
+ * 本番と宣言されていないのに、本番の資格情報 (見分けられるもの) を持っていれば、その理由 (変数の名前だけ)。
+ * 環境の名前ではなく、接続先と鍵そのもので見る: Vercel のシステム環境変数が無効にされて Preview が「手元」に見えても、
+ * 本番の Supabase の ID・Stripe の本番の鍵・実際の送り状・佐川への実際の依頼のスイッチがあれば止める。
+ * 手元で本番を読む道具は BONDEX_ENV=production を明示して使う。
+ */
+export function undeclaredProductionCredentials(env: Env = process.env): string[] {
+  if (isProductionDeployment(env)) return []
+  const v: string[] = []
+  const tail = "（本番と宣言されていない配置: 本番は VERCEL_ENV=production か BONDEX_ENV=production）"
+  if ((env.NEXT_PUBLIC_SUPABASE_URL ?? "").includes(PROD_SUPABASE_REF)) v.push(`NEXT_PUBLIC_SUPABASE_URL: 本番の Supabase${tail}`)
+  for (const k of ["SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]) {
+    const val = env[k] ?? ""
+    if (val.includes(PROD_SUPABASE_REF) || jwtRef(val) === PROD_SUPABASE_REF) v.push(`${k}: 本番の鍵${tail}`)
+  }
+  if (/^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? "")) v.push(`STRIPE_SECRET_KEY: Stripe の本番の鍵${tail}`)
+  if ((env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "").startsWith("pk_live_")) v.push(`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: Stripe の本番の鍵${tail}`)
+  if (env.SHIPANDCO_LIVE === "true" && (env.SHIPANDCO_API_KEY ?? "").trim()) v.push(`SHIPANDCO_LIVE: 実際の送り状の発行${tail}`)
+  if (env.BIZLOGI_LIVE === "true" && env.BIZLOGI_ENV === "production" && isRealHost(hostOf(env.BIZLOGI_BASE_URL))) v.push(`BIZLOGI_LIVE: 佐川への実際の依頼${tail}`)
+  return v
 }
 
 /**
@@ -147,6 +185,11 @@ export function selfBaseUrl(env: Env = process.env): string {
   return u || "https://bondex.express"
 }
 
+/** 起動・実行を止める理由の全部 (変数の名前と理由だけ・重なりはまとめる)。空なら問題なし。 */
+export function environmentViolations(env: Env = process.env): string[] {
+  return [...new Set([...stagingGuardViolations(env), ...previewDatabaseViolations(env), ...previewEnvironmentViolations(env), ...undeclaredProductionCredentials(env)])]
+}
+
 /**
  * Preview・Development の配置が本番の Supabase に接続しようとしていれば、その理由 (変数の名前だけ)。
  * service_role の鍵は RLS を通らないので、Preview から本番の予約・集荷依頼・請求の行を書き換えられてしまう。
@@ -161,10 +204,17 @@ export function previewDatabaseViolations(env: Env = process.env): string[] {
   return v
 }
 
+/**
+ * 外への実際の処理 (請求・送り状・佐川への依頼・メール・Slack・WhatsApp・LINE・Drive) を止めるか。
+ * 本番以外の配置か、止める理由 (environmentViolations) が 1つでもある時。起動の守りを通り越しても、実行の時にここで止まる。
+ */
+export function externalEffectsBlocked(env: Env = process.env): boolean {
+  return isNonProductionDeployment(env) || environmentViolations(env).length > 0
+}
+
 /** 違反があれば止める（エラーの文には変数の名前と理由だけを出す）。 */
 export function assertEnvironmentSafe(env: Env = process.env): void {
-  // 同じ理由が重ならないようにまとめる (Preview は staging の条件も含む)
-  const v = [...new Set([...stagingGuardViolations(env), ...previewDatabaseViolations(env), ...previewEnvironmentViolations(env)])]
+  const v = environmentViolations(env)
   if (v.length > 0) {
     throw new Error(`[env-guard] 試験環境・Preview の設定に問題があるため止めます（${v.length}件）: ${v.join(" / ")}`)
   }

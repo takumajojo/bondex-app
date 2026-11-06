@@ -13,7 +13,7 @@
 //
 // env / 宛先が無ければ静かにスキップ ({sent:false})。絶対に throw しない (本処理を止めない)。
 
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 import { getSupabase } from "./supabase"
 import { safeLog, errorTypeOf } from "@/lib/safe-log"
 
@@ -53,7 +53,7 @@ async function sendWhatsAppTemplate(
 ): Promise<boolean> {
   const token = process.env.WHATSAPP_CLOUD_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!token || !phoneId || isNonProductionDeployment()) return false // Preview・Development からは送らない
+  if (!token || !phoneId || externalEffectsBlocked()) return false // Preview・Development からは送らない
   try {
     const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
       method: "POST",
@@ -85,7 +85,7 @@ async function sendWhatsAppTemplate(
 
 async function sendLine(userId: string, text: string): Promise<boolean> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN
-  if (!token || isNonProductionDeployment()) return false // Preview・Development からは送らない
+  if (!token || externalEffectsBlocked()) return false // Preview・Development からは送らない
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",

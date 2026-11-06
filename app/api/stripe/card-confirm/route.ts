@@ -1,3 +1,4 @@
+import { assertEnvironmentSafe } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { rateLimit } from "@/lib/rate-limit"
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
   const setupIntentId = typeof body.setupIntentId === "string" ? body.setupIntentId.trim() : ""
   if (!setupIntentId) return NextResponse.json({ error: "setupIntentId is required" }, { status: 400 })
 
+  assertEnvironmentSafe() // 本番以外の配置・本番と宣言されていない所では Stripe を使わない (lib/env-guard.ts)
   const stripe = new Stripe(secret)
   const sb = getSupabase()
   if (!sb) return NextResponse.json({ error: "DB 未設定" }, { status: 503 })

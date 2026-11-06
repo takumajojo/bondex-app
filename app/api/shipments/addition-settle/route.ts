@@ -1,3 +1,4 @@
+import { assertEnvironmentSafe } from "@/lib/env-guard"
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { rateLimit } from "@/lib/rate-limit"
@@ -107,6 +108,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, settlement: "card", url: shipment.stripe_checkout_url, reused: true })
   }
 
+  assertEnvironmentSafe() // 本番以外の配置・本番と宣言されていない所では Stripe を使わない (lib/env-guard.ts)
   const stripe = new Stripe(secret)
   const origin = trustedOrigin()
   try {

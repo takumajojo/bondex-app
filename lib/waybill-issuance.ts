@@ -1,4 +1,4 @@
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 
 /**
  * 送り状 (伝票) を BondEx 側で発行するかどうかの単一スイッチ。
@@ -14,7 +14,7 @@ import { isNonProductionDeployment } from "@/lib/env-guard"
  */
 export function waybillIssuanceEnabled(): boolean {
   // Vercel の Preview・Development からは自動の発行をしない (lib/env-guard.ts)
-  return process.env.AUTO_ISSUE_ENABLED === "true" && !isNonProductionDeployment()
+  return process.env.AUTO_ISSUE_ENABLED === "true" && !externalEffectsBlocked()
 }
 
 /**

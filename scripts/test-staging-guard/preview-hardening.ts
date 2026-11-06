@@ -43,7 +43,7 @@ const STAGING_OK: Record<string, string> = {
   STRIPE_SECRET_KEY: TEST_SK, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: TEST_PK,
   APP_BASE_URL: "https://bondex-staging.vercel.app", B2C_SITE_URL: "https://bondex-staging.vercel.app", MAIL_TEST_CAPTURE: "1",
 }
-const ALL_KEYS = [...new Set([...Object.keys(PROD_LIKE), ...Object.keys(STAGING_OK), "VERCEL", "VERCEL_ENV", "VERCEL_URL", "BONDEX_ENV", "APP_BASE_URL", "B2C_STRIPE_ALLOW_LIVE"])]
+const ALL_KEYS = [...new Set([...Object.keys(PROD_LIKE), ...Object.keys(STAGING_OK), "VERCEL", "VERCEL_ENV", "VERCEL_URL", "BONDEX_ENV", "APP_BASE_URL", "B2C_STRIPE_ALLOW_LIVE", "AUTO_ISSUE_ENABLED", "STRIPE_CHARGE_LIVE", "BIZLOGI_LIVE", "BIZLOGI_ENV", "BIZLOGI_BASE_URL", "BIZLOGI_CUSTOMER_ID", "BIZLOGI_LOGIN_PASSWORD"])]
 const setEnv = (e: Record<string, string>) => { for (const k of ALL_KEYS) delete process.env[k]; Object.assign(process.env, e) }
 const secretsIn = (msg: string) => Object.values(PROD_LIKE).filter((v) => v.length >= 6 && msg.includes(v))
 
@@ -132,8 +132,8 @@ const secretsIn = (msg: string) => Object.values(PROD_LIKE).filter((v) => v.leng
   fetches = []
   const r5 = await sendOpsAlert({ subject: "t", lines: ["t"] })
   check("運営への通知: Slack に投稿しようとする (今までどおり)", r5.errors.some((e) => e.startsWith("slack")) && fetches.some((f) => f.includes("hooks.slack.invalid")), JSON.stringify(r5.errors))
-  setEnv({ ...PROD_LIKE })
-  check("手元の開発・試験 (Vercel の変数なし): 今までどおり", !guard.isNonProductionDeployment() && violations(process.env as Record<string, string>) === "")
+  setEnv({ ...STAGING_OK, BONDEX_ENV: "", STAGING_SUPABASE_REF: "", NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321", SUPABASE_SERVICE_ROLE_KEY: "local-FAKE", NEXT_PUBLIC_SUPABASE_ANON_KEY: "local-FAKE" })
+  check("手元の開発・試験 (Vercel の変数なし・本番の資格情報なし): 今までどおり", !guard.isNonProductionDeployment() && violations(process.env as Record<string, string>) === "")
 
   console.log("6. 外への送信は、起動の守りを通り越しても止まる (Preview に本番の鍵がそろった時)")
   setEnv({ ...PROD_LIKE, VERCEL: "1", VERCEL_ENV: "preview", AUTO_ISSUE_ENABLED: "true" })
@@ -154,6 +154,44 @@ const secretsIn = (msg: string) => Object.values(PROD_LIKE).filter((v) => v.leng
   const c6 = await chargeShipmentIfDue("00000000-0000-0000-0000-000000000000")
   check("B2B の請求: しない", c6.charged === false)
   check("試験の全体で外への通信は、本番の配置の Slack の 1回だけ (他は 0)", fetches.length === 0 && smtpSends === 0, `${fetches.join(",")} ${smtpSends}`)
+
+  console.log("7. Vercel のシステム環境変数が無効 (VERCEL・VERCEL_ENV・VERCEL_URL が無い) の Preview に本番の鍵")
+  setEnv({ ...PROD_LIKE, AUTO_ISSUE_ENABLED: "true", BIZLOGI_LIVE: "true", BIZLOGI_ENV: "production", BIZLOGI_BASE_URL: "https://api.bizlogi.example.com/rest", BIZLOGI_CUSTOMER_ID: "x", BIZLOGI_LOGIN_PASSWORD: "x" })
+  const m7 = violations(process.env as Record<string, string>)
+  check("本番の DB・Stripe の本番の鍵・実際の送り状・佐川への実際の依頼を理由に止める (環境の名前に頼らない)",
+    ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "STRIPE_SECRET_KEY", "SHIPANDCO_LIVE", "BIZLOGI_LIVE"].every((k) => m7.includes(k)), m7.slice(0, 300))
+  check("起動の時にプロセスを止める", tryRegister() === 1)
+  let t7 = false
+  try { const { getSupabase } = await import("../../lib/supabase"); getSupabase() } catch { t7 = true }
+  check("実行の時も DB に接続しない", t7)
+  let s7: ReturnType<typeof b2cStripeConfig> | null = null
+  try { s7 = b2cStripeConfig() } catch { s7 = null }
+  check("B2C の Stripe を使わない", s7 === null)
+  fetches = []; smtpSends = 0
+  const c7 = await chargeShipmentIfDue("00000000-0000-0000-0000-000000000000")
+  const r7 = await sendOpsAlert({ subject: "t", lines: ["t"], agencyEmail: "agency@example.invalid" })
+  const m7b = await sendMail({ to: "guest@example.invalid", subject: "t", text: "t" } as never)
+  const { bizLogiConfigFromEnv } = await import("../../lib/bizlogi/client")
+  let biz7: { live: boolean } | null = null
+  try { biz7 = bizLogiConfigFromEnv(process.env) as { live: boolean } } catch { biz7 = null }
+  check("B2B の請求・自動の発行・佐川への依頼・Drive・Slack・WhatsApp・メールのどれも外へ出ない",
+    c7.charged === false && waybillIssuanceEnabled() === false && (biz7 === null || biz7.live === false) && isDriveConfigured() === false &&
+    r7.slackSent === false && (await sendWhatsAppText("+810000000000", "t")).ok === false && (m7b as { sent: boolean }).sent === true &&
+    fetches.length === 0 && smtpSends === 0, `${JSON.stringify(c7)} ${fetches.join(",")} ${smtpSends}`)
+
+  console.log("8. 本番の正常な起動を保つ・判定が不明なら止まる")
+  setEnv({ ...PROD_LIKE, VERCEL: "1", VERCEL_ENV: "production" })
+  check("今の本番 (VERCEL_ENV=production・BONDEX_ENV なし): 起動する", tryRegister() === null && guard.isProductionDeployment())
+  setEnv({ ...PROD_LIKE, BONDEX_ENV: "production" })
+  check("本番で Vercel のシステム環境変数が無効でも、BONDEX_ENV=production があれば起動する", tryRegister() === null && guard.isProductionDeployment())
+  setEnv({ ...PROD_LIKE, VERCEL: "1", BONDEX_ENV: "production" })
+  check("VERCEL_ENV が無くても BONDEX_ENV=production があれば本番", tryRegister() === null && guard.isProductionDeployment())
+  setEnv({ ...PROD_LIKE, VERCEL: "1", VERCEL_ENV: "preview", BONDEX_ENV: "production" })
+  check("BONDEX_ENV=production でも VERCEL_ENV=preview なら本番にしない (Preview に本番の宣言を写しても止まる)", tryRegister() === 1 && !guard.isProductionDeployment())
+  setEnv({ ...PROD_LIKE, VERCEL: "1", VERCEL_ENV: "production", BONDEX_ENV: "staging" })
+  check("VERCEL_ENV=production でも BONDEX_ENV=staging なら本番にしない (staging の守りで止まる)", tryRegister() === 1 && !guard.isProductionDeployment())
+  setEnv({ ...PROD_LIKE })
+  check("どちらの宣言も無い (判定が不明) のに本番の資格情報 → 止まる (本番を推測しない)", tryRegister() === 1 && !guard.isProductionDeployment())
 
   console.log(`\n${pass}/${pass + fail} passed`)
   process.exit(fail ? 1 : 0)

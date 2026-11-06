@@ -7,7 +7,7 @@
 //
 // env: WHATSAPP_CLOUD_TOKEN / WHATSAPP_PHONE_NUMBER_ID (送信) / WHATSAPP_APP_SECRET (署名検証)。
 
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 import crypto from "crypto"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
@@ -20,7 +20,7 @@ export async function sendWhatsAppText(
   const token = process.env.WHATSAPP_CLOUD_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
   // Preview・Development からは送らない (lib/env-guard.ts)
-  if (isNonProductionDeployment()) return { ok: false, error: "non_production_deployment" }
+  if (externalEffectsBlocked()) return { ok: false, error: "non_production_deployment" }
   if (!token || !phoneId) return { ok: false, error: "whatsapp env not configured" }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {

@@ -1,0 +1,67 @@
+# Vercel の Preview と本番の分離 — 手順と確かめ方（2026-11-07）
+
+Preview（ブランチごとの試し表示）に本番の鍵が入っていた件の対処。**コードの守り（lib/env-guard.ts）だけでは、すでに作られた Preview は安全にならない。**
+Vercel は、デプロイを作った時点の環境変数をそのデプロイの中に持ち続ける。環境変数を替えても、古い Preview は古い本番の鍵で動き続ける。
+そのため、次の 3つがそろって初めて分離できる。
+
+1. Preview の環境変数を staging のものに替える（これから作られる Preview のため）
+2. 替える前に作られた Preview をすべて削除する（古い鍵を持つデプロイを残さない）
+3. コードの守り（統合の承認の後）: 本番以外の配置が本番の資格情報を持っていたら、起動の時と実行の時の両方で止める
+
+2026-11-07 の点検（`scripts/ops/vercel-preview-audit.py`）の結果: Preview に本番の鍵・スイッチの名前が 8件、まだ動く Preview が 91件（全 144件のうち）。
+
+## 1. Vercel の操作（谷口さん・承認の後）
+
+### 1-1. Preview の環境変数を替える
+- 外す（Preview から。Production はそのまま）:
+  `RESEND_API_KEY`・`SMTP_HOST`・`SMTP_USER`・`SMTP_PASS`・`GOOGLE_DRIVE_SA_KEY`・`SHIPANDCO_API_KEY`・`SHIPANDCO_LIVE`・`STRIPE_CHARGE_LIVE`
+- 値を staging のものに替える（名前は同じ・Preview の値だけ）:
+  `NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`・`SUPABASE_SERVICE_ROLE_KEY`（staging の Supabase `oeucjrmuigtfnwowvzwr`）、
+  `STRIPE_SECRET_KEY`・`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`（Stripe のテストモードの鍵 `sk_test_`・`pk_test_`）、
+  `OPERATOR_PASSWORD`（本番と別の値）
+- 足す（Preview だけ）:
+  `BONDEX_ENV=staging`・`STAGING_SUPABASE_REF=oeucjrmuigtfnwowvzwr`・`APP_BASE_URL`（staging の URL・本番のドメインは不可）・`MAIL_TEST_CAPTURE=1`
+- 費用だけの鍵（`ANTHROPIC_API_KEY`・`GOOGLE_MAPS_API_KEY`）は、Preview 用に別の鍵にするか外す（外への副作用は無いが、本番の鍵の使い回しになる）
+
+### 1-2. 本番に宣言を足す（推奨）
+- Production だけに `BONDEX_ENV=production` を足す。Vercel のシステム環境変数（`VERCEL_ENV` など）が無効にされても、本番が本番と分かって起動する。
+  無い間は `VERCEL_ENV=production` で本番と判定する（今の本番の設定のままで動く）。
+- 「Automatically expose System Environment Variables」は ON のまま（既定）。
+
+### 1-3. 古い Preview を削除する
+- 1-1 を終えた時刻（`--since`）より前に作られた Preview をすべて削除する（点検の 2 の一覧）。
+- Production のデプロイは削除しない。
+
+### 1-4. 保護
+- Deployment Protection（Vercel のログイン）が Preview で ON のままか。
+- 「Protection Bypass for Automation」・共有リンク（Shareable Links）が無いか。あれば消す。
+
+## 2. 確かめ方（読むだけ）
+
+```bash
+cd bondex-poc-main   # .vercel/project.json でリンク済みのディレクトリ
+python3 -I ../<このリポジトリ>/scripts/ops/vercel-preview-audit.py --since 2026-11-07T15:00:00+09:00 --vercel <vercel CLI のパス>
+```
+
+- 1: Preview に残っている本番の鍵の名前 0件・足りない名前 0件
+- 2: `--since` より前の、まだ動く Preview 0件
+- 3: 「古い Preview・本番の鍵は残っていない」と出る（終了コード 0）
+- 値が staging のものかは名前では分からない。新しい Preview を 1つ作り、起動できること（lib/env-guard.ts が本番の DB・本番の Stripe の鍵・
+  本番の名前のメールの鍵があれば起動を止める）と、ログインしていない時に 401 か Vercel のログインに転送されることを確かめる。
+
+## 3. 統合ブランチの push を再開する順番
+1. 1-1〜1-4 と 2 の確かめ（谷口さん）
+2. 守りのコミットの統合（コミットを指定した承認の後）
+3. push で作られた新しい Preview が起動すること・本番の鍵の名前が無いことを、もう一度 2 で確かめる
+4. 本番の再デプロイ（main への反映）は別の承認。反映の直後に本番が起動していること（ログインしていない時の 401）を見る
+
+## 4. コードの守りの判定（lib/env-guard.ts）
+| 配置 | 判定 | 本番の資格情報（本番の Supabase・Stripe の本番の鍵・実際の送り状・佐川への実際の依頼） |
+|---|---|---|
+| VERCEL_ENV=production（BONDEX_ENV なし）／BONDEX_ENV=production（VERCEL_ENV なしか production） | 本番 | 使える（今までどおり） |
+| VERCEL_ENV が production 以外（preview・development・空・知らない値） | 本番ではない | 起動しない・実行の時も使わない |
+| BONDEX_ENV=staging | 本番ではない | staging の条件の全部を満たさないと起動しない |
+| 何も無い（手元・または Vercel のシステム環境変数が無効の Preview） | 本番ではない | 持っていれば起動しない。手元で本番を読む道具は BONDEX_ENV=production を明示する |
+
+外への送信（メール・Slack・WhatsApp・LINE・Drive・自分自身の呼び出し）は、本番ではない配置・止める理由がある時、実行の時にもそれぞれの場所で止まる。
+名前だけで見分けられない鍵（メール・Drive など）は、Vercel の上の本番以外の配置では「置いてはいけない名前」として扱う。

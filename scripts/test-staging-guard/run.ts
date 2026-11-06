@@ -25,10 +25,14 @@ const GOOD: Record<string, string> = {
 const bad = (over: Record<string, string>) => stagingGuardViolations({ ...GOOD, ...over })
 
 console.log("staging でない時は何もしない（本番の動きは変わらない）")
-t("BONDEX_ENV が無い: 本番の値があっても違反 0・止めない", () => {
+t("BONDEX_ENV が無い: staging の守りは働かない (違反 0)", () => {
   const prodLike = { NEXT_PUBLIC_SUPABASE_URL: `https://${PROD_SUPABASE_REF}.supabase.co`, STRIPE_SECRET_KEY: "sk_live_FAKE", MAIL_TEST_CAPTURE: "" }
   assert.deepEqual(stagingGuardViolations(prodLike), [])
-  assert.doesNotThrow(() => assertEnvironmentSafe(prodLike))
+  // 2026-11-07: 本番と宣言されていない所に本番の資格情報があれば止める (Vercel のシステム環境変数が無い Preview も含む)
+  assert.throws(() => assertEnvironmentSafe(prodLike), /本番と宣言されていない/)
+  // 本番の配置 (VERCEL_ENV=production か BONDEX_ENV=production) は今までどおり止めない
+  assert.doesNotThrow(() => assertEnvironmentSafe({ ...prodLike, VERCEL_ENV: "production" }))
+  assert.doesNotThrow(() => assertEnvironmentSafe({ ...prodLike, BONDEX_ENV: "production" }))
 })
 t("BONDEX_ENV=production も何もしない", () => assert.deepEqual(stagingGuardViolations({ BONDEX_ENV: "production", STRIPE_SECRET_KEY: "sk_live_FAKE" }), []))
 

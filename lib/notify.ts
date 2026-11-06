@@ -15,7 +15,7 @@
  * コピー)だけを止めれば受信箱が静かになる。
  */
 
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 import { sendMail, mailerConfigured } from "./mailer"
 import { opsRecipients } from "./ops-recipients"
 
@@ -124,7 +124,7 @@ export async function notifyBondEx(
 
   // ── (2) Slack 集約チャンネル (設定があれば)。
   // Preview・Development からは Slack に投稿しない (lib/env-guard.ts)
-  const webhook = isNonProductionDeployment() ? undefined : process.env.SLACK_WEBHOOK_URL
+  const webhook = externalEffectsBlocked() ? undefined : process.env.SLACK_WEBHOOK_URL
   if (webhook) {
     try {
       const res = await fetch(webhook, {

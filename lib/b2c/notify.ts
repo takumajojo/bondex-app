@@ -18,7 +18,7 @@
  *   ログだけ）。WhatsApp は加えて B2C_WHATSAPP_LIVE=true（Meta のテンプレートの承認の後）。それまでは WhatsApp の通知を
  *   送らずに片付け（whatsapp_disabled）、メールだけで運用する（阪急向け Beta はメールだけで開始・2026-11-04 承認）。
  */
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 import { getSupabase } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
 import { sendOpsAlert, opsAlertConfigured, type OpsAlertInput, type OpsAlertResult } from "@/lib/ops-alert"
@@ -91,7 +91,7 @@ export const liveTransport: B2cTransport = {
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
     if (!token || !phoneId) return { ok: false, provider: "whatsapp", error: "whatsapp_not_configured", permanent: true }
     // Preview・Development からは送らない (lib/env-guard.ts)
-    if (isNonProductionDeployment()) return { ok: false, provider: "whatsapp", error: "non_production_deployment", permanent: true }
+    if (externalEffectsBlocked()) return { ok: false, provider: "whatsapp", error: "non_production_deployment", permanent: true }
     try {
       const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
         method: "POST",

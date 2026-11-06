@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer"
 import { BONDEX_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "./email-logo"
 import { safeLog, errorTypeOf } from "./safe-log"
-import { isNonProductionDeployment } from "./env-guard"
+import { environmentViolations, externalEffectsBlocked } from "./env-guard"
 
 // 送信手段の共通ヘルパー。優先順位:
 //  1) SMTP (SMTP_HOST/USER/PASS 設定時)。既存の jojo-tokyo.com(Google) 等から送れる。
@@ -224,7 +224,9 @@ export async function sendMail(opts: {
   // staging は MAIL_TEST_CAPTURE に関わらず、社内の宛先だけの実送信を除いて記録だけ
   const stagingSend = stagingInternalSendAllowed(opts)
   // Vercel の Preview・Development からは実際に送らない (本番のメールの鍵が入っていても・lib/env-guard.ts)
-  if ((process.env.MAIL_TEST_CAPTURE === "1" || isStaging() || isNonProductionDeployment()) && !stagingSend) {
+  // 止める理由 (本番の資格情報を本番以外で持つ など・lib/env-guard.ts) が 1つでもあれば、社内だけの送信も含めて送らない
+  const envBlocked = environmentViolations().length > 0
+  if (envBlocked || ((process.env.MAIL_TEST_CAPTURE === "1" || isStaging() || externalEffectsBlocked()) && !stagingSend)) {
     const g = globalThis as unknown as { __capturedMails?: Array<Record<string, unknown>> }
     g.__capturedMails = g.__capturedMails ?? []
     // 本文は試験の中で中身を確かめるためだけ（プロセスの中だけ・ログには出さない）

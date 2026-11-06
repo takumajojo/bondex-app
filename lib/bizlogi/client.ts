@@ -7,7 +7,7 @@
 // 課金され、取消APIも無い。BIZLOGI_LIVE が厳密に "true" のときだけ発行依頼を送る
 // (SHIPANDCO_LIVE と同じ考え方)。確認機能・住所チェックはこのスイッチに関係なく使える。
 
-import { isNonProductionDeployment } from "@/lib/env-guard"
+import { externalEffectsBlocked } from "@/lib/env-guard"
 import { buildXml, cdata, child, childText, children, parseXml, type XmlElement } from "./xml"
 import { describeResultCode, isSuccess, type ResultCodeInfo } from "./codes"
 import {
@@ -88,7 +88,7 @@ export function bizLogiConfigFromEnv(env: Record<string, string | undefined> = p
     loginPassword: env.BIZLOGI_LOGIN_PASSWORD!,
     okuriCode,
     // Vercel の Preview・Development からは発行依頼を送らない (lib/env-guard.ts)
-    live: env.BIZLOGI_LIVE === "true" && !isNonProductionDeployment(env),
+    live: env.BIZLOGI_LIVE === "true" && !externalEffectsBlocked(env),
     numbering: env.BIZLOGI_NUMBERING === "customer" ? "customer" : "system",
   }
 }
