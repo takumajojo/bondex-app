@@ -41,8 +41,11 @@ const fakeSb = {
   },
 }
 const req = createRequire(import.meta.url)
-const supaPath = req.resolve(path.resolve(process.cwd(), "lib/supabase.ts"))
-req.cache[supaPath] = { id: supaPath, filename: supaPath, loaded: true, exports: { getSupabase: () => fakeSb } } as never
+// @/lib/supabase は tsconfig によって本物か試験用の偽物 (scripts/test-lead-time/fakes) を指す。どちらでもこの偽物にする
+for (const rel of ["lib/supabase.ts", "scripts/test-lead-time/fakes/supabase.ts"]) {
+  const p = req.resolve(path.resolve(process.cwd(), rel))
+  req.cache[p] = { id: p, filename: p, loaded: true, exports: { getSupabase: () => fakeSb } } as never
+}
 
 const PROD_ALIASES = [
   "https://bondex.express", "https://www.bondex.express", "https://bondex-poc-main.vercel.app",
