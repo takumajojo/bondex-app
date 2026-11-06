@@ -33,6 +33,11 @@ function LoginForm() {
   const [codeSent, setCodeSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  // 緊急時のパスワードログイン(端末紛失＋メール障害で指紋もコードも使えない場合の退避路)。
+  // サーバー側は OPERATOR_ALLOW_PASSWORD か「パスキー未登録」のときのみ通す(403で弾く)。
+  const [showPassword, setShowPassword] = useState(false)
+  const [password, setPassword] = useState("")
+  const [pwError, setPwError] = useState("")
 
   const signInWithPasskey = useCallback(async () => {
     setError("")
@@ -126,6 +131,41 @@ function LoginForm() {
     } catch (e2) {
       const msg = e2 instanceof Error ? e2.message : "登録に失敗しました"
       if (!/NotAllowedError|timed out|abort/i.test(msg)) setError(msg)
+    }
+    setBusy(false)
+  }
+
+  // 緊急時: 運営パスワードで入場。サーバーが 403(PASSKEY_REQUIRED)/401/503 を返しうるので
+  // それぞれ分かりやすい日本語で案内する。
+  const signInWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwError("")
+    setBusy(true)
+    try {
+      const res = await fetch("/api/operator/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        router.replace(next)
+        return
+      }
+      if (res.status === 403) {
+        setPwError(
+          d.message ||
+            "この端末は生体認証が必要です。登録済みの端末でサインインするか、新しい端末を登録してください。",
+        )
+      } else if (res.status === 401) {
+        setPwError("パスワードが違います。")
+      } else if (res.status === 503) {
+        setPwError("パスワードログインは利用できません。support@bondex.express へご連絡ください。")
+      } else {
+        setPwError(d.error || "サインインできませんでした。")
+      }
+    } catch {
+      setPwError("通信エラーです。接続をご確認ください。")
     }
     setBusy(false)
   }
@@ -259,6 +299,69 @@ function LoginForm() {
                 ← サインインに戻る
               </button>
             )}
+          </div>
+        )}
+
+        {/* 緊急時の退避路: パスワードログイン + 連絡導線。
+            端末紛失＋メール障害で指紋もコードも使えない「完全ロックアウト」を防ぐ。 */}
+        {registered !== null && (
+          <div className="pt-4 border-t border-border space-y-3">
+            {!showPassword ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPassword(true)
+                  setPwError("")
+                }}
+                className="w-full text-center text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                パスワードでサインイン（緊急時）
+              </button>
+            ) : (
+              <form onSubmit={signInWithPassword} className="space-y-3">
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  端末の紛失やメール不着で指紋・認証コードが使えない場合の退避路です。
+                </p>
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="運営パスワード"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                {pwError && <p className="text-xs text-red-600">{pwError}</p>}
+                <Button type="submit" className="w-full gap-2" disabled={busy || !password}>
+                  {busy ? (
+                    <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4" strokeWidth={1.8} />
+                  )}
+                  パスワードでサインイン
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPassword(false)
+                    setPassword("")
+                    setPwError("")
+                  }}
+                  className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  ← 戻る
+                </button>
+              </form>
+            )}
+            <p className="text-center text-[11px] text-muted-foreground leading-relaxed">
+              どうしても入れない場合は{" "}
+              <a
+                href="mailto:support@bondex.express"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                support@bondex.express
+              </a>{" "}
+              へご連絡ください。
+            </p>
           </div>
         )}
       </div>
