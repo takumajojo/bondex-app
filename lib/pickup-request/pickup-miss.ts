@@ -50,8 +50,15 @@ export interface AgencyNoticeGate {
 export async function agencyNoticeGate(sb: SupabaseClient, now: Date, paused: boolean = trackingSyncPaused()): Promise<AgencyNoticeGate> {
   if (paused) return { ok: false, reason: "追跡の同期を一時停止中（TRACKING_SYNC_PAUSED）" }
   const freshMin = Number(process.env.TRACKING_FRESH_MIN ?? TRACKING_FRESH_MIN_DEFAULT)
-  const { data, error } = await sb.from("cron_heartbeats").select("last_ok_at").eq("name", "sync-tracking").maybeSingle()
-  if (error) return { ok: false, reason: `追跡の同期の記録を読めません（${error.message}）` }
+  let data: { last_ok_at?: unknown } | null = null
+  try {
+    const r = await sb.from("cron_heartbeats").select("last_ok_at").eq("name", "sync-tracking").maybeSingle()
+    if (r.error) return { ok: false, reason: `追跡の同期の記録を読めません（${r.error.message}）` }
+    data = r.data
+  } catch (e) {
+    // 読めない時も例外にしない（運営への通知・集荷の監視の他の処理を止めない）。代理店には送らない
+    return { ok: false, reason: `追跡の同期の記録を読めません（${e instanceof Error ? e.message : String(e)}）` }
+  }
   const lastOk = data?.last_ok_at ? Date.parse(data.last_ok_at as string) : NaN
   if (!Number.isFinite(lastOk)) return { ok: false, reason: "追跡の同期が成功した記録がありません" }
   if (now.getTime() - lastOk > freshMin * 60_000) {

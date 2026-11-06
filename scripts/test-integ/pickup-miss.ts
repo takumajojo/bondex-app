@@ -147,6 +147,17 @@ async function main() {
   ok("追跡が新しくても一時停止中 → 運営だけ", !!po && po.agencyEmail === null, po)
   ok("運営だけにした区間も 1回だけ（印は付く・あとで代理店へ送り直さない）", mark(N) !== "" && mark(O) !== "" && mark(Q) !== "")
   void P
+  const R = leg("PM-HBDENY", addDays(todayJst, -1), "issued", "PM Agency JA")
+  sql("revoke select on public.cron_heartbeats from service_role")
+  let rd: Awaited<ReturnType<typeof alertRaw>> | undefined
+  try { rd = await alertRaw(sb, okSend, at("15:00")) } finally { sql("grant select on public.cron_heartbeats to service_role") }
+  const deny = sent.find((s) => s.subject.includes("PM-HBDENY"))
+  ok("追跡の記録を読めない（権限なし）→ 例外にせず運営だけに理由つきで送る", !!rd && rd.alerted >= 1 && !!deny && deny.agencyEmail === null && deny.lines.some((l) => l.includes("記録を読めません")), [rd, deny])
+  ok("読めない区間も 1回だけ（印が付く）", mark(R) !== "")
+  const { agencyNoticeGate } = await import("@/lib/pickup-request/pickup-miss")
+  const throwing = { from: () => { throw new Error("socket hang up") } } as never
+  const g = await agencyNoticeGate(throwing, at("15:00"), false)
+  ok("追跡の記録の読み取りで例外 → 例外を外に出さず、代理店に送らない", g.ok === false && g.reason.includes("socket hang up"), g)
 
   console.log(`${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)
