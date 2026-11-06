@@ -17,6 +17,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dates"))
+from test_dates import D  # noqa: E402  試験の日付を実際の今日から見て有効な週へ（7日の倍数）
 
 BASE = os.environ.get("BASE", "http://localhost:3210")
 if not (BASE.startswith("http://localhost:") or BASE.startswith("http://127.0.0.1:")):
@@ -82,9 +85,9 @@ tk, ky = pl("Keio Plaza Hotel Tokyo"), pl("Hotel Granvia Kyoto")
 for pid, name in ((tk, "Keio Plaza Hotel Tokyo"), (ky, "Hotel Granvia Kyoto")):
     sql(f"insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('{pid}', '{name}', 'verified', 'e2e@example.invalid', now()) "
         f"on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()")
-sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
-c, r, _ = post("/api/b2c/orders", {"token": T, "originPlaceId": tk, "destPlaceId": ky, "origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"},
-                                   "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-15"}, "pieces": 1, "pickupDate": "2026-11-10", "deliveryDate": "2026-11-12",
+sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('" + D("2026-11-10") + "', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+c, r, _ = post("/api/b2c/orders", {"token": T, "originPlaceId": tk, "destPlaceId": ky, "origin": {"checkIn": D("2026-11-10"), "checkOut": D("2026-11-12")},
+                                   "dest": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-15")}, "pieces": 1, "pickupDate": D("2026-11-10"), "deliveryDate": D("2026-11-12"),
                                    "name": "DB Down", "email": "db@example.invalid", "whatsapp": "+81 90 1111 2222", "language": "en", "consent": True})
 o = {"token": T, "orderNumber": r["orderNumber"], "accessToken": r["accessToken"]}
 c, r, _ = post("/api/b2c/card/start", {**o, "cardConsent": True})

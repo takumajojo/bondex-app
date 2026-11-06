@@ -8,6 +8,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { launch } from "./cdp.mjs"
+import { D } from "../dates/test-dates.mjs" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -39,8 +40,8 @@ let TOKYO, KYOTO
 /** 確定した予約 → カードを請求で失敗するカードに差し替え → 集荷の確認（31分前）→ 定期の処理で請求（失敗） */
 async function failedCharge(lang, failPm) {
   const r = await post("/api/b2c/orders", {
-    token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" },
-    pieces: 2, pickupDate: "2026-11-10", deliveryDate: "2026-11-12", name: lang === "ja" ? "支払 花子" : "Pay Smith", email: "pay-ui@example.invalid", whatsapp: "+81 90 0000 0000", language: lang, consent: true,
+    token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") },
+    pieces: 2, pickupDate: D("2026-11-10"), deliveryDate: D("2026-11-12"), name: lang === "ja" ? "支払 花子" : "Pay Smith", email: "pay-ui@example.invalid", whatsapp: "+81 90 0000 0000", language: lang, consent: true,
   })
   if (r.status !== 200) throw new Error(JSON.stringify(r.data))
   const n = r.data.orderNumber
@@ -147,8 +148,8 @@ const scenarios = {
   async "P04 PC の画面・支払うものが無い予約"(b) {
     await b.setViewport(false)
     const r = await post("/api/b2c/orders", {
-      token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" },
-      pieces: 1, pickupDate: "2026-11-10", deliveryDate: "2026-11-12", name: "Nothing Due", email: "pay-ui@example.invalid", whatsapp: "+81 90 0000 0000", language: "en", consent: true,
+      token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") },
+      pieces: 1, pickupDate: D("2026-11-10"), deliveryDate: D("2026-11-12"), name: "Nothing Due", email: "pay-ui@example.invalid", whatsapp: "+81 90 0000 0000", language: "en", consent: true,
     })
     const s = await post("/api/b2c/card/start", { token: TOK, orderNumber: r.data.orderNumber, accessToken: r.data.accessToken, cardConsent: true })
     await stripeApi(`setup_intents/${s.data.clientSecret.split("_secret_")[0]}/confirm`, { payment_method: "pm_card_visa" })
@@ -171,7 +172,7 @@ async function main() {
   for (const [pid, name] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
     sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${name}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   }
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('${D("2026-11-10")}', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   for (const [name, fn] of Object.entries(scenarios)) {
     if (only.length && !only.some((k) => name.startsWith(k))) continue
     console.log(name)

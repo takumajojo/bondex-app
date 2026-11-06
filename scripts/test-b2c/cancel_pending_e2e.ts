@@ -20,6 +20,7 @@ import { enqueueCollectionReminders, runB2cCharges } from "@/lib/b2c/charge-serv
 import { loadB2cTodo } from "@/lib/b2c/payment-ops"
 import { executeB2cRefund, reconcileB2cRefunds } from "@/lib/b2c/refund-service"
 import { processB2cOutbox, sandboxTransport } from "@/lib/b2c/notify"
+import { D, T } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -51,10 +52,10 @@ async function http(method: string, path: string, body?: unknown, headers: Recor
 }
 
 let TOKYO = "", KYOTO = ""
-const STAY = { origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" } }
+const STAY = { origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") } }
 interface Ord { n: number; token: string; id: string; customer: string }
 async function order(lang: "ja" | "en" = "ja", pieces = 2): Promise<Ord> {
-  const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces, pickupDate: "2026-11-10", deliveryDate: "2026-11-12", name: lang === "ja" ? "請求 花子" : "Charge Smith", email: `${lang}-charge@example.invalid`, whatsapp: "+81 90 1234 5678", language: lang, consent: true })
+  const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces, pickupDate: D("2026-11-10"), deliveryDate: D("2026-11-12"), name: lang === "ja" ? "請求 花子" : "Charge Smith", email: `${lang}-charge@example.invalid`, whatsapp: "+81 90 1234 5678", language: lang, consent: true })
   if (r.status !== 200) throw new Error(`draft ${r.status} ${r.text.slice(0, 200)}`)
   const n = r.json.orderNumber as number
   const id = sql(`select id from b2c_orders where order_number=${n}`)
@@ -88,7 +89,7 @@ async function main() {
   for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
     sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   }
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-20'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('${D("2026-11-04")}'::date, '${D("2026-11-20")}'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-0000000000000005', '\\x00', 'ops-charge@example.invalid') on conflict do nothing")
   opCookie = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession("e2e-cred-0000000000000005")}` }
 
@@ -160,19 +161,19 @@ async function main() {
 
   console.log("K05 追跡が先に配達済みにした区間（B-05）: 追跡だけでは請求しない・運営は確認できる・1回だけ")
   const e = await order("ja")
-  sql(`update shipments set status='delivered', picked_up_at='2026-11-10T02:00:00Z' where id='${ship(e)}'`)
+  sql(`update shipments set status='delivered', picked_up_at='${T("2026-11-10T02:00:00Z")}' where id='${ship(e)}'`)
   await runB2cCharges(stripe, plus(new Date(), 60 * 24 * 3))
   ok("追跡だけでは請求の行 0・PaymentIntent 0", sql(`select count(*) from b2c_payments where order_id='${e.id}'`) === "0" && (await nPI(e)) === 0)
-  const todo1 = await loadB2cTodo(new Date("2026-11-11T03:00:00Z"))
+  const todo1 = await loadB2cTodo(new Date(T("2026-11-11T03:00:00Z")))
   ok("運営の「集荷の確認待ち」に出る", !!todo1?.pickupUnconfirmed.some((x) => x.orderNumber === e.n))
   const ce = await confirmPickup(e)
   const ce2 = await confirmPickup(e)
   ok("集荷の確認ができる・2回目は already_confirmed", ce.json?.ok === true && ce2.json?.ok === false && ce2.json?.error === "already_confirmed", [ce.json, ce2.json])
-  ok("区間は delivered のまま・集荷の時刻は追跡の値", sql(`select status || '|' || to_char(picked_up_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI') from shipments where id='${ship(e)}'`) === "delivered|2026-11-10T02:00")
+  ok("区間は delivered のまま・集荷の時刻は追跡の値", sql(`select status || '|' || to_char(picked_up_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI') from shipments where id='${ship(e)}'`) === `delivered|${T("2026-11-10T02:00:00Z").slice(0, 16)}`)
   await Promise.all([0, 1, 2].map((i) => runB2cCharges(stripe, plus(confirmedAt(e), 31), `race-k-${i}`)))
   await runB2cCharges(stripe, plus(confirmedAt(e), 45))
   ok("同時に 3回の定期の処理でも請求 1回", pay(e).startsWith("succeeded|") && (await paidCharges(e)).length === 1 && (await nPI(e)) === 1, pay(e))
-  const todo2 = await loadB2cTodo(new Date("2026-11-11T03:00:00Z"))
+  const todo2 = await loadB2cTodo(new Date(T("2026-11-11T03:00:00Z")))
   ok("請求の後は「集荷の確認待ち」から消える", !todo2?.pickupUnconfirmed.some((x) => x.orderNumber === e.n))
 
   console.log("K06 個数が違う・請求をやめた予約が一覧に戻らない")
@@ -181,7 +182,7 @@ async function main() {
   const cf = await confirmPickup(f, 3)
   ok("個数の違い → on_hold（pieces_mismatch）", pay(f).startsWith("on_hold|") && pay(f).endsWith("|pieces_mismatch"), [cf.json, pay(f)])
   await ops({ action: "cancel_hold", paymentId: payId(f), note: "e2e 請求をやめる" })
-  const todo3 = await loadB2cTodo(new Date("2026-11-11T03:00:00Z"))
+  const todo3 = await loadB2cTodo(new Date(T("2026-11-11T03:00:00Z")))
   ok("請求をやめた予約は「集荷の確認待ち」に戻らない（確認済み）", pay(f).startsWith("cancelled|") && !todo3?.pickupUnconfirmed.some((x) => x.orderNumber === f.n), pay(f))
   ok("PaymentIntent 0", (await nPI(f)) === 0)
 

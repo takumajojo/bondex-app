@@ -12,6 +12,7 @@ import { writeFileSync } from "node:fs"
 import { issueOperatorSession, OPERATOR_SESSION_COOKIE } from "@/lib/operator-session"
 import { enqueueB2cReminders, processB2cOutbox, sandboxTransport, type B2cTransport } from "@/lib/b2c/notify"
 import { listHotelContactDue } from "@/lib/shipments-db"
+import { D, T } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -58,9 +59,9 @@ async function tick() {
 }
 
 let TOKYO = "", KYOTO = "", NAHA = ""
-const STAY = { origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" } }
+const STAY = { origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") } }
 interface Ord { n: number; token: string; id: string }
-async function draft(lang: "ja" | "en", dest = KYOTO, pickup = "2026-11-10", delivery = "2026-11-12", name = lang === "ja" ? "山田 花子" : "Emma Smith"): Promise<Ord> {
+async function draft(lang: "ja" | "en", dest = KYOTO, pickup = D("2026-11-10"), delivery = D("2026-11-12"), name = lang === "ja" ? "山田 花子" : "Emma Smith"): Promise<Ord> {
   const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: dest, ...STAY, pieces: 2, pickupDate: pickup, deliveryDate: delivery, name, email: `${lang}-guest@example.invalid`, whatsapp: lang === "ja" ? "+81 90 1234 5678" : "+44 7700 900123", language: lang, consent: true })
   if (r.status !== 200) throw new Error(`draft ${r.status} ${r.text.slice(0, 200)}`)
   const id = sql(`select id from b2c_orders where order_number=${r.json.orderNumber}`)
@@ -84,7 +85,7 @@ async function main() {
     sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   }
   sql(`insert into b2c_facilities(place_id, name, status) values ('${NAHA}', 'Hotel Collective Naha', 'unknown') on conflict (place_id) do update set status='unknown', checked_by=null, last_verified_at=null`)
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-20'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('${D("2026-11-04")}'::date, '${D("2026-11-20")}'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-0000000000000001', '\\x00', 'ops-e2e@example.invalid') on conflict do nothing")
   const v2 = await issueOperatorSession("e2e-cred-0000000000000001")
   const v1 = await issueOperatorSession()
@@ -122,7 +123,7 @@ async function main() {
   ok("英語のリンクには ?lang= を付けない（英語が既定）", eb.text.includes(`/my/${b.token}\n`) || eb.text.includes(`/my/${b.token}`) && !eb.text.includes(`/my/${b.token}?lang=ja`))
 
   console.log("S03 未確認のホテル → カード登録後も確認待ち（確定の通知は送らない）→ 運営が確認 → 確定の通知")
-  const c = await draft("ja", NAHA, "2026-11-10", (await http("POST", "/api/b2c/quote", { token: TOK, originPlaceId: TOKYO, destPlaceId: NAHA, ...STAY, pieces: 2 })).json.options[0].earliestDelivery)
+  const c = await draft("ja", NAHA, D("2026-11-10"), (await http("POST", "/api/b2c/quote", { token: TOK, originPlaceId: TOKYO, destPlaceId: NAHA, ...STAY, pieces: 2 })).json.options[0].earliestDelivery)
   await registerCard(c)
   ok("カード登録の後: awaiting_hotel_confirmation・配送データなし", status(c) === "awaiting_hotel_confirmation" && ships(c) === "", [status(c), ships(c)])
   ok("積まれた通知は「確認待ち」だけ（予約確定は無い）", outbox(c).join() === "awaiting_hotel:email:pending,awaiting_hotel:whatsapp:pending", outbox(c))
@@ -167,7 +168,7 @@ async function main() {
   ok("両方了承 → 確定・配送データ", acc2.json.confirmed.includes(d2.n) && status(d2) === "confirmed" && ships(d2) === "issued/ja", acc2.json)
 
   console.log("S05 ホテルの確認の期限切れ → 自動の取消と通知")
-  const e = await draft("ja", NAHA, "2026-11-10", "2026-11-13")
+  const e = await draft("ja", NAHA, D("2026-11-10"), D("2026-11-13"))
   await registerCard(e)
   sql(`alter table b2c_orders disable trigger user; update b2c_orders set confirmation_due_at=now() - interval '1 minute' where id='${e.id}'; alter table b2c_orders enable trigger user;`)
   const t5 = await tick()
@@ -219,13 +220,13 @@ async function main() {
   ok("不正な token の取消は 404", (await http("POST", "/api/b2c/my/cancel", { token: "y".repeat(32) })).status === 404)
 
   console.log("S09 前日・当日の集荷のリマインド（時刻を指定して実行）")
-  const r1 = await draft("ja", KYOTO, "2026-11-12", "2026-11-14", "鈴木 一郎")
+  const r1 = await draft("ja", KYOTO, D("2026-11-12"), D("2026-11-14"), "鈴木 一郎")
   // 集荷日 11/12 の予約（滞在 11/10-11/12 の中）
   await registerCard(r1)
-  const r2 = await draft("en", KYOTO, "2026-11-12", "2026-11-14", "Liam Brown")
+  const r2 = await draft("en", KYOTO, D("2026-11-12"), D("2026-11-14"), "Liam Brown")
   await registerCard(r2)
   await processB2cOutbox(sandboxTransport, new Date())
-  const eve = new Date("2026-11-11T09:30:00Z") // 11/11 18:30 JST
+  const eve = new Date(T("2026-11-11T09:30:00Z")) // 11/11 18:30 JST
   const q1 = await enqueueB2cReminders(eve)
   const q2 = await enqueueB2cReminders(eve)
   ok("前日 18:30: 2予約 × メール・WhatsApp = 4件を積む・2回目は 0件（重複なし）", q1 >= 4 && q2 === 0, [q1, q2])
@@ -233,18 +234,18 @@ async function main() {
   samples["09_ja_reminder_eve_email"] = rendered(r1, "reminder_eve", "email"); samples["09_en_reminder_eve_whatsapp"] = rendered(r2, "reminder_eve", "whatsapp")
   ok("前日のリマインドは取消を案内しない（18:00 は取消の締切の後）", !rendered(r1, "reminder_eve", "email").text.includes("取消") && rendered(r1, "reminder_eve", "email").text.includes("ご予約の確認:"))
   ok("前日のリマインド（日本語・英語）", rendered(r1, "reminder_eve", "email").subject === `【BondEx】明日は集荷日です（受付番号 ${r1.n}）` && rendered(r2, "reminder_eve", "whatsapp").template === "bondex_b2c_pickup_tomorrow")
-  const before17 = new Date("2026-11-11T07:00:00Z") // 16:00 JST
+  const before17 = new Date(T("2026-11-11T07:00:00Z")) // 16:00 JST
   ok("前日の 18:00 前は積まない", (await enqueueB2cReminders(before17)) === 0)
-  const morning = new Date("2026-11-11T23:30:00Z") // 11/12 08:30 JST
+  const morning = new Date(T("2026-11-11T23:30:00Z")) // 11/12 08:30 JST
   await enqueueB2cReminders(morning)
   await processB2cOutbox(sandboxTransport, morning)
   samples["09_ja_reminder_day_email"] = rendered(r1, "reminder_day", "email")
   ok("当日 8:30 のリマインド（日本語）", rendered(r1, "reminder_day", "email").subject?.startsWith("【BondEx】本日は集荷日です"))
-  const r3 = await draft("ja", KYOTO, "2026-11-12", "2026-11-14", "取消 太郎")
+  const r3 = await draft("ja", KYOTO, D("2026-11-12"), D("2026-11-14"), "取消 太郎")
   await registerCard(r3)
   await processB2cOutbox(sandboxTransport, new Date())
   sql(`insert into b2c_outbox(order_id, kind, channel, dedupe_key, language) values ('${r3.id}', 'reminder_day', 'email', 'reminder_day:${r3.id}:email', 'ja')`)
-  const lateMorning = new Date("2026-11-12T02:30:00Z") // 11:30 JST
+  const lateMorning = new Date(T("2026-11-12T02:30:00Z")) // 11:30 JST
   await processB2cOutbox(sandboxTransport, lateMorning)
   ok("11:00 を過ぎた当日のリマインドは送らない（期限切れ expired_before_send・sql/073）", sql(`select status || '|' || last_error from b2c_outbox where dedupe_key='reminder_day:${r3.id}:email'`) === "expired|expired_before_send")
 
@@ -288,7 +289,7 @@ async function main() {
   ok("定期の処理を同時に 3回呼んでも、動くのは 1つ（他は already running）", ticks.filter((x) => x.json?.skipped === "already running").length >= 1, ticks.map((x) => x.json))
 
   console.log("S11 B2B の分離")
-  const hc = await listHotelContactDue("2026-11-08")
+  const hc = await listHotelContactDue(D("2026-11-08"))
   ok("B2B のホテル連絡の催促に B2C の配送データを出さない", !hc.some((r) => (r as { agency?: string }).agency === "BondEx Direct"), hc.length)
   ok("B2C の配送データは代理店名 BondEx Direct・B2B の課金の列は空", sql("select count(*) from shipments where channel='b2c' and (agency <> 'BondEx Direct' or charged_at is not null or stripe_payment_intent_id is not null)") === "0")
   ok("請求・オーソリは作っていない（b2c_payments 0行）", sql("select count(*) from b2c_payments") === "0")

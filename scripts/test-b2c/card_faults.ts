@@ -12,6 +12,7 @@ import Stripe from "stripe"
 import { execFileSync } from "node:child_process"
 import { resolveEntry } from "@/lib/b2c/booking-service"
 import { expireStaleCardPending, finalizeB2cCard, loadOrderForGuest, startB2cCardRegistration } from "@/lib/b2c/card-service"
+import { D } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -60,8 +61,8 @@ let KYOTO = ""
 async function draft(email: string) {
   const r = await post("/api/b2c/orders", {
     token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO,
-    origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" },
-    pieces: 1, pickupDate: "2026-11-10", deliveryDate: "2026-11-12", name: "Fault Test", email, whatsapp: "+44 7700 900123", language: "en", consent: true,
+    origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") },
+    pieces: 1, pickupDate: D("2026-11-10"), deliveryDate: D("2026-11-12"), name: "Fault Test", email, whatsapp: "+44 7700 900123", language: "en", consent: true,
   })
   assert.equal(r.status, 200, JSON.stringify(r.data))
   const entry = (await resolveEntry(TOK))!
@@ -77,7 +78,7 @@ async function main() {
     sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   }
   // 受付の上限（既定 1日 5件）に他の試験の順番で左右されないよう、この試験で使う日の枠を自分で用意する（ローカルの DB だけ）
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('${D("2026-11-10")}', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   const stamp = Date.now()
 
   console.log("D1 Stripe に届かない（通信の失敗）→ 失敗を返し、やり直しで 1つだけ作る")

@@ -14,6 +14,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dates"))
+from test_dates import D  # noqa: E402  試験の日付を実際の今日から見て有効な週へ（7日の倍数）
 
 BASE = os.environ.get("BASE", "http://localhost:3210")
 if not (BASE.startswith("http://localhost:") or BASE.startswith("http://127.0.0.1:")):
@@ -68,10 +71,10 @@ def place(q):
     return post("/api/b2c/places", {"token": TOK, "query": q, "lang": "en"})[1]["candidates"][0]["placeId"]
 
 
-STAY = {"origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"}, "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-15"}}
+STAY = {"origin": {"checkIn": D("2026-11-10"), "checkOut": D("2026-11-12")}, "dest": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-15")}}
 
 
-def new_order(name="Test Traveler", email="t@example.invalid", wa="+31 6 1234 5678", lang="en", pickup="2026-11-10", delivery="2026-11-12", stay=None):
+def new_order(name="Test Traveler", email="t@example.invalid", wa="+31 6 1234 5678", lang="en", pickup=D("2026-11-10"), delivery=D("2026-11-12"), stay=None):
     ip[0] += 1
     code, r = post("/api/b2c/orders", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, **(stay or STAY), "pieces": 1,
                                         "pickupDate": pickup, "deliveryDate": delivery, "name": name, "email": email,
@@ -102,7 +105,7 @@ TOKYO, KYOTO = place("Keio Plaza Hotel Tokyo"), place("Hotel Granvia Kyoto")
 for pid, name in ((TOKYO, "Keio Plaza Hotel Tokyo"), (KYOTO, "Hotel Granvia Kyoto")):
     sql(f"insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('{pid}', '{name}', 'verified', 'e2e@example.invalid', now()) "
         f"on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()")
-sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('" + D("2026-11-10") + "', 500, 2000) on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
 customers = []
 
 # ---------------------------------------------------------------------------
@@ -254,12 +257,12 @@ code, r = status(a)
 check("他人の SetupIntent では 500（setup_intent_mismatch）・確定しない", (code, r.get("error"), row(a)["status"], row(a)["card"]), (500, "setup_intent_mismatch", "card_pending", "registering"))
 
 print("C6 休業日・受付停止の日", flush=True)
-sql("insert into b2c_ops_days(date, closed) values ('2026-11-11', false) on conflict (date) do update set closed=false, max_new_bookings=500, max_pieces=2000")
-_, _, o = new_order(pickup="2026-11-11", delivery="2026-11-13")
-sql("update b2c_ops_days set closed=true where date='2026-11-11'")
+sql("insert into b2c_ops_days(date, closed) values ('" + D("2026-11-11") + "', false) on conflict (date) do update set closed=false, max_new_bookings=500, max_pieces=2000")
+_, _, o = new_order(pickup=D("2026-11-11"), delivery=D("2026-11-13"))
+sql("update b2c_ops_days set closed=true where date='" + D("2026-11-11") + "'")
 code, r = post("/api/b2c/card/start", {**o, "cardConsent": True})
 check("下書きの後に休業日にした → 開始しない（date_not_available）", (code, r.get("error"), row(o)["si"]), (422, "date_not_available", ""))
-sql("update b2c_ops_days set closed=false where date='2026-11-11'")
+sql("update b2c_ops_days set closed=false where date='" + D("2026-11-11") + "'")
 
 print("C7 入力の悪用・特殊な文字（画面・Stripe・DB で壊れない）", flush=True)
 for nm, em in (("<script>alert(1)</script>", "x+tag@example.invalid"), ("李 小龍", "Upper.Case@Example.Invalid"), ("ศรีสุดา ใจดี", "t@example.invalid"),

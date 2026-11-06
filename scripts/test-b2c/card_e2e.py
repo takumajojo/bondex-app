@@ -20,6 +20,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dates"))
+from test_dates import D  # noqa: E402  試験の日付を実際の今日から見て有効な週へ（7日の倍数）
 
 BASE = os.environ.get("BASE", "http://localhost:3211")
 if not (BASE.startswith("http://localhost:") or BASE.startswith("http://127.0.0.1:")):
@@ -92,7 +95,7 @@ def place(q):
 
 def new_order(origin, dest, pickup, delivery, pieces=1, stay=None):
     ip_counter[0] += 1
-    stay = stay or {"origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"}, "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-15"}}
+    stay = stay or {"origin": {"checkIn": D("2026-11-10"), "checkOut": D("2026-11-12")}, "dest": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-15")}}
     code, r = post("/api/b2c/orders", {"token": TOK, "originPlaceId": origin, "destPlaceId": dest, **stay, "pieces": pieces,
                                         "pickupDate": pickup, "deliveryDate": delivery, "name": "Test Traveler", "email": "t@example.invalid",
                                         "whatsapp": "+31 6 1234 5678", "language": "en", "consent": True})
@@ -125,13 +128,13 @@ for pid, name in ((TOKYO, "Keio Plaza Hotel Tokyo"), (KYOTO, "Hotel Granvia Kyot
     sql(f"insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('{pid}', '{name}', 'verified', 'e2e@example.invalid', now()) "
         f"on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()")
 sql(f"insert into b2c_facilities(place_id, name, status) values ('{NAHA}', 'Hotel Collective Naha', 'unknown') on conflict (place_id) do update set status='unknown', checked_by=null, last_verified_at=null")
-sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-10', 50, 200), ('2026-11-11', 50, 200) on conflict (date) do update set max_new_bookings=50, max_pieces=200, closed=false")
+sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('" + D("2026-11-10") + "', 50, 200), ('" + D("2026-11-11") + "', 50, 200) on conflict (date) do update set max_new_bookings=50, max_pieces=200, closed=false")
 T0 = int(time.time()) - 5
 customers = []
 
 # ---------------------------------------------------------------------------
 print("01 正常: 確認済みのホテルどうし → カード登録 → 予約の確定（請求・オーソリなし）")
-o = new_order(TOKYO, KYOTO, "2026-11-10", "2026-11-12", pieces=2)
+o = new_order(TOKYO, KYOTO, D("2026-11-10"), D("2026-11-12"), pieces=2)
 check("下書きの時点: draft・カードなし・shipments なし", (row(o)["status"], row(o)["card"], row(o)["shipments"]), ("draft", "none", 0))
 code, r = start(o, totalGrossYen=1, amount=1)
 check("開始は 200（画面から送った金額は無視）", code, 200)
@@ -157,7 +160,7 @@ O1 = o
 
 # ---------------------------------------------------------------------------
 print("02 未確認のホテル: カード登録の後も awaiting_hotel_confirmation（確定しない）")
-_, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": NAHA, "origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"}, "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-15"}, "pieces": 1})
+_, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": NAHA, "origin": {"checkIn": D("2026-11-10"), "checkOut": D("2026-11-12")}, "dest": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-15")}, "pieces": 1})
 op = q["options"][0]
 check("見積の段階で「確認待ち」の案内（awaiting_hotel_verification）", op["confirmationMode"], "awaiting_hotel_verification")
 o = new_order(TOKYO, NAHA, op["pickupDate"], op["earliestDelivery"])
@@ -176,7 +179,7 @@ sql(f"update b2c_facilities set status='unknown', checked_by=null, last_verified
 
 # ---------------------------------------------------------------------------
 print("03 カードの拒否 → 別のカードで入れ直し")
-o = new_order(TOKYO, KYOTO, "2026-11-10", "2026-11-13")
+o = new_order(TOKYO, KYOTO, D("2026-11-10"), D("2026-11-13"))
 start(o)
 rw = row(o)
 customers.append(rw["cus"])
@@ -190,7 +193,7 @@ check("同じ SetupIntent に別のカード → confirmed", (r["view"]["status"
 
 # ---------------------------------------------------------------------------
 print("04 3D セキュアの認証が必要なカード（認証の前は確定しない）")
-o = new_order(TOKYO, KYOTO, "2026-11-11", "2026-11-13")
+o = new_order(TOKYO, KYOTO, D("2026-11-11"), D("2026-11-13"))
 start(o)
 rw = row(o)
 customers.append(rw["cus"])
@@ -202,7 +205,7 @@ O4 = o
 
 # ---------------------------------------------------------------------------
 print("05 同じ予約のカード登録の開始の重複・競合（同時に 6回）")
-o = new_order(TOKYO, KYOTO, "2026-11-11", "2026-11-14")
+o = new_order(TOKYO, KYOTO, D("2026-11-11"), D("2026-11-14"))
 with cf.ThreadPoolExecutor(6) as ex:
     res = list(ex.map(lambda _: start(o), range(6)))
 secrets = {r.get("clientSecret") for c, r in res if c == 200}
@@ -219,7 +222,7 @@ check("後からもう一度押しても同じ SetupIntent", r.get("clientSecret
 
 # ---------------------------------------------------------------------------
 print("06 通信の切断（画面が結果を受け取れない）→ Webhook で確定・重複・順序の逆転")
-o = new_order(TOKYO, KYOTO, "2026-11-10", "2026-11-14")
+o = new_order(TOKYO, KYOTO, D("2026-11-10"), D("2026-11-14"))
 start(o)
 rw = row(o)
 customers.append(rw["cus"])
@@ -248,7 +251,7 @@ check("B2C の印が無い SetupIntent（B2B の代理店のもの）は無視",
 
 # ---------------------------------------------------------------------------
 print("07 通信の切断（Webhook も届かない）→ 画面の開き直しの照合で確定")
-o = new_order(TOKYO, KYOTO, "2026-11-11", "2026-11-15", stay={"origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"}, "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-16"}})
+o = new_order(TOKYO, KYOTO, D("2026-11-11"), D("2026-11-15"), stay={"origin": {"checkIn": D("2026-11-10"), "checkOut": D("2026-11-12")}, "dest": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-16")}})
 start(o)
 rw = row(o)
 customers.append(rw["cus"])
@@ -258,41 +261,41 @@ check("開き直しの照合で confirmed（JCB）", (r["view"]["status"], r["vi
 
 # ---------------------------------------------------------------------------
 print("08 サーバーでの再検証（開始の時に計算し直す）")
-o = new_order(TOKYO, KYOTO, "2026-11-10", "2026-11-12")
+o = new_order(TOKYO, KYOTO, D("2026-11-10"), D("2026-11-12"))
 oid = row(o)["id"]
 sql(f"alter table b2c_orders disable trigger user; update b2c_orders set unit_net_yen=100, subtotal_net_yen=100, tax_yen=10, total_gross_yen=110 where id='{oid}'; alter table b2c_orders enable trigger user;")
 code, r = start(o)
 check("保存された料金が今の計算と違えば開始しない（quote_changed）", (code, r.get("error")), (422, "quote_changed"))
 check("Stripe の Customer・SetupIntent は作らない", (row(o)["cus"], row(o)["si"], row(o)["status"]), ("", "", "draft"))
-o = new_order(TOKYO, KYOTO, "2026-11-10", "2026-11-12")
+o = new_order(TOKYO, KYOTO, D("2026-11-10"), D("2026-11-12"))
 code, r = post("/api/b2c/card/start", {**o, "cardConsent": False})
 check("カード登録と集荷後の請求への同意が無ければ開始しない", (code, r.get("error")), (422, "card_consent_required"))
 code, r = start({**o, "accessToken": "x" * 32})
 check("秘密の token が違えば 404（他人の予約は触れない）", code, 404)
-sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-12', 1, 19) on conflict (date) do update set max_new_bookings=1, max_pieces=19, closed=false")
-stay12 = {"origin": {"checkIn": "2026-11-11", "checkOut": "2026-11-13"}, "dest": {"checkIn": "2026-11-13", "checkOut": "2026-11-16"}}
-a = new_order(TOKYO, KYOTO, "2026-11-12", "2026-11-14", stay=stay12)
-b = new_order(TOKYO, KYOTO, "2026-11-12", "2026-11-15", stay=stay12)
+sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('" + D("2026-11-12") + "', 1, 19) on conflict (date) do update set max_new_bookings=1, max_pieces=19, closed=false")
+stay12 = {"origin": {"checkIn": D("2026-11-11"), "checkOut": D("2026-11-13")}, "dest": {"checkIn": D("2026-11-13"), "checkOut": D("2026-11-16")}}
+a = new_order(TOKYO, KYOTO, D("2026-11-12"), D("2026-11-14"), stay=stay12)
+b = new_order(TOKYO, KYOTO, D("2026-11-12"), D("2026-11-15"), stay=stay12)
 ca, ra = start(a)
 cb, rb = start(b)
 customers.append(row(a)["cus"])
 check("受付の上限（1件）: 1件目は開始、2件目は「この日程は受けられない」", (ca, cb, rb.get("error")), (200, 422, "date_not_available"))
-sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('2026-11-13', 1, 19) on conflict (date) do update set max_new_bookings=1, max_pieces=19, closed=false")
-stay13 = {"origin": {"checkIn": "2026-11-12", "checkOut": "2026-11-14"}, "dest": {"checkIn": "2026-11-14", "checkOut": "2026-11-17"}}
-pair = [new_order(TOKYO, KYOTO, "2026-11-13", "2026-11-15", stay=stay13), new_order(TOKYO, KYOTO, "2026-11-13", "2026-11-16", stay=stay13)]
+sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) values ('" + D("2026-11-13") + "', 1, 19) on conflict (date) do update set max_new_bookings=1, max_pieces=19, closed=false")
+stay13 = {"origin": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-14")}, "dest": {"checkIn": D("2026-11-14"), "checkOut": D("2026-11-17")}}
+pair = [new_order(TOKYO, KYOTO, D("2026-11-13"), D("2026-11-15"), stay=stay13), new_order(TOKYO, KYOTO, D("2026-11-13"), D("2026-11-16"), stay=stay13)]
 with cf.ThreadPoolExecutor(2) as ex:
     rs = list(ex.map(start, pair))
 codes = sorted(c for c, _ in rs)
 errs = [r.get("error") for c, r in rs if c != 200]
 check("最後の 1枠に 2件が同時: 1件だけ開始、もう 1件は DB の上限で止まる", (codes, errs[0] in ("capacity_full", "date_not_available") if errs else None), ([200, 422], True))
-check("2026-11-13 の枠を使っている予約は 1件だけ", sql("select count(*) from b2c_orders where pickup_date='2026-11-13' and status='card_pending'"), "1")
+check("2026-11-13 の枠を使っている予約は 1件だけ", sql("select count(*) from b2c_orders where pickup_date='" + D("2026-11-13") + "' and status='card_pending'"), "1")
 customers += [row(x)["cus"] for x in pair]
 
 # ---------------------------------------------------------------------------
 print("09 カードの入力を始めて放置 → 30分後に枠を返す（Stripe の SetupIntent を先に取り消す）")
 oid = row(O4)["id"]
 sql(f"alter table b2c_orders disable trigger user; update b2c_orders set updated_at = now() - interval '31 minutes' where id='{oid}'; alter table b2c_orders enable trigger user;")
-o = new_order(TOKYO, KYOTO, "2026-11-11", "2026-11-13")
+o = new_order(TOKYO, KYOTO, D("2026-11-11"), D("2026-11-13"))
 start(o)  # 開始のついでに期限切れを片付ける
 customers.append(row(o)["cus"])
 rw = row(O4)

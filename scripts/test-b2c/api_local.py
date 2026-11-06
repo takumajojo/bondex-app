@@ -9,6 +9,9 @@ import os
 import sys
 import urllib.error
 import urllib.request
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "dates"))
+from test_dates import D  # noqa: E402  試験の日付を実際の今日から見て有効な週へ（7日の倍数）
 
 BASE = os.environ.get("BASE", "http://localhost:3211")
 if not (BASE.startswith("http://localhost:") or BASE.startswith("http://127.0.0.1:")):
@@ -41,7 +44,7 @@ def place(q):
 
 
 TOKYO, KYOTO, NAHA = place("Keio Plaza Hotel Tokyo"), place("Hotel Granvia Kyoto"), place("Hotel Collective Naha")
-STAY = {"origin": {"checkIn": "2026-11-10", "checkOut": "2026-11-12"}, "dest": {"checkIn": "2026-11-12", "checkOut": "2026-11-15"}}
+STAY = {"origin": {"checkIn": D("2026-11-10"), "checkOut": D("2026-11-12")}, "dest": {"checkIn": D("2026-11-12"), "checkOut": D("2026-11-15")}}
 GUEST = {"name": "Test Traveler", "email": "t@example.invalid", "whatsapp": "+31 6 1234 5678", "language": "en", "consent": True}
 
 print("入口")
@@ -52,8 +55,8 @@ check("token なしのホテル検索は 404（有料の API を使わせない�
 print("見積（サーバーで計算）")
 _, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, **STAY, "pieces": 2})
 check("東京→京都 2個 = 税込 10,956円", q["price"]["totalGrossYen"], 10956)
-check("最短のお届け日は配送先のチェックイン日より前にならない", q["options"][0]["earliestDelivery"], "2026-11-12")
-check("お届け日はチェックアウトの前日まで", q["options"][0]["deliveryDates"][-1], "2026-11-14")
+check("最短のお届け日は配送先のチェックイン日より前にならない", q["options"][0]["earliestDelivery"], D("2026-11-12"))
+check("お届け日はチェックアウトの前日まで", q["options"][0]["deliveryDates"][-1], D("2026-11-14"))
 _, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": NAHA, **STAY, "pieces": 1})
 check("東京→那覇 = 沖縄の料金 13,000円（税抜）", q["price"]["unitNetYen"], 13000)
 check("東京→那覇 1個 = 税込 14,300円", q["price"]["totalGrossYen"], 14300)
@@ -61,19 +64,19 @@ _, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceI
 check("同じホテルどうしは不可", q["errors"], ["same_hotel"])
 _, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, **STAY, "pieces": 11})
 check("11個は不可", q["errors"], ["invalid_pieces"])
-_, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, "origin": STAY["origin"], "dest": {"checkIn": "2026-11-20", "checkOut": "2026-11-19"}, "pieces": 1})
+_, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, "origin": STAY["origin"], "dest": {"checkIn": D("2026-11-20"), "checkOut": D("2026-11-19")}, "pieces": 1})
 check("宿泊日の前後が逆なら不可", q["errors"], ["invalid_stay"])
-_, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, "origin": STAY["origin"], "dest": {"checkIn": "2026-11-30", "checkOut": "2026-12-02"}, "pieces": 1})
-check("配送先の滞在が先でも、配送先のチェックイン日より前のお届け日は出さない", all(d >= "2026-11-30" for o in q["options"] for d in o["deliveryDates"]), True)
+_, q = post("/api/b2c/quote", {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, "origin": STAY["origin"], "dest": {"checkIn": D("2026-11-30"), "checkOut": D("2026-12-02")}, "pieces": 1})
+check("配送先の滞在が先でも、配送先のチェックイン日より前のお届け日は出さない", all(d >= D("2026-11-30") for o in q["options"] for d in o["deliveryDates"]), True)
 
 print("予約の下書き（画面の値を信用しない）")
-body = {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, **STAY, "pieces": 1, "pickupDate": "2026-11-10", "deliveryDate": "2026-11-12", **GUEST}
+body = {"token": TOK, "originPlaceId": TOKYO, "destPlaceId": KYOTO, **STAY, "pieces": 1, "pickupDate": D("2026-11-10"), "deliveryDate": D("2026-11-12"), **GUEST}
 code, r = post("/api/b2c/orders", {**body, "totalGrossYen": 1, "unitNetYen": 1})
 check("金額を送っても無視され、サーバーの計算で保存（200）", code, 200)
 check("保存された税込の総額は 5,478円", r.get("totalGrossYen"), 5478)
-code, r = post("/api/b2c/orders", {**body, "pickupDate": "2026-11-09"})
+code, r = post("/api/b2c/orders", {**body, "pickupDate": D("2026-11-09")})
 check("選べない集荷日（滞在の外）は 422", (code, "date_not_available" in r.get("errors", [])), (422, True))
-code, r = post("/api/b2c/orders", {**body, "deliveryDate": "2026-11-15"})
+code, r = post("/api/b2c/orders", {**body, "deliveryDate": D("2026-11-15")})
 check("配送先のチェックアウト当日のお届けは 422", (code, "date_not_available" in r.get("errors", [])), (422, True))
 code, r = post("/api/b2c/orders", {**body, "consent": False, "whatsapp": "0612345678"})
 check("同意なし・WhatsApp の形式違いは 422", (code, sorted(r.get("errors", []))), (422, ["consent_required", "invalid_whatsapp"]))

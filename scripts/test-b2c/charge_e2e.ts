@@ -14,6 +14,7 @@ import { issueOperatorSession, OPERATOR_SESSION_COOKIE } from "@/lib/operator-se
 import { enqueueCollectionReminders, runB2cCharges } from "@/lib/b2c/charge-service"
 import { executeB2cRefund, reconcileB2cRefunds } from "@/lib/b2c/refund-service"
 import { processB2cOutbox, sandboxTransport } from "@/lib/b2c/notify"
+import { D } from "./dates/test-dates" // 試験の日付を実際の今日から見て有効な週へ（7日の倍数・時計はずらさない）
 
 const BASE = process.env.BASE ?? "http://localhost:3210"
 const SK = process.env.STRIPE_SECRET_KEY ?? ""
@@ -46,10 +47,10 @@ async function http(method: string, path: string, body?: unknown, headers: Recor
 }
 
 let TOKYO = "", KYOTO = ""
-const STAY = { origin: { checkIn: "2026-11-10", checkOut: "2026-11-12" }, dest: { checkIn: "2026-11-12", checkOut: "2026-11-15" } }
+const STAY = { origin: { checkIn: D("2026-11-10"), checkOut: D("2026-11-12") }, dest: { checkIn: D("2026-11-12"), checkOut: D("2026-11-15") } }
 interface Ord { n: number; token: string; id: string; customer: string }
 async function order(lang: "ja" | "en" = "ja", pieces = 2): Promise<Ord> {
-  const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces, pickupDate: "2026-11-10", deliveryDate: "2026-11-12", name: lang === "ja" ? "請求 花子" : "Charge Smith", email: `${lang}-charge@example.invalid`, whatsapp: "+81 90 1234 5678", language: lang, consent: true })
+  const r = await http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces, pickupDate: D("2026-11-10"), deliveryDate: D("2026-11-12"), name: lang === "ja" ? "請求 花子" : "Charge Smith", email: `${lang}-charge@example.invalid`, whatsapp: "+81 90 1234 5678", language: lang, consent: true })
   if (r.status !== 200) throw new Error(`draft ${r.status} ${r.text.slice(0, 200)}`)
   const n = r.json.orderNumber as number
   const id = sql(`select id from b2c_orders where order_number=${n}`)
@@ -103,7 +104,7 @@ async function main() {
   for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
     sql(`insert into b2c_facilities(place_id, name, status, checked_by, last_verified_at) values ('${pid}', '${nm}', 'verified', 'e2e@example.invalid', now()) on conflict (place_id) do update set status='verified', checked_by='e2e@example.invalid', last_verified_at=now()`)
   }
-  sql("insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('2026-11-04'::date, '2026-11-20'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false")
+  sql(`insert into b2c_ops_days(date, max_new_bookings, max_pieces) select d::date, 500, 2000 from generate_series('${D("2026-11-04")}'::date, '${D("2026-11-20")}'::date, '1 day') d on conflict (date) do update set max_new_bookings=500, max_pieces=2000, closed=false`)
   sql("insert into operator_passkeys(credential_id, public_key, operator_email) values ('e2e-cred-0000000000000005', '\\x00', 'ops-charge@example.invalid') on conflict do nothing")
   opCookie = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession("e2e-cred-0000000000000005")}` }
   v1Cookie = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession()}` }
@@ -299,7 +300,7 @@ async function main() {
   ok("支払の案内の文面（日本語）: 額・支払のページの URL・共有しない注意", (notice.subject ?? "").includes("お支払いの手続きをお願いします") && notice.text?.includes(`/my/${h.token}/pay?lang=ja`) && notice.text?.includes("共有しないでください"), notice)
 
   console.log("C11 未収（2件・または合計 3万円）で新しい予約だけを止める（Beta 計画 5章）")
-  const newOrder = () => http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces: 1, pickupDate: "2026-11-10", deliveryDate: "2026-11-12", name: "止 太郎", email: "stop@example.invalid", whatsapp: "+81 90 1234 5678", language: "ja", consent: true })
+  const newOrder = () => http("POST", "/api/b2c/orders", { token: TOK, originPlaceId: TOKYO, destPlaceId: KYOTO, ...STAY, pieces: 1, pickupDate: D("2026-11-10"), deliveryDate: D("2026-11-12"), name: "止 太郎", email: "stop@example.invalid", whatsapp: "+81 90 1234 5678", language: "ja", consent: true })
   const unpaidRow = (tag: string, yen: number, st = "failed") => sql(`insert into b2c_payments(order_id, kind, charge_key, amount_yen, pieces, unit_net_yen, status, scheduled_at, created_by, first_failed_at, uncollectible_by, uncollectible_reason, uncollectible_at) values ('${a.id}', 'extra', 'extra:${a.id}:unpaid-test-${tag}', ${yen}, 1, ${unit}, '${st}', now(), 'e2e', now(), ${st === "uncollectible" ? "'e2e','試験','" + new Date().toISOString() + "'" : "null, null, null"})`)
   const clearUnpaid = () => sql(`delete from b2c_payments where charge_key like 'extra:${a.id}:unpaid-test-%'`)
   ok("未収 0件: 受け付ける", (await newOrder()).status === 200, JSON.parse(sql("select b2c_unpaid_summary()::text")))
