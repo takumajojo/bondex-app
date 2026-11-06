@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
     safeLog({ kind: "whatsapp_webhook", source: "whatsapp.signature", outcome: "failed", error: "config_missing" })
   }
   if (!verifyWhatsAppSignature(bytes, req.headers.get("x-hub-signature-256"))) {
+    // 署名の不一致を数えられるようにする (鍵の取り違え・不正な送信の検知)。本文・送り主は出さない
+    if (process.env.WHATSAPP_APP_SECRET) safeLog({ kind: "whatsapp_webhook", source: "whatsapp.signature", outcome: "failed", error: "blocked", http: 401 })
     return NextResponse.json({ error: "invalid signature" }, { status: 401 })
   }
   const raw = bytes.toString("utf8")
