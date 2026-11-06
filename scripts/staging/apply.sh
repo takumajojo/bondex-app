@@ -6,7 +6,10 @@
 #   3. 流す SQL の 1つ 1つの先頭で、同じ印を DB の中で確かめる（印が無ければそのトランザクションごと失敗）
 # 接続文字列は .env.staging.local の STAGING_DB_URL（Git に入らない）。画面にも記録にも出さない。
 # psql はローカルの Supabase の DB のコンテナの中のもの（PostgreSQL 17）を使う。
-# 使い方: bash scripts/staging/apply.sh [base|migrate|080|seed|verify|all]（080 = 2026-11-05 の追加分だけ）
+# 使い方: bash scripts/staging/apply.sh [base|migrate|080|081-083|check081-083|rollback083-081|seed|verify|all]
+#   080 = 2026-11-05 の追加分だけ・081-083 = 2026-11-06 の追加分だけ（staging には 2026-11-06 18:27 に適用済み）・check081-083 = 読むだけの確認
+# 注意: staging には統合に無い agency_first_offer（agencies の first_offer_* 3列・2026-11-05 に連携から適用）がある。初回オファーを統合する時は
+#   SQL の番号を 084 以降に振り直す（統合の 081 と重なるため）。sql/052・sql/ops/*_cron.sql は本番の URL が入っているので staging に流さない
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 STAGING_REF=oeucjrmuigtfnwowvzwr
@@ -73,7 +76,12 @@ migrate() {
   run "2-6c 078" sql/078_pickup_customer_numbering.sql
   run "2-6d 079" sql/079_b2c_legal_versions.sql
   run "2-6e 080" sql/080_cron_heartbeats.sql
-  echo "== （本番ではここでアプリを入れ替える）"
+  # 081・082 は自分で表の確保（migration_lock）をするので前置きは付けない。083 は関数の置き換えだけ
+  run "2-6f 081" sql/081_b2c_leg_prefecture.sql
+  run "2-6g 082" sql/082_b2c_charge_safety.sql
+  run "2-6h 083" sql/083_claim_pickup_guards.sql
+  check0813
+  echo "== （本番ではここでアプリを入れ替える。081〜083 が無ければ入れ替えない: チェックリスト 3-00）"
   run "4-1 072" sql/072_enable_pickup_lock.sql
   run "手順5 070" sql/070_change_deadline_1830.sql
 }
@@ -85,6 +93,36 @@ m080() {
   q -F ' | ' -c "select to_regclass('public.cron_heartbeats') is not null as table_ok,
     has_function_privilege('anon', 'public.cron_heartbeat_record(text, boolean, text, timestamptz)', 'execute') as anon_can_exec,
     has_table_privilege('anon', 'public.cron_heartbeats', 'select') as anon_can_read"
+}
+
+# 081〜083 の適用の確認（読むだけ）。どれか 1つでも違えば止める
+check0813() {
+  local got want="1|t|t|t|t|f|f|t"
+  got=$(q -c "select concat_ws('|',
+    (select count(*) from information_schema.columns where table_schema='public' and table_name='shipments' and column_name='origin_check_out'),
+    (select prosrc like '%from_prefecture%' from pg_proc where proname='b2c_confirm_order'),
+    (select prosrc like '%cancel_pending%' and prosrc like '%no_card_consent%' from pg_proc where proname='b2c_charge_check'),
+    (select prosrc like '%open_change_exists%' from pg_proc where proname='claim_pickup_request'),
+    (select prosrc like '%pickup_marked%' from pg_proc where proname='claim_pickup_request'),
+    has_function_privilege('anon', 'public.claim_pickup_request(uuid,text,text,text,int,date,text,text,text)', 'execute'),
+    has_function_privilege('authenticated', 'public.claim_pickup_request(uuid,text,text,text,int,date,text,text,text)', 'execute'),
+    has_function_privilege('service_role', 'public.claim_pickup_request(uuid,text,text,text,int,date,text,text,text)', 'execute'))")
+  echo "== 確認 081〜083: $got（期待 $want = 列・確定・請求の確認・確保の 2条件・匿名/ログイン利用者は不可・service_role は可）"
+  [ "$got" = "$want" ] || { echo "STOP: 081〜083 の状態が想定と違います"; exit 1; }
+}
+
+# 2026-11-06 の追加分だけ（080 まで流し済みの staging に。1本ずつ・番号の順。何度流しても同じ）
+m0813() {
+  run "2-6f 081" sql/081_b2c_leg_prefecture.sql
+  run "2-6g 082" sql/082_b2c_charge_safety.sql
+  run "2-6h 083" sql/083_claim_pickup_guards.sql
+  check0813
+}
+# 081〜083 を逆の順で戻す（関数を前の版に戻す。081 の列と埋めた値は残す）。谷口さんの承認の後だけ
+rb0813() {
+  run "083 を戻す" sql/rollback/rollback_083.sql
+  run "082 を戻す" sql/rollback/rollback_082.sql
+  run "081 を戻す" sql/rollback/rollback_081.sql
 }
 
 seed() {
@@ -115,9 +153,12 @@ case "${1:-all}" in
   base) base ;;
   migrate) migrate ;;
   080) m080 ;;
+  081-083) m0813 ;;
+  check081-083) check0813 ;;
+  rollback083-081) rb0813 ;;
   seed) seed ;;
   verify) verify ;;
   all) base; migrate; seed; verify ;;
-  *) echo "usage: $0 [base|migrate|080|seed|verify|all]"; exit 1 ;;
+  *) echo "usage: $0 [base|migrate|080|081-083|check081-083|rollback083-081|seed|verify|all]"; exit 1 ;;
 esac
 echo "== 完了"
