@@ -18,7 +18,7 @@
  *   ログだけ）。WhatsApp は加えて B2C_WHATSAPP_LIVE=true（Meta のテンプレートの承認の後）。それまでは WhatsApp の通知を
  *   送らずに片付け（whatsapp_disabled）、メールだけで運用する（阪急向け Beta はメールだけで開始・2026-11-04 承認）。
  */
-import { externalEffectsBlocked } from "@/lib/env-guard"
+import { b2cSiteBaseUrl, externalEffectsBlocked } from "@/lib/env-guard"
 import { getSupabase } from "@/lib/supabase"
 import { sendMail } from "@/lib/mailer"
 import { sendOpsAlert, opsAlertConfigured, type OpsAlertInput, type OpsAlertResult } from "@/lib/ops-alert"
@@ -210,7 +210,7 @@ export interface RefState {
 
 function dataOf(o: OrderForNotify, ref: RefState | null = null): B2cNotifyData {
   const token = b2cAccessToken(o.id)
-  const base = (process.env.B2C_SITE_URL || "https://bondex.express").replace(/\/+$/, "")
+  const base = b2cSiteBaseUrl()
   return {
     lang: o.language === "ja" ? "ja" : "en",
     orderNumber: o.order_number,
@@ -408,6 +408,16 @@ async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, se
     await sb.from("b2c_outbox").update({ status: timing ? "expired" : "cancelled", locked_at: null, last_error: `not_eligible:${notOk}` }).eq("id", row.id).eq("status", "sending")
     if (timing) res.expired++
     else res.skipped++
+    return
+  }
+
+  // リンクの URL を作れない（Preview・staging で B2C_SITE_URL が無い・本番のドメイン）: 送らずに戻す。本番のリンクを送らない・
+  // ほかの行の処理を止めない。設定の後に再試行される（期限を過ぎれば期限切れとして運営に知らせる）
+  try {
+    b2cSiteBaseUrl()
+  } catch {
+    await sb.from("b2c_outbox").update({ status: "pending", locked_at: null, last_error: "site_url_not_configured" }).eq("id", row.id).eq("status", "sending").is("send_started_at", null)
+    res.released++
     return
   }
 

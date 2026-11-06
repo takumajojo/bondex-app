@@ -14,7 +14,21 @@
 
 export const PROD_SUPABASE_REF = "dscxftwfspgihkszfakk"
 export const STAGING_SUPABASE_REF = "oeucjrmuigtfnwowvzwr"
-const PROD_SITE_HOSTS = ["bondex.express", "www.bondex.express"]
+// 本番に届くホスト (2026-11-06 監査): 独自ドメインに加えて、本番の配置に付く Vercel の別名
+// (bondex-poc-main.vercel.app は bondex.express への転送・残りの 2つは本番の配置そのもの)。
+const PROD_SITE_HOSTS = [
+  "bondex.express",
+  "www.bondex.express",
+  "bondex-poc-main.vercel.app",
+  "bondex-poc-main-saxphonebaby-2794s-projects.vercel.app",
+  "bondex-poc-main-git-main-saxphonebaby-2794s-projects.vercel.app",
+]
+
+/** 本番に届くホストか。bondex.express の下の名前はすべて本番として扱う (www 以外も、知らない名前で本番に届かせない)。 */
+export function isProductionSiteHost(host: string | null | undefined): boolean {
+  if (!host) return false
+  return PROD_SITE_HOSTS.includes(host) || host.endsWith(".bondex.express")
+}
 
 type Env = Record<string, string | undefined>
 
@@ -34,7 +48,8 @@ function jwtRef(key: string | undefined): string | null {
 function hostOf(url: string | undefined): string | null {
   if (!url) return null
   try {
-    return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase()
+    // 末尾の点 (bondex.express.) は同じホストに届くので外して比べる
+    return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase().replace(/\.+$/, "")
   } catch {
     return null
   }
@@ -69,7 +84,7 @@ export function stagingGuardViolations(env: Env = process.env): string[] {
   // サイトの URL: 本番のドメインではない
   for (const k of ["APP_BASE_URL", "B2C_SITE_URL"]) {
     const h = hostOf(env[k])
-    if (h && PROD_SITE_HOSTS.includes(h)) v.push(`${k}: 本番のドメイン`)
+    if (h && isProductionSiteHost(h)) v.push(`${k}: 本番のドメイン`)
   }
 
   // 外への送信: メールは送らない（記録だけ）・WhatsApp・LINE・Slack は無し
@@ -179,7 +194,21 @@ export function selfBaseUrl(env: Env = process.env): string {
   const u = env.APP_BASE_URL?.trim().replace(/\/+$/, "")
   if (isNonProductionDeployment(env)) {
     const h = hostOf(u)
-    if (!u || !h || PROD_SITE_HOSTS.includes(h)) throw new Error("[env-guard] Preview・Development では本番のドメインを呼びません（APP_BASE_URL に本番以外の URL が要ります）")
+    if (!u || !h || isProductionSiteHost(h)) throw new Error("[env-guard] Preview・Development では本番のドメインを呼びません（APP_BASE_URL に本番以外の URL が要ります）")
+    return u
+  }
+  return u || "https://bondex.express"
+}
+
+/**
+ * お客さまに送るリンク (My Booking・フロント・支払い) の公開の URL (2026-11-06 監査)。本番の配置は今までどおり B2C_SITE_URL → bondex.express。
+ * Preview・staging では本番のドメインのリンクを作らない: B2C_SITE_URL に本番以外の URL が無ければ例外 (送る側で止める)。
+ */
+export function b2cSiteBaseUrl(env: Env = process.env): string {
+  const u = env.B2C_SITE_URL?.trim().replace(/\/+$/, "")
+  if (isNonProductionDeployment(env)) {
+    const h = hostOf(u)
+    if (!u || !h || isProductionSiteHost(h)) throw new Error("[env-guard] Preview・staging では本番のドメインのリンクを作りません（B2C_SITE_URL に本番以外の URL が要ります）")
     return u
   }
   return u || "https://bondex.express"

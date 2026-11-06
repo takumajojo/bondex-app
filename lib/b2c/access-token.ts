@@ -7,6 +7,7 @@
  * 鍵を変えると、それまでのリンクは使えなくなる（漏えいの時の緊急の手段）。
  */
 import crypto from "node:crypto"
+import { b2cSiteBaseUrl } from "../env-guard"
 
 export function b2cAccessTokenSecretConfigured(): boolean {
   return (process.env.B2C_ACCESS_TOKEN_SECRET ?? "").length >= 32
@@ -18,8 +19,8 @@ export function b2cAccessToken(orderId: string): string {
   return crypto.createHmac("sha256", secret).update(`b2c-order:${orderId}`).digest().subarray(0, 24).toString("base64url")
 }
 
-/** My Booking の URL。B2C_SITE_URL（既定 https://bondex.express）。 */
+/** My Booking の URL。B2C_SITE_URL（本番の既定 https://bondex.express・Preview・staging では本番以外の URL が無ければ例外: lib/env-guard.ts）。 */
 export function b2cMyBookingUrl(orderId: string, lang: "ja" | "en"): string {
-  const base = (process.env.B2C_SITE_URL || "https://bondex.express").replace(/\/+$/, "")
+  const base = b2cSiteBaseUrl()
   return `${base}/my/${b2cAccessToken(orderId)}${lang === "ja" ? "?lang=ja" : ""}`
 }
