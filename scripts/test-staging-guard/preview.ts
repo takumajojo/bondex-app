@@ -45,6 +45,20 @@ const FAKE_LIVE_PK = ["pk", "live", "testonlynotarealkey000000"].join("_")
     const m = await sendMail({ to: "someone@example.invalid", subject: "t", text: "t" } as never)
     check(`${target}: メールは実際に送らない (Resend・SMTP の鍵があっても)`, smtpSends === 0 && fetches === 0 && (m as { sent: boolean }).sent === true)
   }
+  // Preview・Development から本番の DB には接続しない (service_role は RLS を通らない)
+  const fakeJwt = (ref: string) => ["eyJhbGciOiJIUzI1NiJ9", Buffer.from(JSON.stringify({ ref, role: "service_role" })).toString("base64url"), "sig"].join(".")
+  for (const target of ["preview", "development"]) {
+    const env = { VERCEL_ENV: target, NEXT_PUBLIC_SUPABASE_URL: `https://${guard.PROD_SUPABASE_REF}.supabase.co`, SUPABASE_SERVICE_ROLE_KEY: fakeJwt(guard.PROD_SUPABASE_REF) }
+    let threw = ""
+    try { guard.assertEnvironmentSafe(env) } catch (e) { threw = e instanceof Error ? e.message : String(e) }
+    check(`${target}: 本番の Supabase の URL・鍵なら止める`, /NEXT_PUBLIC_SUPABASE_URL/.test(threw) && /SUPABASE_SERVICE_ROLE_KEY/.test(threw), threw)
+    check(`${target}: エラーの文に鍵の値を出さない`, !threw.includes(env.SUPABASE_SERVICE_ROLE_KEY))
+    const stg = { VERCEL_ENV: target, NEXT_PUBLIC_SUPABASE_URL: `https://${guard.STAGING_SUPABASE_REF}.supabase.co`, SUPABASE_SERVICE_ROLE_KEY: fakeJwt(guard.STAGING_SUPABASE_REF) }
+    check(`${target}: 試験環境の Supabase なら止めない`, guard.previewDatabaseViolations(stg).length === 0)
+  }
+  const prodEnv = { VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: `https://${guard.PROD_SUPABASE_REF}.supabase.co`, SUPABASE_SERVICE_ROLE_KEY: fakeJwt(guard.PROD_SUPABASE_REF) }
+  check("production: 本番の Supabase に接続できる (今までどおり)", guard.previewDatabaseViolations(prodEnv).length === 0)
+  check("VERCEL_ENV なし: 本番の URL でも止めない (手元の読み取りの道具・今までどおり)", guard.previewDatabaseViolations({ ...prodEnv, VERCEL_ENV: undefined }).length === 0)
   // 本番 (VERCEL_ENV=production) と手元 (VERCEL_ENV なし) の判定は今までどおり
   process.env.VERCEL_ENV = "production"
   check("production: 本番以外とは判定しない (今までどおり)", !guard.isNonProductionDeployment() && waybillIssuanceEnabled() === true)

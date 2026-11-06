@@ -112,10 +112,24 @@ export function isNonProductionDeployment(env: Env = process.env): boolean {
   return env.VERCEL_ENV === "preview" || env.VERCEL_ENV === "development"
 }
 
+/**
+ * Preview・Development の配置が本番の Supabase に接続しようとしていれば、その理由 (変数の名前だけ)。
+ * service_role の鍵は RLS を通らないので、Preview から本番の予約・集荷依頼・請求の行を書き換えられてしまう。
+ * 本番の DB を読む・書く処理は、本番の配置 (VERCEL_ENV=production) だけに限る。
+ */
+export function previewDatabaseViolations(env: Env = process.env): string[] {
+  if (!isNonProductionDeployment(env)) return []
+  const v: string[] = []
+  if ((env.NEXT_PUBLIC_SUPABASE_URL ?? "").includes(PROD_SUPABASE_REF)) v.push("NEXT_PUBLIC_SUPABASE_URL: 本番の Supabase")
+  const ref = jwtRef(env.SUPABASE_SERVICE_ROLE_KEY)
+  if ((env.SUPABASE_SERVICE_ROLE_KEY ?? "").includes(PROD_SUPABASE_REF) || ref === PROD_SUPABASE_REF) v.push("SUPABASE_SERVICE_ROLE_KEY: 本番の鍵")
+  return v
+}
+
 /** 違反があれば止める（エラーの文には変数の名前と理由だけを出す）。 */
 export function assertEnvironmentSafe(env: Env = process.env): void {
-  const v = stagingGuardViolations(env)
+  const v = [...stagingGuardViolations(env), ...previewDatabaseViolations(env)]
   if (v.length > 0) {
-    throw new Error(`[env-guard] 試験環境の設定に問題があるため止めます（${v.length}件）: ${v.join(" / ")}`)
+    throw new Error(`[env-guard] 試験環境・Preview の設定に問題があるため止めます（${v.length}件）: ${v.join(" / ")}`)
   }
 }
