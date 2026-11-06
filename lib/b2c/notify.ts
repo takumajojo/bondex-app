@@ -366,6 +366,9 @@ export async function processB2cOutbox(transport: B2cTransport = b2cTransport(),
   return res
 }
 
+/** B2C_SITE_URL が無くて送れなかった通知を、次に試すまでの間（設定の後に送られる） */
+const SITE_URL_RETRY_MS = 10 * 60_000
+
 async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, sendTimeout: number, res: OutboxRunResult): Promise<void> {
   const sb = getSupabase()!
   const nowIso = now.toISOString()
@@ -416,7 +419,8 @@ async function processRow(row: OutboxRow, transport: B2cTransport, now: Date, se
   try {
     b2cSiteBaseUrl()
   } catch {
-    await sb.from("b2c_outbox").update({ status: "pending", locked_at: null, last_error: "site_url_not_configured" }).eq("id", row.id).eq("status", "sending").is("send_started_at", null)
+    // 次の試みは 10分後（同じ実行の中で同じ行を取り直し続けない）。試行の回数には数えない。期限を過ぎれば期限切れとして運営に知らせる
+    await sb.from("b2c_outbox").update({ status: "pending", locked_at: null, last_error: "site_url_not_configured", next_attempt_at: new Date(now.getTime() + SITE_URL_RETRY_MS).toISOString() }).eq("id", row.id).eq("status", "sending").is("send_started_at", null)
     res.released++
     return
   }

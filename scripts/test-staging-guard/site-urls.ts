@@ -92,6 +92,7 @@ const setEnv = (e: Record<string, string>) => { for (const k of URL_KEYS) delete
   const back = updates.find((u) => u.table === "b2c_outbox" && u.last_error === "site_url_not_configured")
   check("通知の送信: 送らない (0通)", sent === 0, String(sent))
   check("通知の送信: 行を pending に戻し、理由 site_url_not_configured を残す (設定の後に再試行)", !!back && back.status === "pending" && back.locked_at === null, JSON.stringify(updates))
+  check("通知の送信: 次の試みは 10分後 (同じ実行の中で取り直し続けない)", !!back && back.next_attempt_at === new Date(Date.parse("2026-11-30T00:00:00Z") + 600_000).toISOString(), JSON.stringify(back))
   check("通知の送信: 処理は例外で落ちずに続く (released に数える)", r.released === 1, JSON.stringify(r))
   check("通知の送信: 文面 (本番の URL を含むもの) を記録しない", !updates.some((u) => JSON.stringify(u).includes("bondex.express")))
 

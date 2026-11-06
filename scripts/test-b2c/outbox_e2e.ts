@@ -106,7 +106,7 @@ const bulk = (o: Ord, kind: string, ch: string, prefix: string, n: number, ageMi
 
 async function main() {
   // 前の実行の試験の行の名前をずらす（DB を作り直さずに続けて実行しても、同じ dedupe_key がぶつからないように）
-  sql(`update b2c_outbox set dedupe_key = 'prev' || id || '#' || dedupe_key where dedupe_key ~ '^(emailonly-[a-z_]+-(mail|wa)|emailonly-fail|wa-enabled|idem409|backlog|blockfail|good|hang-mail|hang-wa|dbfail-mail|dbfail-wa|dbfail-smtp|prefail|stale-[a-e]|flap|stuck|stuck-rem|race):' or dedupe_key in ('ok-eve','exp-day','exp-eve','exp-conf','exp-day2')`)
+  sql(`update b2c_outbox set dedupe_key = 'prev' || id || '#' || dedupe_key where dedupe_key ~ '^(emailonly-[a-z_]+-(mail|wa)|emailonly-fail|wa-enabled|siteurl|idem409|backlog|blockfail|good|hang-mail|hang-wa|dbfail-mail|dbfail-wa|dbfail-smtp|prefail|stale-[a-e]|flap|stuck|stuck-rem|race):' or dedupe_key in ('ok-eve','exp-day','exp-eve','exp-conf','exp-day2')`)
   const place = async (q: string) => (await http("POST", "/api/b2c/places", { token: TOK, query: q, lang: "en" })).json.candidates[0].placeId as string
   TOKYO = await place("Keio Plaza Hotel Tokyo"); KYOTO = await place("Hotel Granvia Kyoto")
   for (const [pid, nm] of [[TOKYO, "Keio Plaza Hotel Tokyo"], [KYOTO, "Hotel Granvia Kyoto"]]) {
@@ -364,6 +364,31 @@ async function main() {
   const waOn = new FakeProvider({ email: true, whatsapp: false }, () => OK)
   await processB2cOutbox({ ...waOn.transport(), whatsappEnabled: true }, NOON_BEFORE, { alert })
   ok("WhatsApp を有効にした後の新しい通知は WhatsApp でも送る", st("wa-enabled:1").startsWith("sent") && waOn.calls.some((c) => c.ch === "whatsapp"), st("wa-enabled:1"))
+
+  console.log("O18 Preview・staging で B2C_SITE_URL が無い: 送らずに送信待ちへ戻す（同じ実行で取り直さない）→ 設定の後に 1通だけ")
+  isolate(); alerts.length = 0
+  bulk(C, "booking_confirmed", "email", "siteurl:", 1, 5)
+  const savedEnv = { BONDEX_ENV: process.env.BONDEX_ENV, B2C_SITE_URL: process.env.B2C_SITE_URL }
+  // DB の接続は作成済み（起動の守りは通過済み）。リンクの元の URL の判定だけを staging にする
+  process.env.BONDEX_ENV = "staging"; delete process.env.B2C_SITE_URL
+  try {
+    const su = new FakeProvider({ email: true, whatsapp: false }, () => OK)
+    const t0 = Date.now()
+    const r18 = await processB2cOutbox(su.transport(), NOON_BEFORE, { alert, budgetMs: 5000 })
+    ok("URL が無い: 送信 0回・送信待ちへ戻す（pending・試行 0・site_url_not_configured）", su.calls.length === 0 && st("siteurl:1") === "pending|0|site_url_not_configured", [su.calls.length, st("siteurl:1")])
+    ok("同じ実行の中で同じ行を取り直し続けない（取ったのは 1回・時間の上限まで回らない）", r18.claimed === 1 && r18.released === 1 && Date.now() - t0 < 4000, [r18.claimed, r18.released, Date.now() - t0])
+    ok("次の試みは 10分後", sql("select to_char(next_attempt_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI') from b2c_outbox where dedupe_key='siteurl:1'") === plus(NOON_BEFORE, 10).toISOString().slice(0, 16))
+    await processB2cOutbox(su.transport(), plus(NOON_BEFORE, 5), { alert, budgetMs: 3000 })
+    ok("10分の前は取らない（送信 0回）", su.calls.length === 0 && st("siteurl:1") === "pending|0|site_url_not_configured")
+    process.env.B2C_SITE_URL = "https://preview.invalid"
+    await processB2cOutbox(su.transport(), plus(NOON_BEFORE, 11), { alert, budgetMs: 3000 })
+    ok("設定の後: 1通だけ送る（sent・試行 1）", st("siteurl:1").startsWith("sent|1") && su.callsFor("siteurl:") === 1 && su.deliveredFor("siteurl:") === 1, [st("siteurl:1"), su.callsFor("siteurl:")])
+    await processB2cOutbox(su.transport(), plus(NOON_BEFORE, 30), { alert, budgetMs: 3000 })
+    await processB2cOutbox(su.transport(), plus(NOON_BEFORE, 60), { alert, budgetMs: 3000 })
+    ok("その後の実行で重ねて送らない（呼び出しは 1回のまま）", su.callsFor("siteurl:") === 1 && su.deliveredFor("siteurl:") === 1)
+  } finally {
+    for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v }
+  }
 
   console.log("O15 外部への送信")
   ok("外に送った通知は 0件（試験は偽の送信手段・sandbox だけ）", sql("select count(*) from b2c_outbox where provider is not null and provider not in ('sandbox','test','fake','email','whatsapp')") === "0" && sql("select count(*) from b2c_outbox where provider in ('resend','smtp')") === "0")
