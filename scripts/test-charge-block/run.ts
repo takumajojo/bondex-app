@@ -8,6 +8,7 @@
  * C. 課金経路の棚卸し: Stripe の課金呼び出しが lib/charge.ts の1か所だけで、そこへ入る経路がすべて
  *    chargeShipmentIfDue を通ること。未知の経路が増えたら失敗する (見直すまで CI を通さない)
  * D. 経路の実行: 再試行 API (POST /api/operator/charge-retry) を実際に呼んでも止まること
+ *    + デプロイ後の確認用 API (GET /api/operator/charge-block-status) が課金せずに状態だけ返すこと
  */
 import assert from "node:assert/strict"
 import { readFileSync, readdirSync, statSync } from "node:fs"
@@ -16,6 +17,7 @@ import { NextRequest } from "next/server"
 import { calls, db, reset } from "./fakes/state"
 import { chargeShipmentIfDue, isChargeBlocked } from "@/lib/charge"
 import { POST as chargeRetry } from "@/app/api/operator/charge-retry/route"
+import { GET as blockStatus } from "@/app/api/operator/charge-block-status/route"
 
 const ODADUU = "e4c98c9a-0801-4375-90f9-7a64eff906f7" // 本番 shipments.id (BDX-9K4NGJ, leg_index 0 = L1) と照合済み
 const OTHER = "11111111-2222-3333-4444-555555555555"
@@ -195,6 +197,17 @@ const tests: Array<[string, () => Promise<void>]> = [
     const json = (await res.json()) as { result: { reason?: string } }
     assert.equal(json.result.reason, "blocked_manual_recovery")
     assert.equal(calls.piCreate, 0)
+  }],
+  ["D2 確認用 API は課金せず、対象だけ blocked:true を返す (設定値は返さない)", async () => {
+    seed([ODADUU, OTHER])
+    process.env.CHARGE_BLOCKED_SHIPMENT_IDS = `${ODADUU},${NEAR}`
+    const ask = async (id: string) =>
+      (await (await blockStatus(new NextRequest(`http://localhost/api/operator/charge-block-status?id=${id}`))).json()) as Record<string, unknown>
+    assert.deepEqual(await ask(ODADUU), { id: ODADUU, blocked: true })
+    assert.deepEqual(await ask(OTHER), { id: OTHER, blocked: false })
+    delete process.env.CHARGE_BLOCKED_SHIPMENT_IDS
+    assert.deepEqual(await ask(ODADUU), { id: ODADUU, blocked: false })
+    assert.equal(calls.getShipment + calls.piCreate + calls.customerRetrieve, 0)
   }],
 ]
 
