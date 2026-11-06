@@ -21,6 +21,11 @@ Vercel は、デプロイを作った時点の環境変数をそのデプロイ�
    - 画面: Settings → Environment Variables → 各変数の Edit → 「Preview」のチェックだけを外して保存（Production は残す）
    - API でやる場合: `PATCH /v10/projects/{projectId}/env/{envId}` に `{"target":["production"]}` だけを送る（値は送らない）
    - 終わったら、点検（2）の 1 で「Preview に残っている本番の鍵の名前」が 0件・本番の側の名前が今までどおりあることを確かめる
+   - **本番が保たれていることの確認**（1 の直後・2 の前）:
+     - `vercel env ls production` の名前の数が、作業の前と同じ（作業の前に名前だけを控えておく。値は表示しない）
+     - 各変数の Edit の画面で、Production のチェックが残っていること
+     - 動いている本番のデプロイは作った時点の値を持ち続けるので、この操作で本番は再デプロイされない。本番の URL が今までどおり応答すること
+       （ログインしていない時の応答が作業の前と同じ）を見る。**本番の再デプロイはこの手順では行わない**
 2. **Preview 専用の登録を新しく作る**（設定先は Preview だけ）
    - staging の値: `NEXT_PUBLIC_SUPABASE_URL`・`NEXT_PUBLIC_SUPABASE_ANON_KEY`・`SUPABASE_SERVICE_ROLE_KEY`（staging の Supabase `oeucjrmuigtfnwowvzwr`）、
      `STRIPE_SECRET_KEY`・`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`（Stripe のテストモード `sk_test_`・`pk_test_`）、`OPERATOR_PASSWORD`（本番と別の値）
@@ -40,7 +45,16 @@ Vercel は、デプロイを作った時点の環境変数をそのデプロイ�
   `BONDEX_ENV=production` だけでは本番にならない（手元の道具が 1つの宣言で本番の資格情報を使えないようにするため）。
 
 ### 1-3. 古い Preview を削除する
-- 1-1 を終えた時刻（`--since`）より前に作られた Preview をすべて削除する（点検の 2 の一覧）。
+- 削除の対象は「危険な設定で作られた可能性のあるデプロイ」。不正なアクセスがあったという意味ではない。
+- **削除の前に記録を残す**（削除すると、そのデプロイの情報は Vercel から読めなくなる）:
+  - デプロイの一覧（作った日時・ブランチ・コミット・PR・作った人・URL）: `vercel ls --format json` をすべてのページ
+  - Preview へのアクセスの記録（日時・URL・パス・応答の番号だけ。IP と問い合わせの文字列は残さない）:
+    `vercel logs requests -e preview --since 7d --until now --json` を 1週間ずつ遡る（2026-11-06 の時点で遡れたのは約30日・それより前は拒否される）
+  - 実行の記録（`vercel logs -e preview`）は保存の期間が短い。残っていれば同じく集計だけを残す
+  - 2026-11-06 の控え: `MyClaudecode/docs/vercel-deployments-audit-snapshot-20261106.tsv`（全145件）・
+    `MyClaudecode/docs/vercel-preview-access-records-20261106.tsv`（Preview へのアクセス 7件・すべて 302 = ログインへの転送でアプリに届いていない）
+- 1-1 を終えた時刻（`--since`）より前に作られた Preview をすべて削除する（点検の 2 の一覧）。**削除の直前に点検をもう一度流し、一覧を取り直す**
+  （分離の前にどのブランチでも push すると、本番の鍵を持つ Preview が増える。2026-11-06 15:23 に 1件増えて 92件になった）。
 - Production のデプロイは削除しない。
 
 ### 1-4. 保護
@@ -61,6 +75,8 @@ python3 -I ../<このリポジトリ>/scripts/ops/vercel-preview-audit.py --sinc
   本番の名前のメールの鍵があれば起動を止める）と、ログインしていない時に 401 か Vercel のログインに転送されることを確かめる。
 
 ## 3. 統合ブランチの push を再開する順番
+0. 分離（1-1）が終わるまでは、統合ブランチに限らず**どのブランチの push も** Preview を作り、その Preview は本番の鍵を持つ。
+   急ぎの修正を push した時は、その Preview も 1-3 の削除の対象に入れる。
 1. 1-1〜1-4 と 2 の確かめ（谷口さん）
 2. 守りのコミットの統合（コミットを指定した承認の後）
 3. push で作られた新しい Preview が起動すること・本番の鍵の名前が無いことを、もう一度 2 で確かめる
