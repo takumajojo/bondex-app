@@ -2,7 +2,8 @@
 
 /**
  * 運営の B2C の画面（Stage 5）: 要対応の一覧・予約の詳細・集荷の確認・請求・返金・回収不能・通知の照合。
- * API: /api/b2c/ops/payments（lib/b2c/payment-ops.ts）、/api/b2c/ops/outbox（lib/b2c/outbox-ops.ts）。
+ * API: /api/b2c/ops/payments（lib/b2c/payment-ops.ts）、/api/b2c/ops/outbox（lib/b2c/outbox-ops.ts）、
+ * /api/b2c/ops/hotel（ホテルの確認・hotel-panel.tsx）。
  * 見るのは運営のログインで可。操作は個人のパスキーのログイン（v2）だけ（API が 403 を返す）。どの操作も理由が必須で、
  * 実行の前に内容を表示して確かめる。
  */
@@ -11,6 +12,7 @@ import Link from "next/link"
 import { ArrowLeft, Loader2, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { HotelPanel } from "./hotel-panel"
 
 type Row = Record<string, unknown>
 interface Todo {
@@ -219,7 +221,7 @@ export default function OperatorB2cPage() {
             <span>{orderBtn(r)} 集荷 {String(r.pickupDate)} / 予約 {String(r.pieces)}個</span>
             <Button size="sm" onClick={() => setAction({ title: "集荷を確認する", path: P, body: { action: "confirm_pickup", orderNumber: r.orderNumber }, fields: [ev, evRef, { key: "acceptedPieces", label: `佐川が受託した個数（予約 ${r.pieces}個）`, type: "number" }], summary: `受付番号 ${r.orderNumber}: 集荷済みにし、30分後に受託の個数で請求します（個数が予約と違えば請求を止めて確認に回します）` })}>集荷を確認</Button>
           </>)} />
-          <Section title="ホテルの確認待ち" rows={todo.awaitingHotel} empty="ありません" render={(r) => <span>{orderBtn(r)} 期限 {dt(r.dueAt)}（{String(r.mode)}）</span>} />
+          <HotelPanel onOpenOrder={(n) => void openOrder(n)} onChanged={refresh} />
           <Section title="通知の要確認（届いたか不明・失敗・期限切れ）" rows={todo.notifications} empty="ありません" render={(r) => (<>
             <span>{r.orderNumber ? orderBtn(r) : "-"} {String(r.kind)} / {String(r.channel)} / {String(r.status)} / {String(r.lastError ?? "").slice(0, 60)}</span>
             <span className="flex gap-1">
