@@ -11,7 +11,7 @@ export const runtime = "nodejs"
  * 本人の確認: 入口の token＋予約番号＋下書きの作成時に返した秘密の token。
  */
 export async function POST(req: NextRequest) {
-  const g = await b2cGuard(req, "b2c-card")
+  const g = await b2cGuard(req, "b2c-card", { allowExpired: true }) // 下書きの後は入口の期限で止めない
   if (!g.ok) return g.res
   const s = b2cStripeConfig()
   if (!s.ok) return NextResponse.json({ ok: false, error: "card_unavailable" }, { status: 503 })

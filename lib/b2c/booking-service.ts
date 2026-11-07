@@ -16,6 +16,7 @@ import { planB2cConfirmation, type B2cHotelStatus, type B2cConfirmationMode } fr
 import { b2cLateBookingEnabled } from "./flags"
 import { b2cAccessToken, b2cAccessTokenSecretConfigured } from "./access-token"
 import { B2C_TERMS_VERSION } from "./legal-text"
+import { entryTokenExpired, parseEntryToken } from "./entry-link"
 
 /** Phase 1A の 1予約の個数の上限（Beta。全体の設計は 50個）。DB の CHECK と同じ値。 */
 export const B2C_BETA_MAX_PIECES = 10
@@ -49,19 +50,38 @@ export class B2cDbUnavailable extends Error {
 /** B2C の画面・Webhook が DB を待つ上限。超えたら B2cDbUnavailable（画面は照合を続け、Webhook は Stripe が再送する）。 */
 export const B2C_DB_TIMEOUT_MS = 8000
 
-export async function resolveEntry(token: unknown): Promise<B2cEntry | null> {
-  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(token)) return null
+/**
+ * 入口の token の状態。invalid（形が違う・DB に無い）/ disabled（運営が止めた）/ expired（期限切れ・lib/b2c/entry-link.ts）。
+ * 期限切れ・停止は、入口の画面で「このリンクは使えなくなりました」と案内する（無効と区別する）。
+ */
+export type B2cEntryState = { state: "ok"; entry: B2cEntry } | { state: "invalid" | "disabled" | "expired" }
+
+/** now が null なら期限を見ない（resolveEntry の allowExpired）。 */
+export async function resolveEntryState(token: unknown, now: Date | null = new Date()): Promise<B2cEntryState> {
+  const shape = parseEntryToken(token)
+  if (!shape.ok) return { state: "invalid" }
   const sb = getSupabase()
   if (!sb) throw new B2cDbUnavailable("not configured")
   const { data, error } = await sb
     .from("b2c_entry_links")
     .select("id, referrer_code, referrer_name, referrer_name_en, status")
-    .eq("token_hash", sha256Hex(token))
+    .eq("token_hash", sha256Hex(token as string))
     .abortSignal(AbortSignal.timeout(B2C_DB_TIMEOUT_MS))
     .maybeSingle()
   if (error) throw new B2cDbUnavailable("entry")
-  if (!data || data.status !== "active") return null
-  return { id: data.id, referrerCode: data.referrer_code, referrerName: data.referrer_name, referrerNameEn: data.referrer_name_en || data.referrer_name }
+  if (!data) return { state: "invalid" }
+  if (data.status !== "active") return { state: "disabled" }
+  if (now && entryTokenExpired(shape.expiresOn, now)) return { state: "expired" }
+  return { state: "ok", entry: { id: data.id, referrerCode: data.referrer_code, referrerName: data.referrer_name, referrerNameEn: data.referrer_name_en || data.referrer_name } }
+}
+
+/**
+ * 入口の token を確かめる（無効・停止・期限切れは null）。
+ * allowExpired: 下書きの後のカード登録（開始・照合）だけが使う。期限は新しい予約を止めるためのもので、途中の予約は止めない。
+ */
+export async function resolveEntry(token: unknown, opts: { allowExpired?: boolean } = {}): Promise<B2cEntry | null> {
+  const r = await resolveEntryState(token, opts.allowExpired ? null : new Date())
+  return r.state === "ok" ? r.entry : null
 }
 
 // ---------------------------------------------------------------------------

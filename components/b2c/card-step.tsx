@@ -69,6 +69,7 @@ const T = {
       capacity_full: "This pickup date has just become full. Please book again and choose another date.",
       order_cancelled: "This request has expired. Please book again.",
       order_not_found: "We could not find this request. Please book again.",
+      link_expired: "This booking link is no longer active. Please contact your travel agent.",
       card_unavailable: "Card registration is temporarily unavailable. Please try again later.",
       server_error: "Something went wrong. Please try again.",
       temporarily_unavailable: "Our system is temporarily busy. Your booking is safe — please wait a moment and try again. Do not book again.",
@@ -112,6 +113,7 @@ const T = {
       capacity_full: "この集荷日は満枠になりました。別の日程でもう一度ご予約ください。",
       order_cancelled: "この受付は期限が切れました。もう一度ご予約ください。",
       order_not_found: "受付が見つかりません。もう一度ご予約ください。",
+      link_expired: "この予約のリンクは使えなくなりました。旅行会社にご連絡ください。",
       card_unavailable: "カード登録を一時的に停止しています。時間をおいてお試しください。",
       server_error: "エラーが発生しました。もう一度お試しください。",
       temporarily_unavailable: "ただいま混み合っています。ご予約は保存されています。少し待ってからもう一度お試しください（新しく予約し直さないでください）。",
@@ -230,6 +232,10 @@ export function B2cCardStep({ token, lang, order, onRestart }: { token: string; 
       } else if (r && r.status === 404) {
         setError("order_not_found")
         break
+      } else if (r && r.status === 410) {
+        // 入口が止められた（漏えいの時の緊急の手段・lib/b2c/entry-link.ts）。照合を繰り返さない
+        setError("link_expired")
+        break
       }
       if (i === 5 && mode === "untilFinal") setSlow(true)
       await new Promise((res) => setTimeout(res, Math.min(2000 + i * 1000, 10000)))
@@ -305,7 +311,7 @@ export function B2cCardStep({ token, lang, order, onRestart }: { token: string; 
     )
   }
 
-  const fatal = ["quote_changed", "date_not_available", "too_close_to_deadline", "capacity_full", "order_cancelled", "order_not_found"].includes(error)
+  const fatal = ["quote_changed", "date_not_available", "too_close_to_deadline", "capacity_full", "order_cancelled", "order_not_found", "link_expired"].includes(error)
 
   return (
     <section className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm">

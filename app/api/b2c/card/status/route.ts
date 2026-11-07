@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const s = b2cStripeConfig()
   if (!s.ok) return NextResponse.json({ ok: false, error: "card_unavailable" }, { status: 503 })
   try {
-    const entry = await resolveEntry(body.token)
+    const entry = await resolveEntry(body.token, { allowExpired: true }) // 下書きの後は入口の期限で止めない
     if (!entry) return NextResponse.json({ error: "invalid_link" }, { status: 404 })
     const order = await loadOrderForGuest(entry, body.orderNumber, body.accessToken)
     if (!order) return NextResponse.json({ ok: false, error: "order_not_found" }, { status: 404 })
