@@ -57,16 +57,17 @@ const pays = (id: string) => sql(`select coalesce(string_agg(kind || ':' || stat
 
 async function book(entry: NonNullable<Awaited<ReturnType<typeof resolveEntry>>>, tag: string, o = TOKYO, d = KYOTO, card = true) {
   const r = await createB2cDraftOrder(entry, qIn(o, d), { name: "Audit Flow", email: `audit-${tag}-${Date.now()}@example.invalid`, whatsapp: "+44 7700 900123", language: "en", consent: true })
-  if (!r.ok) throw new Error(`draft ${tag}: ${JSON.stringify(r)}`)
+  if (!r.ok || !r.orderNumber || !r.accessToken) throw new Error(`draft ${tag}: ${JSON.stringify(r)}`)
+  const orderNumber: number = r.orderNumber, accessToken: string = r.accessToken
   if (card) {
-    const ord = (await loadOrderForGuest(entry, r.orderNumber, r.accessToken))!
+    const ord = (await loadOrderForGuest(entry, orderNumber, accessToken))!
     const s = await startB2cCardRegistration(stripe, PK, ord, true)
     if (!s.ok) throw new Error(`card start ${tag}: ${JSON.stringify(s)}`)
-    const o2 = (await loadOrderForGuest(entry, r.orderNumber, r.accessToken))!
+    const o2 = (await loadOrderForGuest(entry, orderNumber, accessToken))!
     await stripe.setupIntents.confirm(o2.stripe_setup_intent_id!, { payment_method: "pm_card_visa" })
     await finalizeB2cCard(stripe, o2.id, "guest")
   }
-  return { n: r.orderNumber, token: r.accessToken }
+  return { n: orderNumber, token: accessToken }
 }
 
 async function main() {
