@@ -109,6 +109,16 @@ cases = {
 for label, value in cases.items():
     check(f"見つける: {label}", len(leaks(value)) > 0, True)
 
+print("2b Stripe の API の form の形（card[cvc]=）")
+for label, value in {
+    "card[cvc]=123": "card[number]=x&card[cvc]=123",
+    "URL の符号化 card%5Bcvc%5D=123": "card%5Bcvc%5D%3D123",
+    "payment_method_data[card][cvc]=4567": "payment_method_data[card][cvc]=4567&x=1",
+}.items():
+    check(f"見つける: {label}", len(leaks(value)) > 0, True)
+check("反応しない: card[cvc_check]=pass", leaks("card[cvc_check]=pass"), [])
+check("反応しない: card[cvc_check]=unavailable&amount=1234", leaks("card[cvc_check]=unavailable&amount=1234"), [])
+
 print("3 無関係の値には反応しない")
 benign = {
     "末尾 4桁だけ": {"card_last4": "4242"},

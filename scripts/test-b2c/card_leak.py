@@ -30,8 +30,8 @@ _DIGIT_RUN = re.compile(r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)")
 _CVC_KEYS = {"cvc", "cvv", "cvc2", "cvv2", "card_cvc", "security_code", "securitycode", "cvn"}
 _PAN_KEYS = {"card_number", "cardnumber", "pan", "number"}
 _CVC_VALUE = re.compile(r"^\d{3,4}$")
-# ログの文の中の「cvc: 123」「"cvv":"1234"」「cvc=123」
-_CVC_IN_TEXT = re.compile(r"(?i)(?<![a-z0-9_])(cvc2?|cvv2?|card_cvc|security_code)[\"']?\s*[:=]\s*[\"']?\d{3,4}(?!\d)")
+# ログの文の中の「cvc: 123」「"cvv":"1234"」「cvc=123」、Stripe の API の form の形「card[cvc]=123」（URL の符号化「card%5Bcvc%5D=123」も）
+_CVC_IN_TEXT = re.compile(r"(?i)(?:(?<![a-z0-9_])|(?<=%5b))(cvc2?|cvv2?|card_cvc|security_code)(?:\]|%5d)?[\"']?\s*(?:[:=]|%3a|%3d)\s*[\"']?\d{3,4}(?!\d)")
 
 
 def _luhn_ok(digits: str) -> bool:
