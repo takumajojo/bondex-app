@@ -69,6 +69,11 @@ async function main() {
     const p = await http("POST", "/api/b2c/ops/hotel", { action: "facility", placeId: "p0_unknown_hotel_A", status: "verified", note: "x" }, h)
     ok(`${name}: 一覧 403・操作 403`, g.status === 403 && p.status === 403 && g.json?.error === "operator_passkey_required", [g.status, p.status])
   }
+  const ghost = { cookie: `${OPERATOR_SESSION_COOKIE}=${await issueOperatorSession("p0-cred-not-registered-01")}` }
+  const gg = await http("GET", "/api/b2c/ops/hotel", undefined, ghost), gp = await http("POST", "/api/b2c/ops/hotel", { action: "facility", placeId: "p0_unknown_hotel_A", status: "verified", note: "x" }, ghost)
+  ok("パスキーが登録されていない（消された）セッション: 一覧 403・操作 403", gg.status === 403 && gp.status === 403, [gg.status, gp.status])
+  const forged = { cookie: `${OPERATOR_SESSION_COOKIE}=${op.cookie.split("=")[1].replace(/.$/, (c) => (c === "A" ? "B" : "A"))}` }
+  ok("署名を書き換えたセッション: 403", (await http("GET", "/api/b2c/ops/hotel", undefined, forged)).status === 403)
   ok("操作を拒否した後もホテルは未確認のまま", sql(`select status from b2c_facilities where place_id='p0_unknown_hotel_A'`) === "unknown")
 
   console.log("H2 一覧: 未確認のホテルごと・期限・ホテルの情報。旅行者の名前・連絡先は返さない")
@@ -251,6 +256,12 @@ async function main() {
   ok("不正な形の token の画面: 見つからない（中身・エラーを出さない）", pages.every((p) => notFoundPage(p) && !p.text.includes("<script>alert(1)")), pages.map((p) => p.status))
   const nonStr = await Promise.all([{ token: 123 }, { token: ["a".repeat(32)] }, { token: { $ne: "" } }, {}].map((b) => http("POST", "/api/b2c/entry", b)))
   ok("token が文字列でない: 404", nonStr.every((x) => x.status === 404), nonStr.map((x) => x.status))
+
+  console.log("E3b 推測への耐性: token は 192ビットの乱数・同じ IP からの連続の試行は 1分 10回で止める")
+  const ip = { "x-real-ip": "10.99.1.1" }
+  const tries = []
+  for (let i = 0; i < 12; i++) tries.push(await http("POST", "/api/b2c/entry", { token: generateEntryToken() }, ip))
+  ok("同じ IP から 12回 → 10回の後は 429", tries.slice(0, 10).every((x) => x.status === 404) && tries.slice(10).every((x) => x.status === 429), tries.map((x) => x.status))
 
   console.log("E4 予約の途中で期限を過ぎた旅行者のカード登録は止めない（新しい予約だけ止める）")
   const mid = generateEntryToken(day(30)), midExpired = `x20261102_${crypto.randomBytes(24).toString("base64url")}`
