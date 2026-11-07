@@ -60,9 +60,11 @@ GUARD="do \$g\$ begin if (select system_identifier from pg_control_system())::te
 END=rollback
 [ "$MODE" = execute ] && END=commit
 # 1つのトランザクション: 確認 → 対象の計算と安全の確認 → 件数・指紋 → (execute の時だけ) 削除。dry-run は最後に rollback
+set +e  # 失敗の時も、下の「止まりました」を必ず出す（set -e だとここで黙って終わる）
 { echo "begin;"; echo "$GUARD"; cat scripts/staging/cleanup-e2e.sql; echo "$END;"; } |
   docker exec -i -e PGURL="$DB_URL" "$C" sh -c 'psql "$PGURL" -v ON_ERROR_STOP=1 -q -P pager=off -v run="$1" -v since="$2" -v mode="$3" -v confirm="$4" 2>&1' psql "$RUN" "$SINCE" "$MODE" "${CONFIRM:-none}" |
   sed -E 's#postgres(ql)?://[^ ]*#<接続文字列>#g'
 rc=${PIPESTATUS[1]}
+set -e
 [ "$rc" = 0 ] || { echo "== 止まりました（何も消していません）"; exit 1; }
 if [ "$MODE" = execute ]; then echo "== 削除を確定しました"; else echo "== dry-run: 何も消していません（承認の後、同じ引数に --execute --confirm <指紋> を付ける）"; fi

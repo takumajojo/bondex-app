@@ -93,6 +93,18 @@ v=$(db $T "select string_agg(place_id, ',' order by place_id collate \"C\") from
 out=$(db $T "delete from b2c_order_events" 2>&1); [[ "$out" == *"append-only"* ]]; ok "保護が効いている（記録を消せない）" $?
 out=$(run --run E2E1107A --since $SINCE); [[ "$out" == *"入口がありません"* ]]; ok "2回目は対象が無く止まる（二重に消さない）" $?
 
+echo "4b. 削除の途中の失敗 → 全部を取り消す（ロールバック）"
+fresh $T; seed; b=$(cnt)
+# 配送の削除（請求・返金・記録の削除の後）で失敗させる: この試験の DB にだけ失敗の trigger を足す
+db $T "create function zz_fail() returns trigger language plpgsql as \$f\$ begin raise exception 'injected failure'; end \$f\$; create trigger zz_fail before delete on shipments for each row execute function zz_fail();" >/dev/null
+FP3=$(run --run E2E1107A --since $SINCE | sed -nE 's/.*指紋（execute の --confirm に渡す）: ([0-9a-f]{32}).*/\1/p' | head -1)
+out=$(run --run E2E1107A --since $SINCE --execute --confirm $FP3); rc=$?
+[ $rc != 0 ] && [[ "$out" == *"injected failure"* && "$out" == *"止まりました（何も消していません）"* ]]; ok "途中で失敗 → 失敗として終わる" $? "$out"
+[ "$(cnt)" = "$b" ]; ok "先に消したはずの請求・返金・通知・記録も含めて、全部が元のまま（$b）" $? "$(cnt)"
+[ "$(db $T "select tgenabled from pg_trigger where tgname='b2c_order_events_append_only'")" = "O" ]; ok "操作の記録の保護も有効のまま" $?
+db $T "drop trigger zz_fail on shipments" >/dev/null
+out=$(run --run E2E1107A --since $SINCE --execute --confirm $FP3); [[ "$out" == *"削除を確定しました"* ]]; ok "原因を除けば、同じ指紋で削除できる（中途半端な状態が残っていない）" $? "$out"
+
 echo "5. 止める条件（何も消さない）"
 fresh $T; seed
 db $T "set session_replication_role = replica; update b2c_orders set created_at = '2026-11-01' where id='00000000-0000-0000-0000-00000000e002'" >/dev/null; b=$(cnt)
